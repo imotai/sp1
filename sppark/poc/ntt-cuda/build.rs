@@ -5,18 +5,9 @@
 use std::env;
 
 fn feature_check() {
-    let fr_s = [
-        "bls12_377",
-        "bls12_381",
-        "pallas",
-        "vesta",
-        "bn254",
-        "gl64",
-        "bb31",
-    ];
-    let fr_s_as_features: Vec<String> = (0..fr_s.len())
-        .map(|i| format!("CARGO_FEATURE_{}", fr_s[i].to_uppercase()))
-        .collect();
+    let fr_s = ["bls12_377", "bls12_381", "pallas", "vesta", "bn254", "gl64", "bb31"];
+    let fr_s_as_features: Vec<String> =
+        (0..fr_s.len()).map(|i| format!("CARGO_FEATURE_{}", fr_s[i].to_uppercase())).collect();
 
     let mut fr_counter = 0;
     for fr_feature in fr_s_as_features.iter() {
@@ -51,7 +42,7 @@ fn main() {
     } else if cfg!(feature = "gl64") {
         fr = "FEATURE_GOLDILOCKS";
     } else if cfg!(feature = "bb31") {
-        fr = "FEATURE_BABY_BEAR";
+        fr = "FEATURE_KOALA_BEAR";
     }
 
     let mut nvcc = cc::Build::new();

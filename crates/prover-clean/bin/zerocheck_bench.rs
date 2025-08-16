@@ -6,7 +6,7 @@ use itertools::Itertools;
 use rand::SeedableRng;
 use slop_algebra::{AbstractExtensionField, AbstractField};
 use slop_basefold::BasefoldVerifier;
-use slop_basefold::Poseidon2BabyBear16BasefoldConfig;
+use slop_basefold::Poseidon2KoalaBear16BasefoldConfig;
 use slop_challenger::{CanSample, FieldChallenger};
 use slop_multilinear::Mle;
 use slop_sumcheck::{partially_verify_sumcheck_proof, PartialSumcheckProof};
@@ -64,7 +64,7 @@ async fn main() {
                 })
                 .sum::<Ext>();
 
-            let verifier = BasefoldVerifier::<Poseidon2BabyBear16BasefoldConfig>::new(1);
+            let verifier = BasefoldVerifier::<Poseidon2KoalaBear16BasefoldConfig>::new(1);
             let mut challenger = verifier.challenger();
             let _lambda: Ext = challenger.sample();
 
@@ -142,7 +142,7 @@ async fn main() {
             .map(|(e_i, b_i)| zerocheck_eval(*e_i, *b_i))
             .sum::<Ext>();
 
-        let verifier = BasefoldVerifier::<Poseidon2BabyBear16BasefoldConfig>::new(1);
+        let verifier = BasefoldVerifier::<Poseidon2KoalaBear16BasefoldConfig>::new(1);
         let mut challenger = verifier.challenger();
         let _lambda: Ext = challenger.sample();
 

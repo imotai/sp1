@@ -26,7 +26,7 @@ members = [
     "crates/perf",
     "crates/tracegen",
     "crates/logup-gkr",
-    "crates/cuslop",
+    "crates/cuslop", 
     "crates/prover-clean",
 ]
 resolver = "2"
@@ -56,14 +56,15 @@ csl-air = { path = "crates/air" }
 csl-zerocheck = { path = "crates/zerocheck" }
 csl-tracing = { path = "crates/tracing" }
 csl-prover = { path = "crates/prover" }
-csl-perf = { path = "crates/perf" }
 csl-tracegen = { path = "crates/tracegen" }
 csl-logup-gkr = { path = "crates/logup-gkr" }
 csl-prover-clean = { path = "crates/prover-clean" }
+csl-server = { path = "crates/cuslop" }
+csl-perf = { path = "crates/perf" }
 
 # slop 
 slop-air = { git = "https://github.com/succinctlabs/slop" }
-slop-baby-bear = { git = "https://github.com/succinctlabs/slop" }
+slop-koala-bear = { git = "https://github.com/succinctlabs/slop" }
 slop-bn254 = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
@@ -89,8 +90,6 @@ sp1-core-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branc
 sp1-hypercube = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-prover = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-recursion-circuit = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-recursion-compiler = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-recursion-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-recursion-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
@@ -98,7 +97,7 @@ sp1-cuda = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "mult
 
 # slop local copy
 # slop-air = { path = "../slop/crates/air" }
-# slop-baby-bear = { path = "../slop/crates/baby-bear" }
+# slop-koala-bear = { path = "../slop/crates/koala-bear" }
 # slop-bn254 = { path = "../slop/crates/bn254" }
 # slop-basefold = { path = "../slop/crates/basefold" }
 # slop-basefold-prover = { path = "../slop/crates/basefold-prover" }
@@ -119,11 +118,9 @@ sp1-cuda = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "mult
 # slop-jagged = { path = "../slop/crates/jagged" }
 
 # for local development
-# sp1-core-executor = { path = "../sp1-wip/crates/core/executor", features = [
-#     "bigint-rug",
-# ] }
+# sp1-core-executor = { path = "../sp1-wip/crates/core/executor" }
 # sp1-core-machine = { path = "../sp1-wip/crates/core/machine" }
-# sp1-hypercube = { path = "../sp1-wip/crates/stark" }
+# sp1-hypercube = { path = "../sp1-wip/crates/hypercube" }
 # sp1-primitives = { path = "../sp1-wip/crates/primitives" }
 # sp1-prover = { path = "../sp1-wip/crates/prover" }
 # sp1-recursion-circuit = { path = "../sp1-wip/crates/recursion/circuit" }
@@ -141,7 +138,6 @@ rayon = "1.10.0"
 tracing = "0.1.40"
 thiserror = "1.0"
 itertools = "0.14.0"
-derive-where = "1.2.7"
 serde = { version = "1.0.217", features = ["derive"] }
 rand = "0.8"
 serial_test = "3.2.0"

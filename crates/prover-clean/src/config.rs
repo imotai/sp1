@@ -5,10 +5,10 @@
 //! different field and extension element types.
 
 use slop_algebra::extension::BinomialExtensionField;
-use slop_baby_bear::BabyBear;
+use slop_koala_bear::KoalaBear;
 
 /// The base field element type.
-pub type Felt = BabyBear;
+pub type Felt = KoalaBear;
 
 /// The extension field element type.
-pub type Ext = BinomialExtensionField<BabyBear, 4>;
+pub type Ext = BinomialExtensionField<KoalaBear, 4>;

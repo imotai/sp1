@@ -1,7 +1,7 @@
 #include "basefold.cuh"
 
-#include "../fields/bb31_t.cuh"
-#include "../fields/bb31_extension_t.cuh"
+#include "../fields/kb31_t.cuh"
+#include "../fields/kb31_extension_t.cuh"
 
 template <typename F, typename EF>
 __global__ void batchKernel(
@@ -22,9 +22,9 @@ __global__ void batchKernel(
     }
 }
 
-extern "C" void *batch_baby_bear_base_ext_kernel()
+extern "C" void *batch_koala_bear_base_ext_kernel()
 {
-    return (void *)batchKernel<bb31_t, bb31_extension_t>;
+    return (void *)batchKernel<kb31_t, kb31_extension_t>;
 }
 
 template <typename F, typename EF>
@@ -49,9 +49,9 @@ __global__ void batchKernelFlattened(
     }
 }
 
-extern "C" void *batch_baby_bear_base_ext_kernel_flattened()
+extern "C" void *batch_koala_bear_base_ext_kernel_flattened()
 {
-    return (void *)batchKernelFlattened<bb31_t, bb31_extension_t>;
+    return (void *)batchKernelFlattened<kb31_t, kb31_extension_t>;
 }
 
 template <typename F, typename EF>
@@ -72,9 +72,9 @@ __global__ void transposeEvenOdd(
     }
 }
 
-extern "C" void *transpose_even_odd_baby_bear_base_ext_kernel()
+extern "C" void *transpose_even_odd_koala_bear_base_ext_kernel()
 {
-    return (void *)transposeEvenOdd<bb31_t, bb31_extension_t>;
+    return (void *)transposeEvenOdd<kb31_t, kb31_extension_t>;
 }
 
 template <typename F, typename EF>
@@ -94,7 +94,7 @@ __global__ void flattenToBase(
     }
 }
 
-extern "C" void *flatten_to_base_baby_bear_base_ext_kernel()
+extern "C" void *flatten_to_base_koala_bear_base_ext_kernel()
 {
-    return (void *)flattenToBase<bb31_t, bb31_extension_t>;
+    return (void *)flattenToBase<kb31_t, kb31_extension_t>;
 }

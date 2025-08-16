@@ -13,8 +13,8 @@
 #include <ff/alt_bn128.hpp>
 #elif defined(FEATURE_GOLDILOCKS)
 #include <ff/goldilocks.hpp>
-#elif defined(FEATURE_BABY_BEAR)
-#include <ff/baby_bear.hpp>
+#elif defined(FEATURE_KOALA_BEAR)
+#include <ff/koala_bear.hpp>
 #else
 #error "no FEATURE"
 #endif

@@ -3,8 +3,8 @@
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
 
-#include "../fields/bb31_extension_t.cuh"
-#include "../fields/bb31_t.cuh"
+#include "../fields/kb31_extension_t.cuh"
+#include "../fields/kb31_t.cuh"
 
 namespace cg = cooperative_groups;
 
@@ -143,22 +143,22 @@ blockSum(F *A, F *result, size_t width, size_t height)
     block.sync();
 }
 
-extern "C" void *baby_bear_sum_block_reduce_kernel()
+extern "C" void *koala_bear_sum_block_reduce_kernel()
 {
-    return (void *)blockSum<bb31_t>;
+    return (void *)blockSum<kb31_t>;
 }
 
-extern "C" void *baby_bear_sum_partial_block_reduce_kernel()
+extern "C" void *koala_bear_sum_partial_block_reduce_kernel()
 {
-    return (void *)partialBlockSumKernel<bb31_t>;
+    return (void *)partialBlockSumKernel<kb31_t>;
 }
 
-extern "C" void *baby_bear_extension_sum_block_reduce_kernel()
+extern "C" void *koala_bear_extension_sum_block_reduce_kernel()
 {
-    return (void *)blockSum<bb31_extension_t>;
+    return (void *)blockSum<kb31_extension_t>;
 }
 
-extern "C" void *baby_bear_extension_sum_partial_block_reduce_kernel()
+extern "C" void *koala_bear_extension_sum_partial_block_reduce_kernel()
 {
-    return (void *)partialBlockSumKernel<bb31_extension_t>;
+    return (void *)partialBlockSumKernel<kb31_extension_t>;
 }

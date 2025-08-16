@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include "../fields/bb31_extension_t.cuh"
+#include "../fields/kb31_extension_t.cuh"
 
 struct Instruction {
     unsigned char opcode;

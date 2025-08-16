@@ -7,7 +7,7 @@ This crate supports GPU trace generation. It exports two main items:
   This is used as the trace generator for `CudaProverComponents`.
 - `CudaTracegenAir<F>`: a trait implemented by types that may support GPU trace generation.
 
-The rest of this crate implements `CudaTracegenAir<BabyBear>` for various types.
+The rest of this crate implements `CudaTracegenAir<KoalaBear>` for various types.
 
 To implement the trait for an AIR, create a file in either the
 `riscv` or `recursion` directory and update the implementation of the AIR enum

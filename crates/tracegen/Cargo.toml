@@ -13,9 +13,8 @@ csl-cuda = { workspace = true }
 slop-air = { workspace = true }
 slop-algebra = { workspace = true }
 slop-alloc = { workspace = true }
-slop-baby-bear = { workspace = true }
+slop-koala-bear = { workspace = true }
 slop-futures = { workspace = true }
-slop-merkle-tree = { workspace = true }
 slop-multilinear = { workspace = true }
 slop-symmetric = { workspace = true }
 slop-tensor = { workspace = true }
@@ -23,7 +22,6 @@ slop-tensor = { workspace = true }
 sp1-core-machine = { workspace = true }
 sp1-recursion-executor = { workspace = true }
 sp1-recursion-machine = { workspace = true }
-sp1-primitives = { workspace = true }
 sp1-hypercube = { workspace = true }
 
 futures = { workspace = true }

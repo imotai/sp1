@@ -1,12 +1,12 @@
 #include "csl-cbindgen.hpp"
 
-#include "fields/bb31_t.cuh"
+#include "fields/kb31_t.cuh"
 
-#include "poseidon2/poseidon2_bb31_16.cuh"
+#include "poseidon2/poseidon2_kb31_16.cuh"
 
 #include "tracegen/poseidon2_wide.cuh"
 
-constexpr static const uintptr_t POSEIDON2_WIDTH = poseidon2_bb31_16::constants::WIDTH;
+constexpr static const uintptr_t POSEIDON2_WIDTH = poseidon2_kb31_16::constants::WIDTH;
 
 template <class T>
 __global__ void recursion_poseidon2_wide_generate_preprocessed_trace_kernel(
@@ -40,17 +40,17 @@ __global__ void recursion_poseidon2_wide_generate_preprocessed_trace_kernel(
     }
 }
 
-__global__ void recursion_poseidon2_wide_generate_trace_baby_bear_kernel(
-    bb31_t *trace,
+__global__ void recursion_poseidon2_wide_generate_trace_koala_bear_kernel(
+    kb31_t *trace,
     uintptr_t trace_height,
-    const csl_sys::Poseidon2Event<bb31_t> *events,
-    uintptr_t nb_events,
-    bool sbox_state)
+    const csl_sys::Poseidon2Event<kb31_t> *events,
+    uintptr_t nb_events
+    )
 {
-    bb31_t dummy_input[POSEIDON2_WIDTH];
+    kb31_t dummy_input[POSEIDON2_WIDTH];
     for (size_t i = 0; i < POSEIDON2_WIDTH; ++i)
     {
-        dummy_input[i] = bb31_t::zero();
+        dummy_input[i] = kb31_t::zero();
     }
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -62,8 +62,8 @@ __global__ void recursion_poseidon2_wide_generate_trace_baby_bear_kernel(
                 events[i].input,
                 trace,
                 i,
-                trace_height,
-                sbox_state);
+                trace_height
+                );
         }
         else
         {
@@ -71,20 +71,21 @@ __global__ void recursion_poseidon2_wide_generate_trace_baby_bear_kernel(
                 dummy_input,
                 trace,
                 i,
-                trace_height,
-                sbox_state);
+                trace_height                
+            );
+
         }
     }
 }
 
 namespace csl_sys
 {
-    extern KernelPtr recursion_poseidon2_wide_generate_preprocessed_trace_baby_bear_kernel()
+    extern KernelPtr recursion_poseidon2_wide_generate_preprocessed_trace_koala_bear_kernel()
     {
-        return (KernelPtr)::recursion_poseidon2_wide_generate_preprocessed_trace_kernel<bb31_t>;
+        return (KernelPtr)::recursion_poseidon2_wide_generate_preprocessed_trace_kernel<kb31_t>;
     }
-    extern KernelPtr recursion_poseidon2_wide_generate_trace_baby_bear_kernel()
+    extern KernelPtr recursion_poseidon2_wide_generate_trace_koala_bear_kernel()
     {
-        return (KernelPtr)::recursion_poseidon2_wide_generate_trace_baby_bear_kernel;
+        return (KernelPtr)::recursion_poseidon2_wide_generate_trace_koala_bear_kernel;
     }
 }

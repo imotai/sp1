@@ -1,5 +1,5 @@
 use crate::runtime::KernelPtr;
 
 extern "C" {
-    pub fn grind_baby_bear() -> KernelPtr;
+    pub fn grind_koala_bear() -> KernelPtr;
 }

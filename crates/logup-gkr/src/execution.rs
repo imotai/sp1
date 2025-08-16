@@ -12,9 +12,9 @@ use csl_cuda::{
     args,
     sys::{
         logup_gkr::{
-            logup_gkr_circuit_transition_baby_bear_extension, logup_gkr_extract_output_baby_bear,
-            logup_gkr_first_layer_transition_baby_bear,
-            logup_gkr_populate_last_circuit_layer_baby_bear,
+            logup_gkr_circuit_transition_koala_bear_extension, logup_gkr_extract_output_koala_bear,
+            logup_gkr_first_layer_transition_koala_bear,
+            logup_gkr_populate_last_circuit_layer_koala_bear,
         },
         runtime::KernelPtr,
     },
@@ -23,7 +23,7 @@ use csl_cuda::{
 use itertools::Itertools;
 use slop_algebra::{extension::BinomialExtensionField, ExtensionField, Field};
 use slop_alloc::{Buffer, HasBackend};
-use slop_baby_bear::BabyBear;
+use slop_koala_bear::KoalaBear;
 use slop_multilinear::Mle;
 use slop_tensor::Tensor;
 use sp1_hypercube::{
@@ -469,30 +469,30 @@ where
     }
 }
 
-unsafe impl CircuitTransitionKernel<BinomialExtensionField<BabyBear, 4>> for TaskScope {
+unsafe impl CircuitTransitionKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
     fn circuit_transition_kernel() -> KernelPtr {
-        unsafe { logup_gkr_circuit_transition_baby_bear_extension() }
+        unsafe { logup_gkr_circuit_transition_koala_bear_extension() }
     }
 }
 
-unsafe impl FirstLayerTransitionKernel<BabyBear, BinomialExtensionField<BabyBear, 4>>
+unsafe impl FirstLayerTransitionKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>>
     for TaskScope
 {
     fn first_layer_transition_kernel() -> KernelPtr {
-        unsafe { logup_gkr_first_layer_transition_baby_bear() }
+        unsafe { logup_gkr_first_layer_transition_koala_bear() }
     }
 }
 
-unsafe impl PopulateLastCircuitLayerKernel<BabyBear, BinomialExtensionField<BabyBear, 4>>
+unsafe impl PopulateLastCircuitLayerKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>>
     for TaskScope
 {
     fn populate_last_circuit_layer_kernel() -> KernelPtr {
-        unsafe { logup_gkr_populate_last_circuit_layer_baby_bear() }
+        unsafe { logup_gkr_populate_last_circuit_layer_koala_bear() }
     }
 }
 
-unsafe impl ExtractOutputKernel<BinomialExtensionField<BabyBear, 4>> for TaskScope {
+unsafe impl ExtractOutputKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
     fn extract_output_kernel() -> KernelPtr {
-        unsafe { logup_gkr_extract_output_baby_bear() }
+        unsafe { logup_gkr_extract_output_koala_bear() }
     }
 }

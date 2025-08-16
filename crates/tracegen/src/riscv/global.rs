@@ -51,7 +51,7 @@ impl CudaTracegenAir<F> for GlobalChip {
             const BLOCK_DIM: usize = 64;
             let grid_dim = height.div_ceil(BLOCK_DIM);
             // args:
-            // bb31_t *trace,
+            // kb31_t *trace,
             // uintptr_t trace_height,
             // const csl_sys::GlobalInteractionEvent *events,
             // uintptr_t nb_events
@@ -195,7 +195,7 @@ impl CudaTracegenAir<F> for GlobalChip {
             const BLOCK_DIM: usize = 64;
             let grid_dim = height.div_ceil(BLOCK_DIM);
             // args:
-            // bb31_t *trace,
+            // kb31_t *trace,
             // uintptr_t trace_height,
             // const bb31_septic_curve_t *cumulative_sums,
             // uintptr_t nb_events

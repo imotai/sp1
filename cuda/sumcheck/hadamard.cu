@@ -1,8 +1,8 @@
 
 #include "hadamard.cuh"
 
-#include "../fields/bb31_t.cuh"
-#include "../fields/bb31_extension_t.cuh"
+#include "../fields/kb31_t.cuh"
+#include "../fields/kb31_extension_t.cuh"
 
 #include "../reduce/reduction.cuh"
 
@@ -52,17 +52,17 @@ __global__ void hadamardUnivariatePolyEval(
     }
 }
 
-extern "C" void *hadamard_univariate_poly_eval_baby_bear_base_ext_kernel()
+extern "C" void *hadamard_univariate_poly_eval_koala_bear_base_ext_kernel()
 {
-    return (void *)hadamardUnivariatePolyEval<bb31_t, bb31_extension_t>;
+    return (void *)hadamardUnivariatePolyEval<kb31_t, kb31_extension_t>;
 }
 
-extern "C" void *hadamard_univariate_poly_eval_baby_bear_base_kernel()
+extern "C" void *hadamard_univariate_poly_eval_koala_bear_base_kernel()
 {
-    return (void *)hadamardUnivariatePolyEval<bb31_t, bb31_t>;
+    return (void *)hadamardUnivariatePolyEval<kb31_t, kb31_t>;
 }
 
-extern "C" void *hadamard_univariate_poly_eval_baby_bear_ext_kernel()
+extern "C" void *hadamard_univariate_poly_eval_koala_bear_ext_kernel()
 {
-    return (void *)hadamardUnivariatePolyEval<bb31_extension_t, bb31_extension_t>;
+    return (void *)hadamardUnivariatePolyEval<kb31_extension_t, kb31_extension_t>;
 }

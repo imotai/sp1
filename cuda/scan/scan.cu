@@ -2,7 +2,7 @@
 
 #include "scan.cuh"
 
-#include "fields/bb31_septic_extension_t.cuh"
+#include "fields/kb31_septic_extension_t.cuh"
 
 namespace csl_sys
 {

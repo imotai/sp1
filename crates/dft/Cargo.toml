@@ -14,11 +14,12 @@ slop-alloc = { workspace = true }
 slop-dft = { workspace = true }
 slop-algebra = { workspace = true }
 slop-tensor = { workspace = true }
-slop-baby-bear = { workspace = true }
+slop-koala-bear = { workspace = true }
 
 [dev-dependencies]
 rand = "0.8"
 tokio = { workspace = true }
+itertools = { workspace = true }
 
 [lints]
 workspace = true

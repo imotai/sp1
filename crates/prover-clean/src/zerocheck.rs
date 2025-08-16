@@ -313,7 +313,7 @@ where
     C: FieldChallenger<Felt>,
     F: Field,
 {
-    let (proof, claims) = if F::order() > BigUint::from(0x78000001u32) {
+    let (proof, claims) = if F::order() > BigUint::from(0x7f000001u32) {
         zerocheck(
             base,
             ext,
@@ -343,7 +343,7 @@ mod tests {
 
     use rand::SeedableRng;
     use slop_basefold::BasefoldVerifier;
-    use slop_basefold::Poseidon2BabyBear16BasefoldConfig;
+    use slop_basefold::Poseidon2KoalaBear16BasefoldConfig;
     use slop_challenger::CanSample;
     use slop_multilinear::Mle;
     use slop_sumcheck::partially_verify_sumcheck_proof;
@@ -408,7 +408,7 @@ mod tests {
                     })
                     .sum::<Ext>();
 
-                let verifier = BasefoldVerifier::<Poseidon2BabyBear16BasefoldConfig>::new(1);
+                let verifier = BasefoldVerifier::<Poseidon2KoalaBear16BasefoldConfig>::new(1);
                 let mut challenger = verifier.challenger();
                 let _lambda: Ext = challenger.sample();
 
@@ -486,7 +486,7 @@ mod tests {
                 .map(|(e_i, b_i)| zerocheck_eval(*e_i, *b_i))
                 .sum::<Ext>();
 
-            let verifier = BasefoldVerifier::<Poseidon2BabyBear16BasefoldConfig>::new(1);
+            let verifier = BasefoldVerifier::<Poseidon2KoalaBear16BasefoldConfig>::new(1);
             let mut challenger = verifier.challenger();
             let _lambda: Ext = challenger.sample();
 

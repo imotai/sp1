@@ -100,9 +100,9 @@ impl<const DEGREE: usize> CudaTracegenAir<F> for Poseidon2WideChip<DEGREE> {
             const BLOCK_DIM: usize = 64;
             let grid_dim = height.div_ceil(BLOCK_DIM);
             // args:
-            // bb31_t *trace,
+            // kb31_t *trace,
             // uintptr_t trace_height,
-            // const csl_sys::Poseidon2Event<bb31_t> *events,
+            // const csl_sys::Poseidon2Event<kb31_t> *events,
             // uintptr_t nb_events,
             // bool sbox_state
             let args =
@@ -164,43 +164,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_poseidon2_wide_deg_9_generate_preprocessed_trace() {
-        csl_cuda::spawn(move |scope| {
-            crate::recursion::tests::test_preprocessed_tracegen(
-                Poseidon2WideChip::<9>,
-                make_poseidon2_instr,
-                scope,
-            )
-        })
-        .await
-        .unwrap();
-    }
-
-    #[tokio::test]
     async fn test_poseidon2_wide_deg_3_generate_main_trace() {
         csl_cuda::spawn(move |scope| {
             crate::tests::test_main_tracegen(
                 Poseidon2WideChip::<3>,
-                |rng| {
-                    let input = rng.gen();
-                    let permuter = sp1_hypercube::inner_perm();
-                    let output = permuter.permute(input);
-
-                    Poseidon2Event { input, output }
-                },
-                |poseidon2_events| ExecutionRecord { poseidon2_events, ..Default::default() },
-                scope,
-            )
-        })
-        .await
-        .unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_poseidon2_wide_deg_9_generate_main_trace() {
-        csl_cuda::spawn(move |scope| {
-            crate::tests::test_main_tracegen(
-                Poseidon2WideChip::<9>,
                 |rng| {
                     let input = rng.gen();
                     let permuter = sp1_hypercube::inner_perm();

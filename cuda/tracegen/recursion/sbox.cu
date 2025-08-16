@@ -1,6 +1,6 @@
 #include "csl-cbindgen.hpp"
 
-#include "fields/bb31_t.cuh"
+#include "fields/kb31_t.cuh"
 
 template <class T>
 __global__ void recursion_sbox_generate_preprocessed_trace_kernel(
@@ -57,11 +57,10 @@ __global__ void recursion_sbox_generate_trace_kernel(
         cols.vals.input = events[i].input;
         cols.vals.output = events[i].output;
 
-        // Compute intermediate values for x^7 = x^3 * x^3 * x
+        // Compute output values for the x^3 sbox.
         for (int j = 0; j < csl_sys::D; ++j)
         {
-            cols.intermediate._0[j] = events[i].input._0[j] * events[i].input._0[j] * events[i].input._0[j];
-            cols.vals.output._0[j] = events[i].input._0[j] * cols.intermediate._0[j] * cols.intermediate._0[j];
+            cols.vals.output._0[j] = events[i].input._0[j] * events[i].input._0[j] * events[i].input._0[j];
         }
 
         const T *arr = reinterpret_cast<T *>(&cols);
@@ -76,12 +75,12 @@ __global__ void recursion_sbox_generate_trace_kernel(
 
 namespace csl_sys
 {
-    extern KernelPtr recursion_sbox_generate_preprocessed_trace_baby_bear_kernel()
+    extern KernelPtr recursion_sbox_generate_preprocessed_trace_koala_bear_kernel()
     {
-        return (KernelPtr)::recursion_sbox_generate_preprocessed_trace_kernel<bb31_t>;
+        return (KernelPtr)::recursion_sbox_generate_preprocessed_trace_kernel<kb31_t>;
     }
-    extern KernelPtr recursion_sbox_generate_trace_baby_bear_kernel()
+    extern KernelPtr recursion_sbox_generate_trace_koala_bear_kernel()
     {
-        return (KernelPtr)::recursion_sbox_generate_trace_kernel<bb31_t>;
+        return (KernelPtr)::recursion_sbox_generate_trace_kernel<kb31_t>;
     }
 }

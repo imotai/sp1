@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../fields/bb31_t.cuh"
+#include "../fields/kb31_t.cuh"
 #include "../fields/bn254_t.cuh"
 
 namespace poseidon2_bn254_3 {
@@ -220,19 +220,20 @@ __device__ void modulo_p(
 
 const size_t N = 8;
 
-__device__ inline bn254_t bb31_to_bn254(bb31_t in) {
-    uint32_t canonical = (0x38400000ULL * in.val) % (uint64_t)bb31_t::MOD;
+__device__ inline bn254_t kb31_to_bn254(kb31_t in) {
+    // The hard-coded constant is the inverse of 1<<32 mod p.
+    uint32_t canonical = (0x3f010000ULL * in.val) % (uint64_t)kb31_t::MOD;
     uint32_t v[N + 1] = {0};
     mul_u32_p<N>(canonical, device::ALT_BN128_rone, v);
     // NOTE: likely not the optimal modulo implementation
     // Max 31 large (8 uint32) multiplications
-    modulo_p<N>(v, device::ALT_BN128_r, 0x00000000u, 0x78000001u);
+    modulo_p<N>(v, device::ALT_BN128_r, 0x00000000u, kb31_t::MOD);
     return bn254_t(v);
 }
 
-__device__ inline bn254_t reduceBabyBear(
-    bb31_t* src1,
-    bb31_t* src2,
+__device__ inline bn254_t reduceKoalaBear(
+    kb31_t* src1,
+    kb31_t* src2,
     int n1,
     int n2,
     int stride1 = 1,
@@ -243,12 +244,12 @@ __device__ inline bn254_t reduceBabyBear(
     res.set_to_zero();
     if (n2 > 0) {
         for (int ii = (n2 - 1) * stride2; ii >= 0; ii -= stride2) {
-            res = res * po2 + bb31_to_bn254(src2[ii]);
+            res = res * po2 + kb31_to_bn254(src2[ii]);
         }
     }
     if (n1 > 0) {
         for (int ii = (n1 - 1) * stride1; ii >= 0; ii -= stride1) {
-            res = res * po2 + bb31_to_bn254(src1[ii]);
+            res = res * po2 + kb31_to_bn254(src1[ii]);
         }
     }
     return res;
@@ -257,13 +258,13 @@ __device__ inline bn254_t reduceBabyBear(
 template<typename Hasher_t, typename HasherState_t>
 __device__ void absorbRow(
     Hasher_t hasher,
-    bb31_t* in,
+    kb31_t* in,
     int rowIdx,
     size_t width,
     size_t height,
     HasherState_t* state
 ) {
-    bb31_t* rowPtr;
+    kb31_t* rowPtr;
     size_t stride;
 
     rowPtr = &in[rowIdx];
@@ -282,7 +283,7 @@ __device__ void absorbRow(
         } else {
             // Overhang + row is larger or equal to N, create bn254_t value from overhang and row and continue
             colIdx = N - state->overhangSize;
-            bn254_t value = reduceBabyBear(
+            bn254_t value = reduceKoalaBear(
                 state->overhang,
                 rowPtr,
                 state->overhangSize,
@@ -297,7 +298,7 @@ __device__ void absorbRow(
 
     while (colIdx + N <= width) {
         bn254_t value =
-            reduceBabyBear(rowPtr + colIdx * stride, nullptr, N, 0, stride, 0);
+            reduceKoalaBear(rowPtr + colIdx * stride, nullptr, N, 0, stride, 0);
         (*state).absorb(hasher, &value, 1);
         colIdx += N;
     }

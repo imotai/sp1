@@ -1,8 +1,8 @@
 #include "jagged.cuh"
 
 #include <stdio.h>
-#include "../fields/bb31_t.cuh"
-#include "../fields/bb31_extension_t.cuh"
+#include "../fields/kb31_t.cuh"
+#include "../fields/kb31_extension_t.cuh"
 
 #include "../reduce/reduction.cuh"
 
@@ -30,9 +30,9 @@ __global__ void jaggedPopulate(
     }
 }
 
-extern "C" void *jagged_baby_bear_extension_populate()
+extern "C" void *jagged_koala_bear_extension_populate()
 {
-    return (void *)jaggedPopulate<bb31_extension_t>;
+    return (void *)jaggedPopulate<kb31_extension_t>;
 }
 
 template <typename F, typename EF>
@@ -99,9 +99,9 @@ __global__ void jaggedSumAsPoly(
     }
 }
 
-extern "C" void *jagged_baby_bear_base_ext_sum_as_poly()
+extern "C" void *jagged_koala_bear_base_ext_sum_as_poly()
 {
-    return (void *)jaggedSumAsPoly<bb31_t, bb31_extension_t>;
+    return (void *)jaggedSumAsPoly<kb31_t, kb31_extension_t>;
 }
 
 template <typename EF>
@@ -144,7 +144,7 @@ __global__ void jaggedVirtualFixLastVariable(
     }
 }
 
-extern "C" void *jagged_baby_bear_extension_virtual_fix_last_variable()
+extern "C" void *jagged_koala_bear_extension_virtual_fix_last_variable()
 {
-    return (void *)jaggedVirtualFixLastVariable<bb31_extension_t>;
+    return (void *)jaggedVirtualFixLastVariable<kb31_extension_t>;
 }

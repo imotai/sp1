@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "../poseidon2/poseidon2_bb31_16.cuh"
+#include "../poseidon2/poseidon2_kb31_16.cuh"
 #include "../poseidon2/poseidon2.cuh"
 #include "../poseidon2/poseidon2_bn254_3.cuh"
 
@@ -7,7 +7,7 @@ template<typename Hasher_t, typename HashParams, typename HasherState_t>
 __global__ void
 leafHash(
     Hasher_t hasher,
-    bb31_t **inputs,
+    kb31_t **inputs,
     typename HashParams::F_t (*digests)[HashParams::DIGEST_WIDTH],
     size_t *widths,
     size_t num_inputs,
@@ -27,9 +27,9 @@ leafHash(
     }
 }
 
-extern "C" void *leaf_hash_merkle_tree_baby_bear_16_kernel()
+extern "C" void *leaf_hash_merkle_tree_koala_bear_16_kernel()
 {
-    return (void *)leafHash<poseidon2::BabyBearHasher, poseidon2_bb31_16::BabyBear, poseidon2::BabyBearHasherState>;
+    return (void *)leafHash<poseidon2::KoalaBearHasher, poseidon2_kb31_16::KoalaBear, poseidon2::KoalaBearHasherState>;
 }
 
 extern "C" void *leaf_hash_merkle_tree_bn254_kernel()
@@ -53,9 +53,9 @@ __global__ void compress(
     }
 }
 
-extern "C" void *compress_merkle_tree_baby_bear_16_kernel()
+extern "C" void *compress_merkle_tree_koala_bear_16_kernel()
 {
-    return (void *)compress<poseidon2::BabyBearHasher, poseidon2_bb31_16::BabyBear, poseidon2::BabyBearHasherState>;
+    return (void *)compress<poseidon2::KoalaBearHasher, poseidon2_kb31_16::KoalaBear, poseidon2::KoalaBearHasherState>;
 }
 
 extern "C" void *compress_merkle_tree_bn254_kernel()
@@ -93,9 +93,9 @@ __global__ void computePaths(
 }
 
 
-extern "C" void *compute_paths_merkle_tree_baby_bear_16_kernel()
+extern "C" void *compute_paths_merkle_tree_koala_bear_16_kernel()
 {
-    return (void *)computePaths<poseidon2::BabyBearHasher, poseidon2_bb31_16::BabyBear, poseidon2::BabyBearHasherState>;
+    return (void *)computePaths<poseidon2::KoalaBearHasher, poseidon2_kb31_16::KoalaBear, poseidon2::KoalaBearHasherState>;
 }
 
 extern "C" void *compute_paths_merkle_tree_bn254_kernel()
@@ -106,8 +106,8 @@ extern "C" void *compute_paths_merkle_tree_bn254_kernel()
 
 template<typename Hasher_t, typename HashParams, typename HasherState_t>
 __global__ void computeOpenings(
-    bb31_t **__restrict__ inputs,
-    bb31_t *__restrict__ outputs,
+    kb31_t **__restrict__ inputs,
+    kb31_t *__restrict__ outputs,
     size_t *indices,
     size_t numIndices,
     size_t numInputs,
@@ -118,7 +118,7 @@ __global__ void computeOpenings(
 {
     for (size_t batchIdx = (blockIdx.z * blockDim.z) + threadIdx.z; batchIdx < numInputs; batchIdx += blockDim.z * gridDim.z)
     {
-        bb31_t *in = inputs[batchIdx];
+        kb31_t *in = inputs[batchIdx];
         size_t offset = batchOffsets[batchIdx];
         size_t batchSize = batchSizes[batchIdx];
         for (size_t i = (blockIdx.x * blockDim.x) + threadIdx.x; i < numIndices; i += blockDim.x * gridDim.x)
@@ -132,9 +132,9 @@ __global__ void computeOpenings(
     }
 }
 
-extern "C" void *compute_openings_merkle_tree_baby_bear_16_kernel()
+extern "C" void *compute_openings_merkle_tree_koala_bear_16_kernel()
 {
-    return (void *)computeOpenings<poseidon2::BabyBearHasher, poseidon2_bb31_16::BabyBear, poseidon2::BabyBearHasherState>;
+    return (void *)computeOpenings<poseidon2::KoalaBearHasher, poseidon2_kb31_16::KoalaBear, poseidon2::KoalaBearHasherState>;
 }
 
 extern "C" void *compute_openings_merkle_tree_bn254_kernel()

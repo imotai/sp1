@@ -4,8 +4,8 @@ use csl_cuda::{
 };
 use slop_algebra::Field;
 
-use slop_baby_bear::BabyBear;
 use slop_dft::{Dft, DftOrdering};
+use slop_koala_bear::KoalaBear;
 use slop_tensor::Tensor;
 
 pub trait SpparkCudaDftSys<T: DeviceCopy>: 'static + Send + Sync {
@@ -85,7 +85,7 @@ impl<T: Field, F: SpparkCudaDftSys<T>> Dft<T, TaskScope> for SpparkDft<F> {
 #[derive(Copy, Clone, Debug)]
 pub struct SpparkB31Kernels;
 
-pub type SpparkDftBabyBear = SpparkDft<SpparkB31Kernels>;
+pub type SpparkDftKoalaBear = SpparkDft<SpparkB31Kernels>;
 
 impl Default for SpparkB31Kernels {
     fn default() -> Self {
@@ -94,14 +94,14 @@ impl Default for SpparkB31Kernels {
     }
 }
 
-impl SpparkCudaDftSys<BabyBear> for SpparkB31Kernels {
+impl SpparkCudaDftSys<KoalaBear> for SpparkB31Kernels {
     unsafe fn dft_unchecked(
         &self,
-        d_out: *mut BabyBear,
-        d_in: *mut BabyBear,
+        d_out: *mut KoalaBear,
+        d_in: *mut KoalaBear,
         lg_domain_size: u32,
         lg_blowup: u32,
-        shift: BabyBear,
+        shift: KoalaBear,
         batch_size: u32,
         bit_rev_output: bool,
         scope: &TaskScope,
@@ -121,6 +121,7 @@ impl SpparkCudaDftSys<BabyBear> for SpparkB31Kernels {
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
     use rand::thread_rng;
     use slop_algebra::AbstractField;
     use slop_alloc::IntoHost;
@@ -132,9 +133,9 @@ mod tests {
     async fn test_batch_coset_dft() {
         let mut rng = thread_rng();
 
-        let log_degrees = [1, 2, 3, 4, 10, 11, 12, 13, 14, 15];
+        let log_degrees = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
         let log_blowup = 1;
-        let shift = BabyBear::generator();
+        let shift = KoalaBear::generator();
         let batch_size = 16;
 
         let p3_dft = Radix2DitParallel;
@@ -142,14 +143,15 @@ mod tests {
         for log_d in log_degrees.iter() {
             let d = 1 << log_d;
 
-            let tensor_h = Tensor::<BabyBear>::rand(&mut rng, [d, batch_size]);
+            let tensor_h = Tensor::<KoalaBear>::rand(&mut rng, [d, batch_size]);
 
             let tensor_h_sent = tensor_h.clone();
             let result = csl_cuda::spawn(move |t| async move {
                 let tensor = t.into_device(tensor_h_sent).await.unwrap().transpose();
-                let dft = SpparkDftBabyBear::default();
+                let dft = SpparkDftKoalaBear::default();
                 let result =
                     dft.coset_dft(&tensor, shift, log_blowup, DftOrdering::BitReversed, 1).unwrap();
+
                 let result = result.transpose();
                 result.into_host().await.unwrap()
             })
@@ -160,8 +162,10 @@ mod tests {
                 .coset_dft(&tensor_h, shift, log_blowup, DftOrdering::BitReversed, 0)
                 .unwrap();
 
-            for (r, e) in result.as_slice().iter().zip(expected_result.as_slice()) {
-                assert_eq!(r, e);
+            for (i, (r, e)) in
+                result.as_slice().iter().zip_eq(expected_result.as_slice()).enumerate()
+            {
+                assert_eq!(r, e, "Mismatch at index {i}");
             }
         }
     }

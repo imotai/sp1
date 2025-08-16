@@ -1,6 +1,6 @@
 #include "branching_program.cuh"
-#include "../fields/bb31_extension_t.cuh"
-#include "../fields/bb31_t.cuh"
+#include "../fields/kb31_extension_t.cuh"
+#include "../fields/kb31_t.cuh"
 #include "../challenger/challenger.cuh"
 #include <cstdio>
 
@@ -488,27 +488,27 @@ __global__ void transition(
 
 extern "C" void *branching_program_kernel()
 {
-    return (void *)branchingProgram<bb31_t, bb31_extension_t>;
+    return (void *)branchingProgram<kb31_t, kb31_extension_t>;
 }
 
 
 extern "C" void *transition_kernel()
 {
-    return (void *)transition<bb31_t, bb31_extension_t>;
+    return (void *)transition<kb31_t, kb31_extension_t>;
 }
 
 
 extern "C" void *interpolateAndObserve_kernel_duplex()
 {
-    return (void *)interpolateAndObserve<bb31_t, bb31_extension_t, DuplexChallenger>;
+    return (void *)interpolateAndObserve<kb31_t, kb31_extension_t, DuplexChallenger>;
 }
 
 extern "C" void *interpolateAndObserve_kernel_multi_field_32()
 {
-    return (void *)interpolateAndObserve<bb31_t, bb31_extension_t, MultiField32Challenger>;
+    return (void *)interpolateAndObserve<kb31_t, kb31_extension_t, MultiField32Challenger>;
 }
 
 extern "C" void *fixLastVariable_kernel()
 {
-    return (void *)fixLastVariable<bb31_t, bb31_extension_t>;
+    return (void *)fixLastVariable<kb31_t, kb31_extension_t>;
 }

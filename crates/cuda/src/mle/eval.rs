@@ -1,12 +1,12 @@
 use csl_sys::{
     mle::{
-        partial_geq_baby_bear, partial_lagrange_baby_bear, partial_lagrange_baby_bear_extension,
+        partial_geq_koala_bear, partial_lagrange_koala_bear, partial_lagrange_koala_bear_extension,
     },
     runtime::KernelPtr,
 };
 use slop_algebra::{extension::BinomialExtensionField, ExtensionField, Field};
 use slop_alloc::IntoHost;
-use slop_baby_bear::BabyBear;
+use slop_koala_bear::KoalaBear;
 use slop_multilinear::{
     MleBaseBackend, MleEvaluationBackend, MleFixedAtZeroBackend, PartialLagrangeBackend, Point,
     ZeroEvalBackend,
@@ -96,21 +96,21 @@ where
     }
 }
 
-unsafe impl PartialLagrangeKernel<BabyBear> for TaskScope {
+unsafe impl PartialLagrangeKernel<KoalaBear> for TaskScope {
     fn partial_lagrange_kernel() -> KernelPtr {
-        unsafe { partial_lagrange_baby_bear() }
+        unsafe { partial_lagrange_koala_bear() }
     }
 }
 
-unsafe impl PartialLagrangeKernel<BinomialExtensionField<BabyBear, 4>> for TaskScope {
+unsafe impl PartialLagrangeKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
     fn partial_lagrange_kernel() -> KernelPtr {
-        unsafe { partial_lagrange_baby_bear_extension() }
+        unsafe { partial_lagrange_koala_bear_extension() }
     }
 }
 
-unsafe impl PartialGeqKernel<BabyBear> for TaskScope {
+unsafe impl PartialGeqKernel<KoalaBear> for TaskScope {
     fn partial_geq_kernel() -> KernelPtr {
-        unsafe { partial_geq_baby_bear() }
+        unsafe { partial_geq_koala_bear() }
     }
 }
 
@@ -160,7 +160,7 @@ where
 mod tests {
     use slop_algebra::extension::BinomialExtensionField;
     use slop_alloc::IntoHost;
-    use slop_baby_bear::BabyBear;
+    use slop_koala_bear::KoalaBear;
     use slop_multilinear::{full_geq, Mle, Point};
 
     use crate::partial_geq;
@@ -169,7 +169,7 @@ mod tests {
     async fn test_mle_eval() {
         let mut rng = rand::thread_rng();
 
-        type F = BabyBear;
+        type F = KoalaBear;
         type EF = BinomialExtensionField<F, 4>;
 
         let mle = Mle::<F>::rand(&mut rng, 100, 16);
@@ -198,7 +198,7 @@ mod tests {
     async fn test_partial_geq() {
         let mut rng = rand::thread_rng();
 
-        type F = BabyBear;
+        type F = KoalaBear;
         type EF = BinomialExtensionField<F, 4>;
 
         let num_variables = 14;

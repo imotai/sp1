@@ -1,8 +1,8 @@
 #include <cooperative_groups.h>
 
 #include "mle.cuh"
-#include "../fields/bb31_extension_t.cuh"
-#include "../fields/bb31_t.cuh"
+#include "../fields/kb31_extension_t.cuh"
+#include "../fields/kb31_t.cuh"
 
 namespace cg = cooperative_groups;
 
@@ -128,14 +128,14 @@ __global__ void partial_lagrange_naive(
     }
 }
 
-extern "C" void *partial_lagrange_baby_bear()
+extern "C" void *partial_lagrange_koala_bear()
 {
-    return (void *)partial_lagrange_naive<bb31_t, bb31_t>;
+    return (void *)partial_lagrange_naive<kb31_t, kb31_t>;
 }
 
-extern "C" void *partial_lagrange_baby_bear_extension()
+extern "C" void *partial_lagrange_koala_bear_extension()
 {
-    return (void *)partial_lagrange_naive<bb31_t, bb31_extension_t>;
+    return (void *)partial_lagrange_naive<kb31_t, kb31_extension_t>;
 }
 
 
@@ -161,9 +161,9 @@ __global__ void partial_geq_naive(
     }
 }
 
-extern "C" void *partial_geq_baby_bear()
+extern "C" void *partial_geq_koala_bear()
 {
-    return (void *)partial_geq_naive<bb31_t>;
+    return (void *)partial_geq_naive<kb31_t>;
 }
 
 template <typename F, typename EF >
@@ -232,35 +232,35 @@ __global__ void fixLastVariableConstantPadding(
     }
 }
 
-extern "C" void *mle_fix_last_variable_baby_bear_base_base_padded()
+extern "C" void *mle_fix_last_variable_koala_bear_base_base_padded()
 {
-        return (void *)fixLastVariable<bb31_t, bb31_t>;
+        return (void *)fixLastVariable<kb31_t, kb31_t>;
 }
 
-extern "C" void *mle_fix_last_variable_baby_bear_base_extension_padded()
+extern "C" void *mle_fix_last_variable_koala_bear_base_extension_padded()
 {
-    return (void *)fixLastVariable<bb31_t, bb31_extension_t>;
+    return (void *)fixLastVariable<kb31_t, kb31_extension_t>;
 }
 
 
-extern "C" void *mle_fix_last_variable_baby_bear_ext_ext_padded()
+extern "C" void *mle_fix_last_variable_koala_bear_ext_ext_padded()
 {
-    return (void *)fixLastVariable<bb31_extension_t, bb31_extension_t>;
+    return (void *)fixLastVariable<kb31_extension_t, kb31_extension_t>;
 }
 
-extern "C" void *mle_fix_last_variable_baby_bear_base_base_constant_padding()
+extern "C" void *mle_fix_last_variable_koala_bear_base_base_constant_padding()
 {
-    return (void *)fixLastVariableConstantPadding<bb31_t, bb31_t>;
+    return (void *)fixLastVariableConstantPadding<kb31_t, kb31_t>;
 }
 
-extern "C" void *mle_fix_last_variable_baby_bear_base_extension_constant_padding()
+extern "C" void *mle_fix_last_variable_koala_bear_base_extension_constant_padding()
 {
-    return (void *)fixLastVariableConstantPadding<bb31_t, bb31_extension_t>;
+    return (void *)fixLastVariableConstantPadding<kb31_t, kb31_extension_t>;
 }
 
-extern "C" void *mle_fix_last_variable_baby_bear_ext_ext_constant_padding()
+extern "C" void *mle_fix_last_variable_koala_bear_ext_ext_constant_padding()
 {
-    return (void *)fixLastVariableConstantPadding<bb31_extension_t, bb31_extension_t>;
+    return (void *)fixLastVariableConstantPadding<kb31_extension_t, kb31_extension_t>;
 }
 
 
@@ -285,14 +285,14 @@ __global__ void fixLastVariableInPlace(
     }
 }
 
-extern "C" void *mle_fix_last_variable_in_place_baby_bear_base()
+extern "C" void *mle_fix_last_variable_in_place_koala_bear_base()
 {
-    return (void *)fixLastVariableInPlace<bb31_t>;
+    return (void *)fixLastVariableInPlace<kb31_t>;
 }
 
-extern "C" void *mle_fix_last_variable_in_place_baby_bear_extension()
+extern "C" void *mle_fix_last_variable_in_place_koala_bear_extension()
 {
-    return (void *)fixLastVariableInPlace<bb31_extension_t>;
+    return (void *)fixLastVariableInPlace<kb31_extension_t>;
 }
 
 template <typename F, typename EF>
@@ -316,17 +316,17 @@ __global__ void foldMle(
     }
 }
 
-extern "C" void *mle_fold_baby_bear_base_base()
+extern "C" void *mle_fold_koala_bear_base_base()
 {
-    return (void *)foldMle<bb31_t, bb31_t>;
+    return (void *)foldMle<kb31_t, kb31_t>;
 }
 
-extern "C" void *mle_fold_baby_bear_base_extension()
+extern "C" void *mle_fold_koala_bear_base_extension()
 {
-    return (void *)foldMle<bb31_t, bb31_extension_t>;
+    return (void *)foldMle<kb31_t, kb31_extension_t>;
 }
 
-extern "C" void *mle_fold_baby_bear_ext_ext()
+extern "C" void *mle_fold_koala_bear_ext_ext()
 {
-    return (void *)foldMle<bb31_extension_t, bb31_extension_t>;
+    return (void *)foldMle<kb31_extension_t, kb31_extension_t>;
 }

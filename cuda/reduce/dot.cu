@@ -43,19 +43,19 @@ __global__ void partialBlockInnerProductKernel(
     }
 }
 
-extern "C" void *partial_inner_product_baby_bear_kernel()
+extern "C" void *partial_inner_product_koala_bear_kernel()
 {
-    return (void *)partialBlockInnerProductKernel<bb31_t, bb31_t>;
+    return (void *)partialBlockInnerProductKernel<kb31_t, kb31_t>;
 }
 
-extern "C" void *partial_inner_product_baby_bear_extension_kernel()
+extern "C" void *partial_inner_product_koala_bear_extension_kernel()
 {
-    return (void *)partialBlockInnerProductKernel<bb31_extension_t, bb31_extension_t>;
+    return (void *)partialBlockInnerProductKernel<kb31_extension_t, kb31_extension_t>;
 }
 
-extern "C" void *partial_inner_product_baby_bear_base_extension_kernel()
+extern "C" void *partial_inner_product_koala_bear_base_extension_kernel()
 {
-    return (void *)partialBlockInnerProductKernel<bb31_extension_t, bb31_t>;
+    return (void *)partialBlockInnerProductKernel<kb31_extension_t, kb31_t>;
 }
 
 template <typename EF, typename F>
@@ -103,19 +103,19 @@ __global__ void partialBlockDotKernel(
     }
 }
 
-extern "C" void *partial_dot_baby_bear_kernel()
+extern "C" void *partial_dot_koala_bear_kernel()
 {
-    return (void *)partialBlockDotKernel<bb31_t, bb31_t>;
+    return (void *)partialBlockDotKernel<kb31_t, kb31_t>;
 }
 
-extern "C" void *partial_dot_baby_bear_extension_kernel()
+extern "C" void *partial_dot_koala_bear_extension_kernel()
 {
-    return (void *)partialBlockDotKernel<bb31_extension_t, bb31_extension_t>;
+    return (void *)partialBlockDotKernel<kb31_extension_t, kb31_extension_t>;
 }
 
-extern "C" void *partial_dot_baby_bear_base_extension_kernel()
+extern "C" void *partial_dot_koala_bear_base_extension_kernel()
 {
-    return (void *)partialBlockDotKernel<bb31_extension_t, bb31_t>;
+    return (void *)partialBlockDotKernel<kb31_extension_t, kb31_t>;
 }
 
 template <typename F, typename EF>
@@ -140,17 +140,17 @@ __global__ void dotAlongShortDimensionKernel(
     }
 }
 
-extern "C" void *dot_along_short_dimension_kernel_baby_bear_base_base()
+extern "C" void *dot_along_short_dimension_kernel_koala_bear_base_base()
 {
-    return (void *)dotAlongShortDimensionKernel<bb31_t, bb31_t>;
+    return (void *)dotAlongShortDimensionKernel<kb31_t, kb31_t>;
 }
 
-extern "C" void *dot_along_short_dimension_kernel_baby_bear_base_extension()
+extern "C" void *dot_along_short_dimension_kernel_koala_bear_base_extension()
 {
-    return (void *)dotAlongShortDimensionKernel<bb31_t, bb31_extension_t>;
+    return (void *)dotAlongShortDimensionKernel<kb31_t, kb31_extension_t>;
 }
 
-extern "C" void *dot_along_short_dimension_kernel_baby_bear_extension_extension()
+extern "C" void *dot_along_short_dimension_kernel_koala_bear_extension_extension()
 {
-    return (void *)dotAlongShortDimensionKernel<bb31_extension_t, bb31_extension_t>;
+    return (void *)dotAlongShortDimensionKernel<kb31_extension_t, kb31_extension_t>;
 }

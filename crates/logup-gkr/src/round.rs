@@ -4,13 +4,13 @@ use csl_cuda::{
     args,
     sys::{
         logup_gkr::{
-            logup_gkr_fix_last_row_last_circuit_layer_kernel_circuit_layer_baby_bear_extension,
-            logup_gkr_fix_last_variable_circuit_layer_kernel_baby_bear_extension,
-            logup_gkr_fix_last_variable_first_layer_kernel_baby_bear,
-            logup_gkr_fix_last_variable_interactions_layer_kernel_baby_bear_extension,
-            logup_gkr_sum_as_poly_first_layer_kernel_baby_bear,
-            logup_gkr_sum_as_poly_layer_kernel_circuit_layer_baby_bear_extension,
-            logup_gkr_sum_as_poly_layer_kernel_interactions_layer_baby_bear_extension,
+            logup_gkr_fix_last_row_last_circuit_layer_kernel_circuit_layer_koala_bear_extension,
+            logup_gkr_fix_last_variable_circuit_layer_kernel_koala_bear_extension,
+            logup_gkr_fix_last_variable_first_layer_kernel_koala_bear,
+            logup_gkr_fix_last_variable_interactions_layer_kernel_koala_bear_extension,
+            logup_gkr_sum_as_poly_first_layer_kernel_koala_bear,
+            logup_gkr_sum_as_poly_layer_kernel_circuit_layer_koala_bear_extension,
+            logup_gkr_sum_as_poly_layer_kernel_interactions_layer_koala_bear_extension,
         },
         runtime::KernelPtr,
     },
@@ -21,8 +21,8 @@ use slop_algebra::{
     ExtensionField, Field, UnivariatePolynomial,
 };
 use slop_alloc::{Buffer, ToHost};
-use slop_baby_bear::BabyBear;
 use slop_challenger::FieldChallenger;
+use slop_koala_bear::KoalaBear;
 use slop_multilinear::{Mle, MleEvaluationBackend, MleFixLastVariableBackend, Point, PointBackend};
 use slop_sumcheck::{
     reduce_sumcheck_to_evaluation, ComponentPoly, SumcheckPoly, SumcheckPolyBase,
@@ -770,37 +770,37 @@ where
     }
 }
 
-unsafe impl MaterializedLayerKernels<BinomialExtensionField<BabyBear, 4>> for TaskScope {
+unsafe impl MaterializedLayerKernels<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
     fn logup_gkr_fix_last_variable_circuit_layer() -> KernelPtr {
-        unsafe { logup_gkr_fix_last_variable_circuit_layer_kernel_baby_bear_extension() }
+        unsafe { logup_gkr_fix_last_variable_circuit_layer_kernel_koala_bear_extension() }
     }
 
     fn partial_sum_as_poly_circuit_layer() -> KernelPtr {
-        unsafe { logup_gkr_sum_as_poly_layer_kernel_circuit_layer_baby_bear_extension() }
+        unsafe { logup_gkr_sum_as_poly_layer_kernel_circuit_layer_koala_bear_extension() }
     }
 
     fn partial_sum_as_poly_interactions_layer() -> KernelPtr {
-        unsafe { logup_gkr_sum_as_poly_layer_kernel_interactions_layer_baby_bear_extension() }
+        unsafe { logup_gkr_sum_as_poly_layer_kernel_interactions_layer_koala_bear_extension() }
     }
 
     fn logup_gkr_fix_last_variable_last_circuit_layer() -> KernelPtr {
         unsafe {
-            logup_gkr_fix_last_row_last_circuit_layer_kernel_circuit_layer_baby_bear_extension()
+            logup_gkr_fix_last_row_last_circuit_layer_kernel_circuit_layer_koala_bear_extension()
         }
     }
 
     fn logup_gkr_fix_last_variable_interactions_layer() -> KernelPtr {
-        unsafe { logup_gkr_fix_last_variable_interactions_layer_kernel_baby_bear_extension() }
+        unsafe { logup_gkr_fix_last_variable_interactions_layer_kernel_koala_bear_extension() }
     }
 }
 
-unsafe impl FirstLayerKernels<BabyBear, BinomialExtensionField<BabyBear, 4>> for TaskScope {
+unsafe impl FirstLayerKernels<KoalaBear, BinomialExtensionField<KoalaBear, 4>> for TaskScope {
     fn logup_gkr_fix_last_variable_first_layer() -> KernelPtr {
-        unsafe { logup_gkr_fix_last_variable_first_layer_kernel_baby_bear() }
+        unsafe { logup_gkr_fix_last_variable_first_layer_kernel_koala_bear() }
     }
 
     fn logup_gkr_sum_as_poly_first_layer() -> KernelPtr {
-        unsafe { logup_gkr_sum_as_poly_first_layer_kernel_baby_bear() }
+        unsafe { logup_gkr_sum_as_poly_first_layer_kernel_koala_bear() }
     }
 }
 
@@ -809,7 +809,7 @@ mod tests {
     use itertools::Itertools;
     use rayon::prelude::*;
     use slop_alloc::{Backend, CpuBackend, IntoHost};
-    use slop_basefold::{BasefoldConfig, BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
+    use slop_basefold::{BasefoldConfig, BasefoldVerifier, Poseidon2KoalaBear16BasefoldConfig};
     use slop_sumcheck::partially_verify_sumcheck_proof;
     use std::iter::once;
 
@@ -820,8 +820,8 @@ mod tests {
     use csl_cuda::IntoDevice;
     use rand::{thread_rng, Rng};
 
-    type F = BabyBear;
-    type EF = BinomialExtensionField<BabyBear, 4>;
+    type F = KoalaBear;
+    type EF = BinomialExtensionField<KoalaBear, 4>;
 
     struct GkrTestData<F, B: Backend> {
         numerator_0: Mle<F, B>,
@@ -1075,7 +1075,7 @@ mod tests {
     async fn test_logup_round_sumcheck_polynomial() {
         let mut rng = thread_rng();
 
-        type Config = Poseidon2BabyBear16BasefoldConfig;
+        type Config = Poseidon2KoalaBear16BasefoldConfig;
         let verifier = BasefoldVerifier::<Config>::new(1);
         let get_challenger = move || verifier.clone().challenger();
 
@@ -1208,7 +1208,7 @@ mod tests {
     async fn test_logup_gkr_circuit_transition() {
         let mut rng = thread_rng();
 
-        type TraceGenerator = LogUpGkrCudaTraceGenerator<BabyBear, EF, ()>;
+        type TraceGenerator = LogUpGkrCudaTraceGenerator<KoalaBear, EF, ()>;
         let trace_generator = TraceGenerator::default();
 
         let interaction_row_counts: Vec<u32> =
@@ -1309,14 +1309,14 @@ mod tests {
     async fn test_logup_gkr_round_prover() {
         let mut rng = thread_rng();
 
-        type Config = Poseidon2BabyBear16BasefoldConfig;
+        type Config = Poseidon2KoalaBear16BasefoldConfig;
         type Challenger = <Config as BasefoldConfig>::Challenger;
         let verifier = BasefoldVerifier::<Config>::new(1);
         let get_challenger = move || verifier.clone().challenger();
-        type TraceGenerator = LogUpGkrCudaTraceGenerator<BabyBear, EF, ()>;
+        type TraceGenerator = LogUpGkrCudaTraceGenerator<KoalaBear, EF, ()>;
         let trace_generator = TraceGenerator::default();
 
-        let prover = LogupGkrCudaRoundProver::<BabyBear, EF, Challenger>::default();
+        let prover = LogupGkrCudaRoundProver::<KoalaBear, EF, Challenger>::default();
 
         let interaction_row_counts: Vec<u32> =
             [vec![(1 << 0) + 14; 50], vec![(1 << 16) - 12; 2], vec![(1 << 10) + 2; 10]].concat();

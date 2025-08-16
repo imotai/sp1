@@ -49,7 +49,7 @@ fn bb31_self_consistency() {
 
     fn random_fr() -> u32 {
         let fr: u32 = random();
-        fr % 0x78000001
+        fr % 0x7f000001
     }
 
     for lg_domain_size in 1..24 + 4 * !cfg!(debug_assertions) as i32 {
@@ -93,15 +93,13 @@ fn test_against_arkworks() {
     use ark_bls12_381::Fr;
     #[cfg(feature = "bn254")]
     use ark_bn254::Fr;
+    use ark_ff::{PrimeField, UniformRand};
     #[cfg(feature = "pallas")]
     use ark_pallas::Fr;
+    use ark_poly::{domain::DomainCoeff, EvaluationDomain, GeneralEvaluationDomain};
+    use ark_std::test_rng;
     #[cfg(feature = "vesta")]
     use ark_vesta::Fr;
-    use ark_ff::{PrimeField, UniformRand};
-    use ark_poly::{
-        domain::DomainCoeff, EvaluationDomain, GeneralEvaluationDomain,
-    };
-    use ark_std::test_rng;
 
     fn test_ntt<
         F: PrimeField,

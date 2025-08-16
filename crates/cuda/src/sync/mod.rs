@@ -1,7 +1,7 @@
 pub mod mpsc;
 use slop_algebra::{extension::BinomialExtensionField, UnivariatePolynomial};
 use slop_alloc::{Buffer, CpuBackend};
-use slop_baby_bear::BabyBear;
+use slop_koala_bear::KoalaBear;
 use slop_tensor::Tensor;
 
 use crate::TaskScope;
@@ -65,8 +65,8 @@ macro_rules! scopeless_send_impl {
 }
 
 scopeless_send_impl!(() u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize f32 f64);
-scopeless_send_impl!(BabyBear);
-scopeless_send_impl!(BinomialExtensionField<BabyBear, 4>);
+scopeless_send_impl!(KoalaBear);
+scopeless_send_impl!(BinomialExtensionField<KoalaBear, 4>);
 
 macro_rules! tuple_cuda_send_impl {
     ($(($($T:ident),+)),*) => {

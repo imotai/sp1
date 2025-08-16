@@ -1,12 +1,12 @@
 use csl_sys::{
     algebra::{
-        add_assign_baby_bear_ext_kernel, add_assign_baby_bear_kernel,
-        add_baby_bear_base_ext_kernel, add_baby_bear_ext_ext_kernel, add_baby_bear_kernel,
+        add_assign_koala_bear_ext_kernel, add_assign_koala_bear_kernel,
+        add_koala_bear_base_ext_kernel, add_koala_bear_ext_ext_kernel, add_koala_bear_kernel,
     },
     runtime::KernelPtr,
 };
 use slop_algebra::extension::BinomialExtensionField;
-use slop_baby_bear::BabyBear;
+use slop_koala_bear::KoalaBear;
 use slop_tensor::{AddAssignBackend, AddBackend, Tensor};
 
 use crate::{args, DeviceCopy, TaskScope};
@@ -47,23 +47,23 @@ where
     }
 }
 
-unsafe impl AddKernel<BabyBear, BabyBear> for TaskScope {
+unsafe impl AddKernel<KoalaBear, KoalaBear> for TaskScope {
     fn add_kernel() -> KernelPtr {
-        unsafe { add_baby_bear_kernel() }
+        unsafe { add_koala_bear_kernel() }
     }
 }
 
-unsafe impl AddKernel<BinomialExtensionField<BabyBear, 4>, BabyBear> for TaskScope {
+unsafe impl AddKernel<BinomialExtensionField<KoalaBear, 4>, KoalaBear> for TaskScope {
     fn add_kernel() -> KernelPtr {
-        unsafe { add_baby_bear_base_ext_kernel() }
+        unsafe { add_koala_bear_base_ext_kernel() }
     }
 }
 
-unsafe impl AddKernel<BinomialExtensionField<BabyBear, 4>, BinomialExtensionField<BabyBear, 4>>
+unsafe impl AddKernel<BinomialExtensionField<KoalaBear, 4>, BinomialExtensionField<KoalaBear, 4>>
     for TaskScope
 {
     fn add_kernel() -> KernelPtr {
-        unsafe { add_baby_bear_ext_ext_kernel() }
+        unsafe { add_koala_bear_ext_ext_kernel() }
     }
 }
 
@@ -84,14 +84,14 @@ where
     }
 }
 
-unsafe impl AddAssignKernel<BabyBear> for TaskScope {
+unsafe impl AddAssignKernel<KoalaBear> for TaskScope {
     fn add_assign_kernel() -> KernelPtr {
-        unsafe { add_assign_baby_bear_kernel() }
+        unsafe { add_assign_koala_bear_kernel() }
     }
 }
 
-unsafe impl AddAssignKernel<BinomialExtensionField<BabyBear, 4>> for TaskScope {
+unsafe impl AddAssignKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
     fn add_assign_kernel() -> KernelPtr {
-        unsafe { add_assign_baby_bear_ext_kernel() }
+        unsafe { add_assign_koala_bear_ext_kernel() }
     }
 }

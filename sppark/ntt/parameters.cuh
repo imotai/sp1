@@ -11,8 +11,8 @@
 #ifndef MAX_LG_DOMAIN_SIZE
 # if defined(FEATURE_BN254)
 #  define MAX_LG_DOMAIN_SIZE 28
-# elif defined(FEATURE_BABY_BEAR)
-#  define MAX_LG_DOMAIN_SIZE 27
+# elif defined(FEATURE_KOALA_BEAR)
+#  define MAX_LG_DOMAIN_SIZE 24
 # else
 #  define MAX_LG_DOMAIN_SIZE 28 // tested only up to 2^31 for now
 # endif
@@ -24,7 +24,7 @@ typedef unsigned int index_t;
 typedef size_t index_t;
 #endif
 
-#if defined(FEATURE_BABY_BEAR)
+#if defined(FEATURE_KOALA_BEAR)
 # define LG_WINDOW_SIZE ((MAX_LG_DOMAIN_SIZE + 4) / 5)
 #elif defined(FEATURE_GOLDILOCKS)
 # if MAX_LG_DOMAIN_SIZE <= 28
@@ -57,8 +57,8 @@ __device__ __constant__ fr_t inverse_radix6_twiddles[32] = {};
 #  include "parameters/pallas.h"    // Fr for Vesta curve is Pallas
 # elif defined(FEATURE_BN254)
 #  include "parameters/alt_bn128.h"
-# elif defined(FEATURE_BABY_BEAR)
-#  include "parameters/baby_bear.h"
+# elif defined(FEATURE_KOALA_BEAR)
+#  include "parameters/koala_bear.h"
 # elif defined(FEATURE_GOLDILOCKS)
 #  include "parameters/goldilocks.h"
 # endif
@@ -171,7 +171,7 @@ public:
 
     fr_t (*partial_group_gen_powers)[WINDOW_SIZE]; // for LDE
 
-#if !defined(FEATURE_BABY_BEAR) && !defined(FEATURE_GOLDILOCKS)
+#if !defined(FEATURE_KOALA_BEAR) && !defined(FEATURE_GOLDILOCKS)
     fr_t* radix6_twiddles_6, * radix6_twiddles_12, * radix7_twiddles_7,
         * radix8_twiddles_8, * radix9_twiddles_9;
 
@@ -223,7 +223,7 @@ public:
                                 32 * sizeof(fr_t), cudaMemcpyDeviceToDevice
                                 ));
 
-#if !defined(FEATURE_BABY_BEAR) && !defined(FEATURE_GOLDILOCKS)
+#if !defined(FEATURE_KOALA_BEAR) && !defined(FEATURE_GOLDILOCKS)
         radix6_twiddles_6 = twiddles_X(64, 64, roots[12]);
         radix6_twiddles_12 = twiddles_X(4096, 64, roots[18]);
         radix7_twiddles_7 = twiddles_X(128, 128, roots[14]);
@@ -253,7 +253,7 @@ public:
     {
         cudaFree(partial_twiddles);
 
-#if !defined(FEATURE_BABY_BEAR) && !defined(FEATURE_GOLDILOCKS)
+#if !defined(FEATURE_KOALA_BEAR) && !defined(FEATURE_GOLDILOCKS)
         cudaFree(radix9_twiddles_9);
         cudaFree(radix8_twiddles_8);
         cudaFree(radix7_twiddles_7);

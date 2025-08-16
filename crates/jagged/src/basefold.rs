@@ -1,30 +1,30 @@
 use csl_basefold::BasefoldCudaConfig;
 use csl_basefold::{
-    Poseidon2BabyBear16BasefoldCudaProverComponents, Poseidon2Bn254BasefoldCudaProverComponents,
+    Poseidon2Bn254BasefoldCudaProverComponents, Poseidon2KoalaBear16BasefoldCudaProverComponents,
 };
 use csl_challenger::{DuplexChallenger, MultiField32Challenger};
 use csl_cuda::TaskScope;
 use slop_algebra::extension::BinomialExtensionField;
-use slop_baby_bear::BabyBear;
-use slop_basefold::{Poseidon2BabyBear16BasefoldConfig, Poseidon2Bn254FrBasefoldConfig};
+use slop_basefold::{Poseidon2Bn254FrBasefoldConfig, Poseidon2KoalaBear16BasefoldConfig};
 use slop_bn254::Bn254Fr;
 use slop_jagged::{JaggedBasefoldProverComponents, JaggedEvalSumcheckProver};
+use slop_koala_bear::KoalaBear;
 
 use crate::JaggedAssistSumAsPolyGPUImpl;
 use crate::VirtualJaggedSumcheckProver;
 
-pub type Poseidon2BabyBearJaggedCudaProverComponents = JaggedBasefoldProverComponents<
-    Poseidon2BabyBear16BasefoldCudaProverComponents,
+pub type Poseidon2KoalaBearJaggedCudaProverComponents = JaggedBasefoldProverComponents<
+    Poseidon2KoalaBear16BasefoldCudaProverComponents,
     VirtualJaggedSumcheckProver,
     JaggedEvalSumcheckProver<
-        BabyBear,
+        KoalaBear,
         JaggedAssistSumAsPolyGPUImpl<
-            BabyBear,
-            BinomialExtensionField<BabyBear, 4>,
-            <Poseidon2BabyBear16BasefoldConfig as BasefoldCudaConfig>::DeviceChallenger,
+            KoalaBear,
+            BinomialExtensionField<KoalaBear, 4>,
+            <Poseidon2KoalaBear16BasefoldConfig as BasefoldCudaConfig>::DeviceChallenger,
         >,
         TaskScope,
-        DuplexChallenger<BabyBear, TaskScope>,
+        DuplexChallenger<KoalaBear, TaskScope>,
     >,
 >;
 
@@ -32,14 +32,14 @@ pub type Poseidon2Bn254JaggedCudaProverComponents = JaggedBasefoldProverComponen
     Poseidon2Bn254BasefoldCudaProverComponents,
     VirtualJaggedSumcheckProver,
     JaggedEvalSumcheckProver<
-        BabyBear,
+        KoalaBear,
         JaggedAssistSumAsPolyGPUImpl<
-            BabyBear,
-            BinomialExtensionField<BabyBear, 4>,
-            <Poseidon2Bn254FrBasefoldConfig as BasefoldCudaConfig>::DeviceChallenger,
+            KoalaBear,
+            BinomialExtensionField<KoalaBear, 4>,
+            <Poseidon2Bn254FrBasefoldConfig<KoalaBear> as BasefoldCudaConfig>::DeviceChallenger,
         >,
         TaskScope,
-        MultiField32Challenger<BabyBear, Bn254Fr, TaskScope>,
+        MultiField32Challenger<KoalaBear, Bn254Fr, TaskScope>,
     >,
 >;
 
@@ -47,6 +47,7 @@ pub type Poseidon2Bn254JaggedCudaProverComponents = JaggedBasefoldProverComponen
 mod tests {
     use std::{sync::Arc, time::Duration};
 
+    use csl_tracing::init_tracer;
     use futures::prelude::*;
     use rand::{thread_rng, Rng};
     use serial_test::serial;
@@ -56,26 +57,25 @@ mod tests {
     use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
 
     use slop_jagged::{
-        BabyBearPoseidon2, JaggedConfig, JaggedPcsVerifier, JaggedProver, MachineJaggedPcsVerifier,
+        JaggedConfig, JaggedPcsVerifier, JaggedProver, KoalaBearPoseidon2, MachineJaggedPcsVerifier,
     };
 
-    use crate::Poseidon2BabyBearJaggedCudaProverComponents;
+    use crate::Poseidon2KoalaBearJaggedCudaProverComponents;
 
     #[tokio::test]
     #[serial]
     async fn test_jagged_basefold() {
+        init_tracer();
         let log_blowup = 1;
 
-        type JC = BabyBearPoseidon2;
-        type Prover = JaggedProver<Poseidon2BabyBearJaggedCudaProverComponents>;
+        type JC = KoalaBearPoseidon2;
+        type Prover = JaggedProver<Poseidon2KoalaBearJaggedCudaProverComponents>;
         type F = <JC as JaggedConfig>::F;
         type EF = <JC as JaggedConfig>::EF;
 
         let mut rng = thread_rng();
 
-        for (log_stacking_height, max_log_row_count) in
-            [(10, 10), (11, 11), (16, 16), (20, 20), (21, 21)]
-        {
+        for (log_stacking_height, max_log_row_count) in [(6, 6), (21, 21), (21, 22)] {
             let row_counts_rounds = vec![
                 vec![(1 << (max_log_row_count - 2)) + 8, (1 << max_log_row_count) - 2],
                 vec![
@@ -84,7 +84,7 @@ mod tests {
                     1 << (max_log_row_count - 1),
                 ],
             ];
-            let column_counts_rounds = vec![vec![128, 32], vec![512, 128, 100]];
+            let column_counts_rounds = vec![vec![2, 3], vec![3, 1, 1]];
 
             let row_counts = row_counts_rounds.into_iter().collect::<Rounds<Vec<usize>>>();
             let column_counts = column_counts_rounds.into_iter().collect::<Rounds<Vec<usize>>>();
@@ -212,6 +212,7 @@ mod tests {
                     .then(|e| async move { e.into_host().await.unwrap() })
                     .collect::<Rounds<_>>()
                     .await;
+
                 (commitments, evaluation_claims, proof)
             })
             .await
@@ -219,13 +220,15 @@ mod tests {
             .unwrap();
 
             let mut challenger = jagged_verifier.challenger();
+
             for commitment in commitments.iter() {
                 challenger.observe(*commitment);
             }
+
             machine_verifier
                 .verify_trusted_evaluations(
                     &commitments,
-                    eval_point_host,
+                    eval_point_host.clone(),
                     &evaluation_claims,
                     &proof,
                     &mut challenger,

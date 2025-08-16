@@ -5,7 +5,7 @@ use itertools::Itertools;
 
 use rand::SeedableRng;
 use slop_basefold::BasefoldVerifier;
-use slop_basefold::Poseidon2BabyBear16BasefoldConfig;
+use slop_basefold::Poseidon2KoalaBear16BasefoldConfig;
 use slop_challenger::CanSample;
 use slop_multilinear::Mle;
 
@@ -21,7 +21,7 @@ async fn main() {
         run_in_place(|t| async move {
             let mut rng = rand::rngs::StdRng::seed_from_u64(0);
 
-            let verifier = BasefoldVerifier::<Poseidon2BabyBear16BasefoldConfig>::new(1);
+            let verifier = BasefoldVerifier::<Poseidon2KoalaBear16BasefoldConfig>::new(1);
 
             let mut challenger = verifier.challenger();
 
@@ -37,7 +37,7 @@ async fn main() {
                 .map(|(e_i, b_i)| *e_i * *b_i)
                 .sum::<Ext>();
 
-            let verifier = BasefoldVerifier::<Poseidon2BabyBear16BasefoldConfig>::new(1);
+            let verifier = BasefoldVerifier::<Poseidon2KoalaBear16BasefoldConfig>::new(1);
             let mut challenger = verifier.challenger();
 
             let _yuwen_lambda: Ext = challenger.sample();
@@ -111,7 +111,7 @@ async fn main() {
         }
 
         t.synchronize().await.unwrap();
-        let verifier = BasefoldVerifier::<Poseidon2BabyBear16BasefoldConfig>::new(1);
+        let verifier = BasefoldVerifier::<Poseidon2KoalaBear16BasefoldConfig>::new(1);
         let mut challenger = verifier.challenger();
 
         // Warm up on the first element of all_ext1 and all_ext2

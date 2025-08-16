@@ -2,14 +2,14 @@ use std::ffi::c_void;
 
 use csl_sys::{
     reduce::{
-        baby_bear_extension_sum_block_reduce_kernel,
-        baby_bear_extension_sum_partial_block_reduce_kernel, baby_bear_sum_block_reduce_kernel,
-        baby_bear_sum_partial_block_reduce_kernel,
+        koala_bear_extension_sum_block_reduce_kernel,
+        koala_bear_extension_sum_partial_block_reduce_kernel, koala_bear_sum_block_reduce_kernel,
+        koala_bear_sum_partial_block_reduce_kernel,
     },
     runtime::{Dim3, KernelPtr},
 };
 use slop_algebra::extension::BinomialExtensionField;
-use slop_baby_bear::BabyBear;
+use slop_koala_bear::KoalaBear;
 use slop_tensor::{Dimensions, ReduceSumBackend, Tensor, TensorViewMut};
 
 use crate::{args, DeviceCopy};
@@ -210,23 +210,23 @@ where
     }
 }
 
-unsafe impl DeviceSumKernel<BabyBear> for TaskScope {
+unsafe impl DeviceSumKernel<KoalaBear> for TaskScope {
     fn partial_sum_kernel() -> KernelPtr {
-        unsafe { baby_bear_sum_partial_block_reduce_kernel() }
+        unsafe { koala_bear_sum_partial_block_reduce_kernel() }
     }
 
     fn block_sum_kernel() -> KernelPtr {
-        unsafe { baby_bear_sum_block_reduce_kernel() }
+        unsafe { koala_bear_sum_block_reduce_kernel() }
     }
 }
 
-unsafe impl DeviceSumKernel<BinomialExtensionField<BabyBear, 4>> for TaskScope {
+unsafe impl DeviceSumKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
     fn partial_sum_kernel() -> KernelPtr {
-        unsafe { baby_bear_extension_sum_partial_block_reduce_kernel() }
+        unsafe { koala_bear_extension_sum_partial_block_reduce_kernel() }
     }
 
     fn block_sum_kernel() -> KernelPtr {
-        unsafe { baby_bear_extension_sum_block_reduce_kernel() }
+        unsafe { koala_bear_extension_sum_block_reduce_kernel() }
     }
 }
 
@@ -234,16 +234,16 @@ unsafe impl DeviceSumKernel<BinomialExtensionField<BabyBear, 4>> for TaskScope {
 mod tests {
     use slop_algebra::extension::BinomialExtensionField;
     use slop_alloc::IntoHost;
-    use slop_baby_bear::BabyBear;
+    use slop_koala_bear::KoalaBear;
     use slop_tensor::Tensor;
 
     #[tokio::test]
-    async fn test_baby_bear_sum() {
+    async fn test_koala_bear_sum() {
         let num_summands = 100;
         let mut rng = rand::thread_rng();
 
         for size in [10, 100, 1 << 16] {
-            let tensor = Tensor::<BabyBear>::rand(&mut rng, [num_summands, size]);
+            let tensor = Tensor::<KoalaBear>::rand(&mut rng, [num_summands, size]);
 
             let tensor_sent = tensor.clone();
             let sum_tensor = crate::spawn(|t| async move {
@@ -256,7 +256,7 @@ mod tests {
 
             assert_eq!(sum_tensor.sizes(), [num_summands]);
             for i in 0..num_summands {
-                let expected_sum: BabyBear =
+                let expected_sum: KoalaBear =
                     tensor.get(i).unwrap().as_slice().iter().copied().sum();
                 assert_eq!(expected_sum, *sum_tensor[[i]]);
             }
@@ -264,12 +264,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_baby_bear_ext_sum() {
+    async fn test_koala_bear_ext_sum() {
         let num_summands = 128;
         let size = 1 << 16;
         let mut rng = rand::thread_rng();
 
-        type EF = BinomialExtensionField<BabyBear, 4>;
+        type EF = BinomialExtensionField<KoalaBear, 4>;
 
         let tensor = Tensor::<EF>::rand(&mut rng, [num_summands, size]);
 

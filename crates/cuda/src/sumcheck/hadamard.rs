@@ -1,8 +1,8 @@
 use csl_sys::{
     runtime::{Dim3, KernelPtr},
     sumcheck::{
-        hadamard_univariate_poly_eval_baby_bear_base_ext_kernel,
-        hadamard_univariate_poly_eval_baby_bear_ext_kernel,
+        hadamard_univariate_poly_eval_koala_bear_base_ext_kernel,
+        hadamard_univariate_poly_eval_koala_bear_ext_kernel,
     },
 };
 use slop_algebra::{
@@ -10,8 +10,8 @@ use slop_algebra::{
     UnivariatePolynomial,
 };
 use slop_alloc::{HasBackend, IntoHost};
-use slop_baby_bear::BabyBear;
 use slop_jagged::HadamardProduct;
+use slop_koala_bear::KoalaBear;
 use slop_multilinear::{MleFixLastVariableBackend, MleFixLastVariableInPlaceBackend};
 use slop_sumcheck::{ComponentPolyEvalBackend, SumCheckPolyFirstRoundBackend, SumcheckPolyBackend};
 use slop_tensor::{ReduceSumBackend, Tensor};
@@ -167,23 +167,23 @@ where
     }
 }
 
-unsafe impl HadamardUnivariatePolyEvalKernel<BabyBear, BinomialExtensionField<BabyBear, 4>>
+unsafe impl HadamardUnivariatePolyEvalKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>>
     for TaskScope
 {
     fn hadamard_sum_as_poly_kernel() -> KernelPtr {
-        unsafe { hadamard_univariate_poly_eval_baby_bear_base_ext_kernel() }
+        unsafe { hadamard_univariate_poly_eval_koala_bear_base_ext_kernel() }
     }
 }
 
 unsafe impl
     HadamardUnivariatePolyEvalKernel<
-        BinomialExtensionField<BabyBear, 4>,
-        BinomialExtensionField<BabyBear, 4>,
+        BinomialExtensionField<KoalaBear, 4>,
+        BinomialExtensionField<KoalaBear, 4>,
     > for TaskScope
 {
     #[inline]
     fn hadamard_sum_as_poly_kernel() -> KernelPtr {
-        unsafe { hadamard_univariate_poly_eval_baby_bear_ext_kernel() }
+        unsafe { hadamard_univariate_poly_eval_koala_bear_ext_kernel() }
     }
 }
 
@@ -193,10 +193,10 @@ mod tests {
     use itertools::Itertools;
     use rand::thread_rng;
     use slop_algebra::extension::BinomialExtensionField;
-    use slop_baby_bear::BabyBear;
-    use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
+    use slop_basefold::{BasefoldVerifier, Poseidon2KoalaBear16BasefoldConfig};
     use slop_challenger::CanSample;
     use slop_jagged::LongMle;
+    use slop_koala_bear::KoalaBear;
     use slop_multilinear::Mle;
     use slop_sumcheck::{partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation};
 
@@ -206,10 +206,10 @@ mod tests {
     async fn test_hadamard_product_sumcheck() {
         let mut rng = thread_rng();
 
-        type C = Poseidon2BabyBear16BasefoldConfig;
+        type C = Poseidon2KoalaBear16BasefoldConfig;
 
-        type F = BabyBear;
-        type EF = BinomialExtensionField<BabyBear, 4>;
+        type F = KoalaBear;
+        type EF = BinomialExtensionField<KoalaBear, 4>;
 
         let log_batch_size = 5;
         let batch_size = 1 << log_batch_size;

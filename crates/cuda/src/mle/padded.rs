@@ -103,7 +103,7 @@ mod tests {
     use rand::Rng;
     use slop_algebra::extension::BinomialExtensionField;
     use slop_alloc::IntoHost;
-    use slop_baby_bear::BabyBear;
+    use slop_koala_bear::KoalaBear;
     use slop_multilinear::{Mle, MleEval, PaddedMle, Padding, Point};
     use slop_tensor::Tensor;
 
@@ -113,7 +113,7 @@ mod tests {
     async fn test_padded_mle() {
         let mut rng = rand::thread_rng();
 
-        type F = BabyBear;
+        type F = KoalaBear;
         type EF = BinomialExtensionField<F, 4>;
 
         let mle = Mle::new(Tensor::<F>::rand(&mut rng, [(1 << 16) + 2, 100]));
@@ -162,7 +162,7 @@ mod tests {
     async fn test_spawned_padded_mle_fix_last_variable() {
         let mut rng = rand::thread_rng();
 
-        type F = BabyBear;
+        type F = KoalaBear;
         type EF = BinomialExtensionField<F, 4>;
 
         let num_variables = 16;

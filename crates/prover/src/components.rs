@@ -3,15 +3,15 @@ use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
 use csl_air::{air_block::BlockAir, SymbolicProverFolder};
 use csl_cuda::TaskScope;
 use csl_jagged::{
-    Poseidon2BabyBearJaggedCudaProverComponents, Poseidon2Bn254JaggedCudaProverComponents,
+    Poseidon2Bn254JaggedCudaProverComponents, Poseidon2KoalaBearJaggedCudaProverComponents,
 };
 use csl_logup_gkr::LogupGkrCudaProverComponents;
 use csl_tracegen::{CudaTraceGenerator, CudaTracegenAir};
 use csl_zerocheck::ZerocheckEvalProgramProverData;
 use serde::{Deserialize, Serialize};
 use slop_algebra::extension::BinomialExtensionField;
-use slop_baby_bear::BabyBear;
 use slop_jagged::{DefaultJaggedProver, JaggedConfig, JaggedProver, JaggedProverComponents};
+use slop_koala_bear::KoalaBear;
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_hypercube::{
     air::MachineAir,
@@ -26,11 +26,11 @@ pub struct CudaSP1ProverComponents;
 
 impl SP1ProverComponents for CudaSP1ProverComponents {
     type CoreComponents = CudaMachineProverComponents<
-        Poseidon2BabyBearJaggedCudaProverComponents,
-        RiscvAir<BabyBear>,
+        Poseidon2KoalaBearJaggedCudaProverComponents,
+        RiscvAir<KoalaBear>,
     >;
     type RecursionComponents = CudaMachineProverComponents<
-        Poseidon2BabyBearJaggedCudaProverComponents,
+        Poseidon2KoalaBearJaggedCudaProverComponents,
         CompressAir<<InnerSC as JaggedConfig>::F>,
     >;
     type WrapComponents = CudaMachineProverComponents<
@@ -47,8 +47,8 @@ pub type CudaProver<PcsComponents, A> = ShardProver<CudaShardProverComponents<Pc
 impl<JC, A> ShardProverComponents for CudaShardProverComponents<JC, A>
 where
     JC: JaggedProverComponents<
-        F = BabyBear,
-        EF = BinomialExtensionField<BabyBear, 4>,
+        F = KoalaBear,
+        EF = BinomialExtensionField<KoalaBear, 4>,
         A = TaskScope,
     >,
     A: CudaTracegenAir<JC::F> + ZerocheckAir<JC::F, JC::EF> + std::fmt::Debug,
@@ -81,7 +81,7 @@ pub fn new_cuda_prover_sumcheck_eval<C, Comp, A>(
     scope: TaskScope,
 ) -> CudaProver<Comp, A>
 where
-    C: MachineConfig<F = BabyBear, EF = BinomialExtensionField<BabyBear, 4>>,
+    C: MachineConfig<F = KoalaBear, EF = BinomialExtensionField<KoalaBear, 4>>,
     Comp: JaggedProverComponents<A = TaskScope, Config = C, F = C::F, EF = C::EF>
         + DefaultJaggedProver,
     A: MachineAir<C::F>
@@ -110,8 +110,8 @@ pub struct CudaMachineProverComponents<PcsComponents, A>(PhantomData<(A, PcsComp
 impl<JC, A> MachineProverComponents for CudaMachineProverComponents<JC, A>
 where
     JC: JaggedProverComponents<
-        F = BabyBear,
-        EF = BinomialExtensionField<BabyBear, 4>,
+        F = KoalaBear,
+        EF = BinomialExtensionField<KoalaBear, 4>,
         A = TaskScope,
     >,
     A: CudaTracegenAir<JC::F> + ZerocheckAir<JC::F, JC::EF> + std::fmt::Debug,

@@ -14,7 +14,6 @@ slop-alloc = { workspace = true }
 slop-algebra = { workspace = true }
 slop-challenger = { workspace = true }
 slop-symmetric = { workspace = true }
-slop-baby-bear = { workspace = true }
 
 [lints]
 workspace = true

@@ -5,8 +5,8 @@
 #include "interaction.cuh"
 #include "first_layer.cuh"
 
-#include "../fields/bb31_extension_t.cuh"
-#include "../fields/bb31_t.cuh"
+#include "../fields/kb31_extension_t.cuh"
+#include "../fields/kb31_t.cuh"
 
 template <typename EF>
 __global__ void logUpCircuitTransitionKernel(
@@ -80,9 +80,9 @@ __global__ void logUpCircuitTransitionKernel(
     }
 }
 
-extern "C" void *logup_gkr_circuit_transition_baby_bear_extension()
+extern "C" void *logup_gkr_circuit_transition_koala_bear_extension()
 {
-    return (void *)logUpCircuitTransitionKernel<bb31_extension_t>;
+    return (void *)logUpCircuitTransitionKernel<kb31_extension_t>;
 }
 
 template <typename F, typename EF>
@@ -217,9 +217,9 @@ __global__ void populateLastCircuitLayer(
     }
 }
 
-extern "C" void *logup_gkr_populate_last_circuit_layer_baby_bear()
+extern "C" void *logup_gkr_populate_last_circuit_layer_koala_bear()
 {
-    return (void *)populateLastCircuitLayer<bb31_t, bb31_extension_t>;
+    return (void *)populateLastCircuitLayer<kb31_t, kb31_extension_t>;
 }
 
 template <typename EF>
@@ -262,7 +262,7 @@ __global__ void extractOutputKernel(
     }
 }
 
-extern "C" void *logup_gkr_extract_output_baby_bear()
+extern "C" void *logup_gkr_extract_output_koala_bear()
 {
-    return (void *)extractOutputKernel<bb31_extension_t>;
+    return (void *)extractOutputKernel<kb31_extension_t>;
 }

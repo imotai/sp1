@@ -3,9 +3,9 @@
 
 #include "round.cuh"
 
-extern "C" void *logup_gkr_fix_last_variable_first_layer_kernel_baby_bear();
-extern "C" void *logup_gkr_sum_as_poly_first_layer_kernel_baby_bear();
-extern "C" void *logup_gkr_first_layer_transition_baby_bear();
+extern "C" void *logup_gkr_fix_last_variable_first_layer_kernel_koala_bear();
+extern "C" void *logup_gkr_sum_as_poly_first_layer_kernel_koala_bear();
+extern "C" void *logup_gkr_first_layer_transition_koala_bear();
 
 template <typename F, typename EF>
 struct FirstLayerCircuitValues

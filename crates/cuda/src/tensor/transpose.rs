@@ -1,12 +1,12 @@
 use csl_sys::{
     runtime::{Dim3, KernelPtr},
     transpose::{
-        transpose_kernel_baby_bear, transpose_kernel_baby_bear_digest,
-        transpose_kernel_baby_bear_extension, transpose_kernel_u32, transpose_kernel_u32_digest,
+        transpose_kernel_koala_bear, transpose_kernel_koala_bear_digest,
+        transpose_kernel_koala_bear_extension, transpose_kernel_u32, transpose_kernel_u32_digest,
     },
 };
 use slop_algebra::extension::BinomialExtensionField;
-use slop_baby_bear::BabyBear;
+use slop_koala_bear::KoalaBear;
 use slop_tensor::{Tensor, TensorViewMut, TransposeBackend};
 
 use crate::{args, DeviceCopy, TaskScope};
@@ -58,21 +58,21 @@ unsafe impl DeviceTransposeKernel<[u32; 8]> for TaskScope {
     }
 }
 
-unsafe impl DeviceTransposeKernel<BabyBear> for TaskScope {
+unsafe impl DeviceTransposeKernel<KoalaBear> for TaskScope {
     fn transpose_kernel() -> KernelPtr {
-        unsafe { transpose_kernel_baby_bear() }
+        unsafe { transpose_kernel_koala_bear() }
     }
 }
 
-unsafe impl DeviceTransposeKernel<BinomialExtensionField<BabyBear, 4>> for TaskScope {
+unsafe impl DeviceTransposeKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
     fn transpose_kernel() -> KernelPtr {
-        unsafe { transpose_kernel_baby_bear_extension() }
+        unsafe { transpose_kernel_koala_bear_extension() }
     }
 }
 
-unsafe impl DeviceTransposeKernel<[BabyBear; 8]> for TaskScope {
+unsafe impl DeviceTransposeKernel<[KoalaBear; 8]> for TaskScope {
     fn transpose_kernel() -> KernelPtr {
-        unsafe { transpose_kernel_baby_bear_digest() }
+        unsafe { transpose_kernel_koala_bear_digest() }
     }
 }
 

@@ -4,8 +4,8 @@
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
 
-#include "../fields/bb31_extension_t.cuh"
-#include "../fields/bb31_t.cuh"
+#include "../fields/kb31_extension_t.cuh"
+#include "../fields/kb31_t.cuh"
 #include "../runtime/exception.cuh"
 
 namespace cg = cooperative_groups;
@@ -101,46 +101,46 @@ __global__ void
 blockReduce(F *A, F *result, size_t width, size_t height, TyOp op);
 
 template <>
-struct AddOpFinalReduce<bb31_t>
+struct AddOpFinalReduce<kb31_t>
 {
     template <typename TyGroup>
     __device__ __forceinline__ static void
-    final_block_reduction_async(const TyGroup &group, bb31_t *dst, bb31_t val)
+    final_block_reduction_async(const TyGroup &group, kb31_t *dst, kb31_t val)
     {
-        cuda::atomic_ref<bb31_t, cuda::thread_scope_block> atomic(dst[0]);
+        cuda::atomic_ref<kb31_t, cuda::thread_scope_block> atomic(dst[0]);
         // reduce thread sums across the tile, add the result to the atomic
-        return cg::reduce_update_async(group, atomic, val, cg::plus<bb31_t>());
+        return cg::reduce_update_async(group, atomic, val, cg::plus<kb31_t>());
     }
 };
 
 template <>
-struct AddOpFinalReduce<bb31_extension_t>
+struct AddOpFinalReduce<kb31_extension_t>
 {
     template <typename TyGroup>
     __device__ __forceinline__ static void final_block_reduction_async(
         const TyGroup &group,
-        bb31_extension_t *dst,
-        bb31_extension_t val)
+        kb31_extension_t *dst,
+        kb31_extension_t val)
     {
 // Split the extension into a slice of base field elements and make a separate atomic update.
 #pragma unroll
-        for (int j = 0; j < bb31_extension_t::D; j++)
+        for (int j = 0; j < kb31_extension_t::D; j++)
         {
-            cuda::atomic_ref<bb31_t, cuda::thread_scope_block> atomic(
+            cuda::atomic_ref<kb31_t, cuda::thread_scope_block> atomic(
                 dst[0].value[j]);
             cg::reduce_update_async(
                 group,
                 atomic,
                 val.value[j],
-                cg::plus<bb31_t>());
+                cg::plus<kb31_t>());
         }
     }
 };
 
-extern "C" void *baby_bear_sum_block_reduce_kernel();
+extern "C" void *koala_bear_sum_block_reduce_kernel();
 
-extern "C" void *baby_bear_sum_partial_block_reduce_kernel();
+extern "C" void *koala_bear_sum_partial_block_reduce_kernel();
 
-extern "C" void *baby_bear_extension_sum_block_reduce_kernel();
+extern "C" void *koala_bear_extension_sum_block_reduce_kernel();
 
-extern "C" void *baby_bear_extension_sum_partial_block_reduce_kernel();
+extern "C" void *koala_bear_extension_sum_partial_block_reduce_kernel();

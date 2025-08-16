@@ -4,8 +4,8 @@ use csl_cuda::{
     args,
     sys::{
         jagged::{
-            jagged_baby_bear_base_ext_sum_as_poly,
-            jagged_baby_bear_extension_virtual_fix_last_variable,
+            jagged_koala_bear_base_ext_sum_as_poly,
+            jagged_koala_bear_extension_virtual_fix_last_variable,
         },
         runtime::{Dim3, KernelPtr},
     },
@@ -17,9 +17,9 @@ use slop_algebra::{
     extension::BinomialExtensionField, interpolate_univariate_polynomial, ExtensionField, Field,
 };
 use slop_alloc::{Buffer, HasBackend, IntoHost};
-use slop_baby_bear::BabyBear;
 use slop_commit::{Message, Rounds};
 use slop_jagged::{HadamardProduct, JaggedBackend, JaggedSumcheckProver, LongMle};
+use slop_koala_bear::KoalaBear;
 use slop_multilinear::{Mle, MleFixLastVariableBackend, PartialLagrangeBackend};
 use slop_sumcheck::{SumcheckPolyBase, SumcheckPolyFirstRound};
 use slop_tensor::{ReduceSumBackend, Tensor};
@@ -365,17 +365,17 @@ where
     }
 }
 
-unsafe impl VirtualJaggedSumAsPolyKernel<BabyBear, BinomialExtensionField<BabyBear, 4>>
+unsafe impl VirtualJaggedSumAsPolyKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>>
     for TaskScope
 {
     fn sum_as_poly_kernel() -> KernelPtr {
-        unsafe { jagged_baby_bear_base_ext_sum_as_poly() }
+        unsafe { jagged_koala_bear_base_ext_sum_as_poly() }
     }
 }
 
-unsafe impl VirtualJaggedFixLastVariableKernel<BinomialExtensionField<BabyBear, 4>> for TaskScope {
+unsafe impl VirtualJaggedFixLastVariableKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
     fn virtual_jagged_fix_last_variable_kernel() -> KernelPtr {
-        unsafe { jagged_baby_bear_extension_virtual_fix_last_variable() }
+        unsafe { jagged_koala_bear_extension_virtual_fix_last_variable() }
     }
 }
 
@@ -390,14 +390,14 @@ mod tests {
     use slop_challenger::{CanObserve, FieldChallenger};
     use slop_commit::Rounds;
     use slop_jagged::{
-        BabyBearPoseidon2, HadamardJaggedSumcheckProver, JaggedConfig,
-        JaggedLittlePolynomialProverParams, JaggedPcsVerifier, JaggedProver, JaggedSumcheckProver,
+        HadamardJaggedSumcheckProver, JaggedConfig, JaggedLittlePolynomialProverParams,
+        JaggedPcsVerifier, JaggedProver, JaggedSumcheckProver, KoalaBearPoseidon2,
     };
     use slop_multilinear::{Mle, MultilinearPcsChallenger, PaddedMle};
     use slop_sumcheck::SumcheckPolyFirstRound;
 
     use crate::{
-        CudaJaggedMleGenerator, Poseidon2BabyBearJaggedCudaProverComponents,
+        CudaJaggedMleGenerator, Poseidon2KoalaBearJaggedCudaProverComponents,
         VirtualJaggedSumcheckProver,
     };
 
@@ -406,8 +406,8 @@ mod tests {
     async fn test_virtual_jagged_sumcheck_poly() {
         let log_blowup = 1;
 
-        type JC = BabyBearPoseidon2;
-        type Prover = JaggedProver<Poseidon2BabyBearJaggedCudaProverComponents>;
+        type JC = KoalaBearPoseidon2;
+        type Prover = JaggedProver<Poseidon2KoalaBearJaggedCudaProverComponents>;
         type F = <JC as JaggedConfig>::F;
         type EF = <JC as JaggedConfig>::EF;
 
@@ -415,7 +415,7 @@ mod tests {
 
         for (log_stacking_height, max_log_row_count) in [(10, 10), (11, 11), (16, 16), (20, 20)] {
             let row_counts_rounds = vec![
-                vec![(1 << (max_log_row_count - 2)) + 8, 1 << max_log_row_count],
+                vec![(1 << (max_log_row_count - 2)) + 8, (1 << max_log_row_count) - 2],
                 vec![
                     (1 << (max_log_row_count - 6)) + 12,
                     1 << (max_log_row_count),

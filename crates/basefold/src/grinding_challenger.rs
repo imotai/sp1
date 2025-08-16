@@ -1,12 +1,12 @@
 use csl_challenger::{
     DuplexChallenger, DuplexChallengerRawMut, MultiField32Challenger, MultiField32ChallengerRawMut,
 };
-use csl_cuda::sys::challenger::grind_baby_bear;
+use csl_cuda::sys::challenger::grind_koala_bear;
 use csl_cuda::{args, sys::runtime::KernelPtr, TaskScope};
 use slop_algebra::{Field, PrimeField, PrimeField31, PrimeField64};
 use slop_alloc::{Buffer, CpuBackend, IntoHost};
-use slop_baby_bear::BabyBear;
 use slop_challenger::GrindingChallenger;
+use slop_koala_bear::KoalaBear;
 use slop_symmetric::CryptographicPermutation;
 use std::future::Future;
 
@@ -90,6 +90,7 @@ where
         let result = handle.await.unwrap();
         let cpu_result = result.into_host().await.unwrap();
         let result = cpu_result.first().unwrap();
+
         // Check the witness. This is necessary, because it changes the internal state of the
         // challenger, and the CPU version of the challenger does this as well. It's also necessary
         // for the security of the protocol.
@@ -143,9 +144,9 @@ where
     }
 }
 
-unsafe impl GrindingChallengerKernel<BabyBear> for TaskScope {
+unsafe impl GrindingChallengerKernel<KoalaBear> for TaskScope {
     fn grind_kernel() -> KernelPtr {
-        unsafe { grind_baby_bear() }
+        unsafe { grind_koala_bear() }
     }
 }
 
@@ -153,34 +154,34 @@ unsafe impl GrindingChallengerKernel<BabyBear> for TaskScope {
 mod tests {
     use crate::grinding_challenger::DeviceGrindingChallenger;
     use slop_algebra::AbstractField;
-    use slop_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
     use slop_challenger::{CanObserve, CanSample, GrindingChallenger};
+    use slop_koala_bear::KoalaBear;
     use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
     use sp1_hypercube::inner_perm;
+    use sp1_primitives::SP1DiffusionMatrix;
 
-    pub type Perm =
-        Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, 16, 7>;
+    pub type Perm = Poseidon2<KoalaBear, Poseidon2ExternalMatrixGeneral, SP1DiffusionMatrix, 16, 3>;
 
     #[tokio::test]
     async fn test_grinding() {
         for bits in 1..20 {
             let default_perm = inner_perm();
             let mut challenger =
-                slop_challenger::DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm);
+                slop_challenger::DuplexChallenger::<KoalaBear, Perm, 16, 8>::new(default_perm);
 
             // Observe 7 elements to make the input buffer almost full and trigger duplexing on
-            challenger.observe(BabyBear::from_canonical_u32(0));
-            challenger.observe(BabyBear::from_canonical_u32(1));
-            challenger.observe(BabyBear::from_canonical_u32(2));
-            challenger.observe(BabyBear::from_canonical_u32(3));
-            challenger.observe(BabyBear::from_canonical_u32(4));
-            challenger.observe(BabyBear::from_canonical_u32(5));
-            challenger.observe(BabyBear::from_canonical_u32(6));
-            challenger.observe(BabyBear::from_canonical_u32(7));
+            challenger.observe(KoalaBear::from_canonical_u32(0));
+            challenger.observe(KoalaBear::from_canonical_u32(1));
+            challenger.observe(KoalaBear::from_canonical_u32(2));
+            challenger.observe(KoalaBear::from_canonical_u32(3));
+            challenger.observe(KoalaBear::from_canonical_u32(4));
+            challenger.observe(KoalaBear::from_canonical_u32(5));
+            challenger.observe(KoalaBear::from_canonical_u32(6));
+            challenger.observe(KoalaBear::from_canonical_u32(7));
 
             // Make another challenger that also samples before grinding (this empties the input buffer).
             let mut challenger_2 = challenger.clone();
-            let _: BabyBear = challenger.sample();
+            let _: KoalaBear = challenger.sample();
 
             let mut original_challenger = challenger.clone();
             let result = challenger.grind_device(bits).await;

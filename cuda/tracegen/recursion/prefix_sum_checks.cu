@@ -1,6 +1,6 @@
 #include "csl-cbindgen.hpp"
 
-#include "fields/bb31_t.cuh"
+#include "fields/kb31_t.cuh"
 
 template <class T>
 __global__ void recursion_prefix_sum_checks_generate_trace_kernel(
@@ -34,8 +34,8 @@ __global__ void recursion_prefix_sum_checks_generate_trace_kernel(
 
 namespace csl_sys
 {
-    extern KernelPtr recursion_prefix_sum_checks_generate_trace_baby_bear_kernel()
+    extern KernelPtr recursion_prefix_sum_checks_generate_trace_koala_bear_kernel()
     {
-        return (KernelPtr)::recursion_prefix_sum_checks_generate_trace_kernel<bb31_t>;
+        return (KernelPtr)::recursion_prefix_sum_checks_generate_trace_kernel<kb31_t>;
     }
 }

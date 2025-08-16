@@ -4,7 +4,7 @@ use slop_algebra::{
     extension::BinomialExtensionField, AbstractExtensionField, ExtensionField, Field,
 };
 use slop_alloc::{Buffer, IntoHost};
-use slop_baby_bear::BabyBear;
+use slop_koala_bear::KoalaBear;
 use slop_multilinear::{Mle, PaddedMle};
 use slop_tensor::{ReduceSumBackend, Tensor};
 use sp1_hypercube::{
@@ -34,7 +34,7 @@ pub struct ZerocheckEvalProgramProverData<F, EF, A> {
     _marker: PhantomData<A>,
 }
 
-impl<A> ZerocheckEvalProgramProverData<BabyBear, BinomialExtensionField<BabyBear, 4>, A>
+impl<A> ZerocheckEvalProgramProverData<KoalaBear, BinomialExtensionField<KoalaBear, 4>, A>
 where
     A: for<'a> BlockAir<SymbolicProverFolder<'a>>,
 {
@@ -422,7 +422,7 @@ mod tests {
     use super::*;
 
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
-    use slop_baby_bear::BabyBear;
+    use slop_koala_bear::KoalaBear;
     use slop_matrix::dense::RowMajorMatrix;
     use slop_multilinear::Mle;
     use slop_tensor::Tensor;
@@ -431,7 +431,7 @@ mod tests {
     async fn test_interpolate_rows() {
         let mut rng = rand::thread_rng();
 
-        type F = BabyBear;
+        type F = KoalaBear;
         type EF = BinomialExtensionField<F, 4>;
 
         let main_height = (1 << 7) - 1;

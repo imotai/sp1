@@ -24,7 +24,7 @@ slop-commit = { workspace = true }
 slop-dft = { workspace = true }
 slop-basefold-prover = { workspace = true }
 slop-algebra = { workspace = true }
-slop-baby-bear = { workspace = true }
+slop-koala-bear = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-multilinear = { workspace = true }
 slop-challenger = { workspace = true }

@@ -243,9 +243,9 @@ mod tests {
     use slop_algebra::extension::BinomialExtensionField;
     use slop_algebra::AbstractField;
     use slop_alloc::Buffer;
-    use slop_baby_bear::BabyBear;
+    use slop_koala_bear::KoalaBear;
 
-    type F = BabyBear;
+    type F = KoalaBear;
     type EF = BinomialExtensionField<F, 4>;
 
     #[tokio::test]

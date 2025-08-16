@@ -2,8 +2,8 @@
 #include "round.cuh"
 
 #include "../reduce/reduction.cuh"
-#include "../fields/bb31_extension_t.cuh"
-#include "../fields/bb31_t.cuh"
+#include "../fields/kb31_extension_t.cuh"
+#include "../fields/kb31_t.cuh"
 
 template <typename F, typename EF>
 __global__ void logupGkrFixLastVariableFirstCircuitLayer(
@@ -72,9 +72,9 @@ __global__ void logupGkrFixLastVariableFirstCircuitLayer(
     }
 }
 
-extern "C" void *logup_gkr_fix_last_variable_first_layer_kernel_baby_bear()
+extern "C" void *logup_gkr_fix_last_variable_first_layer_kernel_koala_bear()
 {
-    return (void *)logupGkrFixLastVariableFirstCircuitLayer<bb31_t, bb31_extension_t>;
+    return (void *)logupGkrFixLastVariableFirstCircuitLayer<kb31_t, kb31_extension_t>;
 }
 
 template <typename F, typename EF>
@@ -148,9 +148,9 @@ __global__ void logupGkrSumAsPolyFirstCircuitLayer(
     }
 }
 
-extern "C" void *logup_gkr_sum_as_poly_first_layer_kernel_baby_bear()
+extern "C" void *logup_gkr_sum_as_poly_first_layer_kernel_koala_bear()
 {
-    return (void *)logupGkrSumAsPolyFirstCircuitLayer<bb31_t, bb31_extension_t>;
+    return (void *)logupGkrSumAsPolyFirstCircuitLayer<kb31_t, kb31_extension_t>;
 }
 
 template <typename F, typename EF>
@@ -226,7 +226,7 @@ __global__ void logUpFirstLayerTransitionKernel(
     }
 }
 
-extern "C" void *logup_gkr_first_layer_transition_baby_bear()
+extern "C" void *logup_gkr_first_layer_transition_koala_bear()
 {
-    return (void *)logUpFirstLayerTransitionKernel<bb31_t, bb31_extension_t>;
+    return (void *)logUpFirstLayerTransitionKernel<kb31_t, kb31_extension_t>;
 }

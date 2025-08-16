@@ -1,10 +1,10 @@
 #pragma once
 
-extern "C" void *logup_gkr_sum_as_poly_layer_kernel_circuit_layer_baby_bear_extension();
-extern "C" void *logup_gkr_fix_last_variable_circuit_layer_kernel_baby_bear_extension();
-extern "C" void *logup_gkr_fix_last_row_last_circuit_layer_kernel_circuit_layer_baby_bear_extension();
-extern "C" void *logup_gkr_sum_as_poly_layer_kernel_interactions_layer_baby_bear_extension();
-extern "C" void *logup_gkr_fix_last_variable_interactions_layer_kernel_baby_bear_extension();
+extern "C" void *logup_gkr_sum_as_poly_layer_kernel_circuit_layer_koala_bear_extension();
+extern "C" void *logup_gkr_fix_last_variable_circuit_layer_kernel_koala_bear_extension();
+extern "C" void *logup_gkr_fix_last_row_last_circuit_layer_kernel_circuit_layer_koala_bear_extension();
+extern "C" void *logup_gkr_sum_as_poly_layer_kernel_interactions_layer_koala_bear_extension();
+extern "C" void *logup_gkr_fix_last_variable_interactions_layer_kernel_koala_bear_extension();
 
 template <typename EF>
 struct CircuitValues

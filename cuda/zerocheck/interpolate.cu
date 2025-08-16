@@ -1,6 +1,6 @@
 #include "interpolate.cuh"
-#include "../fields/bb31_extension_t.cuh"
-#include "../fields/bb31_t.cuh"
+#include "../fields/kb31_extension_t.cuh"
+#include "../fields/kb31_t.cuh"
 
 template <typename K>
 __global__ void interpolate_row(
@@ -47,12 +47,12 @@ __global__ void interpolate_row(
     }
 }
 
-extern "C" void *interpolate_row_baby_bear_kernel()
+extern "C" void *interpolate_row_koala_bear_kernel()
 {
-    return (void *)interpolate_row<bb31_t>;
+    return (void *)interpolate_row<kb31_t>;
 }
 
-extern "C" void *interpolate_row_baby_bear_extension_kernel()
+extern "C" void *interpolate_row_koala_bear_extension_kernel()
 {
-    return (void *)interpolate_row<bb31_extension_t>;
+    return (void *)interpolate_row<kb31_extension_t>;
 }

@@ -1,20 +1,22 @@
 #pragma once
 
 #include "ptx.cuh"
-#include "bb31_t.cuh"
+#include "kb31_t.cuh"
 
-class bb31_extension_t
+static constexpr size_t W_INT = 3; // The value of W in the bb31 field, used for multiplication
+
+class kb31_extension_t
 {
 public:
     static constexpr size_t D = 4;
-    static constexpr bb31_t W = bb31_t{11};
-    static constexpr uint32_t MOD = 0x78000001u;
-    static constexpr uint32_t M = 0x77ffffffu;
-    static constexpr uint32_t MUL2_32 = 0x0ffffffe;    // 2^32 = 2^28 - 2
+    static constexpr kb31_t W = kb31_t{3};
+    static const uint32_t MOD = 0x7f000001u;
+    static constexpr uint32_t M = 0x7effffffu;
+    static constexpr uint32_t MUL2_32 = 0x01fffffe;    // 2^32 = 2^25 - 2
 
-    bb31_t value[D];
+    kb31_t value[D];
 
-    __device__ __forceinline__ bool operator!=(const bb31_extension_t &x) const {
+    __device__ __forceinline__ bool operator!=(const kb31_extension_t &x) const {
         bool t = false;
         for (int i=0; i<D; i++)
             t = (value[i] != x.value[i]) ? true : t;
@@ -22,12 +24,12 @@ public:
     }
 
     __host__ __device__
-    inline constexpr bb31_extension_t(int a, int b = 0, int c = 0, int d = 0)
-    : value{bb31_t(a), bb31_t(b), bb31_t(c), bb31_t(d)} {}
+    inline constexpr kb31_extension_t(int a, int b = 0, int c = 0, int d = 0)
+    : value{kb31_t(a), kb31_t(b), kb31_t(c), kb31_t(d)} {}
 
-    __device__ __forceinline__ bb31_extension_t() {}
+    __device__ __forceinline__ kb31_extension_t() {}
 
-    __device__ __forceinline__ bb31_extension_t(bb31_t value[4])
+    __device__ __forceinline__ kb31_extension_t(kb31_t value[4])
     {
         for (size_t i = 0; i < D; i++)
         {
@@ -35,59 +37,59 @@ public:
         }
     }
 
-    __device__ __forceinline__ bb31_extension_t(bb31_t value)
+    __device__ __forceinline__ kb31_extension_t(kb31_t value)
     {
         this->value[0] = value;
         for (size_t i = 1; i < D; i++)
         {
-            this->value[i] = bb31_t(0);
+            this->value[i] = kb31_t(0);
         }
     }
 
     // Load from a pointer using a vectorized load.
-    static __device__ __forceinline__ bb31_extension_t load(bb31_extension_t *ptr, size_t i)
+    static __device__ __forceinline__ kb31_extension_t load(kb31_extension_t *ptr, size_t i)
     {
         int4 b_int4 = *reinterpret_cast<int4 *>(&ptr[i]);
-        return *reinterpret_cast<bb31_extension_t *>(&b_int4);
+        return *reinterpret_cast<kb31_extension_t *>(&b_int4);
     }
 
     // Load from a pointer using a vectorized load.
-    static __device__ __forceinline__ const bb31_extension_t load(const bb31_extension_t *ptr, size_t i)
+    static __device__ __forceinline__ const kb31_extension_t load(const kb31_extension_t *ptr, size_t i)
     {
         int4 b_int4 = *reinterpret_cast<const int4 *>(&ptr[i]);
-        return *reinterpret_cast<const bb31_extension_t *>(&b_int4);
+        return *reinterpret_cast<const kb31_extension_t *>(&b_int4);
     }
 
-    // Store a bb31_extension_t into a pointer using a vectorized store.
-    static __device__ __forceinline__ void store(bb31_extension_t *ptr, size_t i, bb31_extension_t value)
+    // Store a kb31_extension_t into a pointer using a vectorized store.
+    static __device__ __forceinline__ void store(kb31_extension_t *ptr, size_t i, kb31_extension_t value)
     {
         *reinterpret_cast<int4 *>(&ptr[i]) = *reinterpret_cast<int4 *>(&value);
     }
 
-    static __device__ __forceinline__ bb31_extension_t from_bool(bool x)
+    static __device__ __forceinline__ kb31_extension_t from_bool(bool x)
     {
-        return bb31_extension_t(bb31_t::from_bool(x));
+        return kb31_extension_t(kb31_t::from_bool(x));
     }
 
-    static __device__ __forceinline__ const bb31_extension_t zero()
+    static __device__ __forceinline__ const kb31_extension_t zero()
     {
-        bb31_t values[D] = {bb31_t(0), bb31_t(0), bb31_t(0), bb31_t(0)};
-        return bb31_extension_t(values);
+        kb31_t values[D] = {kb31_t(0), kb31_t(0), kb31_t(0), kb31_t(0)};
+        return kb31_extension_t(values);
     }
 
-    static __device__ __forceinline__ const bb31_extension_t one()
+    static __device__ __forceinline__ const kb31_extension_t one()
     {
-        bb31_t values[D] = {bb31_t::one(), bb31_t(0), bb31_t(0), bb31_t(0)};
-        return bb31_extension_t(values);
+        kb31_t values[D] = {kb31_t::one(), kb31_t(0), kb31_t(0), kb31_t(0)};
+        return kb31_extension_t(values);
     }
 
-    static __device__ __forceinline__ const bb31_extension_t two()
+    static __device__ __forceinline__ const kb31_extension_t two()
     {
-        bb31_t values[D] = {bb31_t::two(), bb31_t(0), bb31_t(0), bb31_t(0)};
-        return bb31_extension_t(values);
+        kb31_t values[D] = {kb31_t::two(), kb31_t(0), kb31_t(0), kb31_t(0)};
+        return kb31_extension_t(values);
     }
 
-    __device__ __forceinline__ bb31_extension_t &operator+=(const bb31_extension_t b)
+    __device__ __forceinline__ kb31_extension_t &operator+=(const kb31_extension_t b)
     {
         for (size_t i = 0; i < D; i++)
         {
@@ -96,13 +98,13 @@ public:
         return *this;
     }
 
-    friend __device__ __forceinline__ bb31_extension_t operator+(bb31_extension_t a,
-                                                                 const bb31_extension_t b)
+    friend __device__ __forceinline__ kb31_extension_t operator+(kb31_extension_t a,
+                                                                 const kb31_extension_t b)
     {
         return a += b;
     }
 
-    __device__ __forceinline__ bb31_extension_t &operator-=(const bb31_extension_t b)
+    __device__ __forceinline__ kb31_extension_t &operator-=(const kb31_extension_t b)
     {
         for (size_t i = 0; i < D; i++)
         {
@@ -111,13 +113,13 @@ public:
         return *this;
     }
 
-    friend __device__ __forceinline__ bb31_extension_t operator-(bb31_extension_t a,
-                                                                 const bb31_extension_t b)
+    friend __device__ __forceinline__ kb31_extension_t operator-(kb31_extension_t a,
+                                                                 const kb31_extension_t b)
     {
         return a -= b;
     }
 
-    __device__ __forceinline__ bb31_extension_t &operator*=(const bb31_extension_t b)
+    __device__ __forceinline__ kb31_extension_t &operator*=(const kb31_extension_t b)
     {
         uint32_t
             x0 = value[0].val,
@@ -169,9 +171,9 @@ public:
         unpack(l5, h5, a5);
         unpack(l6, h6, a6);
 
-        mad_lo(a0, a4, 11, a0);
-        mad_lo(a1, a5, 11, a1);
-        mad_lo(a2, a6, 11, a2);
+        mad_lo(a0, a4, W_INT, a0);
+        mad_lo(a1, a5, W_INT, a1);
+        mad_lo(a2, a6, W_INT, a2);
 
         // Avoid overflow in Montgomery reduction
 
@@ -211,7 +213,7 @@ public:
         return *this;
     }
 
-    __device__ __forceinline__ bb31_extension_t &operator*=(const bb31_t b)
+    __device__ __forceinline__ kb31_extension_t &operator*=(const kb31_t b)
     {
 #pragma unroll
         for (size_t i = 0; i < D; i++)
@@ -221,33 +223,33 @@ public:
         return *this;
     }
 
-    friend __device__ __forceinline__ bb31_extension_t operator*(bb31_extension_t a,
-                                                                 const bb31_extension_t b)
+    friend __device__ __forceinline__ kb31_extension_t operator*(kb31_extension_t a,
+                                                                 const kb31_extension_t b)
     {
         return a *= b;
     }
 
-    friend __device__ __forceinline__ bb31_extension_t operator*(bb31_extension_t a,
-                                                                 const bb31_t b)
+    friend __device__ __forceinline__ kb31_extension_t operator*(kb31_extension_t a,
+                                                                 const kb31_t b)
     {
         return a *= b;
     }
 
-    __device__ __forceinline__ bb31_extension_t &operator/=(const bb31_extension_t b)
+    __device__ __forceinline__ kb31_extension_t &operator/=(const kb31_extension_t b)
     {
         *this *= b.reciprocal();
         return *this;
     }
 
-    friend __device__ __forceinline__ bb31_extension_t operator/(bb31_extension_t a,
-                                                                 const bb31_extension_t b)
+    friend __device__ __forceinline__ kb31_extension_t operator/(kb31_extension_t a,
+                                                                 const kb31_extension_t b)
     {
         return a /= b;
     }
 
-    __device__ __forceinline__ bb31_extension_t exp_power_of_two(size_t log_power)
+    __device__ __forceinline__ kb31_extension_t exp_power_of_two(size_t log_power)
     {
-        bb31_extension_t ret = *this;
+        kb31_extension_t ret = *this;
         for (size_t i = 0; i < log_power; i++)
         {
             ret *= ret;
@@ -255,11 +257,11 @@ public:
         return ret;
     }
 
-    __device__ __forceinline__ bb31_extension_t frobenius()
+    __device__ __forceinline__ kb31_extension_t frobenius()
     {
-        bb31_t z0 = bb31_t(1728404513);
-        bb31_t z = z0;
-        bb31_extension_t result;
+        kb31_t z0 = kb31_t(2113994754);
+        kb31_t z = z0;
+        kb31_extension_t result;
         for (size_t i = 0; i < D; i++)
         {
             result.value[i] = value[i] * z;
@@ -268,27 +270,27 @@ public:
         return result;
     }
 
-    __device__ __forceinline__ bb31_extension_t frobeniusInverse() const
+    __device__ __forceinline__ kb31_extension_t frobeniusInverse() const
     {
-        bb31_extension_t f = one();
+        kb31_extension_t f = one();
         for (size_t i = 1; i < D; i++)
         {
             f = (f * *this).frobenius();
         }
 
-        bb31_extension_t a = *this;
-        bb31_extension_t b = f;
-        bb31_t g = bb31_t(0);
+        kb31_extension_t a = *this;
+        kb31_extension_t b = f;
+        kb31_t g = kb31_t(0);
         for (size_t i = 1; i < D; i++)
         {
             g += a.value[i] * b.value[4 - i];
         }
-        g *= bb31_t(11);
+        g *= kb31_t(11);
         g += a.value[0] * b.value[0];
         return f * g.reciprocal();
     }
 
-    __device__ __forceinline__ bb31_extension_t reciprocal() const
+    __device__ __forceinline__ kb31_extension_t reciprocal() const
     {
         bool isZero = true;
         for (size_t i = 0; i < D; i++)
@@ -308,9 +310,9 @@ public:
         return frobeniusInverse();
     }
 
-    friend __device__ __forceinline__ bb31_extension_t operator-(bb31_extension_t a)
+    friend __device__ __forceinline__ kb31_extension_t operator-(kb31_extension_t a)
     {
-        bb31_extension_t ret;
+        kb31_extension_t ret;
         for (size_t i = 0; i < D; i++)
         {
             ret.value[i] = -a.value[i];
@@ -318,7 +320,7 @@ public:
         return ret;
     }
 
-    __device__ __forceinline__ bb31_extension_t interpolateLinear( const bb31_extension_t one, const bb31_extension_t zero) const
+    __device__ __forceinline__ kb31_extension_t interpolateLinear( const kb31_extension_t one, const kb31_extension_t zero) const
     {
         uint32_t
             x0 = value[0].val,
@@ -334,8 +336,8 @@ public:
         uint32_t l0, l1, l2, l3, l4, l5, l6, l;
         uint32_t h0, h1, h2, h3, h4, h5, h6, h = 0;
 
-        const uint32_t MOD = bb31_extension_t::MOD;
-        const uint32_t M   = bb31_extension_t::M;
+        const uint32_t MOD = kb31_extension_t::MOD;
+        const uint32_t M   = kb31_extension_t::M;
 
         y0 = y0 > one.value[0].val ? y0+MOD : y0;
         y1 = y1 > one.value[1].val ? y1+MOD : y1;
@@ -379,9 +381,9 @@ public:
         unpack(l5, h5, a5);
         unpack(l6, h6, a6);
 
-        mad_lo(a0, a4, 11, a0);
-        mad_lo(a1, a5, 11, a1);
-        mad_lo(a2, a6, 11, a2);
+        mad_lo(a0, a4, W_INT, a0);
+        mad_lo(a1, a5, W_INT, a1);
+        mad_lo(a2, a6, W_INT, a2);
 
         // Avoid overflow in Montgomery reduction
 
@@ -430,7 +432,7 @@ public:
         x2 = x2 >= MOD ? x2-MOD : x2;
         x3 = x3 >= MOD ? x3-MOD : x3;
 
-        bb31_extension_t retval;
+        kb31_extension_t retval;
         retval.value[0].val = x0;
         retval.value[1].val = x1;
         retval.value[2].val = x2;
@@ -438,7 +440,7 @@ public:
         return retval;
     }
 
-    __device__ __forceinline__ bb31_extension_t interpolateLinear( const bb31_t one, const bb31_t zero) const
+    __device__ __forceinline__ kb31_extension_t interpolateLinear( const kb31_t one, const kb31_t zero) const
     {
         uint32_t
             x0 = value[0].val,
@@ -452,8 +454,8 @@ public:
         uint32_t l0, l1, l2, l3, l;
         uint32_t h0, h1, h2, h3, h = 0;
 
-        const uint32_t MOD = 0x78000001u;
-        const uint32_t M = 0x77ffffffu;
+        const uint32_t MOD = 0x7f000001u;
+        const uint32_t M = 0x7effffffu;
 
         y0 = y0 > one.val ? y0+MOD : y0;
 
@@ -506,7 +508,7 @@ public:
         x3 = x3 >= MOD ? x3-MOD : x3;
         x0 = x0 >= MOD ? x0-MOD : x0;
 
-        bb31_extension_t retval;
+        kb31_extension_t retval;
         retval.value[0].val = x0;
         retval.value[1].val = x1;
         retval.value[2].val = x2;

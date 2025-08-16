@@ -1,10 +1,10 @@
 use csl_sys::{
-    mle::{mle_fold_baby_bear_base_base, mle_fold_baby_bear_ext_ext},
+    mle::{mle_fold_koala_bear_base_base, mle_fold_koala_bear_ext_ext},
     runtime::KernelPtr,
 };
 use slop_algebra::{extension::BinomialExtensionField, Field};
 use slop_alloc::Backend;
-use slop_baby_bear::BabyBear;
+use slop_koala_bear::KoalaBear;
 use slop_multilinear::{MleBaseBackend, MleFoldBackend};
 use slop_tensor::Tensor;
 
@@ -51,15 +51,15 @@ where
     }
 }
 
-unsafe impl FoldKernel<BabyBear> for TaskScope {
+unsafe impl FoldKernel<KoalaBear> for TaskScope {
     fn fold_kernel() -> KernelPtr {
-        unsafe { mle_fold_baby_bear_base_base() }
+        unsafe { mle_fold_koala_bear_base_base() }
     }
 }
 
-unsafe impl FoldKernel<BinomialExtensionField<BabyBear, 4>> for TaskScope {
+unsafe impl FoldKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
     fn fold_kernel() -> KernelPtr {
-        unsafe { mle_fold_baby_bear_ext_ext() }
+        unsafe { mle_fold_koala_bear_ext_ext() }
     }
 }
 
@@ -75,7 +75,7 @@ mod tests {
     async fn test_fold_mle() {
         let num_variables = 11;
 
-        type EF = BinomialExtensionField<BabyBear, 4>;
+        type EF = BinomialExtensionField<KoalaBear, 4>;
 
         let mut rng = rand::thread_rng();
 

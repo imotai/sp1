@@ -3,8 +3,8 @@
 
 #include "../reduce/reduction.cuh"
 
-#include "../fields/bb31_extension_t.cuh"
-#include "../fields/bb31_t.cuh"
+#include "../fields/kb31_extension_t.cuh"
+#include "../fields/kb31_t.cuh"
 
 template <typename EF>
 __global__ void logupGkrFixLastVariableCircuitLayer(
@@ -77,9 +77,9 @@ __global__ void logupGkrFixLastVariableCircuitLayer(
     }
 }
 
-extern "C" void *logup_gkr_fix_last_variable_circuit_layer_kernel_baby_bear_extension()
+extern "C" void *logup_gkr_fix_last_variable_circuit_layer_kernel_koala_bear_extension()
 {
-    return (void *)logupGkrFixLastVariableCircuitLayer<bb31_extension_t>;
+    return (void *)logupGkrFixLastVariableCircuitLayer<kb31_extension_t>;
 }
 
 template <typename EF>
@@ -152,9 +152,9 @@ __global__ void logupGkrSumAsPolyCircuitLayer(
     }
 }
 
-extern "C" void *logup_gkr_sum_as_poly_layer_kernel_circuit_layer_baby_bear_extension()
+extern "C" void *logup_gkr_sum_as_poly_layer_kernel_circuit_layer_koala_bear_extension()
 {
-    return (void *)logupGkrSumAsPolyCircuitLayer<bb31_extension_t>;
+    return (void *)logupGkrSumAsPolyCircuitLayer<kb31_extension_t>;
 }
 
 template <typename EF>
@@ -178,9 +178,9 @@ __global__ void FixLastVariableLastCircuitLayer(
     }
 }
 
-extern "C" void *logup_gkr_fix_last_row_last_circuit_layer_kernel_circuit_layer_baby_bear_extension()
+extern "C" void *logup_gkr_fix_last_row_last_circuit_layer_kernel_circuit_layer_koala_bear_extension()
 {
-    return (void *)FixLastVariableLastCircuitLayer<bb31_extension_t>;
+    return (void *)FixLastVariableLastCircuitLayer<kb31_extension_t>;
 }
 
 template <typename EF>
@@ -263,9 +263,9 @@ __global__ void partialSumAsPolyInteractionsLayer(
     }
 }
 
-extern "C" void *logup_gkr_sum_as_poly_layer_kernel_interactions_layer_baby_bear_extension()
+extern "C" void *logup_gkr_sum_as_poly_layer_kernel_interactions_layer_koala_bear_extension()
 {
-    return (void *)partialSumAsPolyInteractionsLayer<bb31_extension_t>;
+    return (void *)partialSumAsPolyInteractionsLayer<kb31_extension_t>;
 }
 
 template <typename EF>
@@ -314,7 +314,7 @@ __global__ void fixLastVariableInteractionsLayer(
     }
 }
 
-extern "C" void *logup_gkr_fix_last_variable_interactions_layer_kernel_baby_bear_extension()
+extern "C" void *logup_gkr_fix_last_variable_interactions_layer_kernel_koala_bear_extension()
 {
-    return (void *)fixLastVariableInteractionsLayer<bb31_extension_t>;
+    return (void *)fixLastVariableInteractionsLayer<kb31_extension_t>;
 }

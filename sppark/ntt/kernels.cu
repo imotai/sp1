@@ -313,7 +313,7 @@ void coalesced_store(fr_t* inout, index_t idx, const fr_t r[z_count],
         inout[idx] = r[z];
 }
 
-#if defined(FEATURE_BABY_BEAR) || defined(FEATURE_GOLDILOCKS)
+#if defined(FEATURE_KOALA_BEAR) || defined(FEATURE_GOLDILOCKS)
 # include "kernels/gs_mixed_radix_narrow.cu"
 # include "kernels/ct_mixed_radix_narrow.cu"
 #else // 256-bit fields

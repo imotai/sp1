@@ -64,9 +64,9 @@ fn cbindgen_builder() -> cbindgen::Builder {
         .with_parse_include(&[
             "sp1-hypercube",
             "sp1-primitives",
-            "slop-baby-bear",
-            "p3-baby-bear",
+            "p3-koala-bear",
             "sp1-core-machine",
+            "slop-koala-bear",
             "sp1-core-executor",
             "sp1-recursion-executor",
             "sp1-recursion-machine",
@@ -74,14 +74,14 @@ fn cbindgen_builder() -> cbindgen::Builder {
         .with_parse_extra_bindings(&[
             "sp1-hypercube",
             "sp1-primitives",
-            "slop-baby-bear",
-            "p3-baby-bear",
+            "p3-koala-bear",
+            "slop-koala-bear",
             // TODO(tqn) I think this pulls in all the extern fns from this crate, which is undesirable.
             "sp1-recursion-executor",
             "sp1-recursion-machine",
             "sp1-core-machine",
         ])
-        .rename_item("BabyBear", "BabyBearP3")
+        .rename_item("KoalaBear", "KoalaBearP3")
         // .include_item("MemoryRecord") // Just for convenience. Not exposed, so we need to manually do this.
         // .include_item("SyscallCode") // Required for populating the CPU columns for ECALL.
         // .include_item("SepticExtension")
@@ -182,7 +182,7 @@ fn main() {
         let include = crate_dir.join(include);
         build.include(include);
         build.define("SPPARK", None);
-        build.define("FEATURE_BABY_BEAR", None);
+        build.define("FEATURE_KOALA_BEAR", None);
         build.file("../../sppark/rust/src/lib.cpp").file("../../sppark/util/all_gpus.cpp");
     }
 
@@ -192,7 +192,7 @@ fn main() {
     // // Add all header files.
     // add_include_directories(&mut build, &sppark_dir).expect("Failed to find h, hpp, or cuh files");
     // build.define("SPPARK", None);
-    // build.define("FEATURE_BABY_BEAR", None);
+    // build.define("FEATURE_KOALA_BEAR", None);
 
     // Add all the source files.
     add_src_files(&mut build, &src_dir).expect("Failed to find c, cpp, or cu files");
@@ -249,7 +249,7 @@ fn main() {
     // // Add all header files.
     // add_include_directories(&mut build, &sppark_dir).expect("Failed to find h, hpp, or cuh files");
     // build.define("SPPARK", None);
-    // build.define("FEATURE_BABY_BEAR", None);
+    // build.define("FEATURE_KOALA_BEAR", None);
 
     // Compile the library.
     build.compile("sys-cuda");

@@ -4,8 +4,8 @@
 #include "./folder.cuh"
 #include "./utils.cuh"
 
-#include "../fields/bb31_extension_t.cuh"
-#include "../fields/bb31_t.cuh"
+#include "../fields/kb31_extension_t.cuh"
+#include "../fields/kb31_t.cuh"
 #include "../reduce/reduction.cuh"
 
 #define DEBUG_FLAG 0  // Set this to 0 or 1
@@ -23,26 +23,26 @@ __global__ void constraintPolyEval(
     const Instruction* evalProgram,
     const uint32_t *__restrict__ evalProgramIndices,
     size_t evalProgramLen,
-    const bb31_t *evalConstantsF,
+    const kb31_t *evalConstantsF,
     const uint32_t *__restrict__ evalConstantsFIndices,
-    const bb31_extension_t *evalConstantsEF,
+    const kb31_extension_t *evalConstantsEF,
     const uint32_t *__restrict__ evalConstantsEFIndices,
-    const bb31_extension_t *partialLagrange,
+    const kb31_extension_t *partialLagrange,
     const K *preprocessedTrace,
     size_t preprocessedWidth,
     const K *mainTrace,
     size_t mainWidth,
     size_t height,
-    const bb31_extension_t *powersOfAlpha,
-    const bb31_t *publicValues,
-    const bb31_extension_t *batchingPowers,
-    bb31_extension_t *__restrict__ constraintValues)
+    const kb31_extension_t *powersOfAlpha,
+    const kb31_t *publicValues,
+    const kb31_extension_t *batchingPowers,
+    kb31_extension_t *__restrict__ constraintValues)
 {
     K expr_f[MEMORY_SIZE];
-    bb31_extension_t expr_ef[10];
+    kb31_extension_t expr_ef[10];
     ConstraintFolder<K> folder = ConstraintFolder<K>();
 
-    bb31_extension_t thread_sum = bb31_extension_t::zero();
+    kb31_extension_t thread_sum = kb31_extension_t::zero();
     
     // This kernel assumes that a single block deals with a single `xValueIdx`.
     size_t xValueIdx = blockDim.z * blockIdx.z + threadIdx.z;
@@ -61,7 +61,7 @@ __global__ void constraintPolyEval(
                 expr_f[i] = K::zero();
             }
             for (size_t i = 0; i < 10; i++) {
-                expr_ef[i] = bb31_extension_t::zero();
+                expr_ef[i] = kb31_extension_t::zero();
             }
 
             folder.preprocessed = preprocessedTrace;
@@ -72,7 +72,7 @@ __global__ void constraintPolyEval(
             folder.publicValues = publicValues;
             folder.powersOfAlpha = powersOfAlpha;
             folder.constraintIndex = 0;
-            folder.accumulator = bb31_extension_t::zero();
+            folder.accumulator = kb31_extension_t::zero();
             folder.rowIdx = rowIdx;
             folder.xValueIdx = xValueIdx;
 
@@ -504,17 +504,17 @@ __global__ void constraintPolyEval(
 
                     // case 50:
                     //     DEBUG("ENegE: %d <- -%d\n", instr.a, instr.b);
-                    //     expr_ef[instr.a] = bb31_extension_t::zero() - expr_ef[instr.b];
+                    //     expr_ef[instr.a] = kb31_extension_t::zero() - expr_ef[instr.b];
                     //     break;
 
                     // case 51:
                     //     DEBUG("EFFromE: %d <- %d\n", instr.a, instr.b);
-                    //     if constexpr (std::is_same_v<K, bb31_t>) {
-                    //         bb31_extension_t result;
+                    //     if constexpr (std::is_same_v<K, kb31_t>) {
+                    //         kb31_extension_t result;
                     //         result.value[0] = expr_f[instr.b];
-                    //         result.value[1] = bb31_t {0};
-                    //         result.value[2] = bb31_t {0};
-                    //         result.value[3] = bb31_t {0};
+                    //         result.value[1] = kb31_t {0};
+                    //         result.value[2] = kb31_t {0};
+                    //         result.value[3] = kb31_t {0};
                     //         expr_ef[instr.a] = result;
                     //     } else {
                     //         expr_ef[instr.a] = expr_ef[instr.b];
@@ -567,7 +567,7 @@ __global__ void constraintPolyEval(
                 }
             }
 
-            bb31_extension_t gkr_correction = bb31_extension_t::zero();
+            kb31_extension_t gkr_correction = kb31_extension_t::zero();
             
             if (airBlockIdx == 0) {
                 for (size_t i = 0; i < mainWidth; i++) {
@@ -578,80 +578,80 @@ __global__ void constraintPolyEval(
                 }
             }
 
-            bb31_extension_t eq = bb31_extension_t::load(partialLagrange, rowIdx);
+            kb31_extension_t eq = kb31_extension_t::load(partialLagrange, rowIdx);
             thread_sum += (folder.accumulator + gkr_correction) * eq;
         }
     }
 
     extern __shared__ unsigned char memory[];
-    bb31_extension_t *shared = reinterpret_cast<bb31_extension_t *>(memory);
-    AddOp<bb31_extension_t> op;
+    kb31_extension_t *shared = reinterpret_cast<kb31_extension_t *>(memory);
+    AddOp<kb31_extension_t> op;
 
     auto block = cg::this_thread_block();
     auto tile = cg::tiled_partition<32>(block);
-    bb31_extension_t thread_block_sum = partialBlockReduce(block, tile, thread_sum, shared, op);
+    kb31_extension_t thread_block_sum = partialBlockReduce(block, tile, thread_sum, shared, op);
 
     if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
-        bb31_extension_t::store(constraintValues, (xValueIdx * gridDim.y + blockIdx.y) * gridDim.x + blockIdx.x, thread_block_sum);
+        kb31_extension_t::store(constraintValues, (xValueIdx * gridDim.y + blockIdx.y) * gridDim.x + blockIdx.x, thread_block_sum);
     }
 }
 
-extern "C" void *constraint_poly_eval_32_baby_bear_kernel()
+extern "C" void *constraint_poly_eval_32_koala_bear_kernel()
 {
-    return (void *)constraintPolyEval<bb31_t, 32>;
+    return (void *)constraintPolyEval<kb31_t, 32>;
 }
 
-extern "C" void *constraint_poly_eval_64_baby_bear_kernel()
+extern "C" void *constraint_poly_eval_64_koala_bear_kernel()
 {
-    return (void *)constraintPolyEval<bb31_t, 64>;
+    return (void *)constraintPolyEval<kb31_t, 64>;
 }
 
-extern "C" void *constraint_poly_eval_128_baby_bear_kernel()
+extern "C" void *constraint_poly_eval_128_koala_bear_kernel()
 {
-    return (void *)constraintPolyEval<bb31_t, 128>;
+    return (void *)constraintPolyEval<kb31_t, 128>;
 }
 
-extern "C" void *constraint_poly_eval_256_baby_bear_kernel()
+extern "C" void *constraint_poly_eval_256_koala_bear_kernel()
 {
-    return (void *)constraintPolyEval<bb31_t, 256>;
+    return (void *)constraintPolyEval<kb31_t, 256>;
 }
 
-extern "C" void *constraint_poly_eval_512_baby_bear_kernel()
+extern "C" void *constraint_poly_eval_512_koala_bear_kernel()
 {
-    return (void *)constraintPolyEval<bb31_t, 512>;
+    return (void *)constraintPolyEval<kb31_t, 512>;
 }
 
-extern "C" void *constraint_poly_eval_1024_baby_bear_kernel()
+extern "C" void *constraint_poly_eval_1024_koala_bear_kernel()
 {
-    return (void *)constraintPolyEval<bb31_t, 1024>;
+    return (void *)constraintPolyEval<kb31_t, 1024>;
 }
 
-extern "C" void *constraint_poly_eval_32_baby_bear_extension_kernel()
+extern "C" void *constraint_poly_eval_32_koala_bear_extension_kernel()
 {
-    return (void *)constraintPolyEval<bb31_extension_t, 32>;
+    return (void *)constraintPolyEval<kb31_extension_t, 32>;
 }
 
-extern "C" void *constraint_poly_eval_64_baby_bear_extension_kernel()
+extern "C" void *constraint_poly_eval_64_koala_bear_extension_kernel()
 {
-    return (void *)constraintPolyEval<bb31_extension_t, 64>;
+    return (void *)constraintPolyEval<kb31_extension_t, 64>;
 }
 
-extern "C" void *constraint_poly_eval_128_baby_bear_extension_kernel()
+extern "C" void *constraint_poly_eval_128_koala_bear_extension_kernel()
 {
-    return (void *)constraintPolyEval<bb31_extension_t, 128>;
+    return (void *)constraintPolyEval<kb31_extension_t, 128>;
 }
 
-extern "C" void *constraint_poly_eval_256_baby_bear_extension_kernel()
+extern "C" void *constraint_poly_eval_256_koala_bear_extension_kernel()
 {
-    return (void *)constraintPolyEval<bb31_extension_t, 256>;
+    return (void *)constraintPolyEval<kb31_extension_t, 256>;
 }
 
-extern "C" void *constraint_poly_eval_512_baby_bear_extension_kernel()
+extern "C" void *constraint_poly_eval_512_koala_bear_extension_kernel()
 {
-    return (void *)constraintPolyEval<bb31_extension_t, 512>;
+    return (void *)constraintPolyEval<kb31_extension_t, 512>;
 }
 
-extern "C" void *constraint_poly_eval_1024_baby_bear_extension_kernel()
+extern "C" void *constraint_poly_eval_1024_koala_bear_extension_kernel()
 {
-    return (void *)constraintPolyEval<bb31_extension_t, 1024>;
+    return (void *)constraintPolyEval<kb31_extension_t, 1024>;
 }

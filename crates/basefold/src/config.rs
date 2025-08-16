@@ -3,17 +3,16 @@ use std::marker::PhantomData;
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::{ExtensionField, TwoAdicField};
-use slop_baby_bear::BabyBear;
 use slop_bn254::Bn254Fr;
 use slop_challenger::{CanObserve, DuplexChallenger, FieldChallenger, MultiField32Challenger};
 use slop_commit::TensorCs;
+use slop_koala_bear::{KoalaBear, KoalaPerm};
 use slop_merkle_tree::{outer_perm, OuterPerm};
 use sp1_hypercube::inner_perm;
-use sp1_primitives::SP1Perm;
 
 use slop_basefold::{
-    BasefoldConfig, BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig,
-    Poseidon2Bn254FrBasefoldConfig,
+    BasefoldConfig, BasefoldVerifier, Poseidon2Bn254FrBasefoldConfig,
+    Poseidon2KoalaBear16BasefoldConfig,
 };
 
 use crate::DeviceGrindingChallenger;
@@ -56,18 +55,18 @@ impl<F, EF, Tcs, Challenger> Default for BasefoldConfigCudaImpl<F, EF, Tcs, Chal
     }
 }
 
-impl BasefoldCudaConfig for Poseidon2BabyBear16BasefoldConfig {
-    type DeviceChallenger = DuplexChallenger<BabyBear, SP1Perm, 16, 8>;
+impl BasefoldCudaConfig for Poseidon2KoalaBear16BasefoldConfig {
+    type DeviceChallenger = DuplexChallenger<KoalaBear, KoalaPerm, 16, 8>;
     fn default_challenger(
         _verifier: &BasefoldVerifier<Self>,
-    ) -> DuplexChallenger<BabyBear, SP1Perm, 16, 8> {
+    ) -> DuplexChallenger<KoalaBear, KoalaPerm, 16, 8> {
         let default_perm = inner_perm();
-        DuplexChallenger::<BabyBear, SP1Perm, 16, 8>::new(default_perm)
+        DuplexChallenger::<KoalaBear, KoalaPerm, 16, 8>::new(default_perm)
     }
 }
 
-impl BasefoldCudaConfig for Poseidon2Bn254FrBasefoldConfig {
-    type DeviceChallenger = MultiField32Challenger<BabyBear, Bn254Fr, OuterPerm, 3, 2>;
+impl BasefoldCudaConfig for Poseidon2Bn254FrBasefoldConfig<KoalaBear> {
+    type DeviceChallenger = MultiField32Challenger<KoalaBear, Bn254Fr, OuterPerm, 3, 2>;
 
     fn default_challenger(_verifier: &BasefoldVerifier<Self>) -> Self::DeviceChallenger {
         let default_perm = outer_perm();

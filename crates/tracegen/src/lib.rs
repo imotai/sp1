@@ -14,7 +14,7 @@ use slop_air::BaseAir;
 use slop_algebra::Field;
 use slop_alloc::mem::CopyError;
 use slop_alloc::CopyIntoBackend;
-use slop_baby_bear::BabyBear;
+use slop_koala_bear::KoalaBear;
 use slop_multilinear::{Mle, PaddedMle};
 use slop_tensor::TransposeBackend;
 use sp1_hypercube::prover::{MainTraceData, PreprocessedTraceData, ProverSemaphore, TraceData};
@@ -26,8 +26,8 @@ use sp1_hypercube::{
 use sp1_hypercube::{Chip, MachineRecord};
 use tracing::{debug_span, instrument, Instrument};
 
-/// We currently only link to BabyBear-specialized trace generation FFI.
-pub(crate) type F = BabyBear;
+/// We currently only link to KoalaBear-specialized trace generation FFI.
+pub(crate) type F = KoalaBear;
 
 /// A trace generator that is GPU accelerated.
 pub struct CudaTraceGenerator<F: Field, A> {
@@ -442,7 +442,8 @@ pub(crate) mod tests {
             if col_mismatches.is_empty() {
                 println!("row {row_idx} matches   . event (assuming events/row = 1): {event:?}");
             } else {
-                println!("row {row_idx} MISMATCHES. event (assuming events/row = 1): {event:?}");
+                println!("row {row_idx} MISMATCHES. event (assuming events/row = 1): {:?}", event);
+                println!("mismatched columns: {:?}", col_mismatches);
             }
             if event.is_some() {
                 eventful_mismatched_columns.extend(col_mismatches);

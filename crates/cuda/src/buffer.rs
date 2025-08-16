@@ -117,16 +117,16 @@ impl<T: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for SmallBuffer<'_, T
 mod tests {
     use rand::{thread_rng, Rng};
     use slop_alloc::Backend;
-    use slop_baby_bear::BabyBear;
 
     use slop_alloc::IntoHost;
+    use slop_koala_bear::KoalaBear;
 
     use super::*;
 
     #[tokio::test]
     async fn test_copy_buffer_into_backend() {
         let mut rng = thread_rng();
-        let buffer: Buffer<BabyBear> = (0..10000).map(|_| rng.gen::<BabyBear>()).collect();
+        let buffer: Buffer<KoalaBear> = (0..10000).map(|_| rng.gen::<KoalaBear>()).collect();
 
         let cloned_buffer = buffer.clone();
         let buffer_back = crate::spawn(|t| async move {
@@ -142,7 +142,7 @@ mod tests {
     #[tokio::test]
     async fn test_copy_small_buffer_into_backend() {
         let mut rng = thread_rng();
-        let buffer: Buffer<BabyBear> = (0..10).map(|_| rng.gen::<BabyBear>()).collect();
+        let buffer: Buffer<KoalaBear> = (0..10).map(|_| rng.gen::<KoalaBear>()).collect();
 
         let cloned_buffer = buffer.clone();
         let buffer_back = crate::spawn(|t| async move {

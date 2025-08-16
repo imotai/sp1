@@ -1,15 +1,15 @@
 use csl_sys::{
     reduce::{
-        dot_along_short_dimension_kernel_baby_bear_base_base,
-        dot_along_short_dimension_kernel_baby_bear_base_extension,
-        dot_along_short_dimension_kernel_baby_bear_extension_extension,
-        partial_dot_baby_bear_base_extension_kernel, partial_dot_baby_bear_extension_kernel,
-        partial_dot_baby_bear_kernel,
+        dot_along_short_dimension_kernel_koala_bear_base_base,
+        dot_along_short_dimension_kernel_koala_bear_base_extension,
+        dot_along_short_dimension_kernel_koala_bear_extension_extension,
+        partial_dot_koala_bear_base_extension_kernel, partial_dot_koala_bear_extension_kernel,
+        partial_dot_koala_bear_kernel,
     },
     runtime::KernelPtr,
 };
 use slop_algebra::extension::BinomialExtensionField;
-use slop_baby_bear::BabyBear;
+use slop_koala_bear::KoalaBear;
 use slop_tensor::{DotBackend, Tensor};
 
 use crate::{args, reduce::partial_sum_reduction_into, DeviceCopy, TaskScope};
@@ -91,35 +91,35 @@ where
     }
 }
 
-unsafe impl DotKernel<BabyBear, BabyBear> for TaskScope {
+unsafe impl DotKernel<KoalaBear, KoalaBear> for TaskScope {
     fn partial_dot_kernel_last_dim() -> KernelPtr {
-        unsafe { partial_dot_baby_bear_kernel() }
+        unsafe { partial_dot_koala_bear_kernel() }
     }
 
     fn dot_along_short_dimension_kernel() -> KernelPtr {
-        unsafe { dot_along_short_dimension_kernel_baby_bear_base_base() }
+        unsafe { dot_along_short_dimension_kernel_koala_bear_base_base() }
     }
 }
 
-unsafe impl DotKernel<BinomialExtensionField<BabyBear, 4>, BinomialExtensionField<BabyBear, 4>>
+unsafe impl DotKernel<BinomialExtensionField<KoalaBear, 4>, BinomialExtensionField<KoalaBear, 4>>
     for TaskScope
 {
     fn partial_dot_kernel_last_dim() -> KernelPtr {
-        unsafe { partial_dot_baby_bear_extension_kernel() }
+        unsafe { partial_dot_koala_bear_extension_kernel() }
     }
 
     fn dot_along_short_dimension_kernel() -> KernelPtr {
-        unsafe { dot_along_short_dimension_kernel_baby_bear_extension_extension() }
+        unsafe { dot_along_short_dimension_kernel_koala_bear_extension_extension() }
     }
 }
 
-unsafe impl DotKernel<BabyBear, BinomialExtensionField<BabyBear, 4>> for TaskScope {
+unsafe impl DotKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> for TaskScope {
     fn partial_dot_kernel_last_dim() -> KernelPtr {
-        unsafe { partial_dot_baby_bear_base_extension_kernel() }
+        unsafe { partial_dot_koala_bear_base_extension_kernel() }
     }
 
     fn dot_along_short_dimension_kernel() -> KernelPtr {
-        unsafe { dot_along_short_dimension_kernel_baby_bear_base_extension() }
+        unsafe { dot_along_short_dimension_kernel_koala_bear_base_extension() }
     }
 }
 
@@ -128,19 +128,19 @@ mod tests {
     use itertools::Itertools;
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_alloc::IntoHost;
-    use slop_baby_bear::BabyBear;
+    use slop_koala_bear::KoalaBear;
     use slop_tensor::Tensor;
 
-    type BabyBearExt = BinomialExtensionField<BabyBear, 4>;
+    type KoalaBearExt = BinomialExtensionField<KoalaBear, 4>;
 
     #[tokio::test]
-    async fn test_baby_bear_dot() {
+    async fn test_koala_bear_dot() {
         let num_summands = 100;
         let mut rng = rand::thread_rng();
 
         for size in [10, 100, 1 << 16] {
-            let tensor = Tensor::<BabyBear>::rand(&mut rng, [num_summands, size]);
-            let scalars = Tensor::<BabyBear>::rand(&mut rng, [size]);
+            let tensor = Tensor::<KoalaBear>::rand(&mut rng, [num_summands, size]);
+            let scalars = Tensor::<KoalaBear>::rand(&mut rng, [size]);
 
             let tensor_sent = tensor.clone();
             let scalars_sent = scalars.clone();
@@ -155,7 +155,7 @@ mod tests {
 
             assert_eq!(inner_product.sizes(), [num_summands]);
             for i in 0..num_summands {
-                let expected_inner_product: BabyBear = tensor
+                let expected_inner_product: KoalaBear = tensor
                     .get(i)
                     .unwrap()
                     .as_slice()
@@ -170,11 +170,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_baby_bear_extension_dot() {
+    async fn test_koala_bear_extension_dot() {
         let num_summands = 100;
         let mut rng = rand::thread_rng();
 
-        type EF = BinomialExtensionField<BabyBear, 4>;
+        type EF = BinomialExtensionField<KoalaBear, 4>;
 
         for size in [10, 100, 1 << 16] {
             let tensor = Tensor::<EF>::rand(&mut rng, [num_summands, size]);
@@ -208,11 +208,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_baby_bear_base_extension_dot() {
+    async fn test_koala_bear_base_extension_dot() {
         let mut rng = rand::thread_rng();
 
-        type F = BabyBear;
-        type EF = BinomialExtensionField<BabyBear, 4>;
+        type F = KoalaBear;
+        type EF = BinomialExtensionField<KoalaBear, 4>;
 
         for size in [10, 100, 1 << 10, 1 << 12, 1 << 16] {
             for num_summands in [64, 128] {
@@ -263,8 +263,8 @@ mod tests {
         let width = 10;
         let height = 1500;
 
-        let host_tensor = Tensor::<BabyBear>::rand(&mut rng, [width, height]);
-        let host_scalars = Tensor::<BabyBear>::rand(&mut rng, [width]);
+        let host_tensor = Tensor::<KoalaBear>::rand(&mut rng, [width, height]);
+        let host_scalars = Tensor::<KoalaBear>::rand(&mut rng, [width]);
 
         let tensor = host_tensor.clone();
         let scalars = host_scalars.clone();
@@ -279,7 +279,7 @@ mod tests {
 
         assert_eq!(dot.sizes(), [height]);
         for i in 0..height {
-            let mut dot_product = BabyBear::zero();
+            let mut dot_product = KoalaBear::zero();
             for j in 0..width {
                 dot_product += *host_scalars[[j]] * *host_tensor[[j, i]];
             }
@@ -294,8 +294,8 @@ mod tests {
         let width = 10;
         let height = 1500;
 
-        let host_tensor = Tensor::<BabyBear>::rand(&mut rng, [width, height]);
-        let host_scalars = Tensor::<BabyBearExt>::rand(&mut rng, [width]);
+        let host_tensor = Tensor::<KoalaBear>::rand(&mut rng, [width, height]);
+        let host_scalars = Tensor::<KoalaBearExt>::rand(&mut rng, [width]);
 
         let tensor = host_tensor.clone();
         let scalars = host_scalars.clone();
@@ -310,7 +310,7 @@ mod tests {
 
         assert_eq!(dot.sizes(), [height]);
         for i in 0..height {
-            let mut dot_product = BabyBearExt::zero();
+            let mut dot_product = KoalaBearExt::zero();
             for j in 0..width {
                 dot_product += *host_scalars[[j]] * *host_tensor[[j, i]];
             }
@@ -325,8 +325,8 @@ mod tests {
         let width = 10;
         let height = 1500;
 
-        let host_tensor = Tensor::<BabyBearExt>::rand(&mut rng, [width, height]);
-        let host_scalars = Tensor::<BabyBearExt>::rand(&mut rng, [width]);
+        let host_tensor = Tensor::<KoalaBearExt>::rand(&mut rng, [width, height]);
+        let host_scalars = Tensor::<KoalaBearExt>::rand(&mut rng, [width]);
 
         let tensor = host_tensor.clone();
         let scalars = host_scalars.clone();
@@ -341,7 +341,7 @@ mod tests {
 
         assert_eq!(dot.sizes(), [height]);
         for i in 0..height {
-            let mut dot_product = BabyBearExt::zero();
+            let mut dot_product = KoalaBearExt::zero();
             for j in 0..width {
                 dot_product += *host_scalars[[j]] * *host_tensor[[j, i]];
             }

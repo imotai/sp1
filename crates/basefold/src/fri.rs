@@ -4,9 +4,9 @@ use csl_cuda::{
     args,
     sys::{
         basefold::{
-            batch_baby_bear_base_ext_kernel, batch_baby_bear_base_ext_kernel_flattened,
-            flatten_to_base_baby_bear_base_ext_kernel,
-            transpose_even_odd_baby_bear_base_ext_kernel,
+            batch_koala_bear_base_ext_kernel, batch_koala_bear_base_ext_kernel_flattened,
+            flatten_to_base_koala_bear_base_ext_kernel,
+            transpose_even_odd_koala_bear_base_ext_kernel,
         },
         runtime::KernelPtr,
     },
@@ -16,7 +16,6 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{extension::BinomialExtensionField, ExtensionField, TwoAdicField};
 use slop_alloc::{Buffer, HasBackend, IntoHost};
-use slop_baby_bear::BabyBear;
 use slop_basefold::RsCodeWord;
 use slop_basefold_prover::{
     host_fold_even_odd, BasefoldBatcher, FriIoppProver, ReedSolomonEncoder,
@@ -24,6 +23,7 @@ use slop_basefold_prover::{
 use slop_challenger::{CanObserve, FieldChallenger};
 use slop_commit::{Message, TensorCs, TensorCsProver};
 use slop_futures::OwnedBorrow;
+use slop_koala_bear::KoalaBear;
 use slop_multilinear::{Mle, MleEval, MleFoldBackend};
 use slop_tensor::{Tensor, TransposeBackend};
 
@@ -275,27 +275,29 @@ where
     }
 }
 
-unsafe impl MleBatchKernel<BabyBear, BinomialExtensionField<BabyBear, 4>> for TaskScope {
+unsafe impl MleBatchKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> for TaskScope {
     fn batch_mle_kernel() -> KernelPtr {
-        unsafe { batch_baby_bear_base_ext_kernel() }
+        unsafe { batch_koala_bear_base_ext_kernel() }
     }
 }
 
-unsafe impl RsCodeWordBatchKernel<BabyBear, BinomialExtensionField<BabyBear, 4>> for TaskScope {
+unsafe impl RsCodeWordBatchKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> for TaskScope {
     fn batch_rs_codeword_kernel() -> KernelPtr {
-        unsafe { batch_baby_bear_base_ext_kernel_flattened() }
+        unsafe { batch_koala_bear_base_ext_kernel_flattened() }
     }
 }
 
-unsafe impl RsCodeWordTransposeKernel<BabyBear, BinomialExtensionField<BabyBear, 4>> for TaskScope {
+unsafe impl RsCodeWordTransposeKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>>
+    for TaskScope
+{
     fn transpose_even_odd_kernel() -> KernelPtr {
-        unsafe { transpose_even_odd_baby_bear_base_ext_kernel() }
+        unsafe { transpose_even_odd_koala_bear_base_ext_kernel() }
     }
 }
 
-unsafe impl MleFlattenKernel<BabyBear, BinomialExtensionField<BabyBear, 4>> for TaskScope {
+unsafe impl MleFlattenKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> for TaskScope {
     fn flatten_to_base_kernel() -> KernelPtr {
-        unsafe { flatten_to_base_baby_bear_base_ext_kernel() }
+        unsafe { flatten_to_base_koala_bear_base_ext_kernel() }
     }
 }
 
@@ -303,11 +305,11 @@ unsafe impl MleFlattenKernel<BabyBear, BinomialExtensionField<BabyBear, 4>> for 
 mod tests {
     use futures::{future::join_all, prelude::*};
     use rand::Rng;
-    use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
-    use slop_basefold_prover::{BasefoldProver, Poseidon2BabyBear16BasefoldCpuProverComponents};
+    use slop_basefold::{BasefoldVerifier, Poseidon2KoalaBear16BasefoldConfig};
+    use slop_basefold_prover::{BasefoldProver, Poseidon2KoalaBear16BasefoldCpuProverComponents};
     use slop_multilinear::Point;
 
-    use crate::Poseidon2BabyBear16BasefoldCudaProverComponents;
+    use crate::Poseidon2KoalaBear16BasefoldCudaProverComponents;
 
     use super::*;
 
@@ -319,12 +321,12 @@ mod tests {
         let widths = [14];
         let log_blowup = 1;
         let codeword_size = 1 << (num_variables + log_blowup as u32);
-        let point = Point::<BinomialExtensionField<BabyBear, 4>>::rand(&mut rng, num_variables);
+        let point = Point::<BinomialExtensionField<KoalaBear, 4>>::rand(&mut rng, num_variables);
 
-        type C = Poseidon2BabyBear16BasefoldConfig;
-        type CudaProver = BasefoldProver<Poseidon2BabyBear16BasefoldCudaProverComponents>;
-        type HostProver = BasefoldProver<Poseidon2BabyBear16BasefoldCpuProverComponents>;
-        type EF = BinomialExtensionField<BabyBear, 4>;
+        type C = Poseidon2KoalaBear16BasefoldConfig;
+        type CudaProver = BasefoldProver<Poseidon2KoalaBear16BasefoldCudaProverComponents>;
+        type HostProver = BasefoldProver<Poseidon2KoalaBear16BasefoldCpuProverComponents>;
+        type EF = BinomialExtensionField<KoalaBear, 4>;
 
         let verifier = BasefoldVerifier::<C>::new(log_blowup);
         let cuda_prover = CudaProver::new(&verifier);
@@ -332,13 +334,15 @@ mod tests {
 
         let host_mles = widths
             .iter()
-            .map(|&num_polynomials| Mle::<BabyBear>::rand(&mut rng, num_polynomials, num_variables))
+            .map(|&num_polynomials| {
+                Mle::<KoalaBear>::rand(&mut rng, num_polynomials, num_variables)
+            })
             .collect::<Vec<_>>();
 
         let codeward_futures = host_mles.iter().map(|mle| async {
             host_prover
                 .encoder
-                .encode_batch(Message::<Mle<BabyBear>>::from(vec![mle.clone()]))
+                .encode_batch(Message::<Mle<KoalaBear>>::from(vec![mle.clone()]))
                 .await
                 .unwrap()[0]
                 .clone()
@@ -385,8 +389,8 @@ mod tests {
             for eval_claim in host_eval_claims {
                 eval_claims.push(t.into_device(eval_claim).await.unwrap());
             }
-            let mles = Message::<Mle<BabyBear, TaskScope>>::from(mles);
-            let codewords = Message::<RsCodeWord<BabyBear, TaskScope>>::from(codewords);
+            let mles = Message::<Mle<KoalaBear, TaskScope>>::from(mles);
+            let codewords = Message::<RsCodeWord<KoalaBear, TaskScope>>::from(codewords);
             let (batch_mle, batch_codeword, eval_claim) = cuda_prover
                 .fri_prover
                 .batch(batching_challenge, mles, codewords, eval_claims, &cuda_prover.encoder)
@@ -420,23 +424,23 @@ mod tests {
         let log_blowup = 1;
 
         for num_variables in 1..16 {
-            type EF = BinomialExtensionField<BabyBear, 4>;
+            type EF = BinomialExtensionField<KoalaBear, 4>;
 
             let initial_mle = Mle::<EF>::rand(&mut rng, 1, num_variables);
-            type C = Poseidon2BabyBear16BasefoldConfig;
-            type CudaProver = BasefoldProver<Poseidon2BabyBear16BasefoldCudaProverComponents>;
-            type HostProver = BasefoldProver<Poseidon2BabyBear16BasefoldCpuProverComponents>;
+            type C = Poseidon2KoalaBear16BasefoldConfig;
+            type CudaProver = BasefoldProver<Poseidon2KoalaBear16BasefoldCudaProverComponents>;
+            type HostProver = BasefoldProver<Poseidon2KoalaBear16BasefoldCpuProverComponents>;
 
             let verifier = BasefoldVerifier::<C>::new(log_blowup);
             let cuda_prover = CudaProver::new(&verifier);
             let host_prover = HostProver::new(&verifier);
 
             let initial_mle_flattened =
-                initial_mle.guts().clone().into_buffer().flatten_to_base::<BabyBear>();
+                initial_mle.guts().clone().into_buffer().flatten_to_base::<KoalaBear>();
             let initial_mle_flat_tensor =
                 Tensor::from(initial_mle_flattened).reshape([1 << num_variables, 4]);
             let initial_mle_flat_tensor =
-                Message::<Mle<BabyBear>>::from(vec![Mle::new(initial_mle_flat_tensor)]);
+                Message::<Mle<KoalaBear>>::from(vec![Mle::new(initial_mle_flat_tensor)]);
             let initial_codeword =
                 host_prover.encoder.encode_batch(initial_mle_flat_tensor).await.unwrap();
 

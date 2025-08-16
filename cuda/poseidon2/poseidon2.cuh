@@ -1,6 +1,6 @@
 #pragma once
 
-#include "poseidon2_bb31_16.cuh"
+#include "poseidon2_kb31_16.cuh"
 #include "poseidon2_bn254_3.cuh"
 
 namespace poseidon2
@@ -280,7 +280,7 @@ namespace poseidon2
             "MultiFieldHasherState only supports bb31 reduction to bn254"
         );
         static_assert(
-            std::is_same<P_t, bb31_t>::value,
+            std::is_same<P_t, kb31_t>::value,
             "MultiFieldHasherState only supports bb31 reduction to bn254"
         );
 
@@ -293,7 +293,7 @@ namespace poseidon2
 
         __device__ void finalize(Hasher_t hasher, F_t out[Params::DIGEST_WIDTH]) {
             if (overhangSize > 0) {
-                F_t value = poseidon2_bn254_3::reduceBabyBear(
+                F_t value = poseidon2_bn254_3::reduceKoalaBear(
                     overhang,
                     nullptr,
                     overhangSize,
@@ -307,18 +307,18 @@ namespace poseidon2
         }
     };
 
-    using BabyBearHasher = StaticHasher<poseidon2_bb31_16::BabyBear>;
+    using KoalaBearHasher = StaticHasher<poseidon2_kb31_16::KoalaBear>;
     using Bn254Hasher = StaticHasher<poseidon2_bn254_3::Bn254>;
 
-    class BabyBearHasherState : public HasherState<poseidon2_bb31_16::BabyBear, BabyBearHasher>
+    class KoalaBearHasherState : public HasherState<poseidon2_kb31_16::KoalaBear, KoalaBearHasher>
     {
     public:
         __device__ void
-        absorbRow(BabyBearHasher hasher, bb31_t *in, int rowIdx, size_t width, size_t height)
+        absorbRow(KoalaBearHasher hasher, kb31_t *in, int rowIdx, size_t width, size_t height)
         {
-            poseidon2_bb31_16::absorbRow<
-                BabyBearHasher,
-                HasherState<poseidon2_bb31_16::BabyBear, BabyBearHasher>>(
+            poseidon2_kb31_16::absorbRow<
+                KoalaBearHasher,
+                HasherState<poseidon2_kb31_16::KoalaBear, KoalaBearHasher>>(
                 hasher,
                 in,
                 rowIdx,
@@ -332,17 +332,17 @@ namespace poseidon2
         public MultiFieldHasherState<
             poseidon2_bn254_3::Bn254,
             Bn254Hasher,
-            bb31_t,
+            kb31_t,
             8> {
     public:
         __device__ void
-        absorbRow(Bn254Hasher hasher, bb31_t* in, int rowIdx, size_t width, size_t height) {
+        absorbRow(Bn254Hasher hasher, kb31_t* in, int rowIdx, size_t width, size_t height) {
             poseidon2_bn254_3::absorbRow<
                 Bn254Hasher,
                 MultiFieldHasherState<
                     poseidon2_bn254_3::Bn254,
                     Bn254Hasher,
-                    bb31_t,
+                    kb31_t,
                     8>>(hasher, in, rowIdx, width, height, this);
         }
     };

@@ -1,6 +1,6 @@
 #include "csl-cbindgen.hpp"
 
-#include "fields/bb31_t.cuh"
+#include "fields/kb31_t.cuh"
 
 // // Manual struct definition for ExtFeltInstr (cbindgen has issues with this)
 // namespace csl_sys {
@@ -88,12 +88,12 @@ __global__ void recursion_convert_generate_trace_kernel(
 
 namespace csl_sys
 {
-    extern KernelPtr recursion_convert_generate_preprocessed_trace_baby_bear_kernel()
+    extern KernelPtr recursion_convert_generate_preprocessed_trace_koala_bear_kernel()
     {
-        return (KernelPtr)::recursion_convert_generate_preprocessed_trace_kernel<bb31_t>;
+        return (KernelPtr)::recursion_convert_generate_preprocessed_trace_kernel<kb31_t>;
     }
-    extern KernelPtr recursion_convert_generate_trace_baby_bear_kernel()
+    extern KernelPtr recursion_convert_generate_trace_koala_bear_kernel()
     {
-        return (KernelPtr)::recursion_convert_generate_trace_kernel<bb31_t>;
+        return (KernelPtr)::recursion_convert_generate_trace_kernel<kb31_t>;
     }
 }

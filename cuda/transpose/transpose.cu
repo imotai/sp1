@@ -1,6 +1,6 @@
 #include "transpose.cuh"
-#include "../fields/bb31_t.cuh"
-#include "../fields/bb31_extension_t.cuh"
+#include "../fields/kb31_t.cuh"
+#include "../fields/kb31_extension_t.cuh"
 
 namespace transpose
 {
@@ -64,14 +64,14 @@ namespace transpose
         }
     }
 
-    extern "C" void *transpose_kernel_baby_bear()
+    extern "C" void *transpose_kernel_koala_bear()
     {
-        return (void *)transpose_kernel<bb31_t>;
+        return (void *)transpose_kernel<kb31_t>;
     }
 
-    extern "C" void *transpose_kernel_baby_bear_digest()
+    extern "C" void *transpose_kernel_koala_bear_digest()
     {
-        return (void *)transpose_array_kernel<bb31_t, 8>;
+        return (void *)transpose_array_kernel<kb31_t, 8>;
     }
 
     extern "C" void *transpose_kernel_u32()
@@ -84,9 +84,9 @@ namespace transpose
         return (void *)transpose_array_kernel<uint32_t, 8>;
     }
 
-    extern "C" void *transpose_kernel_baby_bear_extension()
+    extern "C" void *transpose_kernel_koala_bear_extension()
     {
-        return (void *)transpose_kernel<bb31_extension_t>;
+        return (void *)transpose_kernel<kb31_extension_t>;
     }
 
     // #define TILE_DIM 32
@@ -137,9 +137,9 @@ namespace transpose
     //         }
     //     }
 
-    //     extern "C" void *transpose_kernel_tiled_baby_bear()
+    //     extern "C" void *transpose_kernel_tiled_koala_bear()
     //     {
-    //         return (void *)transpose_kernel_tiled<bb31_t>;
+    //         return (void *)transpose_kernel_tiled<kb31_t>;
     //     }
 
 } // namespace transpose

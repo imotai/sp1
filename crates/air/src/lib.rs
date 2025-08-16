@@ -16,7 +16,7 @@ use slop_air::{
     AirBuilder, AirBuilderWithPublicValues, ExtensionBuilder, PairBuilder, PermutationAirBuilder,
 };
 use slop_algebra::extension::BinomialExtensionField;
-use slop_baby_bear::BabyBear;
+use slop_koala_bear::KoalaBear;
 use slop_matrix::dense::RowMajorMatrixView;
 use sp1_core_machine::air::TrivialOperationBuilder;
 use sp1_hypercube::air::EmptyMessageBuilder;
@@ -25,7 +25,8 @@ use symbolic_expr_ef::SymbolicExprEF;
 use symbolic_expr_f::SymbolicExprF;
 use symbolic_var_ef::SymbolicVarEF;
 use symbolic_var_f::SymbolicVarF;
-pub type F = BabyBear;
+
+pub type F = KoalaBear;
 
 pub type EF = BinomialExtensionField<F, 4>;
 

@@ -2,15 +2,15 @@ use std::sync::Arc;
 
 use csl_cuda::{
     args,
-    sys::{jagged::jagged_baby_bear_extension_populate, runtime::KernelPtr},
+    sys::{jagged::jagged_koala_bear_extension_populate, runtime::KernelPtr},
     TaskScope,
 };
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{extension::BinomialExtensionField, Field};
-use slop_baby_bear::BabyBear;
 use slop_commit::Rounds;
 use slop_jagged::{JaggedLittlePolynomialProverParams, JaggedMleGenerator, LongMle};
+use slop_koala_bear::KoalaBear;
 use slop_multilinear::{Mle, PartialLagrangeBackend, Point};
 
 #[derive(Debug, Clone, Default, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -21,9 +21,9 @@ pub unsafe trait JaggedPopulateKernel<F: Field> {
     fn jagged_populate_kernel() -> KernelPtr;
 }
 
-unsafe impl JaggedPopulateKernel<BinomialExtensionField<BabyBear, 4>> for CudaJaggedMleGenerator {
+unsafe impl JaggedPopulateKernel<BinomialExtensionField<KoalaBear, 4>> for CudaJaggedMleGenerator {
     fn jagged_populate_kernel() -> KernelPtr {
-        unsafe { jagged_baby_bear_extension_populate() }
+        unsafe { jagged_koala_bear_extension_populate() }
     }
 }
 
@@ -114,7 +114,7 @@ mod tests {
         let column_counts_rounds = vec![vec![3, 2], vec![1]];
         let max_log_row_count = 11;
 
-        type F = BabyBear;
+        type F = KoalaBear;
         type EF = BinomialExtensionField<F, 4>;
 
         let row_counts =

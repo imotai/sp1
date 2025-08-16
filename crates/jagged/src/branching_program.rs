@@ -185,13 +185,15 @@ mod tests {
         AbstractExtensionField, AbstractField,
     };
     use slop_alloc::{Buffer, CpuBackend, IntoHost, ToHost};
-    use slop_baby_bear::BabyBear;
-    use slop_basefold::{BasefoldConfig, DefaultBasefoldConfig, Poseidon2BabyBear16BasefoldConfig};
+    use slop_basefold::{
+        BasefoldConfig, DefaultBasefoldConfig, Poseidon2KoalaBear16BasefoldConfig,
+    };
     use slop_challenger::{CanObserve, FieldChallenger};
     use slop_jagged::{
         all_bit_states, all_memory_states, transition_function, BranchingProgram,
         StateOrFail::{Fail, State},
     };
+    use slop_koala_bear::KoalaBear;
     use slop_multilinear::Point;
     use slop_tensor::Tensor;
 
@@ -202,7 +204,7 @@ mod tests {
     };
     use tracing::Instrument;
 
-    type F = BabyBear;
+    type F = KoalaBear;
     type EF = BinomialExtensionField<F, 4>;
 
     pub trait TransitionKernel {
@@ -407,8 +409,8 @@ mod tests {
     //         let intermediate_eq_full_evals_device =
     //             t.into_device(intermediate_eq_full_evals_tensor).await.unwrap();
 
-    //         let verifier = Poseidon2BabyBear16BasefoldConfig::default_verifier(1);
-    //         let challenger = Poseidon2BabyBear16BasefoldConfig::default_challenger(&verifier);
+    //         let verifier = Poseidon2KoalaBear16BasefoldConfig::default_verifier(1);
+    //         let challenger = Poseidon2KoalaBear16BasefoldConfig::default_challenger(&verifier);
     //         let mut challenger_device = challenger.into_device(t.clone()).await;
 
     //         t.synchronize().await.unwrap();
@@ -478,14 +480,14 @@ mod tests {
         init_tracer();
         let mut rng = rand::thread_rng();
 
-        type F = BabyBear;
+        type F = KoalaBear;
         type EF = BinomialExtensionField<F, 4>;
 
         let num_columns = 1400;
         const PREFIX_SUM_LENGTH: usize = 29;
         const MAX_HEIGHT: usize = 1 << 21;
-        let verifier = Poseidon2BabyBear16BasefoldConfig::default_verifier(1);
-        let mut challenger = Poseidon2BabyBear16BasefoldConfig::default_challenger(&verifier);
+        let verifier = Poseidon2KoalaBear16BasefoldConfig::default_verifier(1);
+        let mut challenger = Poseidon2KoalaBear16BasefoldConfig::default_challenger(&verifier);
 
         let mut sum_values = vec![EF::zero(); 6 * PREFIX_SUM_LENGTH];
         let challenger_for_device = challenger.clone();

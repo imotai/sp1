@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../fields/bb31_extension_t.cuh"
-#include "../fields/bb31_t.cuh"
+#include "../fields/kb31_extension_t.cuh"
+#include "../fields/kb31_t.cuh"
 
 template <typename K>
 struct ConstraintFolder
@@ -12,10 +12,10 @@ public:
     const K *main;
     size_t main_width;
     size_t height;
-    const bb31_t *publicValues;
-    const bb31_extension_t *powersOfAlpha;
+    const kb31_t *publicValues;
+    const kb31_extension_t *powersOfAlpha;
     size_t constraintIndex;
-    bb31_extension_t accumulator;
+    kb31_extension_t accumulator;
     size_t rowIdx;
     size_t xValueIdx;
 
@@ -35,7 +35,7 @@ public:
         case 4:
             return K::load(main, xValueIdx * (main_width * height) + (idx * height + rowIdx));
         case 9:
-            return K(bb31_t::load(publicValues, idx));
+            return K(kb31_t::load(publicValues, idx));
         default:
             // Case 3: next row for for preprocessed trace for univariate.
             // Case 5: next row for for main trace for univariate.
@@ -48,19 +48,19 @@ public:
         }
     }
 
-    __inline__ __device__ bb31_extension_t var_ef(unsigned char variant, unsigned int idx)
+    __inline__ __device__ kb31_extension_t var_ef(unsigned char variant, unsigned int idx)
     {
         switch (variant)
         {
         case 0:
-            return bb31_extension_t::zero();
+            return kb31_extension_t::zero();
         default:
             // Case 1: Permutation trace row for univariate.
             // Case 2: Permutation trace next row for multivariate.
             // Case 3: Permutation challenge for univariate.
             // Case 4: Local cumulative sum for univariate.
             assert(0);
-            return bb31_extension_t::zero();
+            return kb31_extension_t::zero();
         }
     }
 };

@@ -1,5 +1,5 @@
 use csl_sys::runtime::KernelPtr;
-use slop_baby_bear::BabyBear;
+use slop_koala_bear::KoalaBear;
 
 use crate::TaskScope;
 
@@ -9,7 +9,7 @@ pub unsafe trait ScanKernel<F> {
     fn scan_kernel_large_bb31_septic_curve() -> KernelPtr;
 }
 
-unsafe impl ScanKernel<BabyBear> for TaskScope {
+unsafe impl ScanKernel<KoalaBear> for TaskScope {
     fn single_block_scan_kernel_large_bb31_septic_curve() -> KernelPtr {
         unsafe { csl_sys::scan::single_block_scan_kernel_large_bb31_septic_curve() }
     }

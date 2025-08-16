@@ -5,40 +5,40 @@ use csl_cuda::{
     sys::{
         runtime::KernelPtr,
         zerocheck::{
-            constraint_poly_eval_1024_baby_bear_extension_kernel,
-            constraint_poly_eval_1024_baby_bear_kernel,
-            constraint_poly_eval_128_baby_bear_extension_kernel,
-            constraint_poly_eval_128_baby_bear_kernel,
-            constraint_poly_eval_256_baby_bear_extension_kernel,
-            constraint_poly_eval_256_baby_bear_kernel,
-            constraint_poly_eval_32_baby_bear_extension_kernel,
-            constraint_poly_eval_32_baby_bear_kernel,
-            constraint_poly_eval_512_baby_bear_extension_kernel,
-            constraint_poly_eval_512_baby_bear_kernel,
-            constraint_poly_eval_64_baby_bear_extension_kernel,
-            constraint_poly_eval_64_baby_bear_kernel, interpolate_row_baby_bear_extension_kernel,
-            interpolate_row_baby_bear_kernel,
+            constraint_poly_eval_1024_koala_bear_extension_kernel,
+            constraint_poly_eval_1024_koala_bear_kernel,
+            constraint_poly_eval_128_koala_bear_extension_kernel,
+            constraint_poly_eval_128_koala_bear_kernel,
+            constraint_poly_eval_256_koala_bear_extension_kernel,
+            constraint_poly_eval_256_koala_bear_kernel,
+            constraint_poly_eval_32_koala_bear_extension_kernel,
+            constraint_poly_eval_32_koala_bear_kernel,
+            constraint_poly_eval_512_koala_bear_extension_kernel,
+            constraint_poly_eval_512_koala_bear_kernel,
+            constraint_poly_eval_64_koala_bear_extension_kernel,
+            constraint_poly_eval_64_koala_bear_kernel, interpolate_row_koala_bear_extension_kernel,
+            interpolate_row_koala_bear_kernel,
         },
     },
     TaskScope,
 };
 use slop_algebra::{extension::BinomialExtensionField, ExtensionField, Field};
 use slop_alloc::{mem::CopyError, Backend, Buffer, CopyToBackend, CpuBackend, HasBackend};
-use slop_baby_bear::BabyBear;
+use slop_koala_bear::KoalaBear;
 
 pub trait InterpolateRowKernel<K: Field> {
     fn interpolate_row_kernel() -> KernelPtr;
 }
 
-impl InterpolateRowKernel<BabyBear> for TaskScope {
+impl InterpolateRowKernel<KoalaBear> for TaskScope {
     fn interpolate_row_kernel() -> KernelPtr {
-        unsafe { interpolate_row_baby_bear_kernel() }
+        unsafe { interpolate_row_koala_bear_kernel() }
     }
 }
 
-impl InterpolateRowKernel<BinomialExtensionField<BabyBear, 4>> for TaskScope {
+impl InterpolateRowKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
     fn interpolate_row_kernel() -> KernelPtr {
-        unsafe { interpolate_row_baby_bear_extension_kernel() }
+        unsafe { interpolate_row_koala_bear_extension_kernel() }
     }
 }
 
@@ -46,29 +46,29 @@ pub trait ConstraintPolyEvalKernel<K: Field> {
     fn constraint_poly_eval_kernel(memory_size: usize) -> KernelPtr;
 }
 
-impl ConstraintPolyEvalKernel<BabyBear> for TaskScope {
+impl ConstraintPolyEvalKernel<KoalaBear> for TaskScope {
     fn constraint_poly_eval_kernel(memory_size: usize) -> KernelPtr {
         match memory_size {
-            0..=32 => unsafe { constraint_poly_eval_32_baby_bear_kernel() },
-            33..=64 => unsafe { constraint_poly_eval_64_baby_bear_kernel() },
-            65..=128 => unsafe { constraint_poly_eval_128_baby_bear_kernel() },
-            129..=256 => unsafe { constraint_poly_eval_256_baby_bear_kernel() },
-            257..=512 => unsafe { constraint_poly_eval_512_baby_bear_kernel() },
-            513..=1024 => unsafe { constraint_poly_eval_1024_baby_bear_kernel() },
+            0..=32 => unsafe { constraint_poly_eval_32_koala_bear_kernel() },
+            33..=64 => unsafe { constraint_poly_eval_64_koala_bear_kernel() },
+            65..=128 => unsafe { constraint_poly_eval_128_koala_bear_kernel() },
+            129..=256 => unsafe { constraint_poly_eval_256_koala_bear_kernel() },
+            257..=512 => unsafe { constraint_poly_eval_512_koala_bear_kernel() },
+            513..=1024 => unsafe { constraint_poly_eval_1024_koala_bear_kernel() },
             _ => unreachable!(),
         }
     }
 }
 
-impl ConstraintPolyEvalKernel<BinomialExtensionField<BabyBear, 4>> for TaskScope {
+impl ConstraintPolyEvalKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
     fn constraint_poly_eval_kernel(memory_size: usize) -> KernelPtr {
         match memory_size {
-            0..=32 => unsafe { constraint_poly_eval_32_baby_bear_extension_kernel() },
-            33..=64 => unsafe { constraint_poly_eval_64_baby_bear_extension_kernel() },
-            65..=128 => unsafe { constraint_poly_eval_128_baby_bear_extension_kernel() },
-            129..=256 => unsafe { constraint_poly_eval_256_baby_bear_extension_kernel() },
-            257..=512 => unsafe { constraint_poly_eval_512_baby_bear_extension_kernel() },
-            513..=1024 => unsafe { constraint_poly_eval_1024_baby_bear_extension_kernel() },
+            0..=32 => unsafe { constraint_poly_eval_32_koala_bear_extension_kernel() },
+            33..=64 => unsafe { constraint_poly_eval_64_koala_bear_extension_kernel() },
+            65..=128 => unsafe { constraint_poly_eval_128_koala_bear_extension_kernel() },
+            129..=256 => unsafe { constraint_poly_eval_256_koala_bear_extension_kernel() },
+            257..=512 => unsafe { constraint_poly_eval_512_koala_bear_extension_kernel() },
+            513..=1024 => unsafe { constraint_poly_eval_1024_koala_bear_extension_kernel() },
             _ => unreachable!(),
         }
     }
@@ -86,7 +86,7 @@ pub struct EvalProgram<F, EF, B: Backend = CpuBackend> {
     pub ef_constants_indices: Buffer<u32, B>,
 }
 
-impl EvalProgram<BabyBear, BinomialExtensionField<BabyBear, 4>> {
+impl EvalProgram<KoalaBear, BinomialExtensionField<KoalaBear, 4>> {
     pub fn compile<A>(air: &A) -> Self
     where
         A: for<'a> BlockAir<SymbolicProverFolder<'a>>,

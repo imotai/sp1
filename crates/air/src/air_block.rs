@@ -4,7 +4,7 @@ use crate::{
 use itertools::Itertools;
 use slop_air::{Air, AirBuilder, PairBuilder};
 use slop_algebra::{AbstractExtensionField, AbstractField};
-use slop_baby_bear::BabyBear;
+use slop_koala_bear::KoalaBear;
 use slop_matrix::Matrix;
 use sp1_core_executor::events::FieldOperation;
 use sp1_core_executor::syscalls::SyscallCode;
@@ -41,6 +41,7 @@ use sp1_hypercube::{
     InteractionKind,
 };
 use sp1_primitives::polynomial::Polynomial;
+use sp1_primitives::SP1Field;
 use sp1_recursion_machine::builder::RecursionAirBuilder;
 use sp1_recursion_machine::chips::poseidon2_wide::columns::preprocessed::Poseidon2PreprocessedColsWide;
 use sp1_recursion_machine::chips::poseidon2_wide::Poseidon2WideChip;
@@ -86,7 +87,7 @@ impl<'a> BlockAir<SymbolicProverFolder<'a>> for RiscvAir<F> {
 }
 
 impl<'a, const DEGREE: usize, const VAR_EVENTS_PER_ROW: usize> BlockAir<SymbolicProverFolder<'a>>
-    for RecursionAir<BabyBear, DEGREE, VAR_EVENTS_PER_ROW>
+    for RecursionAir<SP1Field, DEGREE, VAR_EVENTS_PER_ROW>
 {
     fn num_blocks(&self) -> usize {
         match self {
@@ -464,7 +465,7 @@ impl<'a> BlockAir<SymbolicProverFolder<'a>> for GlobalChip {
             }
             11 => {
                 // Evaluate the accumulation.
-                GlobalAccumulationOperation::<BabyBear>::eval_accumulation(
+                GlobalAccumulationOperation::<KoalaBear>::eval_accumulation(
                     builder,
                     local.interaction,
                     local.is_real,

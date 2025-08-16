@@ -19,7 +19,7 @@
 #define asm asm volatile
 #endif
 
-class bb31_t
+class kb31_t
 {
 public:
     // Nested helper class for avoiding unnecessary modular reductions
@@ -31,13 +31,13 @@ public:
         accel_t(const accel_t &) = default;
         __host__ __device__ accel_t(const uint64_t &x): val(x) {}
 
-        __device__ accel_t & operator+=(const bb31_t &);
-        __device__ accel_t & operator-=(const bb31_t &);
-        __device__ accel_t & operator*=(const bb31_t &);
+        __device__ accel_t & operator+=(const kb31_t &);
+        __device__ accel_t & operator-=(const kb31_t &);
+        __device__ accel_t & operator*=(const kb31_t &);
 
-        __device__ accel_t operator+(const bb31_t &) const;
-        __device__ accel_t operator-(const bb31_t &) const;
-        __device__ accel_t operator*(const bb31_t &) const;
+        __device__ accel_t operator+(const kb31_t &) const;
+        __device__ accel_t operator-(const kb31_t &) const;
+        __device__ accel_t operator*(const kb31_t &) const;
 
         __device__ accel_t & operator+=(const accel_t &);
         __device__ accel_t & operator-=(const accel_t &);
@@ -45,9 +45,9 @@ public:
         __device__ accel_t operator+(const accel_t &) const;
         __device__ accel_t operator-(const accel_t &) const;
 
-        __device__ accel_t & add(const bb31_t *, uint32_t count, uint32_t stride);
+        __device__ accel_t & add(const kb31_t *, uint32_t count, uint32_t stride);
 
-        __device__ operator bb31_t() const {
+        __device__ operator kb31_t() const {
             uint32_t tl, th, red;
 
             unpack(tl, th, val);
@@ -58,28 +58,33 @@ public:
 
             final_sub(th);
 
-            return bb31_t(th);
+            return kb31_t(th);
         }
 
         private:
         uint64_t val;
     };
 
-    __device__ bb31_t & operator=(const accel_t &x) {   // Reduce and assign
-        bb31_t t(x);
+    __device__ kb31_t & operator=(const accel_t &x) {   // Reduce and assign
+        kb31_t t(x);
         *this = t;
     }
 
-    using mem_t = bb31_t;
+    using mem_t = kb31_t;
     uint32_t val;
     static const uint32_t DEGREE = 1;
     static const uint32_t NBITS = 31;
-    static const uint32_t MOD = 0x78000001u;
-    static const uint32_t M = 0x77ffffffu;
-    static const uint32_t RR = 0x45dddde3u;
-    static const uint32_t ONE = 0x0ffffffeu;
+    // The prime modulus of the KoalaBear field.
+    static const uint32_t MOD = 0x7f000001u;
+    // MOD - 2
+    static const uint32_t M = 0x7effffff;
+    // (1<<MONTY_BITS)^2 mod MOD
+    static const uint32_t RR = 0x17f7efe4u;
+    // (1<<MONTY_BITS) mod MOD
+    static const uint32_t ONE = 0x01fffffeu;
     static const uint32_t MONTY_BITS = 32;
-    static const uint32_t MONTY_MU = 0x88000001;
+    // MOD^{-1} mod (1<<MONTY_BITS)
+    static const uint32_t MONTY_MU = 0x81000001;
     static const uint32_t MONTY_MASK = ((1ULL << MONTY_BITS) - 1);
 
     static constexpr size_t __device__ bit_length() { return 31; }
@@ -93,23 +98,23 @@ public:
     inline uint32_t operator*() const { return val; }
 
     __host__ __device__
-    bool operator!=(const bb31_t &x) const { return val != x.val; }
+    bool operator!=(const kb31_t &x) const { return val != x.val; }
 
     inline size_t len() const { return 1; }
 
-    __host__ __device__ constexpr bb31_t() = default;
+    __host__ __device__ constexpr kb31_t() = default;
 
-    inline constexpr bb31_t(const uint32_t a) : val(a) {}
+    inline constexpr kb31_t(const uint32_t a) : val(a) {}
 
-    inline bb31_t(const uint32_t *p) { val = *p; }
+    inline kb31_t(const uint32_t *p) { val = *p; }
 
-    inline constexpr bb31_t(int a) : val(((uint64_t)a << 32) % MOD) {}
+    inline constexpr kb31_t(int a) : val(((uint64_t)a << 32) % MOD) {}
 
-    static inline const bb31_t zero() { return bb31_t(0); }
+    static inline const kb31_t zero() { return kb31_t(0); }
 
-    static inline const bb31_t one() { return bb31_t(ONE); }
+    static inline const kb31_t one() { return kb31_t(ONE); }
 
-    static inline const bb31_t two() { return from_canonical_u32(2); }
+    static inline const kb31_t two() { return from_canonical_u32(2); }
 
     static inline constexpr uint32_t to_monty(uint32_t x)
     {
@@ -132,46 +137,46 @@ public:
         return monty_reduce((uint64_t)x);
     }
 
-    static inline bb31_t from_canonical_u32(uint32_t x)
+    static inline kb31_t from_canonical_u32(uint32_t x)
     {
-        return bb31_t(to_monty(x));
+        return kb31_t(to_monty(x));
     }
 
-    static inline bb31_t from_canonical_u16(uint16_t x)
-    {
-        return from_canonical_u32((uint32_t)x);
-    }
-
-    static inline bb31_t from_canonical_u8(uint8_t x)
+    static inline kb31_t from_canonical_u16(uint16_t x)
     {
         return from_canonical_u32((uint32_t)x);
     }
 
-    static inline bb31_t load(bb31_t *ptr, size_t i)
+    static inline kb31_t from_canonical_u8(uint8_t x)
+    {
+        return from_canonical_u32((uint32_t)x);
+    }
+
+    static inline kb31_t load(kb31_t *ptr, size_t i)
     {
         return ptr[i];
     }
 
-    static inline const bb31_t load(const bb31_t *ptr, size_t i)
+    static inline const kb31_t load(const kb31_t *ptr, size_t i)
     {
         return ptr[i];
     }
 
-    static inline void store(bb31_t *ptr, size_t i, bb31_t value)
+    static inline void store(kb31_t *ptr, size_t i, kb31_t value)
     {
         ptr[i] = value;
     }
 
-    static inline bb31_t from_bool(bool x) { return bb31_t(x * one().val); }
+    static inline kb31_t from_bool(bool x) { return kb31_t(x * one().val); }
 
     inline uint32_t as_canonical_u32() const
     {
         return monty_reduce((uint64_t)val);
     }
 
-    inline bb31_t exp_power_of_two(size_t log_power)
+    inline kb31_t exp_power_of_two(size_t log_power)
     {
-        bb31_t ret = *this;
+        kb31_t ret = *this;
         for (size_t i = 0; i < log_power; i++)
         {
             ret *= ret;
@@ -179,7 +184,7 @@ public:
         return ret;
     }
 
-    inline bb31_t &operator+=(const bb31_t b)
+    inline kb31_t &operator+=(const kb31_t b)
     {
         val += b.val;
         final_sub(val);
@@ -187,9 +192,9 @@ public:
         return *this;
     }
 
-    friend inline bb31_t operator+(bb31_t a, const bb31_t b) { return a += b; }
+    friend inline kb31_t operator+(kb31_t a, const kb31_t b) { return a += b; }
 
-    inline bb31_t &operator<<=(uint32_t l)
+    inline kb31_t &operator<<=(uint32_t l)
     {
         while (l--)
         {
@@ -200,9 +205,9 @@ public:
         return *this;
     }
 
-    friend inline bb31_t operator<<(bb31_t a, uint32_t l) { return a <<= l; }
+    friend inline kb31_t operator<<(kb31_t a, uint32_t l) { return a <<= l; }
 
-    inline bb31_t &operator>>=(uint32_t r)
+    inline kb31_t &operator>>=(uint32_t r)
     {
         while (r--)
         {
@@ -213,9 +218,9 @@ public:
         return *this;
     }
 
-    friend inline bb31_t operator>>(bb31_t a, uint32_t r) { return a >>= r; }
+    friend inline kb31_t operator>>(kb31_t a, uint32_t r) { return a >>= r; }
 
-    inline bb31_t &operator-=(const bb31_t b)
+    inline kb31_t &operator-=(const kb31_t b)
     {
         asm("{");
         asm(".reg.pred %brw;");
@@ -227,9 +232,9 @@ public:
         return *this;
     }
 
-    friend inline bb31_t operator-(bb31_t a, const bb31_t b) { return a -= b; }
+    friend inline kb31_t operator-(kb31_t a, const kb31_t b) { return a -= b; }
 
-    inline bb31_t cneg(bool flag)
+    inline kb31_t cneg(bool flag)
     {
         asm("{");
         asm(".reg.pred %flag;");
@@ -241,11 +246,11 @@ public:
         return *this;
     }
 
-    static inline bb31_t cneg(bb31_t a, bool flag) { return a.cneg(flag); }
+    static inline kb31_t cneg(kb31_t a, bool flag) { return a.cneg(flag); }
 
-    inline bb31_t operator-() const { return cneg(*this, true); }
+    inline kb31_t operator-() const { return cneg(*this, true); }
 
-    inline bool operator==(const bb31_t rhs) const { return val == rhs.val; }
+    inline bool operator==(const kb31_t rhs) const { return val == rhs.val; }
 
     inline bool is_one() const { return val == ONE; }
 
@@ -253,9 +258,9 @@ public:
 
     inline void set_to_zero() { val = 0; }
 
-    friend inline bb31_t czero(const bb31_t a, int set_z)
+    friend inline kb31_t czero(const kb31_t a, int set_z)
     {
-        bb31_t ret;
+        kb31_t ret;
 
         asm("{");
         asm(".reg.pred %set_z;");
@@ -266,9 +271,9 @@ public:
         return ret;
     }
 
-    static inline bb31_t csel(const bb31_t a, const bb31_t b, int sel_a)
+    static inline kb31_t csel(const kb31_t a, const kb31_t b, int sel_a)
     {
-        bb31_t ret;
+        kb31_t ret;
 
         asm("{");
         asm(".reg.pred %sel_a;");
@@ -289,7 +294,7 @@ private:
 
     // Montgomery multiplication
 
-    inline bb31_t &mul(const bb31_t b)
+    inline kb31_t &mul(const kb31_t b)
     {
         uint64_t t;
         uint32_t tl, th, red;
@@ -316,19 +321,19 @@ private:
     }
 
 public:
-    inline accel_t operator*(const bb31_t b) const {
+    inline accel_t operator*(const kb31_t b) const {
         uint64_t t;
         mul_wide(t, val, b.val);
         return accel_t(t);
     }
 
-    inline bb31_t &operator*=(const bb31_t a) { return mul(a); }
+    inline kb31_t &operator*=(const kb31_t a) { return mul(a); }
 
     // raise to a variable power, variable in respect to threadIdx,
     // but mind the ^ operator's precedence!
-    inline bb31_t &operator^=(uint32_t p)
+    inline kb31_t &operator^=(uint32_t p)
     {
-        bb31_t sqr = *this;
+        kb31_t sqr = *this;
         *this = csel(val, ONE, p & 1);
 
 #pragma unroll 1
@@ -342,17 +347,17 @@ public:
         return *this;
     }
 
-    friend inline bb31_t operator^(bb31_t a, uint32_t p) { return a ^= p; }
+    friend inline kb31_t operator^(kb31_t a, uint32_t p) { return a ^= p; }
 
-    inline bb31_t operator()(uint32_t p) { return *this ^ p; }
+    inline kb31_t operator()(uint32_t p) { return *this ^ p; }
 
     // raise to a constant power, e.g. x^7, to be unrolled at compile time
-    inline bb31_t &operator^=(int p)
+    inline kb31_t &operator^=(int p)
     {
         if (p < 2)
             asm("trap;");
 
-        bb31_t sqr = *this;
+        kb31_t sqr = *this;
         if ((p & 1) == 0)
         {
             do
@@ -372,22 +377,22 @@ public:
         return *this;
     }
 
-    friend inline bb31_t operator^(bb31_t a, int p) { return a ^= p; }
+    friend inline kb31_t operator^(kb31_t a, int p) { return a ^= p; }
 
-    inline bb31_t operator()(int p) { return *this ^ p; }
+    inline kb31_t operator()(int p) { return *this ^ p; }
 
-    inline bb31_t square() { return *this * *this; }
+    inline kb31_t square() { return *this * *this; }
 
-    friend inline bb31_t sqr(bb31_t a) { return a.sqr(); }
+    friend inline kb31_t sqr(kb31_t a) { return a.sqr(); }
 
-    inline bb31_t &sqr() { return mul(*this); }
+    inline kb31_t &sqr() { return mul(*this); }
 
     inline void to() { mul(RR); }
 
     inline void from() { val = mul_by_1(); }
 
     template <size_t T>
-    static inline bb31_t dot_product(const bb31_t a[T], const bb31_t b[T])
+    static inline kb31_t dot_product(const kb31_t a[T], const kb31_t b[T])
     {
         uint32_t acc[2];
         size_t i = 1;
@@ -424,8 +429,8 @@ public:
     }
 
     template <size_t T>
-    static inline bb31_t dot_product(bb31_t a0, bb31_t b0, const bb31_t a[T - 1],
-                                     const bb31_t *b, size_t stride_b = 1)
+    static inline kb31_t dot_product(kb31_t a0, kb31_t b0, const kb31_t a[T - 1],
+                                     const kb31_t *b, size_t stride_b = 1)
     {
         uint32_t acc[2];
         size_t i = 0;
@@ -464,7 +469,7 @@ public:
     }
 
 private:
-    static inline bb31_t sqr_n(bb31_t s, uint32_t n)
+    static inline kb31_t sqr_n(kb31_t s, uint32_t n)
     {
 #if 0
 #pragma unroll 2
@@ -484,14 +489,14 @@ private:
                 : "+r"(tmp[0]), "=r"(s.val)
                 : "r"(red), "r"(MOD), "r"(tmp[1]));
 
-            if (n & 1)
+            // if (n & 1)
                 final_sub(s.val);
         }
 #endif
         return s;
     }
 
-    static inline bb31_t sqr_n_mul(bb31_t s, uint32_t n, bb31_t m)
+    static inline kb31_t sqr_n_mul(kb31_t s, uint32_t n, kb31_t m)
     {
         s = sqr_n(s, n);
         s.mul(m);
@@ -500,58 +505,46 @@ private:
     }
 
 public:
-    inline bb31_t reciprocal() const
+    inline kb31_t reciprocal() const
     {
-        bb31_t x11, xff, ret = *this;
+        kb31_t p1 = *this;
+        kb31_t p10 = sqr_n(p1, 1);
+        kb31_t p11 = p10 * p1;
+        kb31_t p1100 = sqr_n(p11,2);
+        kb31_t p1111 = p1100 * p11;
+        kb31_t p110000 = sqr_n(p1100,2);
+        kb31_t p111111 = p110000 * p1111;
+        kb31_t p1111110000 = sqr_n(p111111,4);
+        kb31_t p1111111111 = p1111110000 * p1111;
+        kb31_t p11111101111 = p1111111111 * p1111110000;
+        kb31_t p111111011110000000000 = sqr_n(p11111101111,10);
+        kb31_t p111111011111111111111 = p111111011110000000000 * p1111111111;
+        kb31_t p1111110111111111111110000000000 = sqr_n(p111111011111111111111, 10);
+        kb31_t p1111110111111111111111111111111 = p1111110111111111111110000000000 * p1111111111;
 
-        x11 = sqr_n_mul(ret, 4, ret); // 0b10001
-        ret = sqr_n_mul(x11, 1, x11); // 0b110011
-        ret = sqr_n_mul(ret, 1, x11); // 0b1110111
-        xff = sqr_n_mul(ret, 1, x11); // 0b11111111
-        ret = sqr_n_mul(ret, 8, xff); // 0b111011111111111
-        ret = sqr_n_mul(ret, 8, xff); // 0b11101111111111111111111
-        ret = sqr_n_mul(ret, 8, xff); // 0b1110111111111111111111111111111
-
-        return ret;
+        return p1111110111111111111111111111111;
     }
 
-    friend inline bb31_t operator/(int one, bb31_t a)
+    friend inline kb31_t operator/(int one, kb31_t a)
     {
         if (one != 1)
             asm("trap;");
         return a.reciprocal();
     }
 
-    friend inline bb31_t operator/(bb31_t a, bb31_t b)
+    friend inline kb31_t operator/(kb31_t a, kb31_t b)
     {
         return a * b.reciprocal();
     }
 
-    inline bb31_t &operator/=(const bb31_t a) { return *this *= a.reciprocal(); }
-
-    inline bb31_t heptaroot() const
-    {
-        bb31_t x03, x18, x1b, ret = *this;
-
-        x03 = sqr_n_mul(ret, 1, ret);   // 0b11
-        x18 = sqr_n(x03, 3);            // 0b11000
-        x1b = x18 * x03;                // 0b11011
-        ret = x18 * x1b;                // 0b110011
-        ret = sqr_n_mul(ret, 6, x1b);   // 0b110011011011
-        ret = sqr_n_mul(ret, 6, x1b);   // 0b110011011011011011
-        ret = sqr_n_mul(ret, 6, x1b);   // 0b110011011011011011011011
-        ret = sqr_n_mul(ret, 6, x1b);   // 0b110011011011011011011011011011
-        ret = sqr_n_mul(ret, 1, *this); // 0b1100110110110110110110110110111
-
-        return ret;
-    }
+    inline kb31_t &operator/=(const kb31_t a) { return *this *= a.reciprocal(); }
 
     inline void shfl_bfly(uint32_t laneMask)
     {
         val = __shfl_xor_sync(0xFFFFFFFF, val, laneMask);
     }
 
-    __device__ __forceinline__ bb31_t interpolateLinear( const bb31_t one, const bb31_t zero) const
+    __device__ __forceinline__ kb31_t interpolateLinear( const kb31_t one, const kb31_t zero) const
     {
         uint64_t w;
         uint32_t l = zero.val, h = 0, t;
@@ -568,71 +561,71 @@ public:
 
         h = h >= MOD ? h-MOD : h;
 
-        bb31_t retval;
+        kb31_t retval;
         retval.val = h;
         return retval;
     }
 };
 
 __device__ __forceinline__
-bb31_t::accel_t & bb31_t::accel_t::operator+=(const bb31_t &b) {
+kb31_t::accel_t & kb31_t::accel_t::operator+=(const kb31_t &b) {
     val = val>=MOD ? val+b.val-MOD : val+b.val;
     return *this;
 }
 
 __device__ __forceinline__
-bb31_t::accel_t & bb31_t::accel_t::operator-=(const bb31_t &b) {
+kb31_t::accel_t & kb31_t::accel_t::operator-=(const kb31_t &b) {
     val = val<MOD ? val-b.val+MOD : val-b.val;
     return *this;
 }
 
 __device__ __forceinline__
-bb31_t::accel_t bb31_t::accel_t::operator*(const bb31_t &b) const {
-    bb31_t t(*this);
+kb31_t::accel_t kb31_t::accel_t::operator*(const kb31_t &b) const {
+    kb31_t t(*this);
     return t*b;
 }
 
 __device__ __forceinline__
-bb31_t::accel_t & bb31_t::accel_t::operator*=(const bb31_t &b) {
-    bb31_t t(*this);
+kb31_t::accel_t & kb31_t::accel_t::operator*=(const kb31_t &b) {
+    kb31_t t(*this);
     return *this = t * b;
 }
 
 __device__ __forceinline__
-bb31_t::accel_t bb31_t::accel_t::operator+(const bb31_t &b) const {
+kb31_t::accel_t kb31_t::accel_t::operator+(const kb31_t &b) const {
     accel_t t(*this);
     t += b;
     return t;
 }
 
 __device__ __forceinline__
-bb31_t::accel_t bb31_t::accel_t::operator-(const bb31_t &b) const {
+kb31_t::accel_t kb31_t::accel_t::operator-(const kb31_t &b) const {
     accel_t t(*this);
     t -= b;
     return t;
 }
 
 __device__ __forceinline__
-bb31_t::accel_t & bb31_t::accel_t::operator+=(const accel_t &b) {
+kb31_t::accel_t & kb31_t::accel_t::operator+=(const accel_t &b) {
     val = val>=((uint64_t)MOD << 32) ? val+b.val-((uint64_t)MOD << 32) : val+b.val;
     return *this;
 }
 
 __device__ __forceinline__
-bb31_t::accel_t & bb31_t::accel_t::operator-=(const accel_t &b) {
+kb31_t::accel_t & kb31_t::accel_t::operator-=(const accel_t &b) {
     val = val<((uint64_t)MOD << 32) ? val-b.val+((uint64_t)MOD << 32) : val-b.val;
     return *this;
 }
 
 __device__ __forceinline__
-bb31_t::accel_t bb31_t::accel_t::operator+(const accel_t &b) const {
+kb31_t::accel_t kb31_t::accel_t::operator+(const accel_t &b) const {
     accel_t t(*this);
     t += b;
     return t;
 }
 
 __device__ __forceinline__
-bb31_t::accel_t bb31_t::accel_t::operator-(const accel_t &b) const {
+kb31_t::accel_t kb31_t::accel_t::operator-(const accel_t &b) const {
     accel_t t(*this);
     t -= b;
     return t;
@@ -649,7 +642,7 @@ bb31_t::accel_t bb31_t::accel_t::operator-(const accel_t &b) const {
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
-class bb31_t
+class kb31_t
 {
 private:
     static const uint32_t M = 0x77ffffffu;
@@ -660,23 +653,23 @@ private:
     static const uint32_t MONTY_MASK = ((1ULL << MONTY_BITS) - 1);
 
 public:
-    using mem_t = bb31_t;
+    using mem_t = kb31_t;
     uint32_t val;
     static const uint32_t DEGREE = 1;
     static const uint32_t NBITS = 31;
-    static const uint32_t MOD = 0x78000001;
+    static const uint32_t MOD = 0x7f000001;
 
-    inline constexpr bb31_t() : val(0) {}
+    inline constexpr kb31_t() : val(0) {}
 
-    inline constexpr bb31_t(uint32_t a) : val(a) {}
+    inline constexpr kb31_t(uint32_t a) : val(a) {}
 
-    inline constexpr bb31_t(int a) : val(((uint64_t)a << 32) % MOD) {}
+    inline constexpr kb31_t(int a) : val(((uint64_t)a << 32) % MOD) {}
 
-    static inline const bb31_t zero() { return bb31_t(0); }
+    static inline const kb31_t zero() { return kb31_t(0); }
 
-    static inline const bb31_t one() { return bb31_t(ONE); }
+    static inline const kb31_t one() { return kb31_t(ONE); }
 
-    static inline const bb31_t two() { return bb31_t(to_monty(2)); }
+    static inline const kb31_t two() { return kb31_t(to_monty(2)); }
 
     static inline constexpr uint32_t to_monty(uint32_t x)
     {
@@ -699,27 +692,27 @@ public:
         return x_sub_u_hi + corr;
     }
 
-    static inline bb31_t from_canonical_u32(uint32_t x)
+    static inline kb31_t from_canonical_u32(uint32_t x)
     {
         assert(x < MOD);
-        return bb31_t(to_monty(x));
+        return kb31_t(to_monty(x));
     }
 
-    static inline bb31_t from_canonical_u16(uint16_t x)
+    static inline kb31_t from_canonical_u16(uint16_t x)
     {
         return from_canonical_u32((uint32_t)x);
     }
 
-    static inline bb31_t from_canonical_u8(uint8_t x)
+    static inline kb31_t from_canonical_u8(uint8_t x)
     {
         return from_canonical_u32((uint32_t)x);
     }
 
-    static inline bb31_t from_bool(bool x) { return bb31_t(x * one().val); }
+    static inline kb31_t from_bool(bool x) { return kb31_t(x * one().val); }
 
     inline uint32_t as_canonical_u32() const { return from_monty(val); }
 
-    inline bb31_t &operator+=(bb31_t b)
+    inline kb31_t &operator+=(kb31_t b)
     {
         val += b.val;
         if (val >= MOD)
@@ -727,7 +720,7 @@ public:
         return *this;
     }
 
-    inline bb31_t &operator-=(bb31_t b)
+    inline kb31_t &operator-=(kb31_t b)
     {
         if (val < b.val)
             val += MOD;
@@ -735,24 +728,24 @@ public:
         return *this;
     }
 
-    inline bb31_t &operator*=(bb31_t b)
+    inline kb31_t &operator*=(kb31_t b)
     {
         uint64_t long_prod = (uint64_t)val * (uint64_t)b.val;
         val = monty_reduce(long_prod);
         return *this;
     }
 
-    inline bb31_t square() { return *this * *this; }
+    inline kb31_t square() { return *this * *this; }
 
-    friend bb31_t operator+(bb31_t a, bb31_t b) { return a += b; }
+    friend kb31_t operator+(kb31_t a, kb31_t b) { return a += b; }
 
-    friend bb31_t operator-(bb31_t a, bb31_t b) { return a -= b; }
+    friend kb31_t operator-(kb31_t a, kb31_t b) { return a -= b; }
 
-    inline bb31_t operator-() const { return bb31_t::zero() - *this; }
+    inline kb31_t operator-() const { return kb31_t::zero() - *this; }
 
-    friend bb31_t operator*(bb31_t a, bb31_t b) { return a *= b; }
+    friend kb31_t operator*(kb31_t a, kb31_t b) { return a *= b; }
 
-    inline bb31_t &operator<<=(uint32_t l)
+    inline kb31_t &operator<<=(uint32_t l)
     {
         while (l--)
         {
@@ -764,9 +757,9 @@ public:
         return *this;
     }
 
-    friend inline bb31_t operator<<(bb31_t a, uint32_t l) { return a <<= l; }
+    friend inline kb31_t operator<<(kb31_t a, uint32_t l) { return a <<= l; }
 
-    inline bb31_t &operator>>=(uint32_t r)
+    inline kb31_t &operator>>=(uint32_t r)
     {
         while (r--)
         {
@@ -777,9 +770,9 @@ public:
         return *this;
     }
 
-    inline bb31_t exp_power_of_2(uint32_t power_log) const
+    inline kb31_t exp_power_of_2(uint32_t power_log) const
     {
-        bb31_t result = *this;
+        kb31_t result = *this;
         for (uint32_t i = 0; i < power_log; ++i)
         {
             result = result.square();
@@ -787,56 +780,55 @@ public:
         return result;
     }
 
-    inline bb31_t reciprocal() const
+    inline kb31_t reciprocal() const
     {
-        assert(*this != zero());
+        kb31_t p1 = *this;
+        kb31_t p10 = sqr_n(p1, 1);
+        kb31_t p11 = p10 * p1;
+        kb31_t p1100 = sqr_n(p11,2);
+        kb31_t p1111 = p1100 * p11;
+        kb31_t p110000 = sqr_n(p1100,2);
+        kb31_t p111111 = p110000 * p1111;
+        kb31_t p1111110000 = sqr_n(p111111,4);
+        kb31_t p1111111111 = p1111110000 * p1111;
+        kb31_t p11111101111 = p1111111111 * p1111110000;
+        kb31_t p111111011110000000000 = sqr_n(p11111101111,10);
+        kb31_t p111111011111111111111 = p111111011110000000000 * p1111111111;
+        kb31_t p1111110111111111111110000000000 = sqr_n(p111111011111111111111, 10);
+        kb31_t p1111110111111111111111111111111 = p1111110111111111111110000000000 * p1111111111;
 
-        bb31_t p1 = *this;
-        bb31_t p100000000 = p1.exp_power_of_2(8);
-        bb31_t p100000001 = p100000000 * p1;
-        bb31_t p10000000000000000 = p100000000.exp_power_of_2(8);
-        bb31_t p10000000100000001 = p10000000000000000 * p100000001;
-        bb31_t p10000000100000001000 = p10000000100000001.exp_power_of_2(3);
-        bb31_t p1000000010000000100000000 = p10000000100000001000.exp_power_of_2(5);
-        bb31_t p1000000010000000100000001 = p1000000010000000100000000 * p1;
-        bb31_t p1000010010000100100001001 =
-            p1000000010000000100000001 * p10000000100000001000;
-        bb31_t p10000000100000001000000010 = p1000000010000000100000001.square();
-        bb31_t p11000010110000101100001011 =
-            p10000000100000001000000010 * p1000010010000100100001001;
-        bb31_t p100000001000000010000000100 = p10000000100000001000000010.square();
-        bb31_t p111000011110000111100001111 =
-            p100000001000000010000000100 * p11000010110000101100001011;
-        bb31_t p1110000111100001111000011110000 =
-            p111000011110000111100001111.exp_power_of_2(4);
-        bb31_t p1110111111111111111111111111111 =
-            p1110000111100001111000011110000 * p111000011110000111100001111;
-
-        return p1110111111111111111111111111111;
+        return p1111110111111111111111111111111;
     }
 
-    static inline bb31_t load(bb31_t *ptr, size_t i)
+        static inline kb31_t sqr_n(kb31_t s, uint32_t n)
+    {
+        while (n--)
+            s.sqr();
+        return s;
+    }
+
+    static inline kb31_t load(kb31_t *ptr, size_t i)
     {
         return ptr[i];
     }
 
-    static inline const bb31_t load(const bb31_t *ptr, size_t i)
+    static inline const kb31_t load(const kb31_t *ptr, size_t i)
     {
         return ptr[i];
     }
         
-    static inline void store(bb31_t *ptr, size_t i, bb31_t value)
+    static inline void store(kb31_t *ptr, size_t i, kb31_t value)
     {
         ptr[i] = value;
     }
 
-    inline bool operator==(const bb31_t rhs) const { return val == rhs.val; }
+    inline bool operator==(const kb31_t rhs) const { return val == rhs.val; }
 
-    inline bool operator!=(const bb31_t rhs) const { return val != rhs.val; }
+    inline bool operator!=(const kb31_t rhs) const { return val != rhs.val; }
 
-    inline bb31_t &operator^=(int b)
+    inline kb31_t &operator^=(int b)
     {
-        bb31_t sqr = *this;
+        kb31_t sqr = *this;
         if ((b & 1) == 0)
             *this = one();
         while (b >>= 1)
@@ -848,9 +840,9 @@ public:
         return *this;
     }
 
-    friend bb31_t operator^(bb31_t a, uint32_t b) { return a ^= b; }
+    friend kb31_t operator^(kb31_t a, uint32_t b) { return a ^= b; }
 
-    inline bb31_t &sqr() { return *this; }
+    inline kb31_t &sqr() { return *this; }
 
     inline void set_to_zero() { val = 0; }
 
