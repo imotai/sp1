@@ -6,6 +6,7 @@ use anyhow::Result;
 use num_bigint::BigUint;
 use slop_algebra::{AbstractField, PrimeField, PrimeField64};
 use sp1_core_executor::{subproof::SubproofVerifier, SP1RecursionProof};
+use sp1_core_machine::riscv::MAX_LOG_NUMBER_OF_SHARDS;
 use sp1_hypercube::{
     air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
     MachineVerifierConfigError, MachineVerifierError, SP1CoreJaggedConfig, SP1OuterConfig,
@@ -64,34 +65,24 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             return Err(MachineVerifierError::EmptyProof);
         }
 
-        // Assert that the first shard is an execution shard.
-        let first_shard = proof.0.first().unwrap();
-        let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
-            first_shard.public_values.as_slice().borrow();
-        if public_values.shard != SP1Field::one()
-            || public_values.execution_shard != SP1Field::one()
-            || public_values.next_execution_shard != SP1Field::two()
-        {
-            return Err(MachineVerifierError::InvalidPublicValues(
-                "first shard does not contain RISCV cycles",
-            ));
-        }
-
-        // Shard constraints.
-        //
-        // Initialization:
-        // - Shard should start at one.
-        //
-        // Transition:
-        // - Shard should increment by one for each shard.
-        let mut current_shard = SP1Field::zero();
-        for shard_proof in proof.0.iter() {
+        // Assert that the first shard is an execution shard and has `is_first_shard == 1`.
+        // Assert that the non-first shard has `is_first_shard == 0`.
+        for (i, shard_proof) in proof.0.iter().enumerate() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
-            current_shard += SP1Field::one();
-            if public_values.shard != current_shard {
+            if i == 0 && public_values.is_execution_shard != SP1Field::one() {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "shard index should be the previous shard index + 1 and start at 1",
+                    "first shard does not contain RISCV cycles",
+                ));
+            }
+            if i == 0 && public_values.is_first_shard != SP1Field::one() {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "first shard should have is_first_shard == 1",
+                ));
+            }
+            if i != 0 && public_values.is_first_shard != SP1Field::zero() {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "non-first shard should have is_first_shard == 0",
                 ));
             }
         }
@@ -99,40 +90,35 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // Execution shard and timestamp constraints.
         //
         // Initialization:
-        // - The `execution_shard` and `initial_timestamp` of the first shard must be one.
+        // - The `is_execution_shard` and `initial_timestamp` of the first shard must be one.
         //
         // Transition:
-        // - A shard's `next_execution_shard` must equal the next shard's `execution_shard`.
         // - A shard's `last_timestamp` must equal the next shard's `initial_timestamp`.
         //
         // Internal Constraints:
-        // - Inside the shard proof, it's constrained that `next_execution_shard` is equal to
-        // `execution_shard` if the `initial_timestamp` is equal to `last_timestamp`.
-        // - Inside the shard proof, it's constrained that `next_execution_shard` is equal to
-        // `execution_shard + 1` if the `initial_timestamp` is different to `last_timestamp`.
+        // - Inside the shard proof, it's constrained that `is_execution_shard == 0` if the
+        // `initial_timestamp` is equal to `last_timestamp`.
+        // - Inside the shard proof, it's constrained that `is_execution_shard == 1` if the
+        // `initial_timestamp` is different to `last_timestamp`.
         // - Inside the shard proof, the timestamp's limbs are range checked.
         // - We include some of these checks inside the verify function for additional verification.
-        let mut prev_next_execution_shard = SP1Field::one();
         let mut prev_timestamp =
             [SP1Field::zero(), SP1Field::zero(), SP1Field::zero(), SP1Field::one()];
         for shard_proof in proof.0.iter() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
-            if public_values.execution_shard != prev_next_execution_shard {
-                return Err(MachineVerifierError::InvalidPublicValues("invalid execution shard"));
-            }
             if public_values.initial_timestamp != prev_timestamp {
                 return Err(MachineVerifierError::InvalidPublicValues("invalid initial timestamp"));
             }
             // These checks below are already done in the shard proof, but done additionally.
-            if public_values.execution_shard != public_values.next_execution_shard
+            if public_values.is_execution_shard != SP1Field::zero()
                 && public_values.initial_timestamp == public_values.last_timestamp
             {
                 return Err(MachineVerifierError::InvalidPublicValues(
                     "timestamp should change on execution shard",
                 ));
             }
-            if public_values.execution_shard + SP1Field::one() != public_values.next_execution_shard
+            if public_values.is_execution_shard != SP1Field::one()
                 && public_values.initial_timestamp != public_values.last_timestamp
             {
                 return Err(MachineVerifierError::InvalidPublicValues(
@@ -140,7 +126,6 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 ));
             }
             prev_timestamp = public_values.last_timestamp;
-            prev_next_execution_shard = public_values.next_execution_shard;
         }
 
         // Program counter constraints.
@@ -179,7 +164,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 }
             }
             // These checks below are already done in the shard proof, but done additionally.
-            if public_values.execution_shard == public_values.next_execution_shard
+            if public_values.is_execution_shard != SP1Field::one()
                 && public_values.pc_start != public_values.next_pc
             {
                 return Err(MachineVerifierError::InvalidPublicValues(
@@ -218,7 +203,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 ));
             }
             // These checks below are already done in the shard proof, but done additionally.
-            if public_values.execution_shard == public_values.next_execution_shard
+            if public_values.is_execution_shard != SP1Field::one()
                 && public_values.prev_exit_code != public_values.exit_code
             {
                 return Err(MachineVerifierError::InvalidPublicValues(
@@ -362,7 +347,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         }
 
         // Verify that the number of shards is not too large.
-        if proof.0.len() >= 1 << 24 {
+        if proof.0.len() >= 1 << MAX_LOG_NUMBER_OF_SHARDS {
             return Err(MachineVerifierError::TooManyShards);
         }
 

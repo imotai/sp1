@@ -12,8 +12,6 @@ use crate::events::{
 /// This event is emitted when an edwards decompression operation is performed.
 #[derive(Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct EdDecompressEvent {
-    /// The shard number.
-    pub shard: u32,
     /// The clock cycle.
     pub clk: u64,
     /// The pointer to the point.
@@ -36,7 +34,6 @@ pub struct EdDecompressEvent {
 impl Default for EdDecompressEvent {
     fn default() -> Self {
         Self {
-            shard: 0,
             clk: 0,
             ptr: 0,
             sign: false,

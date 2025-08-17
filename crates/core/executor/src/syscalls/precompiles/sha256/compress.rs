@@ -87,9 +87,7 @@ pub(crate) fn sha256_compress_syscall<E: ExecutorConfig>(
     }
 
     // Push the SHA extend event.
-    let shard = rt.shard().get();
     let event = PrecompileEvent::ShaCompress(ShaCompressEvent {
-        shard,
         clk: start_clk,
         w_ptr,
         h_ptr,

@@ -57,10 +57,8 @@ pub(crate) fn fp2_addsub_syscall<P: FpOpField, E: ExecutorConfig>(
     result.resize(num_words, 0);
     let x_memory_records = rt.mw_slice(x_ptr, &result);
 
-    let shard = rt.shard().get();
     let op = syscall_code.fp_op_map();
     let event = Fp2AddSubEvent {
-        shard,
         clk,
         op,
         x_ptr,

@@ -27,9 +27,9 @@ use super::{U16CompareOperation, U16CompareOperationInput, U16MSBOperation, U16M
 pub struct LtOperationUnsigned<T> {
     /// Instance of the U16CompareOperation.
     pub u16_compare_operation: U16CompareOperation<T>,
-    /// Boolean flag to indicate which byte pair differs if the operands are not equal.
+    /// Boolean flag to indicate which limb pair differs if the operands are not equal.
     pub u16_flags: [T; WORD_SIZE],
-    /// An inverse of differing byte if b_comp != c_comp.
+    /// An inverse of differing limb if b_comp != c_comp.
     pub not_eq_inv: T,
     /// The comparison limbs to be looked up.
     pub comparison_limbs: [T; 2],

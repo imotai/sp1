@@ -37,9 +37,7 @@ pub(crate) fn poseidon2_syscall<E: ExecutorConfig>(
     let output_memory_records = rt.mw_slice(ptr, &u64_result);
 
     // Push the Poseidon2 event.
-    let shard = rt.shard().get();
     let event = PrecompileEvent::POSEIDON2(Poseidon2PrecompileEvent {
-        shard,
         clk: clk_init,
         ptr,
         memory_records: output_memory_records,

@@ -1,4 +1,4 @@
-//! Elliptic Curve `y^2 = x^3 + 2x + 26z^5` over the `F_{p^7} = F_p[z]/(z^7 - 2z - 5)` extension
+//! Elliptic Curve `y^2 = x^3 + 45x + 41z^3` over the `F_{p^7} = F_p[z]/(z^7 - 3z - 5)` extension
 //! field.
 use crate::{inner_perm, septic_extension::SepticExtension};
 use deepsize2::DeepSizeOf;
@@ -199,8 +199,8 @@ impl<T> SepticCurve<T> {
     }
 }
 
-/// A septic elliptic curve point on y^2 = x^3 + 2x + 26z^5 over field `F_{p^7} = F_p[z]/(z^7 - 2z -
-/// 5)`, including the point at infinity.
+/// A septic elliptic curve point on y^2 = x^3 + 45x + 41z^3 over field
+/// `F_{p^7} = F_p[z]/(z^7 - 3z - 5)`, including the point at infinity.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum SepticCurveComplete<T> {
     /// The point at infinity.

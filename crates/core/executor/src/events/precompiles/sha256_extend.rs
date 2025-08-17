@@ -10,8 +10,6 @@ use deepsize2::DeepSizeOf;
 /// This event is emitted when a SHA-256 extend operation is performed.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct ShaExtendEvent {
-    /// The shard number.
-    pub shard: u32,
     /// The clock cycle.
     pub clk: u64,
     /// The pointer to the word.

@@ -52,18 +52,6 @@ pub struct RecursionPublicValues<T> {
     /// The expected start pc for the next shard.
     pub next_pc: [T; 3],
 
-    /// First shard being proven.
-    pub start_shard: T,
-
-    /// Next shard that should be proven.
-    pub next_shard: T,
-
-    /// First execution shard being proven.
-    pub start_execution_shard: T,
-
-    /// Next execution shard that should be proven.
-    pub next_execution_shard: T,
-
     /// The initial timestamp.
     pub initial_timestamp: [T; 4],
 
@@ -97,6 +85,12 @@ pub struct RecursionPublicValues<T> {
     /// Current cumulative sum of lookup bus. Note that for recursive proofs for core proofs, this
     /// contains the global cumulative sum.  
     pub global_cumulative_sum: SepticDigest<T>,
+
+    /// Whether or not the first shard is inside the compress proof.
+    pub contains_first_shard: T,
+
+    /// The total number of included core shards inside the compress proof.
+    pub num_included_shard: T,
 
     /// Whether the proof completely proves the program execution.
     pub is_complete: T,

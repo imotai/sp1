@@ -13,6 +13,7 @@ use slop_algebra::AbstractField;
 use slop_jagged::JaggedConfig;
 
 use serde::{Deserialize, Serialize};
+use sp1_core_machine::riscv::MAX_LOG_NUMBER_OF_SHARDS;
 use sp1_recursion_compiler::ir::{Builder, Felt, IrIter};
 
 use sp1_primitives::SP1Field;
@@ -125,11 +126,9 @@ where
             array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
         let mut pc: [Felt<_>; 3] =
             array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
-        let mut shard: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut current_exit_code: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut current_timestamp: [Felt<_>; 4] = array::from_fn(|_| builder.uninit());
 
-        let mut execution_shard: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut committed_value_digest: [[Felt<_>; 4]; PV_DIGEST_NUM_WORDS] =
             array::from_fn(|_| array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() }));
         let mut deferred_proofs_digest: [Felt<_>; POSEIDON_NUM_WORDS] =
@@ -143,6 +142,8 @@ where
             array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
         let mut commit_syscall: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut commit_deferred_syscall: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
+        let mut contains_first_shard: Felt<_> = builder.eval(C::F::zero());
+        let mut num_included_shard: Felt<_> = builder.eval(C::F::zero());
 
         // Verify the shard proofs.
         // Verification of proofs can be done in parallel but the aggregation/consistency checks
@@ -180,7 +181,31 @@ where
                 builder.assert_felt_eq(*expected, *actual);
             }
 
-            // Set the exit code, it is already constrained to be zero in the previous proof.
+            // Verify that there are less than `(1 << MAX_LOG_NUMBER_OF_SHARDS)` included shards.
+            C::range_check_felt(
+                builder,
+                current_public_values.num_included_shard,
+                MAX_LOG_NUMBER_OF_SHARDS,
+            );
+
+            // Verify that `contains_first_shard` is boolean.
+            builder.assert_felt_eq(
+                current_public_values.contains_first_shard
+                    * (current_public_values.contains_first_shard - C::F::one()),
+                C::F::zero(),
+            );
+
+            // Accumulate the number of included shards.
+            num_included_shard =
+                builder.eval(num_included_shard + current_public_values.num_included_shard);
+
+            // Accumulate the `contains_first_shard` flag.
+            contains_first_shard =
+                builder.eval(contains_first_shard + current_public_values.contains_first_shard);
+
+            // Add the global cumulative sums to the vector.
+            global_cumulative_sums.push(current_public_values.global_cumulative_sum);
+
             if i == 0 {
                 // Initialize global and accumulated values.
 
@@ -196,15 +221,6 @@ where
                 // Initiallize start pc.
                 compress_public_values.pc_start = current_public_values.pc_start;
                 pc = current_public_values.pc_start;
-
-                // Initialize start shard.
-                compress_public_values.start_shard = current_public_values.start_shard;
-                shard = current_public_values.start_shard;
-
-                // Initialize start execution shard.
-                compress_public_values.start_execution_shard =
-                    current_public_values.start_execution_shard;
-                execution_shard = current_public_values.start_execution_shard;
 
                 // Initialize timestamp.
                 compress_public_values.initial_timestamp = current_public_values.initial_timestamp;
@@ -273,14 +289,6 @@ where
             }
             pc = current_public_values.next_pc;
 
-            // Verify that the shard is equal to the current shard, then update.
-            builder.assert_felt_eq(shard, current_public_values.start_shard);
-            shard = current_public_values.next_shard;
-
-            // Verify that the execution shard is equal to the current one, then update.
-            builder.assert_felt_eq(execution_shard, current_public_values.start_execution_shard);
-            execution_shard = current_public_values.next_execution_shard;
-
             // Verify that the timestamp is equal to the current one, then update.
             for (limb, current_limb) in
                 current_timestamp.iter().zip(current_public_values.initial_timestamp.iter())
@@ -333,10 +341,16 @@ where
             for (digest, current) in sp1_vk_digest.iter().zip(current_public_values.sp1_vk_digest) {
                 builder.assert_felt_eq(*digest, current);
             }
-
-            // Add the global cumulative sums to the vector.
-            global_cumulative_sums.push(current_public_values.global_cumulative_sum);
         }
+
+        // Range check the accumulated number of included shards.
+        C::range_check_felt(builder, num_included_shard, MAX_LOG_NUMBER_OF_SHARDS);
+
+        // Check that the `contains_first_shard` flag is boolean.
+        builder.assert_felt_eq(
+            contains_first_shard * (contains_first_shard - C::F::one()),
+            C::F::zero(),
+        );
 
         // Sum all the global cumulative sum of the proofs.
         let global_cumulative_sum = builder.sum_digest_v2(global_cumulative_sums);
@@ -348,10 +362,6 @@ where
         compress_public_values.deferred_proofs_digest = deferred_proofs_digest;
         // Set next_pc to be the last pc.
         compress_public_values.next_pc = pc;
-        // Set next shard to be the last shard
-        compress_public_values.next_shard = shard;
-        // Set next execution shard to be the last execution shard
-        compress_public_values.next_execution_shard = execution_shard;
         // Set the timestamp to be the last timestamp.
         compress_public_values.last_timestamp = current_timestamp;
         // Set the MemoryInitialize address to be the last MemoryInitialize address.
@@ -366,6 +376,10 @@ where
         compress_public_values.vk_root = vk_root;
         // Assign the cumulative sum.
         compress_public_values.global_cumulative_sum = global_cumulative_sum;
+        // Assign the `contains_first_shard` flag.
+        compress_public_values.contains_first_shard = contains_first_shard;
+        // Assign the `num_included_shard` value.
+        compress_public_values.num_included_shard = num_included_shard;
         // Assign the `is_complete` flag.
         compress_public_values.is_complete = is_complete;
         // Set the exit code.

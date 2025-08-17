@@ -8,8 +8,6 @@ use crate::events::memory::{MemoryLocalEvent, MemoryReadRecord, MemoryWriteRecor
 /// This event is emitted when a `U256xU2048` mul operation is performed.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct U256xU2048MulEvent {
-    /// The shard number.
-    pub shard: u32,
     /// The channel number.
     pub clk: u64,
     /// The pointer to the a value.

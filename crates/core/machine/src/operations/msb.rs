@@ -52,12 +52,14 @@ impl<F: Field> U16MSBOperation<F> {
         cols: U16MSBOperation<AB::Var>,
         is_real: AB::Expr,
     ) {
+        // Constrain that `is_real` is boolean.
         builder.assert_bool(is_real.clone());
+        // Constrain that `msb` is boolean.
         builder.assert_bool(cols.msb);
         let two = AB::Expr::from_canonical_u32(2);
         let base = AB::Expr::from_canonical_u32(1 << 16);
         let diff = two * a - cols.msb * base;
-        // Constrains that `2 * a - msb * 2^16` is in u16 range, and `msb` is boolean.
+        // Constrains that `2 * a - msb * 2^16` is in u16 range, while `msb` is boolean.
         // If `0 <= a < 2^15`, then `msb` must be 0.
         // If `2^15 <= a < 2^16`, then `msb` must be 1.
         builder.send_byte(

@@ -13,7 +13,7 @@ use super::MachineConfig;
 /// The maximum number of elements that can be stored in the public values vec.  Both SP1 and
 /// recursive proofs need to pad their public values vec to this length.  This is required since the
 /// recursion verification program expects the public values vec to be fixed length.
-pub const PROOF_MAX_NUM_PVS: usize = 171;
+pub const PROOF_MAX_NUM_PVS: usize = 169;
 
 /// Data required for testing.
 #[derive(Clone, Serialize, Deserialize)]

@@ -52,15 +52,7 @@ pub struct SP1DeferredWitnessValues<SC: SP1FieldFriConfig + FieldHasher<SP1Field
     pub vk_merkle_data: SP1MerkleProofWitnessValues<SC>,
     pub start_reconstruct_deferred_digest: [SC::F; POSEIDON_NUM_WORDS],
     pub sp1_vk_digest: [SC::F; DIGEST_SIZE],
-    pub committed_value_digest: [[SC::F; 4]; PV_DIGEST_NUM_WORDS],
-    pub deferred_proofs_digest: [SC::F; POSEIDON_NUM_WORDS],
     pub end_pc: [SC::F; 3],
-    pub end_shard: SC::F,
-    pub end_execution_shard: SC::F,
-    pub end_timestamp: [SC::F; 4],
-    pub init_addr: [SC::F; 3],
-    pub finalize_addr: [SC::F; 3],
-    pub is_complete: bool,
 }
 
 #[allow(clippy::type_complexity)]
@@ -75,15 +67,7 @@ pub struct SP1DeferredWitnessVariable<
     pub vk_merkle_data: SP1MerkleProofWitnessVariable<C, SC>,
     pub start_reconstruct_deferred_digest: [Felt<C::F>; POSEIDON_NUM_WORDS],
     pub sp1_vk_digest: [Felt<C::F>; DIGEST_SIZE],
-    pub committed_value_digest: [[Felt<C::F>; 4]; PV_DIGEST_NUM_WORDS],
-    pub deferred_proofs_digest: [Felt<C::F>; POSEIDON_NUM_WORDS],
     pub end_pc: [Felt<C::F>; 3],
-    pub end_shard: Felt<C::F>,
-    pub end_execution_shard: Felt<C::F>,
-    pub end_timestamp: [Felt<C::F>; 4],
-    pub init_addr: [Felt<C::F>; 3],
-    pub finalize_addr: [Felt<C::F>; 3],
-    pub is_complete: Felt<C::F>,
 }
 
 impl<C, SC, A, JC> SP1DeferredVerifier<C, SC, A, JC>
@@ -126,15 +110,7 @@ where
             vk_merkle_data,
             start_reconstruct_deferred_digest,
             sp1_vk_digest,
-            committed_value_digest,
-            deferred_proofs_digest,
             end_pc,
-            end_shard,
-            end_execution_shard,
-            end_timestamp,
-            init_addr,
-            finalize_addr,
-            is_complete,
         } = input;
 
         // First, verify the merkle tree proofs.
@@ -204,56 +180,60 @@ where
 
         // Set the public values.
 
+        let zero = builder.eval(C::F::zero());
+        let one = builder.eval(C::F::one());
+
         // Set initial_pc, end_pc, initial_shard, and end_shard to be the hinted values.
         deferred_public_values.pc_start = end_pc;
         deferred_public_values.next_pc = end_pc;
-        deferred_public_values.start_shard = end_shard;
-        deferred_public_values.next_shard = end_shard;
-        deferred_public_values.start_execution_shard = end_execution_shard;
-        deferred_public_values.next_execution_shard = end_execution_shard;
         // Set the init and finalize addresss to be the hinted values.
-        deferred_public_values.previous_init_addr = init_addr;
-        deferred_public_values.last_init_addr = init_addr;
-        deferred_public_values.previous_finalize_addr = finalize_addr;
-        deferred_public_values.last_finalize_addr = finalize_addr;
-        deferred_public_values.initial_timestamp = end_timestamp;
-        deferred_public_values.last_timestamp = end_timestamp;
+        deferred_public_values.previous_init_addr = core::array::from_fn(|_| zero);
+        deferred_public_values.last_init_addr = core::array::from_fn(|_| zero);
+        deferred_public_values.previous_finalize_addr = core::array::from_fn(|_| zero);
+        deferred_public_values.last_finalize_addr = core::array::from_fn(|_| zero);
+        deferred_public_values.initial_timestamp = [zero, zero, zero, one];
+        deferred_public_values.last_timestamp = [zero, zero, zero, one];
 
         // Set the sp1_vk_digest to be the hitned value.
         deferred_public_values.sp1_vk_digest = sp1_vk_digest;
 
         // Set the committed value digest to be the hitned value.
-        deferred_public_values.prev_committed_value_digest = committed_value_digest;
-        deferred_public_values.committed_value_digest = committed_value_digest;
-        // Set the deferred proof digest to be the hitned value.
-        deferred_public_values.prev_deferred_proofs_digest = deferred_proofs_digest;
-        deferred_public_values.deferred_proofs_digest = deferred_proofs_digest;
+        deferred_public_values.prev_committed_value_digest =
+            core::array::from_fn(|_| [zero, zero, zero, zero]);
+        deferred_public_values.committed_value_digest =
+            core::array::from_fn(|_| [zero, zero, zero, zero]);
+        // Set the deferred proof digest to all zeroes.
+        deferred_public_values.prev_deferred_proofs_digest = core::array::from_fn(|_| zero);
+        deferred_public_values.deferred_proofs_digest = core::array::from_fn(|_| zero);
 
         // Set the exit code to be zero for now.
-        deferred_public_values.prev_exit_code = builder.eval(C::F::zero());
-        deferred_public_values.exit_code = builder.eval(C::F::zero());
+        deferred_public_values.prev_exit_code = zero;
+        deferred_public_values.exit_code = zero;
         // Set the `commit_syscall` and `commit_deferred_syscall` flags to zero.
-        deferred_public_values.prev_commit_syscall = builder.eval(C::F::zero());
-        deferred_public_values.commit_syscall = builder.eval(C::F::zero());
-        deferred_public_values.prev_commit_deferred_syscall = builder.eval(C::F::zero());
-        deferred_public_values.commit_deferred_syscall = builder.eval(C::F::zero());
+        deferred_public_values.prev_commit_syscall = zero;
+        deferred_public_values.commit_syscall = zero;
+        deferred_public_values.prev_commit_deferred_syscall = zero;
+        deferred_public_values.commit_deferred_syscall = zero;
         // Assign the deferred proof digests.
         deferred_public_values.end_reconstruct_deferred_digest = reconstruct_deferred_digest;
         // Set the is_complete flag.
-        deferred_public_values.is_complete = is_complete;
+        deferred_public_values.is_complete = zero;
         // Set the cumulative sum to zero.
         deferred_public_values.global_cumulative_sum =
             SepticDigest(SepticCurve::convert(SepticDigest::<C::F>::zero().0, |value| {
                 builder.eval(value)
             }));
+        // Set the first shard flag to zero.
+        deferred_public_values.contains_first_shard = zero;
+        // Set the number of included shards to zero.
+        deferred_public_values.num_included_shard = zero;
         // Set the vk root from the witness.
         deferred_public_values.vk_root = vk_root;
         // Set the digest according to the previous values.
         deferred_public_values.digest =
             recursion_public_values_digest::<C, SC>(builder, deferred_public_values);
 
-        assert_complete(builder, deferred_public_values, is_complete);
-        builder.assert_felt_eq(is_complete, C::F::zero());
+        assert_complete(builder, deferred_public_values, deferred_public_values.is_complete);
 
         SC::commit_recursion_public_values(builder, *deferred_public_values);
     }

@@ -49,9 +49,7 @@ pub(crate) fn fp_op_syscall<P: FpOpField, E: ExecutorConfig>(
     rt.clk += 1;
     let x_memory_records = rt.mw_slice(x_ptr, &result);
 
-    let shard = rt.shard().get();
     let event = FpOpEvent {
-        shard,
         clk,
         x_ptr,
         x,

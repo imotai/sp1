@@ -89,17 +89,30 @@ pub fn generate_records<F: PrimeField32>(
             // Update the public values & prover state for the shards which contain
             // "cpu events".
             let mut state = state.lock().unwrap();
-            state.shard += 1;
-            state.execution_shard = record.public_values.execution_shard;
-            state.next_execution_shard = record.public_values.execution_shard + 1;
+            state.is_execution_shard = 1;
             state.pc_start = record.public_values.pc_start;
             state.next_pc = record.public_values.next_pc;
             state.initial_timestamp = record.public_values.initial_timestamp;
             state.last_timestamp = record.public_values.last_timestamp;
+            state.is_first_shard = (record.public_values.initial_timestamp == 1) as u32;
+
             let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
             let initial_timestamp_low = (state.initial_timestamp & 0xFFFFFF) as u32;
             let last_timestamp_high = (state.last_timestamp >> 24) as u32;
             let last_timestamp_low = (state.last_timestamp & 0xFFFFFF) as u32;
+
+            state.initial_timestamp_inv = if state.initial_timestamp == 1 {
+                0
+            } else {
+                F::from_canonical_u32(initial_timestamp_high + initial_timestamp_low - 1)
+                    .inverse()
+                    .as_canonical_u32()
+            };
+
+            state.last_timestamp_inv =
+                F::from_canonical_u32(last_timestamp_high + last_timestamp_low - 1)
+                    .inverse()
+                    .as_canonical_u32();
             if initial_timestamp_high == last_timestamp_high {
                 state.is_timestamp_high_eq = 1;
             } else {
@@ -151,9 +164,7 @@ pub fn generate_records<F: PrimeField32>(
 
             // Update the public values & prover state for the shards which do not
             // contain "cpu events" before committing to them.
-            state.execution_shard = state.next_execution_shard;
             for record in deferred.iter_mut() {
-                state.shard += 1;
                 state.previous_init_addr = record.public_values.previous_init_addr;
                 state.last_init_addr = record.public_values.last_init_addr;
                 state.previous_finalize_addr = record.public_values.previous_finalize_addr;
@@ -167,7 +178,23 @@ pub fn generate_records<F: PrimeField32>(
                 state.last_timestamp = state.initial_timestamp;
                 state.is_timestamp_high_eq = 1;
                 state.is_timestamp_low_eq = 1;
-                state.next_execution_shard = state.execution_shard;
+                state.is_first_shard = 0;
+                state.is_execution_shard = 0;
+
+                let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
+                let initial_timestamp_low = (state.initial_timestamp & 0xFFFFFF) as u32;
+                let last_timestamp_high = (state.last_timestamp >> 24) as u32;
+                let last_timestamp_low = (state.last_timestamp & 0xFFFFFF) as u32;
+
+                state.is_first_shard = (record.public_values.initial_timestamp == 1) as u32;
+                state.initial_timestamp_inv =
+                    F::from_canonical_u32(initial_timestamp_high + initial_timestamp_low - 1)
+                        .inverse()
+                        .as_canonical_u32();
+                state.last_timestamp_inv =
+                    F::from_canonical_u32(last_timestamp_high + last_timestamp_low - 1)
+                        .inverse()
+                        .as_canonical_u32();
                 record.public_values = *state;
             }
 
@@ -214,7 +241,15 @@ where
     while let Some(proof) = proof_rx.recv().await {
         let public_values: &PublicValues<[F; 4], [F; 3], [F; 4], F> =
             proof.public_values.as_slice().borrow();
-        shard_proofs.insert(public_values.shard, proof);
+        shard_proofs.insert(
+            (
+                public_values.initial_timestamp,
+                public_values.last_timestamp,
+                public_values.previous_init_addr,
+                public_values.previous_finalize_addr,
+            ),
+            proof,
+        );
     }
     let shard_proofs = shard_proofs.into_values().collect();
     let proof = MachineProof { shard_proofs };

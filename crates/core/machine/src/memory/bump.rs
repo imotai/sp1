@@ -67,9 +67,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
                     let cols: &mut MemoryBumpCols<F> = row.as_mut_slice().borrow_mut();
                     let bump_event = MemoryRecordEnum::Read(MemoryReadRecord {
                         value: event.prev_value(),
-                        prev_shard: event.previous_record().shard,
                         prev_timestamp: event.previous_record().timestamp,
-                        shard: 0,
                         timestamp: (event.current_record().timestamp >> 24) << 24,
                     });
                     cols.access.populate(bump_event, &mut blu);
@@ -111,9 +109,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
                     let (event, addr) = input.bump_memory_events[idx];
                     let bump_event = MemoryRecordEnum::Read(MemoryReadRecord {
                         value: event.prev_value(),
-                        prev_shard: event.previous_record().shard,
                         prev_timestamp: event.previous_record().timestamp,
-                        shard: 0,
                         timestamp: (event.current_record().timestamp >> 24) << 24,
                     });
                     cols.access.populate(bump_event, &mut byte_lookup_events);

@@ -247,8 +247,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         let cols: &mut WeierstrassAddAssignCols<F, E::BaseField> =
             dummy_row.as_mut_slice().borrow_mut();
         let num_words_field_element = E::BaseField::NB_LIMBS / 8;
-        let dummy_memory_record =
-            MemoryReadRecord { value: 1, shard: 0, timestamp: 1, prev_shard: 0, prev_timestamp: 0 };
+        let dummy_memory_record = MemoryReadRecord { value: 1, timestamp: 1, prev_timestamp: 0 };
         let zero = BigUint::zero();
         let one = BigUint::one();
         let dummy_memory_record_enum = MemoryRecordEnum::Read(dummy_memory_record);

@@ -12,14 +12,14 @@ use crate::{events::FieldOperation, RiscvAirId};
 ///
 /// | Byte 0 | Byte 1 | Byte 2 | Byte 3 |
 /// | ------ | ------ | ------ | ------ |
-/// |   ID   | Table  | Cycles | Unused |
+/// |   ID   | Table  | Unused | Unused |
 ///
 /// where:
 /// - Byte 0: The system call identifier.
 /// - Byte 1: Whether the handler of the system call has its own table. This is used in the CPU
 ///   table to determine whether to lookup the syscall using the syscall interaction.
-/// - Byte 2: The number of additional cycles the syscall uses. This is used to make sure the # of
-///   memory accesses is bounded.
+/// - Byte 2: Previously, this was the number of additional cycles the syscall uses. Now, this byte
+///   is unused, as each syscall instruction increments the clock by 256 additionally.
 /// - Byte 3: Currently unused.
 #[derive(
     Debug,

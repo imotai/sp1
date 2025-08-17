@@ -63,6 +63,7 @@ impl<F: Field> XorU32Operation<F> {
         cols: XorU32Operation<AB::Var>,
         is_real: AB::Var,
     ) -> [AB::Expr; 2] {
+        // Constrain that `is_real` is boolean.
         builder.assert_bool(is_real);
 
         // Convert the two words to bytes using the unsafe API.

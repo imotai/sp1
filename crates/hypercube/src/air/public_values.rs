@@ -48,14 +48,8 @@ pub struct PublicValues<W1, W2, W3, T> {
     /// This value is only valid if halt has been executed.
     pub exit_code: T,
 
-    /// The shard number.
-    pub shard: T,
-
-    /// The execution shard number.
-    pub execution_shard: T,
-
-    /// The next execution shard number.
-    pub next_execution_shard: T,
+    /// Whether or not the current shard is an execution shard.
+    pub is_execution_shard: T,
 
     /// The largest address that is witnessed for initialization in the previous shard.
     pub previous_init_addr: W2,
@@ -110,6 +104,18 @@ pub struct PublicValues<W1, W2, W3, T> {
 
     /// Whether `COMMIT_DEFERRED` syscall has been called up to this shard.
     pub commit_deferred_syscall: T,
+
+    /// The inverse to show that `initial_timestamp != 1` in the shards that aren't the first one.
+    pub initial_timestamp_inv: T,
+
+    /// The inverse to show that `last_timestamp != 1` in all shards.
+    pub last_timestamp_inv: T,
+
+    /// Whether or not this shard is the first shard of the proof.
+    pub is_first_shard: T,
+
+    /// This field is here to ensure that the size of the public values struct is a multiple of 8.
+    pub empty: [T; 7],
 }
 
 impl PublicValues<u32, u64, u64, u32> {
@@ -130,8 +136,6 @@ impl PublicValues<u32, u64, u64, u32> {
     #[must_use]
     pub fn reset(&self) -> Self {
         let mut copy = *self;
-        copy.shard = 0;
-        copy.execution_shard = 0;
         copy.pc_start = 0;
         copy.next_pc = 0;
         copy.previous_init_addr = 0;
@@ -192,9 +196,7 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             next_pc,
             prev_exit_code,
             exit_code,
-            shard,
-            execution_shard,
-            next_execution_shard,
+            is_execution_shard,
             previous_init_addr,
             last_init_addr,
             previous_finalize_addr,
@@ -213,6 +215,10 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             commit_syscall,
             prev_commit_deferred_syscall,
             commit_deferred_syscall,
+            initial_timestamp_inv,
+            last_timestamp_inv,
+            is_first_shard,
+            ..
         } = value;
 
         let prev_committed_value_digest: [_; PV_DIGEST_NUM_WORDS] = core::array::from_fn(|i| {
@@ -251,9 +257,7 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
         ];
         let exit_code = F::from_canonical_u32(exit_code);
         let prev_exit_code = F::from_canonical_u32(prev_exit_code);
-        let shard = F::from_canonical_u32(shard);
-        let execution_shard = F::from_canonical_u32(execution_shard);
-        let next_execution_shard = F::from_canonical_u32(next_execution_shard);
+        let is_execution_shard = F::from_canonical_u32(is_execution_shard);
         let previous_init_addr = [
             F::from_canonical_u16((previous_init_addr & 0xFFFF) as u16),
             F::from_canonical_u16(((previous_init_addr >> 16) & 0xFFFF) as u16),
@@ -303,6 +307,10 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
         let prev_commit_deferred_syscall = F::from_canonical_u32(prev_commit_deferred_syscall);
         let commit_deferred_syscall = F::from_canonical_u32(commit_deferred_syscall);
 
+        let initial_timestamp_inv = F::from_canonical_u32(initial_timestamp_inv);
+        let last_timestamp_inv = F::from_canonical_u32(last_timestamp_inv);
+        let is_first_shard = F::from_canonical_u32(is_first_shard);
+
         Self {
             prev_committed_value_digest,
             committed_value_digest,
@@ -312,9 +320,7 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             next_pc,
             prev_exit_code,
             exit_code,
-            shard,
-            execution_shard,
-            next_execution_shard,
+            is_execution_shard,
             previous_init_addr,
             last_init_addr,
             previous_finalize_addr,
@@ -333,6 +339,10 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             commit_syscall,
             prev_commit_deferred_syscall,
             commit_deferred_syscall,
+            initial_timestamp_inv,
+            last_timestamp_inv,
+            is_first_shard,
+            empty: core::array::from_fn(|_| F::zero()),
         }
     }
 }

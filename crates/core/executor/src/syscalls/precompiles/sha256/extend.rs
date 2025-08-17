@@ -58,9 +58,7 @@ pub(crate) fn sha256_extend_syscall<E: ExecutorConfig>(
     }
 
     // Push the SHA extend event.
-    let shard = rt.shard().get();
     let event = PrecompileEvent::ShaExtend(ShaExtendEvent {
-        shard,
         clk: clk_init,
         w_ptr: w_ptr_init,
         w_i_minus_15_reads,

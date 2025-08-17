@@ -69,9 +69,7 @@ pub(crate) fn uint256_ops<E: ExecutorConfig>(
     rt.clk += 1;
     let e_memory_records = rt.mw_slice(e_ptr, &u64_result[4..8]);
 
-    let shard = rt.shard().get();
     let event = PrecompileEvent::Uint256Ops(Uint256OpsEvent {
-        shard,
         clk,
         op,
         a_ptr,

@@ -38,7 +38,6 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         );
 
         // Add to the memory argument.
-        // let addr = addr.into();
         let prev_high = mem_access.access_timestamp.prev_high.clone().into();
         let prev_low = mem_access.access_timestamp.prev_low.clone().into();
         let prev_values = once(prev_high)
@@ -66,8 +65,7 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
     }
 
     /// Constrain a memory write, given the write value.
-    /// The constraints enforce that the new (shard, timestamp) tuple is greater than the previous
-    /// one.
+    /// The constraints enforce that the new timestamp is greater than the previous one.
     fn eval_memory_access_write<E: Into<Self::Expr> + Clone>(
         &mut self,
         clk_high: impl Into<Self::Expr>,
@@ -118,8 +116,8 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
     }
 
     /// Constrain a memory read, by using the read value as the write value.
-    /// The constraints enforce that the new (shard, timestamp) tuple is greater than the previous
-    /// one. Used for cases where the previous shard is equal to the shard.
+    /// The constraints enforce that the new timestamp is greater than the previous one.
+    /// Used for cases where the top limb of the timestamp is equal to the previous one.
     fn eval_memory_access_in_shard_read<E: Into<Self::Expr> + Clone>(
         &mut self,
         clk_high: impl Into<Self::Expr>,
@@ -141,8 +139,6 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         );
 
         // Add to the memory argument.
-        // let addr = addr.into();
-
         let prev_low = mem_access.access_timestamp.prev_low.clone().into();
         let prev_values = once(clk_high.clone())
             .chain(once(prev_low))
@@ -169,8 +165,8 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
     }
 
     /// Constrain a memory write, given the write value.
-    /// The constraints enforce that the new (shard, timestamp) tuple is greater than the previous
-    /// one. Used for cases where the previous shard is equal to the shard.
+    /// The constraints enforce that the new timestamp is greater than the previous one.
+    /// Used for cases where the top limb of the timestamp is equal to the previous one.
     fn eval_memory_access_in_shard_write<E: Into<Self::Expr> + Clone>(
         &mut self,
         clk_high: impl Into<Self::Expr>,
@@ -193,8 +189,6 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         );
 
         // Add to the memory argument.
-        // let addr = addr.into();
-
         let prev_low = mem_access.access_timestamp.prev_low.clone().into();
         let prev_values = once(clk_high.clone())
             .chain(once(prev_low))
@@ -267,9 +261,6 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
     /// Verifies the memory access timestamp.
     ///
     /// This method verifies that the current memory access happened after the previous one's.
-    /// Specifically it will ensure that if the current and previous access are in the same shard,
-    /// then the current's clk val is greater than the previous's.  If they are not in the same
-    /// shard, then it will ensure that the current's shard val is greater than the previous's.
     fn eval_memory_access_timestamp(
         &mut self,
         mem_access: &MemoryAccessTimestamp<impl Into<Self::Expr> + Clone>,
@@ -298,17 +289,16 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         let current_comp_val = self.if_else(compare_low.clone(), clk_low.into(), clk_high.clone());
 
         // Assert `current_comp_val > prev_comp_val`. We check this by asserting that
-        // `0 <= current_comp_val-prev_comp_val-1 < 2^28`.
+        // `0 <= current_comp_val-prev_comp_val-1 < 2^24`.
         //
         // The equivalence of these statements comes from the fact that if
         // `current_comp_val <= prev_comp_val`, then `current_comp_val-prev_comp_val-1 < 0` and will
-        // underflow in the prime field, resulting in a value that is `>= 2^28` as long as both
-        // `current_comp_val, prev_comp_val` are range-checked to be `<2^28` and as long as we're
-        // working in a field larger than `2 * 2^28` (which is true of the SP1Field and Mersenne31
-        // prime).
+        // underflow in the prime field, resulting in a value that is `>= 2^24` as long as both
+        // `current_comp_val, prev_comp_val` are range-checked to be `< 2^24` and as long as we're
+        // working in a field larger than `2 * 2^24` (which is true of the SP1Field).
         let diff_minus_one = current_comp_val - prev_comp_value - Self::Expr::one();
 
-        // Verify that value = limb_low + limb_high * 2^14.
+        // Verify that value = limb_low + limb_high * 2^16.
         self.when(do_check.clone()).assert_eq(
             diff_minus_one,
             mem_access.diff_low_limb.clone().into()
@@ -334,7 +324,7 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         )
     }
 
-    /// Verifies the in-shard memory access timestamp.
+    /// Verifies the memory access timestamp where the high limb is equal.
     ///
     /// This method verifies that the current memory access happened after the previous one's.
     /// Specifically it will ensure that the current's clk val is greater than the previous's.

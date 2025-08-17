@@ -257,14 +257,8 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         let mut dummy_row = zeroed_f_vec(num_cols);
         let cols: &mut WeierstrassDoubleAssignCols<F, E::BaseField> =
             dummy_row.as_mut_slice().borrow_mut();
-        let dummy_memory_record = MemoryWriteRecord {
-            value: 1,
-            shard: 0,
-            timestamp: 1,
-            prev_value: 1,
-            prev_shard: 0,
-            prev_timestamp: 0,
-        };
+        let dummy_memory_record =
+            MemoryWriteRecord { value: 1, timestamp: 1, prev_value: 1, prev_timestamp: 0 };
         let zero = BigUint::zero();
         let one = BigUint::one();
         let dummy_record_enum = MemoryRecordEnum::Write(dummy_memory_record);

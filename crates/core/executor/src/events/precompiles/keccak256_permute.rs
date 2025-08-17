@@ -13,8 +13,6 @@ pub(crate) const STATE_SIZE: usize = 25;
 /// This event is emitted when a keccak-256 permutation operation is performed.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct KeccakPermuteEvent {
-    /// The shard number.
-    pub shard: u32,
     /// The clock cycle.
     pub clk: u64,
     /// The pre-state as a list of u64 words.

@@ -19,8 +19,6 @@ pub enum Uint256Operation {
 /// Uint256 operations event.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, DeepSizeOf)]
 pub struct Uint256OpsEvent {
-    /// Which shard this event occurred in.
-    pub shard: u32,
     /// The clock cycle that this event occurred in.
     pub clk: u64,
     /// The operation performed.

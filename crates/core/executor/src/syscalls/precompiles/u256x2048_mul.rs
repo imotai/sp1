@@ -52,9 +52,7 @@ pub(crate) fn u256x2048_mul<E: ExecutorConfig>(
 
     let lo_memory_records = rt.mw_slice(lo_ptr, &lo_words);
     let hi_memory_records = rt.mw_slice(hi_ptr, &hi_words);
-    let shard = rt.shard().get();
     let event = PrecompileEvent::U256xU2048Mul(U256xU2048MulEvent {
-        shard,
         clk,
         a_ptr,
         a,

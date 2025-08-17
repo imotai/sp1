@@ -51,9 +51,7 @@ pub fn edwards_decompress_syscall<Ex: ExecutorConfig>(
     let x_memory_records: [MemoryWriteRecord; WORDS_FIELD_ELEMENT] =
         x_memory_records_vec.try_into().unwrap();
 
-    let shard = rt.shard().get();
     let event = EdDecompressEvent {
-        shard,
         clk: start_clk,
         ptr: slice_ptr,
         sign: sign_bool,

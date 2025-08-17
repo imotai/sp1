@@ -4,8 +4,7 @@ use hashbrown::HashMap;
 
 use crate::{
     events::{
-        LogicalShard, MemoryLocalEvent, MemoryReadRecord, MemoryWriteRecord, PrecompileEvent,
-        Shard, SyscallEvent,
+        MemoryLocalEvent, MemoryReadRecord, MemoryWriteRecord, PrecompileEvent, SyscallEvent,
     },
     ExecutionRecord, Executor, ExecutorConfig, ExecutorMode, Register,
 };
@@ -16,8 +15,8 @@ use super::SyscallCode;
 /// runtime.
 #[allow(dead_code)]
 pub struct SyscallContext<'a, 'b: 'a, E: ExecutorConfig> {
-    /// The current shard.
-    pub lshard: LogicalShard,
+    /// The external flag.
+    pub external_flag: bool,
     /// The clock cycle.
     pub clk: u64,
     /// The next program counter.
@@ -34,16 +33,15 @@ pub struct SyscallContext<'a, 'b: 'a, E: ExecutorConfig> {
 
 impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     /// Create a new [`SyscallContext`].
-    pub fn new(runtime: &'a mut Executor<'b>, external: bool) -> Self {
-        let lshard = LogicalShard::new(runtime.shard(), external);
+    pub fn new(runtime: &'a mut Executor<'b>, external_flag: bool) -> Self {
         let clk = runtime.state.clk;
         Self {
-            lshard,
+            external_flag,
             clk,
             next_pc: runtime.state.pc.wrapping_add(4),
             exit_code: 0,
             rt: runtime,
-            local_memory_access: external.then_some(HashMap::new()),
+            local_memory_access: external_flag.then_some(HashMap::new()),
             _phantom: PhantomData,
         }
     }
@@ -66,24 +64,12 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
         }
     }
 
-    /// Get the current shard.
-    #[must_use]
-    pub fn shard(&self) -> Shard {
-        self.lshard.shard()
-    }
-
-    /// Get the current logical shard.
-    #[must_use]
-    pub fn lshard(&self) -> LogicalShard {
-        self.lshard
-    }
-
     /// Read a word from memory.
     ///
     /// `addr` must be a pointer to main memory, not a register.
     pub fn mr(&mut self, addr: u64) -> (MemoryReadRecord, u64) {
         let record =
-            self.rt.mr::<E>(addr, self.lshard(), self.clk, self.local_memory_access.as_mut());
+            self.rt.mr::<E>(addr, self.external_flag, self.clk, self.local_memory_access.as_mut());
         (record, record.value)
     }
 
@@ -105,7 +91,13 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     ///
     /// `addr` must be a pointer to main memory, not a register.
     pub fn mw(&mut self, addr: u64, value: u64) -> MemoryWriteRecord {
-        self.rt.mw::<E>(addr, value, self.lshard(), self.clk, self.local_memory_access.as_mut())
+        self.rt.mw::<E>(
+            addr,
+            value,
+            self.external_flag,
+            self.clk,
+            self.local_memory_access.as_mut(),
+        )
     }
 
     /// Write a slice of words to memory.
@@ -122,7 +114,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     pub fn rr_traced(&mut self, register: Register) -> (MemoryReadRecord, u64) {
         let record = self.rt.rr_traced::<E>(
             register,
-            self.lshard(),
+            self.external_flag,
             self.clk,
             self.local_memory_access.as_mut(),
         );
@@ -134,7 +126,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
         let record = self.rt.rw_traced::<E>(
             register,
             value,
-            self.lshard(),
+            self.external_flag,
             self.clk,
             self.local_memory_access.as_mut(),
         );

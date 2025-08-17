@@ -97,13 +97,11 @@ impl Witnessable<InnerConfig> for SP1NormalizeWitnessValues<SP1CoreJaggedConfig>
         let shard_proofs = self.shard_proofs.read(builder);
         let reconstruct_deferred_digest = self.reconstruct_deferred_digest.read(builder);
         let is_complete = InnerVal::from_bool(self.is_complete).read(builder);
-        let is_first_shard = InnerVal::from_bool(self.is_first_shard).read(builder);
         let vk_root = self.vk_root.read(builder);
         SP1RecursionWitnessVariable {
             vk,
             shard_proofs,
             is_complete,
-            is_first_shard,
             reconstruct_deferred_digest,
             vk_root,
         }
@@ -114,7 +112,6 @@ impl Witnessable<InnerConfig> for SP1NormalizeWitnessValues<SP1CoreJaggedConfig>
         self.shard_proofs.write(witness);
         self.reconstruct_deferred_digest.write(witness);
         self.is_complete.write(witness);
-        self.is_first_shard.write(witness);
         self.vk_root.write(witness);
     }
 }
@@ -157,30 +154,14 @@ where
         let start_reconstruct_deferred_digest =
             self.start_reconstruct_deferred_digest.read(builder);
         let sp1_vk_digest = self.sp1_vk_digest.read(builder);
-        let committed_value_digest = self.committed_value_digest.read(builder);
-        let deferred_proofs_digest = self.deferred_proofs_digest.read(builder);
         let end_pc = self.end_pc.read(builder);
-        let end_shard = self.end_shard.read(builder);
-        let end_execution_shard = self.end_execution_shard.read(builder);
-        let end_timestamp = self.end_timestamp.read(builder);
-        let init_addr = self.init_addr.read(builder);
-        let finalize_addr = self.finalize_addr.read(builder);
-        let is_complete = InnerVal::from_bool(self.is_complete).read(builder);
 
         SP1DeferredWitnessVariable {
             vks_and_proofs,
             vk_merkle_data,
             start_reconstruct_deferred_digest,
             sp1_vk_digest,
-            committed_value_digest,
-            deferred_proofs_digest,
             end_pc,
-            end_shard,
-            end_execution_shard,
-            end_timestamp,
-            init_addr,
-            finalize_addr,
-            is_complete,
         }
     }
 
@@ -189,15 +170,7 @@ where
         self.vk_merkle_data.write(witness);
         self.start_reconstruct_deferred_digest.write(witness);
         self.sp1_vk_digest.write(witness);
-        self.committed_value_digest.write(witness);
-        self.deferred_proofs_digest.write(witness);
         self.end_pc.write(witness);
-        self.end_shard.write(witness);
-        self.end_execution_shard.write(witness);
-        self.end_timestamp.write(witness);
-        self.init_addr.write(witness);
-        self.finalize_addr.write(witness);
-        self.is_complete.write(witness);
     }
 }
 

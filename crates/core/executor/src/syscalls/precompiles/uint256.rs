@@ -57,9 +57,7 @@ pub(crate) fn uint256_mul<E: ExecutorConfig>(
     // Write the result to x and keep track of the memory records.
     let x_memory_records = rt.mw_slice(x_ptr, &result);
 
-    let shard = rt.shard().get();
     let event = PrecompileEvent::Uint256Mul(Uint256MulEvent {
-        shard,
         clk,
         x_ptr,
         x,

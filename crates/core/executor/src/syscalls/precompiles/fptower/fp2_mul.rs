@@ -58,9 +58,7 @@ pub(crate) fn fp2_mul_syscall<P: FpOpField, E: ExecutorConfig>(
     result.resize(num_words, 0);
     let x_memory_records = rt.mw_slice(x_ptr, &result);
 
-    let shard = rt.shard().get();
     let event = Fp2MulEvent {
-        shard,
         clk,
         x_ptr,
         x,

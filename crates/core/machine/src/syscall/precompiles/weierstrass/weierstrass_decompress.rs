@@ -292,10 +292,8 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                 for i in 0..cols.x_access.len() {
                     cols.x_access[i].populate(
                         MemoryRecordEnum::Read(MemoryReadRecord {
-                            prev_shard: 0,
                             prev_timestamp: 0,
                             value: words[i],
-                            shard: 0,
                             timestamp: 1,
                         }),
                         &mut blu,

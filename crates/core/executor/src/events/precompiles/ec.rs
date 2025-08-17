@@ -26,8 +26,6 @@ use crate::{
 /// This event is emitted when an elliptic curve addition operation is performed.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct EllipticCurveAddEvent {
-    /// The shard number.
-    pub shard: u32,
     /// The clock cycle.
     pub clk: u64,
     /// The pointer to the first point.
@@ -51,8 +49,6 @@ pub struct EllipticCurveAddEvent {
 /// This event is emitted when an elliptic curve doubling operation is performed.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct EllipticCurveDoubleEvent {
-    /// The shard number.
-    pub shard: u32,
     /// The clock cycle.
     pub clk: u64,
     /// The pointer to the point.
@@ -70,8 +66,6 @@ pub struct EllipticCurveDoubleEvent {
 /// This event is emitted when an elliptic curve point decompression operation is performed.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct EllipticCurveDecompressEvent {
-    /// The shard number.
-    pub shard: u32,
     /// The clock cycle.
     pub clk: u64,
     /// The pointer to the point.
@@ -124,7 +118,6 @@ pub fn create_ec_add_event<E: EllipticCurve, Ex: ExecutorConfig>(
     let p_memory_records = rt.mw_slice(p_ptr, &result_words);
 
     EllipticCurveAddEvent {
-        shard: rt.shard().get(),
         clk: start_clk,
         p_ptr,
         p,
@@ -162,7 +155,6 @@ pub fn create_ec_double_event<E: EllipticCurve, Ex: ExecutorConfig>(
     let p_memory_records = rt.mw_slice(p_ptr, &result_words);
 
     EllipticCurveDoubleEvent {
-        shard: rt.shard().get(),
         clk: start_clk,
         p_ptr,
         p,
@@ -210,7 +202,6 @@ pub fn create_ec_decompress_event<E: EllipticCurve, Ex: ExecutorConfig>(
     let y_memory_records = rt.mw_slice(slice_ptr, &y_words);
 
     EllipticCurveDecompressEvent {
-        shard: rt.shard().get(),
         clk: start_clk,
         ptr: slice_ptr,
         sign_bit: sign_bit != 0,

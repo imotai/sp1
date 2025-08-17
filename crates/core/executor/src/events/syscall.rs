@@ -14,8 +14,6 @@ pub struct SyscallEvent {
     pub pc: u64,
     /// The next program counter.
     pub next_pc: u64,
-    /// The shard number.
-    pub shard: u32,
     /// The clock cycle.
     pub clk: u64,
     /// Whether the first operand is register 0.

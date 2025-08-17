@@ -167,10 +167,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
         let mut rows: Vec<[F; NUM_MEMORY_INIT_COLS]> = memory_events
             .par_iter()
             .map(|event| {
-                let MemoryInitializeFinalizeEvent { addr, value, shard: _, timestamp } =
-                    event.to_owned();
-
-                // let mut blu = vec![];
+                let MemoryInitializeFinalizeEvent { addr, value, timestamp } = event.to_owned();
                 let mut row = [F::zero(); NUM_MEMORY_INIT_COLS];
                 let cols: &mut MemoryInitCols<F> = row.as_mut_slice().borrow_mut();
                 cols.addr[0] = F::from_canonical_u16((addr & 0xFFFF) as u16);

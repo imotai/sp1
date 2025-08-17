@@ -21,9 +21,9 @@ use crate::{
     disassembler::InstructionTranspiler,
     estimate_trace_elements,
     events::{
-        AluEvent, BranchEvent, JumpEvent, LogicalShard, MemInstrEvent, MemoryAccessPosition,
-        MemoryEntry, MemoryInitializeFinalizeEvent, MemoryLocalEvent, MemoryReadRecord,
-        MemoryWriteRecord, Shard, SyscallEvent, UTypeEvent, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC,
+        AluEvent, BranchEvent, JumpEvent, MemInstrEvent, MemoryAccessPosition, MemoryEntry,
+        MemoryInitializeFinalizeEvent, MemoryLocalEvent, MemoryReadRecord, MemoryWriteRecord,
+        SyscallEvent, UTypeEvent, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC,
     },
     hook::{HookEnv, HookRegistry},
     memory::{Entry, Memory},
@@ -257,28 +257,29 @@ pub struct LocalCounts {
     /// usual RISC-V interpretation.)
     ///
     /// We now describe the logic used to increment the counter (which is replicated in several
-    /// places). Let `lshard` refer to the new/current [`LogicalShard`] and `record.lshard` refer
-    /// to the `LogicalShard` of the last memory operation associated with the address being
-    /// modified. To check for the above situation, we require two conditions:
+    /// places). Let `external_flag` refer to the new/current external flag and
+    /// `record.external_flag` refer to the external flag of the last memory operation
+    /// associated with the address being modified. To check for the above situation, we
+    /// require two conditions:
     ///
-    /// - `!lshard.external_flag()`: checks that the current shard is not an external shard, i.e.
-    ///   it is a main shard.
-    /// - `record.lshard != lshard`: checks that the address was last touched by a shard other than
-    ///   the current one. The (packed) fields of `LogicalShard` check for two cases:
-    ///   - If [`LogicalShard::external_flag`] is different, then one shard is external and one is
-    ///     not. If this field is the only difference, then (currently) one shard is the main shard
-    ///     and the other is a precompile invoked while interpreting in the main shard. This is
-    ///     because we set `external_flag` only when creating a [`SyscallContext`].
-    ///   - If [`LogicalShard::shard`] is different, then the shards are different in the sense of
-    ///     the SP1 proof system and memory argument. If this field is the only difference, then
-    ///     one shard is the current shard and the other is a previous shard in the execution or
-    ///     the memory initialization shard.
+    /// - `!external_flag`: checks that the current shard is a main shard.
+    /// - `record.timestamp < self.state.initial_timestamp || record.external_flag`: checks that
+    ///   the address was last touched by a shard other than the current one. The two checks
+    ///   represent
+    ///   - If `record.timestamp < self.state.initial_timestamp` is true, then the memory was last
+    ///     touched before the current main shard began, so it must have been in another shard.
+    ///   - If `record.external_flag` is on, then the previous memory access was in a precompile
+    ///     shard, which is different from the current shard, which is a main shard. This is
+    ///     because we set the `external_flag` only when creating a [`SyscallContext`] that is not
+    ///     from a retained precompile, which implies the context is for a precompile in a
+    ///     different shard.
+
     ///
-    /// Therefore, comparing equality of consecutive `LogicalShard`s in an address's memory
-    /// operation sequence enables detection of moments when its memory entry is transferred
-    /// between shards via the global (inter-shard) memory argument. By constantly testing
-    /// equality, we can detect these interruptions and calculate the endpoints of an
-    /// uninterrupted telescoping series of memory operations in a single SP1 shard --
+    /// Therefore, comparing the external flags, along with the timestamps and the shard's initial
+    /// timestamp in an address's memory operation sequence enables detection of moments when its
+    /// memory entry is transferred between shards via the global (inter-shard) memory argument.
+    /// By constantly testing this, we can detect these interruptions and calculate the endpoints
+    /// of an uninterrupted telescoping series of memory operations in a single SP1 shard --
     /// that is, the data of a local memory event.
     pub local_mem: usize,
 }
@@ -565,25 +566,11 @@ impl<'a> Executor<'a> {
         self.state.clk + *position as u64
     }
 
-    /// Get the current shard.
-    #[must_use]
-    #[inline]
-    pub fn shard(&self) -> Shard {
-        self.state.current_shard
-    }
-
-    /// Get the current logical shard.
-    #[must_use]
-    #[inline]
-    pub fn lshard(&self) -> LogicalShard {
-        LogicalShard::new(self.shard(), false)
-    }
-
     /// Read a word from memory and create an access record.
     pub fn mr<E: ExecutorConfig>(
         &mut self,
         addr: u64,
-        lshard: LogicalShard,
+        external_flag: bool,
         timestamp: u64,
         local_memory_access: Option<&mut HashMap<u64, MemoryLocalEvent>>,
     ) -> MemoryReadRecord {
@@ -636,12 +623,15 @@ impl<'a> Executor<'a> {
         };
 
         // For an explanation of this logic, see the documentation of `LocalCounts::local_mem`.
-        if !E::UNCONSTRAINED && (record.lshard != lshard && !lshard.external_flag()) {
+        if !E::UNCONSTRAINED
+            && ((record.timestamp < self.state.initial_timestamp || record.external_flag)
+                && !external_flag)
+        {
             self.local_counts.local_mem += 1;
         }
 
         let prev_record = *record;
-        record.lshard = lshard;
+        record.external_flag = external_flag;
         record.timestamp = timestamp;
 
         if !E::UNCONSTRAINED && E::MODE == ExecutorMode::Trace {
@@ -673,7 +663,7 @@ impl<'a> Executor<'a> {
     pub fn rr<E: ExecutorConfig>(
         &mut self,
         register: Register,
-        lshard: LogicalShard,
+        external_flag: bool,
         timestamp: u64,
     ) -> u64 {
         // Get the memory record entry.
@@ -716,11 +706,14 @@ impl<'a> Executor<'a> {
         };
 
         // For an explanation of this logic, see the documentation of `LocalCounts::local_mem`.
-        if !E::UNCONSTRAINED && (record.lshard != lshard && !lshard.external_flag()) {
+        if !E::UNCONSTRAINED
+            && ((record.timestamp < self.state.initial_timestamp || record.external_flag)
+                && !external_flag)
+        {
             self.local_counts.local_mem += 1;
         }
 
-        record.lshard = lshard;
+        record.external_flag = external_flag;
         record.timestamp = timestamp;
         record.value
     }
@@ -731,7 +724,7 @@ impl<'a> Executor<'a> {
     pub fn rr_traced<E: ExecutorConfig>(
         &mut self,
         register: Register,
-        lshard: LogicalShard,
+        external_flag: bool,
         timestamp: u64,
         local_memory_access: Option<&mut HashMap<u64, MemoryLocalEvent>>,
     ) -> MemoryReadRecord {
@@ -773,12 +766,15 @@ impl<'a> Executor<'a> {
         };
 
         // For an explanation of this logic, see the documentation of `LocalCounts::local_mem`.
-        if !E::UNCONSTRAINED && (record.lshard != lshard && !lshard.external_flag()) {
+        if !E::UNCONSTRAINED
+            && ((record.timestamp < self.state.initial_timestamp || record.external_flag)
+                && !external_flag)
+        {
             self.local_counts.local_mem += 1;
         }
 
         let prev_record = *record;
-        record.lshard = lshard;
+        record.external_flag = external_flag;
         record.timestamp = timestamp;
         if !E::UNCONSTRAINED && E::MODE == ExecutorMode::Trace {
             let local_memory_access = if let Some(local_memory_access) = local_memory_access {
@@ -805,7 +801,7 @@ impl<'a> Executor<'a> {
         &mut self,
         addr: u64,
         value: u64,
-        lshard: LogicalShard,
+        external_flag: bool,
         timestamp: u64,
         local_memory_access: Option<&mut HashMap<u64, MemoryLocalEvent>>,
     ) -> MemoryWriteRecord {
@@ -857,13 +853,16 @@ impl<'a> Executor<'a> {
         };
 
         // For an explanation of this logic, see the documentation of `LocalCounts::local_mem`.
-        if !E::UNCONSTRAINED && (record.lshard != lshard && !lshard.external_flag()) {
+        if !E::UNCONSTRAINED
+            && ((record.timestamp < self.state.initial_timestamp || record.external_flag)
+                && !external_flag)
+        {
             self.local_counts.local_mem += 1;
         }
 
         let prev_record = *record;
         record.value = value;
-        record.lshard = lshard;
+        record.external_flag = external_flag;
         record.timestamp = timestamp;
         if !E::UNCONSTRAINED && E::MODE == ExecutorMode::Trace {
             let local_memory_access = if let Some(local_memory_access) = local_memory_access {
@@ -895,7 +894,7 @@ impl<'a> Executor<'a> {
         &mut self,
         register: Register,
         value: u64,
-        lshard: LogicalShard,
+        external_flag: bool,
         timestamp: u64,
         local_memory_access: Option<&mut HashMap<u64, MemoryLocalEvent>>,
     ) -> MemoryWriteRecord {
@@ -941,13 +940,16 @@ impl<'a> Executor<'a> {
         };
 
         // For an explanation of this logic, see the documentation of `LocalCounts::local_mem`.
-        if !E::UNCONSTRAINED && (record.lshard != lshard && !lshard.external_flag()) {
+        if !E::UNCONSTRAINED
+            && ((record.timestamp < self.state.initial_timestamp || record.external_flag)
+                && !external_flag)
+        {
             self.local_counts.local_mem += 1;
         }
 
         let prev_record = *record;
         record.value = value;
-        record.lshard = lshard;
+        record.external_flag = external_flag;
         record.timestamp = timestamp;
 
         if !E::UNCONSTRAINED {
@@ -981,7 +983,7 @@ impl<'a> Executor<'a> {
         &mut self,
         register: Register,
         value: u64,
-        lshard: LogicalShard,
+        external_flag: bool,
         timestamp: u64,
     ) {
         let addr = register as u64;
@@ -1025,12 +1027,15 @@ impl<'a> Executor<'a> {
         };
 
         // For an explanation of this logic, see the documentation of `LocalCounts::local_mem`.
-        if !E::UNCONSTRAINED && (record.lshard != lshard && !lshard.external_flag()) {
+        if !E::UNCONSTRAINED
+            && ((record.timestamp < self.state.initial_timestamp || record.external_flag)
+                && !external_flag)
+        {
             self.local_counts.local_mem += 1;
         }
 
         record.value = value;
-        record.lshard = lshard;
+        record.external_flag = external_flag;
         record.timestamp = timestamp;
     }
 
@@ -1038,8 +1043,7 @@ impl<'a> Executor<'a> {
     #[inline]
     pub fn mr_cpu<E: ExecutorConfig>(&mut self, addr: u64) -> u64 {
         // Read the address from memory and create a memory read record.
-        let record =
-            self.mr::<E>(addr, self.lshard(), self.timestamp(&MemoryAccessPosition::Memory), None);
+        let record = self.mr::<E>(addr, false, self.timestamp(&MemoryAccessPosition::Memory), None);
         // If we're not in unconstrained mode, record the access for the current cycle.
         if E::MODE == ExecutorMode::Trace {
             self.memory_accesses.memory = Some(record.into());
@@ -1056,8 +1060,7 @@ impl<'a> Executor<'a> {
     ) -> u64 {
         // Read the address from memory and create a memory read record if in trace mode.
         if E::MODE == ExecutorMode::Trace {
-            let record =
-                self.rr_traced::<E>(register, self.lshard(), self.timestamp(&position), None);
+            let record = self.rr_traced::<E>(register, false, self.timestamp(&position), None);
             if !E::UNCONSTRAINED {
                 match position {
                     MemoryAccessPosition::A => self.memory_accesses.a = Some(record.into()),
@@ -1070,7 +1073,7 @@ impl<'a> Executor<'a> {
             }
             record.value
         } else {
-            self.rr::<E>(register, self.lshard(), self.timestamp(&position))
+            self.rr::<E>(register, false, self.timestamp(&position))
         }
     }
 
@@ -1082,13 +1085,8 @@ impl<'a> Executor<'a> {
     /// initialized.
     pub fn mw_cpu<E: ExecutorConfig>(&mut self, addr: u64, value: u64) {
         // Read the address from memory and create a memory read record.
-        let record = self.mw::<E>(
-            addr,
-            value,
-            self.lshard(),
-            self.timestamp(&MemoryAccessPosition::Memory),
-            None,
-        );
+        let record =
+            self.mw::<E>(addr, value, false, self.timestamp(&MemoryAccessPosition::Memory), None);
         // If we're not in unconstrained mode, record the access for the current cycle.
         if E::MODE == ExecutorMode::Trace {
             debug_assert!(self.memory_accesses.memory.is_none());
@@ -1107,20 +1105,15 @@ impl<'a> Executor<'a> {
 
         // Read the address from memory and create a memory read record.
         if E::MODE == ExecutorMode::Trace {
-            let record = self.rw_traced::<E>(
-                register,
-                value,
-                self.lshard(),
-                self.timestamp(&position),
-                None,
-            );
+            let record =
+                self.rw_traced::<E>(register, value, false, self.timestamp(&position), None);
             if !E::UNCONSTRAINED {
                 // The only time we are writing to a register is when it is in operand A.
                 debug_assert!(self.memory_accesses.a.is_none());
                 self.memory_accesses.a = Some(record.into());
             }
         } else {
-            self.rw::<E>(register, value, self.lshard(), self.timestamp(&position));
+            self.rw::<E>(register, value, false, self.timestamp(&position));
         }
     }
 
@@ -1282,7 +1275,6 @@ impl<'a> Executor<'a> {
     ) {
         let opcode = instruction.opcode;
         let event = MemInstrEvent {
-            shard: self.shard().get(),
             clk: self.state.clk,
             pc: self.state.pc,
             opcode,
@@ -1448,7 +1440,6 @@ impl<'a> Executor<'a> {
         SyscallEvent {
             pc: self.state.pc,
             next_pc,
-            shard: self.shard().get(),
             clk,
             op_a_0,
             should_send,
@@ -2081,8 +2072,8 @@ impl<'a> Executor<'a> {
             }
 
             if !maximal_size_reached {
-                self.state.current_shard = Shard::new(self.state.current_shard.get() + 1)
-                    .expect("Shard number should not overflow");
+                self.state.shard_finished = true;
+                self.state.initial_timestamp = self.state.clk;
                 self.record.last_timestamp = self.state.clk;
                 self.bump_record::<E>();
             }
@@ -2309,8 +2300,8 @@ impl<'a> Executor<'a> {
         // Get the program.
         let program = self.program.clone();
 
-        // Get the current shard.
-        let start_shard = self.state.current_shard;
+        // Set the current shard state.
+        self.state.shard_finished = false;
 
         // If it's the first cycle, initialize the program.
         if self.state.global_clk == 0 {
@@ -2318,6 +2309,7 @@ impl<'a> Executor<'a> {
         }
 
         self.record.initial_timestamp = self.state.clk;
+        self.state.initial_timestamp = self.state.clk;
 
         let unconstrained_cycle_limit =
             std::env::var("UNCONSTRAINED_CYCLE_LIMIT").map(|v| v.parse::<u64>().unwrap()).ok();
@@ -2340,7 +2332,7 @@ impl<'a> Executor<'a> {
                 }
             }
 
-            if start_shard != self.state.current_shard {
+            if self.state.shard_finished {
                 break;
             }
         }
@@ -2379,7 +2371,6 @@ impl<'a> Executor<'a> {
         self.record.public_values.deferred_proofs_digest = public_values.deferred_proofs_digest;
         self.record.public_values.commit_syscall = public_values.commit_syscall;
         self.record.public_values.commit_deferred_syscall = public_values.commit_deferred_syscall;
-        self.record.public_values.execution_shard = start_shard.get();
         if self.record.contains_cpu() {
             self.record.public_values.pc_start = self.record.pc_start.unwrap();
             self.record.public_values.next_pc = self.record.next_pc;
@@ -2453,7 +2444,7 @@ impl<'a> Executor<'a> {
 
             let addr_0_final_record = match addr_0_record {
                 Some(record) => record,
-                None => &MemoryEntry { lshard: LogicalShard::default(), timestamp: 0, value: 0 },
+                None => &MemoryEntry { external_flag: false, timestamp: 0, value: 0 },
             };
             memory_finalize_events
                 .push(MemoryInitializeFinalizeEvent::finalize_from_record(0, addr_0_final_record));

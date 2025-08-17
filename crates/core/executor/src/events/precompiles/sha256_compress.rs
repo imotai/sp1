@@ -11,8 +11,6 @@ use crate::events::{
 /// This event is emitted when a SHA-256 compress operation is performed.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct ShaCompressEvent {
-    /// The shard number.
-    pub shard: u32,
     /// The clock cycle.
     pub clk: u64,
     /// The pointer to the word.

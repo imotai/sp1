@@ -42,9 +42,9 @@ impl<F: PrimeField32> MachineAir<F> for RangeChip<F> {
         let last_timestamp_3 = (input.public_values.last_timestamp & 0xFFFF) as u16;
 
         output.add_bit_range_check(initial_timestamp_0, 16);
-        output.add_bit_range_check(initial_timestamp_3, 16);
+        output.add_bit_range_check((initial_timestamp_3 - 1) / 8, 13);
         output.add_bit_range_check(last_timestamp_0, 16);
-        output.add_bit_range_check(last_timestamp_3, 16);
+        output.add_bit_range_check((last_timestamp_3 - 1) / 8, 13);
 
         for addr in [
             input.public_values.pc_start,

@@ -11,8 +11,6 @@ use crate::events::{
 /// This event is emitted when a uint256 mul operation is performed.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct Uint256MulEvent {
-    /// The shard number.
-    pub shard: u32,
     /// The clock cycle.
     pub clk: u64,
     /// The pointer to the x value.

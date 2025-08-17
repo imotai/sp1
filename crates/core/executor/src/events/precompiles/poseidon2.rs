@@ -8,8 +8,6 @@ use crate::events::memory::{MemoryLocalEvent, MemoryWriteRecord};
 /// This event is emitted when a `Poseidon2PrecompileEvent` operation is performed.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct Poseidon2PrecompileEvent {
-    /// The shard number.
-    pub shard: u32,
     /// The clock cycle.
     pub clk: u64,
     /// The pointer to the input/output array.

@@ -8,12 +8,7 @@ use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use sp1_hypercube::{MachineVerifyingKey, SP1CoreJaggedConfig};
 
-use crate::{
-    events::{MemoryEntry, Shard},
-    memory::Memory,
-    syscalls::SyscallCode,
-    SP1RecursionProof,
-};
+use crate::{events::MemoryEntry, memory::Memory, syscalls::SyscallCode, SP1RecursionProof};
 
 /// Holds data describing the current state of a program's execution.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -22,8 +17,11 @@ pub struct ExecutionState {
     /// The program counter.
     pub pc: u64,
 
-    /// The shard clock keeps track of how many shards have been executed.
-    pub current_shard: Shard,
+    /// Whether or not the shard is finished.
+    pub shard_finished: bool,
+
+    /// The starting timestamp of the current shard.
+    pub initial_timestamp: u64,
 
     /// The memory which instructions operate over. Values contain the memory value and last shard
     /// + timestamp that each memory address was accessed.
@@ -72,8 +70,8 @@ impl ExecutionState {
     pub fn new(pc_start: u64) -> Self {
         Self {
             global_clk: 0,
-            // Start at shard 1 since shard 0 is reserved for memory initialization.
-            current_shard: Shard::new(1).unwrap(),
+            shard_finished: false,
+            initial_timestamp: 1,
             clk: 0,
             pc: pc_start,
             memory: Memory::new_preallocated(),

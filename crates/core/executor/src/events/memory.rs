@@ -7,72 +7,14 @@ pub const NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC: usize = 1;
 /// Memory Record.
 ///
 /// This object encapsulates the information needed to prove a memory access operation. This
-/// includes the shard, timestamp, and value of the memory address.
+/// includes the timestamp and the value of the memory address.
 #[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, DeepSizeOf)]
 #[repr(C)]
 pub struct MemoryRecord {
-    /// The shard number.
-    pub shard: u32,
     /// The timestamp.
     pub timestamp: u64,
     /// The value.
     pub value: u64,
-}
-
-/// A shard number. Used to identify shards in the SP1 proving architecture.
-///
-/// This is a newtype that guarantees the inner value fits within 31 bits.
-#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[repr(transparent)]
-pub struct Shard(u32);
-
-impl Shard {
-    /// Creates a shard number if the given value fits within the bounds.
-    #[must_use]
-    pub const fn new(value: u32) -> Option<Self> {
-        if value <= SHARD_MASK {
-            Some(Self(value))
-        } else {
-            None
-        }
-    }
-
-    /// Creates a shard number without checking that the value fits within the bounds.
-    ///
-    /// # Safety
-    /// The value must fit within 31 bits. That is, it must be less than to 2^31.
-    #[must_use]
-    pub const unsafe fn new_unchecked(value: u32) -> Self {
-        Self(value)
-    }
-
-    /// Returns the wrapped shard number as a `u32`.
-    #[must_use]
-    pub const fn get(self) -> u32 {
-        self.0
-    }
-}
-
-// We implement `Deserialize` manually to perform the bounds check.
-impl<'de> Deserialize<'de> for Shard {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        // The `OnceLock` is used to format `SHARD_MASK` in the error message.
-        use std::sync::OnceLock;
-        static MSG: OnceLock<String> = OnceLock::new();
-
-        let value: u32 = Deserialize::deserialize(deserializer)?;
-        // Attempt to create the `Shard`. If creation fails, we return an error.
-        Shard::new(value).ok_or_else(|| {
-            serde::de::Error::invalid_value(
-                serde::de::Unexpected::Unsigned(value as u64),
-                &MSG.get_or_init(|| format!("an integer between 0 and {SHARD_MASK:#x}, inclusive"))
-                    .as_ref(),
-            )
-        })
-    }
 }
 
 /// Memory entry.
@@ -80,8 +22,8 @@ impl<'de> Deserialize<'de> for Shard {
 /// Similar to a [`MemoryRecord`], but it contains/validates data for execution purposes.
 #[derive(Debug, Copy, Clone, Default, Serialize, Deserialize)]
 pub struct MemoryEntry {
-    /// The shard number.
-    pub lshard: LogicalShard,
+    /// The external flag.
+    pub external_flag: bool,
     /// The timestamp.
     pub timestamp: u64,
     /// The value.
@@ -92,71 +34,15 @@ impl MemoryEntry {
     /// Create a memory entry that represents the program-wide initialization of a value.
     #[must_use]
     pub fn init(value: u64) -> Self {
-        Self { lshard: LogicalShard::default(), timestamp: 0, value }
+        Self { external_flag: false, timestamp: 0, value }
     }
 }
 
 impl From<MemoryEntry> for MemoryRecord {
-    /// Converts to a `MemoryRecord` from a `MemoryEntry`
-    /// by extracting the underlying `Shard` from the `LogicalShard`.
+    /// Converts to a `MemoryRecord` from a `MemoryEntry`.
     fn from(value: MemoryEntry) -> Self {
-        let MemoryEntry { lshard, timestamp, value } = value;
-        Self { shard: lshard.shard().get(), timestamp, value }
-    }
-}
-
-// Constants used to define `LogicalShard` and `Shard`.
-// If we change these constants, be sure to to change the docs and revisit all relevant `unsafe`
-// blocks.
-const SHARD_MASK: u32 = u32::MAX >> 1;
-const EXTERNAL_FLAG_SHIFT: u32 = u32::BITS - 1;
-
-/// A logical shard number. Used to compactly represent shards and compare them.
-///
-/// This type packs a [`Shard`] and a boolean flag into a `u32`. The flag
-/// indicates whether the identified shard is an "external" shard, meaning that the shard associated
-/// with the operation will be created later. Currently, this only happens for precompile-associated
-/// operations, since precompile events are deferred and processed in later shards.
-///
-/// In this sense, the packed value is a "logical" shard number. That is, we can compare a
-/// `LogicalShard` with the main [`LogicalShard`] number to determine if they are different.
-/// For now, this property is only used to predict (in any executor mode) whether a new memory local
-/// event would be created in trace mode, and the predicted event count accumulates in the
-/// field `local_mem` of the executor's `local_counts: LocalCounts`.
-#[allow(clippy::unsafe_derive_deserialize)] // None of the methods themselves are unsafe.
-#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[repr(transparent)]
-pub struct LogicalShard(u32);
-
-impl LogicalShard {
-    /// Creates a logical shard number from a shard number and an external flag.
-    #[must_use]
-    pub const fn new(shard: Shard, external_flag: bool) -> Self {
-        let packed_external_flag = (external_flag as u32) << EXTERNAL_FLAG_SHIFT;
-        Self(shard.get() | packed_external_flag)
-    }
-
-    /// Get the shard number.
-    #[must_use]
-    pub const fn shard(self) -> Shard {
-        // SAFETY: `Shard` is, by definition, required to be less than or equal to `SHARD_MASK`.
-        unsafe { Shard::new_unchecked(self.0 & SHARD_MASK) }
-    }
-
-    /// Get the external flag, which indicates whether this shard is an "external" shard.
-    #[must_use]
-    pub fn external_flag(self) -> bool {
-        // No mask is required because the flag is the most significant packed field.
-        (self.0 >> EXTERNAL_FLAG_SHIFT) != 0
-    }
-}
-
-impl std::fmt::Debug for LogicalShard {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LogicalShard")
-            .field("shard", &self.shard().get())
-            .field("external_flag", &self.external_flag())
-            .finish()
+        let MemoryEntry { timestamp, value, .. } = value;
+        Self { timestamp, value }
     }
 }
 
@@ -182,19 +68,15 @@ pub enum MemoryAccessPosition {
 /// Memory Read Record.
 ///
 /// This object encapsulates the information needed to prove a memory read operation. This
-/// includes the value, shard, timestamp, and previous shard and timestamp.
+/// includes the value, timestamp, and the previous timestamp.
 #[allow(clippy::manual_non_exhaustive)]
 #[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, DeepSizeOf)]
 #[repr(C)]
 pub struct MemoryReadRecord {
     /// The value.
     pub value: u64,
-    /// The shard number.
-    pub shard: u32,
     /// The timestamp.
     pub timestamp: u64,
-    /// The previous shard number.
-    pub prev_shard: u32,
     /// The previous timestamp.
     pub prev_timestamp: u64,
 }
@@ -202,21 +84,17 @@ pub struct MemoryReadRecord {
 /// Memory Write Record.
 ///
 /// This object encapsulates the information needed to prove a memory write operation. This
-/// includes the value, shard, timestamp, previous value, previous shard, and previous timestamp.
+/// includes the value, timestamp, previous value, and previous timestamp.
 #[allow(clippy::manual_non_exhaustive)]
 #[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, DeepSizeOf)]
 #[repr(C)]
 pub struct MemoryWriteRecord {
     /// The value.
     pub value: u64,
-    /// The shard number.
-    pub shard: u32,
     /// The timestamp.
     pub timestamp: u64,
     /// The previous value.
     pub prev_value: u64,
-    /// The previous shard number.
-    pub prev_shard: u32,
     /// The previous timestamp.
     pub prev_timestamp: u64,
 }
@@ -238,16 +116,12 @@ impl MemoryRecordEnum {
     #[must_use]
     pub fn current_record(&self) -> MemoryRecord {
         match self {
-            MemoryRecordEnum::Read(record) => MemoryRecord {
-                shard: record.shard,
-                timestamp: record.timestamp,
-                value: record.value,
-            },
-            MemoryRecordEnum::Write(record) => MemoryRecord {
-                shard: record.shard,
-                timestamp: record.timestamp,
-                value: record.value,
-            },
+            MemoryRecordEnum::Read(record) => {
+                MemoryRecord { timestamp: record.timestamp, value: record.value }
+            }
+            MemoryRecordEnum::Write(record) => {
+                MemoryRecord { timestamp: record.timestamp, value: record.value }
+            }
         }
     }
 
@@ -255,16 +129,12 @@ impl MemoryRecordEnum {
     #[must_use]
     pub fn previous_record(&self) -> MemoryRecord {
         match self {
-            MemoryRecordEnum::Read(record) => MemoryRecord {
-                shard: record.prev_shard,
-                timestamp: record.prev_timestamp,
-                value: record.value,
-            },
-            MemoryRecordEnum::Write(record) => MemoryRecord {
-                shard: record.prev_shard,
-                timestamp: record.prev_timestamp,
-                value: record.prev_value,
-            },
+            MemoryRecordEnum::Read(record) => {
+                MemoryRecord { timestamp: record.prev_timestamp, value: record.value }
+            }
+            MemoryRecordEnum::Write(record) => {
+                MemoryRecord { timestamp: record.prev_timestamp, value: record.prev_value }
+            }
         }
     }
 }
@@ -272,8 +142,7 @@ impl MemoryRecordEnum {
 /// Memory Initialize/Finalize Event.
 ///
 /// This object encapsulates the information needed to prove a memory initialize or finalize
-/// operation. This includes the address, value, shard, timestamp, and whether the memory is
-/// initialized or finalized.
+/// operation. This includes the address, value, and the timestamp.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
 #[repr(C)]
 pub struct MemoryInitializeFinalizeEvent {
@@ -281,8 +150,6 @@ pub struct MemoryInitializeFinalizeEvent {
     pub addr: u64,
     /// The value.
     pub value: u64,
-    /// The shard number.
-    pub shard: u32,
     /// The timestamp.
     pub timestamp: u64,
 }
@@ -292,14 +159,10 @@ impl MemoryReadRecord {
     #[must_use]
     #[inline]
     pub const fn new(entry: &MemoryEntry, prev_entry: &MemoryEntry) -> Self {
-        let MemoryEntry { lshard, timestamp, value } = *entry;
-        let MemoryEntry { lshard: prev_lshard, timestamp: prev_timestamp, value: _ } = *prev_entry;
-        let shard = lshard.shard().get();
-        let prev_shard = prev_lshard.shard().get();
-        debug_assert!(
-            shard > prev_shard || ((shard == prev_shard) && (timestamp > prev_timestamp))
-        );
-        Self { value, shard, timestamp, prev_shard, prev_timestamp }
+        let MemoryEntry { timestamp, value, .. } = *entry;
+        let MemoryEntry { timestamp: prev_timestamp, value: _, .. } = *prev_entry;
+        debug_assert!(timestamp > prev_timestamp);
+        Self { value, timestamp, prev_timestamp }
     }
 }
 
@@ -308,15 +171,10 @@ impl MemoryWriteRecord {
     #[must_use]
     #[inline]
     pub const fn new(entry: &MemoryEntry, prev_entry: &MemoryEntry) -> Self {
-        let MemoryEntry { lshard, timestamp, value } = *entry;
-        let MemoryEntry { lshard: prev_lshard, timestamp: prev_timestamp, value: prev_value } =
-            *prev_entry;
-        let shard = lshard.shard().get();
-        let prev_shard = prev_lshard.shard().get();
-        debug_assert!(
-            shard > prev_shard || ((shard == prev_shard) && (timestamp > prev_timestamp)),
-        );
-        Self { value, shard, timestamp, prev_value, prev_shard, prev_timestamp }
+        let MemoryEntry { timestamp, value, .. } = *entry;
+        let MemoryEntry { timestamp: prev_timestamp, value: prev_value, .. } = *prev_entry;
+        debug_assert!(timestamp > prev_timestamp);
+        Self { value, timestamp, prev_value, prev_timestamp }
     }
 }
 
@@ -344,18 +202,13 @@ impl MemoryInitializeFinalizeEvent {
     /// Creates a new [``MemoryInitializeFinalizeEvent``] for an initialization.
     #[must_use]
     pub const fn initialize(addr: u64, value: u64) -> Self {
-        Self { addr, value, shard: 0, timestamp: 0 }
+        Self { addr, value, timestamp: 0 }
     }
 
     /// Creates a new [``MemoryInitializeFinalizeEvent``] for a finalization.
     #[must_use]
     pub const fn finalize_from_record(addr: u64, record: &MemoryEntry) -> Self {
-        Self {
-            addr,
-            value: record.value,
-            shard: record.lshard.shard().get(),
-            timestamp: record.timestamp,
-        }
+        Self { addr, value: record.value, timestamp: record.timestamp }
     }
 }
 

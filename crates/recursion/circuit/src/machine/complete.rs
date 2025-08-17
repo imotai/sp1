@@ -22,14 +22,11 @@ pub(crate) fn assert_complete<C: Config<F = SP1Field>>(
         deferred_proofs_digest,
         prev_exit_code,
         next_pc,
-        start_shard,
-        next_shard,
         initial_timestamp,
-        start_execution_shard,
-        next_execution_shard,
         start_reconstruct_deferred_digest,
         end_reconstruct_deferred_digest,
         global_cumulative_sum,
+        contains_first_shard,
         previous_init_addr,
         last_init_addr,
         previous_finalize_addr,
@@ -64,17 +61,8 @@ pub(crate) fn assert_complete<C: Config<F = SP1Field>>(
     builder.assert_felt_eq(is_complete * next_pc[1], C::F::zero());
     builder.assert_felt_eq(is_complete * next_pc[2], C::F::zero());
 
-    // Assert that start shard is equal to 1.
-    builder.assert_felt_eq(is_complete * (*start_shard - C::F::one()), C::F::zero());
-
-    // Assert that the next shard is not equal to 1.
-    builder.assert_felt_ne(is_complete * *next_shard, C::F::one());
-
-    // Assert that the start execution shard is equal to 1.
-    builder.assert_felt_eq(is_complete * (*start_execution_shard - C::F::one()), C::F::zero());
-
-    // Assert that the next execution shard is not equal to 1.
-    builder.assert_felt_ne(is_complete * *next_execution_shard, C::F::one());
+    // Assert that the first shard has been included.
+    builder.assert_felt_eq(is_complete * (*contains_first_shard - C::F::one()), C::F::zero());
 
     // Assert that the initial timestamp is equal to 1.
     for limb in initial_timestamp[0..3].iter() {
@@ -120,7 +108,7 @@ pub(crate) fn assert_complete<C: Config<F = SP1Field>>(
         builder.assert_felt_eq(is_complete * (*end_digest - *deferred_digest), C::F::zero());
     }
 
-    // Assert that the starting prev_exit_code is equal to 0.
+    // Assert that the starting `prev_exit_code` is equal to 0.
     builder.assert_felt_eq(is_complete * *prev_exit_code, C::F::zero());
 
     // The starting `prev_commit_syscall` must be zero.
@@ -132,7 +120,7 @@ pub(crate) fn assert_complete<C: Config<F = SP1Field>>(
     // The final `commit_syscall` must be one.
     builder.assert_felt_eq(is_complete * (*commit_syscall - C::F::one()), C::F::zero());
 
-    // The final `deferred_proofs_digest` must be one.
+    // The final `commit_deferred_syscall` must be one.
     builder.assert_felt_eq(is_complete * (*commit_deferred_syscall - C::F::one()), C::F::zero());
 
     // The global cumulative sum should sum be equal to the zero digest.

@@ -617,21 +617,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 vks_and_proofs: input.compress_val.vks_and_proofs,
                 vk_merkle_data: input.merkle_val,
                 start_reconstruct_deferred_digest: deferred_digest,
-                is_complete: false,
                 sp1_vk_digest: vk.hash_koalabear(),
                 end_pc: vk.pc_start,
-                end_shard: SP1Field::one(),
-                end_execution_shard: SP1Field::one(),
-                end_timestamp: [
-                    SP1Field::zero(),
-                    SP1Field::zero(),
-                    SP1Field::zero(),
-                    SP1Field::one(),
-                ],
-                init_addr: [SP1Field::zero(); 3],
-                finalize_addr: [SP1Field::zero(); 3],
-                committed_value_digest: [[SP1Field::zero(); 4]; 8],
-                deferred_proofs_digest: [SP1Field::zero(); 8],
             });
 
             deferred_digest = SP1RecursionProver::<C>::hash_deferred_proofs(deferred_digest, batch);
@@ -650,14 +637,13 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         let mut core_inputs = Vec::new();
 
         // Prepare the inputs for the recursion programs.
-        for (batch_idx, batch) in shard_proofs.chunks(batch_size).enumerate() {
+        for batch in shard_proofs.chunks(batch_size) {
             let proofs = batch.to_vec();
 
             core_inputs.push(SP1NormalizeWitnessValues {
                 vk: vk.vk.clone(),
                 shard_proofs: proofs.clone(),
                 is_complete,
-                is_first_shard: batch_idx == 0,
                 vk_root: self.prover.recursion().recursion_vk_root,
                 reconstruct_deferred_digest: deferred_digest,
             });
@@ -1104,6 +1090,8 @@ pub mod tests {
         tracing::info!("proving verify program (core)");
         let verify_proof =
             prover.clone().prove_core(verify_pk, verify_program, stdin, Default::default()).await?;
+
+        prover.prover().verify(&verify_proof.proof, &verify_vk)?;
 
         // Generate recursive proof of verify program
         tracing::info!("compress verify program");

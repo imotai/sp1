@@ -10,7 +10,7 @@ use slop_jagged::JaggedConfig;
 use sp1_core_executor::SP1RecursionProof;
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_hypercube::{
-    air::{MachineAir, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
+    air::{MachineAir, POSEIDON_NUM_WORDS},
     inner_perm,
     prover::{MachineProver, MachineProverComponents, MachineProvingKey},
     Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
@@ -846,15 +846,7 @@ pub(crate) fn dummy_deferred_input<C: RecursionProverComponents>(
         vk_merkle_data: compress_input.merkle_val,
         start_reconstruct_deferred_digest: [SP1Field::zero(); POSEIDON_NUM_WORDS],
         sp1_vk_digest: [SP1Field::zero(); DIGEST_SIZE],
-        committed_value_digest: [[SP1Field::zero(); 4]; PV_DIGEST_NUM_WORDS],
-        deferred_proofs_digest: [SP1Field::zero(); POSEIDON_NUM_WORDS],
         end_pc: [SP1Field::zero(); 3],
-        end_shard: SP1Field::zero(),
-        end_execution_shard: SP1Field::zero(),
-        end_timestamp: [SP1Field::zero(), SP1Field::zero(), SP1Field::zero(), SP1Field::one()],
-        init_addr: [SP1Field::zero(); 3],
-        finalize_addr: [SP1Field::zero(); 3],
-        is_complete: false,
     }
 }
 

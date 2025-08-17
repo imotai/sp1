@@ -9,7 +9,6 @@ use std::{
         Arc, Mutex,
     },
 };
-// use tokio::sync::Mutex;
 
 use hashbrown::HashSet;
 use lru::LruCache;
@@ -113,7 +112,6 @@ impl SP1NormalizeInputShape {
             vk: vk.vk,
             shard_proofs,
             is_complete: false,
-            is_first_shard: false,
             vk_root: [SP1Field::zero(); DIGEST_SIZE],
             reconstruct_deferred_digest: [SP1Field::zero(); 8],
         }
@@ -175,8 +173,8 @@ impl SP1RecursionProofShape {
             DEFAULT_ARITY => [
                 (CompressAir::<SP1Field>::MemoryConst(MemoryConstChip::default()), 341_024),
                 (CompressAir::<SP1Field>::MemoryVar(MemoryVarChip::default()), 431_104),
-                (CompressAir::<SP1Field>::BaseAlu(BaseAluChip), 396_256),
-                (CompressAir::<SP1Field>::ExtAlu(ExtAluChip), 755_584),
+                (CompressAir::<SP1Field>::BaseAlu(BaseAluChip), 397_664),
+                (CompressAir::<SP1Field>::ExtAlu(ExtAluChip), 755_776),
                 (CompressAir::<SP1Field>::Poseidon2Wide(Poseidon2WideChip), 100_448),
                 (CompressAir::<SP1Field>::PrefixSumChecks(PrefixSumChecksChip), 225_440),
                 (CompressAir::<SP1Field>::Select(SelectChip), 677_984),
@@ -658,11 +656,11 @@ mod tests {
 
         let shape = [
             (CompressAir::<SP1Field>::MemoryConst(MemoryConstChip::default()), 341_024),
-            (CompressAir::<SP1Field>::MemoryVar(MemoryVarChip::default()), 431_086),
-            (CompressAir::<SP1Field>::BaseAlu(BaseAluChip), 396_256),
-            (CompressAir::<SP1Field>::ExtAlu(ExtAluChip), 755_583),
+            (CompressAir::<SP1Field>::MemoryVar(MemoryVarChip::default()), 431_104),
+            (CompressAir::<SP1Field>::BaseAlu(BaseAluChip), 397_664),
+            (CompressAir::<SP1Field>::ExtAlu(ExtAluChip), 755_776),
             (CompressAir::<SP1Field>::Poseidon2Wide(Poseidon2WideChip), 100_448),
-            (CompressAir::<SP1Field>::PrefixSumChecks(PrefixSumChecksChip), 225_420),
+            (CompressAir::<SP1Field>::PrefixSumChecks(PrefixSumChecksChip), 225_440),
             (CompressAir::<SP1Field>::Select(SelectChip), 677_984),
             (CompressAir::<SP1Field>::PublicValues(PublicValuesChip), 16),
         ]

@@ -22,8 +22,6 @@ pub enum FieldOperation {
 /// This event is emitted when an emulated field operation is performed on the input operands.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct FpOpEvent {
-    /// The shard number.
-    pub shard: u32,
     /// The clock cycle.
     pub clk: u64,
     /// The pointer to the x operand.
@@ -49,8 +47,6 @@ pub struct FpOpEvent {
 /// This event is emitted when an emulated degree 2 field operation is performed on the input
 #[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct Fp2AddSubEvent {
-    /// The shard number.
-    pub shard: u32,
     /// The clock cycle.
     pub clk: u64,
     /// The operation to perform.
@@ -74,8 +70,6 @@ pub struct Fp2AddSubEvent {
 /// Emulated Degree 2 Field Multiplication Events.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
 pub struct Fp2MulEvent {
-    /// The shard number.
-    pub shard: u32,
     /// The clock cycle.
     pub clk: u64,
     /// The pointer to the x operand.

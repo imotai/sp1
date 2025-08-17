@@ -42,8 +42,6 @@ impl AluEvent {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
 #[repr(C)]
 pub struct MemInstrEvent {
-    /// The shard.
-    pub shard: u32,
     /// The clk.
     pub clk: u64,
     /// The program counter.
@@ -67,7 +65,6 @@ impl MemInstrEvent {
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        shard: u32,
         clk: u64,
         pc: u64,
         opcode: Opcode,
@@ -77,7 +74,7 @@ impl MemInstrEvent {
         op_a_0: bool,
         mem_access: MemoryRecordEnum,
     ) -> Self {
-        Self { shard, clk, pc, opcode, a, b, c, op_a_0, mem_access }
+        Self { clk, pc, opcode, a, b, c, op_a_0, mem_access }
     }
 }
 
