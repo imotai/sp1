@@ -11,7 +11,7 @@ use sp1_hypercube::{air::SP1AirBuilder, Word};
 
 use crate::{
     air::{MemoryAirBuilder, ProgramAirBuilder, SP1Operation, WordAirBuilder},
-    memory::MemoryAccessInShardCols,
+    memory::RegisterAccessCols,
     program::instruction::InstructionCols,
 };
 
@@ -31,12 +31,12 @@ use crate::{
 #[repr(C)]
 pub struct ALUTypeReader<T> {
     pub op_a: T,
-    pub op_a_memory: MemoryAccessInShardCols<T>,
+    pub op_a_memory: RegisterAccessCols<T>,
     pub op_a_0: T,
     pub op_b: T,
-    pub op_b_memory: MemoryAccessInShardCols<T>,
+    pub op_b_memory: RegisterAccessCols<T>,
     pub op_c: Word<T>,
-    pub op_c_memory: MemoryAccessInShardCols<T>,
+    pub op_c_memory: RegisterAccessCols<T>,
     pub imm_c: T,
 }
 
@@ -101,7 +101,7 @@ impl<F: Field> ALUTypeReader<F> {
         builder.send_program(pc, instruction, instr_field_consts, is_real.clone());
         // Assert that `op_a` is zero if `op_a_0` is true.
         builder.when(cols.op_a_0).assert_word_eq(op_a_write_value.clone(), Word::zero::<AB>());
-        builder.eval_memory_access_in_shard_write(
+        builder.eval_register_access_write(
             clk_high.clone(),
             clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::A as u32),
             [cols.op_a.into(), AB::Expr::zero(), AB::Expr::zero()],
@@ -109,7 +109,7 @@ impl<F: Field> ALUTypeReader<F> {
             op_a_write_value,
             is_real.clone(),
         );
-        builder.eval_memory_access_in_shard_read(
+        builder.eval_register_access_read(
             clk_high.clone(),
             clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::B as u32),
             [cols.op_b.into(), AB::Expr::zero(), AB::Expr::zero()],
@@ -117,7 +117,7 @@ impl<F: Field> ALUTypeReader<F> {
             is_real.clone(),
         );
         // Read the `op_c[0]` register only when `imm_c` is zero and `is_real` is true.
-        builder.eval_memory_access_in_shard_read(
+        builder.eval_register_access_read(
             clk_high.clone(),
             clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::C as u32),
             [cols.op_c[0].into(), AB::Expr::zero(), AB::Expr::zero()],

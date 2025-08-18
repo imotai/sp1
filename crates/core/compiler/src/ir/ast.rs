@@ -18,7 +18,7 @@ use sp1_core_machine::{
         register::{alu_type::ALUTypeReader, r_type::RTypeReader},
         state::CPUState,
     },
-    memory::{MemoryAccessInShardCols, MemoryAccessInShardTimestamp},
+    memory::{RegisterAccessCols, RegisterAccessTimestamp},
     operations::{
         AddOperation, AddressOperation, BitwiseOperation, BitwiseU16Operation,
         IsEqualWordOperation, IsZeroOperation, IsZeroWordOperation, LtOperationSigned,
@@ -601,8 +601,8 @@ pub enum Ty<Expr, ExprExt> {
     ALUTypeReader(ALUTypeReader<Expr>),
     /// A CPU state operation.
     CPUState(CPUState<Expr>),
-    MemoryAccessInShardTimestamp(MemoryAccessInShardTimestamp<Expr>),
-    MemoryAccessInShardCols(MemoryAccessInShardCols<Expr>),
+    RegisterAccessTimestamp(RegisterAccessTimestamp<Expr>),
+    RegisterAccessCols(RegisterAccessCols<Expr>),
 }
 
 impl<Expr, ExprExt> Display for Ty<Expr, ExprExt>
@@ -648,8 +648,8 @@ where
             Ty::RTypeReader(r_type_reader) => write!(f, "{r_type_reader:?}"),
             Ty::ALUTypeReader(alu_type_reader) => write!(f, "{alu_type_reader:?}"),
             Ty::CPUState(cpu_state) => write!(f, "{cpu_state:?}"),
-            Ty::MemoryAccessInShardTimestamp(timestamp) => write!(f, "{timestamp:?}"),
-            Ty::MemoryAccessInShardCols(cols) => write!(f, "{cols:?}"),
+            Ty::RegisterAccessTimestamp(timestamp) => write!(f, "{timestamp:?}"),
+            Ty::RegisterAccessCols(cols) => write!(f, "{cols:?}"),
         }
     }
 }

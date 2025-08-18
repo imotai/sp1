@@ -2,8 +2,8 @@ use slop_algebra::PrimeField32;
 use sp1_core_executor::events::{ByteRecord, MemoryRecord, MemoryRecordEnum};
 
 use super::{
-    MemoryAccessCols, MemoryAccessColsU8, MemoryAccessInShardCols, MemoryAccessInShardTimestamp,
-    MemoryAccessTimestamp,
+    MemoryAccessCols, MemoryAccessColsU8, MemoryAccessTimestamp, RegisterAccessCols,
+    RegisterAccessTimestamp,
 };
 
 impl<F: PrimeField32> MemoryAccessCols<F> {
@@ -15,7 +15,7 @@ impl<F: PrimeField32> MemoryAccessCols<F> {
     }
 }
 
-impl<F: PrimeField32> MemoryAccessInShardCols<F> {
+impl<F: PrimeField32> RegisterAccessCols<F> {
     pub fn populate(&mut self, record: MemoryRecordEnum, output: &mut impl ByteRecord) {
         let prev_record = record.previous_record();
         let current_record = record.current_record();
@@ -66,7 +66,7 @@ impl<F: PrimeField32> MemoryAccessTimestamp<F> {
     }
 }
 
-impl<F: PrimeField32> MemoryAccessInShardTimestamp<F> {
+impl<F: PrimeField32> RegisterAccessTimestamp<F> {
     pub fn populate_timestamp(
         &mut self,
         prev_record: MemoryRecord,

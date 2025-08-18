@@ -10,7 +10,7 @@ use sp1_hypercube::{
 };
 
 use crate::memory::{
-    MemoryAccessCols, MemoryAccessInShardCols, MemoryAccessInShardTimestamp, MemoryAccessTimestamp,
+    MemoryAccessCols, MemoryAccessTimestamp, RegisterAccessCols, RegisterAccessTimestamp,
 };
 
 pub trait MemoryAirBuilder: BaseAirBuilder {
@@ -115,15 +115,15 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         );
     }
 
-    /// Constrain a memory read, by using the read value as the write value.
+    /// Constrain a register read, by using the read value as the write value.
     /// The constraints enforce that the new timestamp is greater than the previous one.
-    /// Used for cases where the top limb of the timestamp is equal to the previous one.
-    fn eval_memory_access_in_shard_read<E: Into<Self::Expr> + Clone>(
+    /// For register reads, the top limb of the timestamp is equal to the previous one.
+    fn eval_register_access_read<E: Into<Self::Expr> + Clone>(
         &mut self,
         clk_high: impl Into<Self::Expr>,
         clk_low: impl Into<Self::Expr>,
         addr: [Self::Expr; 3],
-        mem_access: MemoryAccessInShardCols<E>,
+        reg_access: RegisterAccessCols<E>,
         do_check: impl Into<Self::Expr>,
     ) {
         let do_check: Self::Expr = do_check.into();
@@ -132,23 +132,23 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
 
         self.assert_bool(do_check.clone());
         // Verify that the current memory access time is greater than the previous's.
-        self.eval_memory_access_in_shard_timestamp(
-            &mem_access.access_timestamp,
+        self.eval_register_access_timestamp(
+            &reg_access.access_timestamp,
             do_check.clone(),
             clk_low.clone(),
         );
 
         // Add to the memory argument.
-        let prev_low = mem_access.access_timestamp.prev_low.clone().into();
+        let prev_low = reg_access.access_timestamp.prev_low.clone().into();
         let prev_values = once(clk_high.clone())
             .chain(once(prev_low))
             .chain(addr.clone())
-            .chain(mem_access.prev_value.clone().map(Into::into))
+            .chain(reg_access.prev_value.clone().map(Into::into))
             .collect();
         let current_values = once(clk_high)
             .chain(once(clk_low))
             .chain(addr.clone())
-            .chain(mem_access.prev_value.clone().map(Into::into))
+            .chain(reg_access.prev_value.clone().map(Into::into))
             .collect();
 
         // The previous values get sent with multiplicity = 1, for "read".
@@ -164,15 +164,15 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         );
     }
 
-    /// Constrain a memory write, given the write value.
+    /// Constrain a register write, given the write value.
     /// The constraints enforce that the new timestamp is greater than the previous one.
-    /// Used for cases where the top limb of the timestamp is equal to the previous one.
-    fn eval_memory_access_in_shard_write<E: Into<Self::Expr> + Clone>(
+    /// For register reads, the top limb of the timestamp is equal to the previous one.
+    fn eval_register_access_write<E: Into<Self::Expr> + Clone>(
         &mut self,
         clk_high: impl Into<Self::Expr>,
         clk_low: impl Into<Self::Expr>,
         addr: [Self::Expr; 3],
-        mem_access: MemoryAccessInShardCols<E>,
+        reg_access: RegisterAccessCols<E>,
         write_value: Word<impl Into<Self::Expr>>,
         do_check: impl Into<Self::Expr>,
     ) {
@@ -182,18 +182,18 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
 
         self.assert_bool(do_check.clone());
         // Verify that the current memory access time is greater than the previous's.
-        self.eval_memory_access_in_shard_timestamp(
-            &mem_access.access_timestamp,
+        self.eval_register_access_timestamp(
+            &reg_access.access_timestamp,
             do_check.clone(),
             clk_low.clone(),
         );
 
         // Add to the memory argument.
-        let prev_low = mem_access.access_timestamp.prev_low.clone().into();
+        let prev_low = reg_access.access_timestamp.prev_low.clone().into();
         let prev_values = once(clk_high.clone())
             .chain(once(prev_low))
             .chain(addr.clone())
-            .chain(mem_access.prev_value.clone().map(Into::into))
+            .chain(reg_access.prev_value.clone().map(Into::into))
             .collect();
         let current_values = once(clk_high)
             .chain(once(clk_low))
@@ -324,26 +324,26 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         )
     }
 
-    /// Verifies the memory access timestamp where the high limb is equal.
+    /// Verifies the register access timestamp, where the high limb of the timestamp is equal.
     ///
     /// This method verifies that the current memory access happened after the previous one's.
     /// Specifically it will ensure that the current's clk val is greater than the previous's.
-    fn eval_memory_access_in_shard_timestamp(
+    fn eval_register_access_timestamp(
         &mut self,
-        mem_access: &MemoryAccessInShardTimestamp<impl Into<Self::Expr> + Clone>,
+        reg_access: &RegisterAccessTimestamp<impl Into<Self::Expr> + Clone>,
         do_check: impl Into<Self::Expr>,
         clk: impl Into<Self::Expr>,
     ) {
         let do_check: Self::Expr = do_check.into();
 
-        let diff_minus_one = clk.into() - mem_access.prev_low.clone().into() - Self::Expr::one();
-        let diff_high_limb = (diff_minus_one.clone() - mem_access.diff_low_limb.clone().into())
+        let diff_minus_one = clk.into() - reg_access.prev_low.clone().into() - Self::Expr::one();
+        let diff_high_limb = (diff_minus_one.clone() - reg_access.diff_low_limb.clone().into())
             * Self::F::from_canonical_u32(1 << 16).inverse();
 
         // Send the range checks for the limbs.
         self.send_byte(
             Self::Expr::from_canonical_u8(ByteOpcode::Range as u8),
-            mem_access.diff_low_limb.clone(),
+            reg_access.diff_low_limb.clone(),
             Self::Expr::from_canonical_u32(16),
             Self::Expr::zero(),
             do_check.clone(),
