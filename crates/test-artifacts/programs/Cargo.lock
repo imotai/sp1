@@ -1345,15 +1345,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "itertools"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
-dependencies = [
- "either",
-]
-
-[[package]]
 name = "itoa"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2456,7 +2447,7 @@ dependencies = [
 [[package]]
 name = "slop-algebra"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#b4390626e46205ba6e8103e4db69990342890735"
+source = "git+https://github.com/succinctlabs/slop#85e2b9d2758d1adca361062cc9dc49a3a11a96f8"
 dependencies = [
  "p3-field",
  "serde",
@@ -2465,21 +2456,19 @@ dependencies = [
 [[package]]
 name = "slop-koala-bear"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#b4390626e46205ba6e8103e4db69990342890735"
+source = "git+https://github.com/succinctlabs/slop#85e2b9d2758d1adca361062cc9dc49a3a11a96f8"
 dependencies = [
- "itertools 0.14.0",
  "lazy_static",
  "p3-koala-bear",
  "serde",
  "slop-algebra",
  "slop-poseidon2",
- "slop-symmetric",
 ]
 
 [[package]]
 name = "slop-poseidon2"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#b4390626e46205ba6e8103e4db69990342890735"
+source = "git+https://github.com/succinctlabs/slop#85e2b9d2758d1adca361062cc9dc49a3a11a96f8"
 dependencies = [
  "p3-poseidon2",
 ]
@@ -2487,7 +2476,7 @@ dependencies = [
 [[package]]
 name = "slop-symmetric"
 version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fkoala_bear_consistencies#b4390626e46205ba6e8103e4db69990342890735"
+source = "git+https://github.com/succinctlabs/slop#85e2b9d2758d1adca361062cc9dc49a3a11a96f8"
 dependencies = [
  "p3-symmetric",
 ]

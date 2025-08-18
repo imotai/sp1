@@ -18,15 +18,36 @@ impl<C> MachineConfig for C where
 {
 }
 
-pub use slop_jagged::{
-    KoalaBearPoseidon2 as SP1CoreJaggedConfig,
-    Poseidon2KoalaBearJaggedCpuProverComponents as SP1CpuJaggedProverComponents,
-};
+#[allow(clippy::disallowed_types)]
+use slop_jagged::Poseidon2KoalaBearJaggedCpuProverComponents;
+
+#[allow(clippy::disallowed_types)]
+/// The CPU prover components for a jagged PCS prover in SP1.
+pub type SP1CpuJaggedProverComponents = Poseidon2KoalaBearJaggedCpuProverComponents;
+
+#[allow(clippy::disallowed_types)]
+use slop_jagged::KoalaBearPoseidon2;
+
+#[allow(clippy::disallowed_types)]
+/// The jagged config for SP1 core, compress, and shrink proofs.
+pub type SP1CoreJaggedConfig = KoalaBearPoseidon2;
 
 pub use slop_jagged::SP1OuterConfig;
 
-pub use slop_basefold::Poseidon2KoalaBear16BasefoldConfig as SP1BasefoldConfig;
-pub use slop_koala_bear::Poseidon2KoalaBearConfig as SP1MerkleTreeConfig;
+#[allow(clippy::disallowed_types)]
+use slop_basefold::Poseidon2KoalaBear16BasefoldConfig;
+
+#[allow(clippy::disallowed_types)]
+/// The basefold configuration (field, extension field, challenger, tensor commitment scheme)
+/// for SP1.
+pub type SP1BasefoldConfig = Poseidon2KoalaBear16BasefoldConfig;
+
+#[allow(clippy::disallowed_types)]
+pub use slop_koala_bear::Poseidon2KoalaBearConfig;
+
+#[allow(clippy::disallowed_types)]
+/// The Merkle tree configuration for SP1.
+pub type SP1MerkleTreeConfig = Poseidon2KoalaBearConfig;
 
 /// A specification of preprocessed polynomial batch dimensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

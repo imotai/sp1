@@ -1,9 +1,8 @@
 //! sp1-primitives contains types and functions that are used in both sp1-core and sp1-zkvm.
 //! Because it is imported in the zkvm entrypoint, it should be kept minimal.
-
 use lazy_static::lazy_static;
-
 use slop_algebra::AbstractField;
+#[allow(clippy::disallowed_types)]
 use slop_koala_bear::KoalaBear;
 use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 
@@ -15,6 +14,7 @@ pub use types::Elf;
 
 /// The canonical version of the SP1 crate.
 pub const SP1_VERSION: &str = env!("CARGO_PKG_VERSION");
+#[allow(clippy::disallowed_types)]
 pub type SP1Field = KoalaBear;
 
 lazy_static! {
@@ -1111,10 +1111,15 @@ lazy_static! {
 }
 
 pub fn poseidon2_init() -> SP1Perm {
+    #[allow(clippy::disallowed_methods)]
     slop_koala_bear::my_kb_16_perm()
 }
 
-pub use slop_koala_bear::DiffusionMatrixKoalaBear as SP1DiffusionMatrix;
+#[allow(clippy::disallowed_types)]
+use slop_koala_bear::DiffusionMatrixKoalaBear;
+
+#[allow(clippy::disallowed_types)]
+pub type SP1DiffusionMatrix = DiffusionMatrixKoalaBear;
 use slop_symmetric::{CryptographicHasher, PaddingFreeSponge};
 
 pub type SP1Perm = Poseidon2<SP1Field, Poseidon2ExternalMatrixGeneral, SP1DiffusionMatrix, 16, 3>;

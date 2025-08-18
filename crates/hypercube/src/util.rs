@@ -35,6 +35,6 @@ pub fn log2_ceil_usize(n: usize) -> usize {
 
 /// Get the inner perm
 #[must_use]
-pub fn inner_perm() -> slop_koala_bear::KoalaPerm {
-    slop_koala_bear::my_kb_16_perm()
+pub fn inner_perm() -> sp1_primitives::SP1Perm {
+    sp1_primitives::poseidon2_init()
 }
