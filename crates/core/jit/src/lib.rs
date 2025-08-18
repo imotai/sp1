@@ -400,6 +400,7 @@ impl JitFunction {
     }
 }
 
+#[repr(C)]
 #[derive(Debug)]
 pub struct JitContext {
     /// Mapping from (pc - pc_base) / 4 => absolute address of the instruction.
