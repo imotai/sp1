@@ -33,6 +33,8 @@ members = [
     "crates/alloc",
     "crates/slop",
     "crates/jagged",
+    "crates/spartan",
+    "crates/pgspcs",
     "crates/stacked",
     "crates/pcs-bench",
     "crates/futures",
@@ -89,6 +91,7 @@ slop-koala-bear = { path = "crates/koala-bear" }
 slop-dft = { path = "crates/dft" }
 slop-matrix = { path = "crates/matrix" }
 slop-symmetric = { path = "crates/symmetric" }
+slop-maybe-rayon = { path = "crates/maybe-rayon" }
 slop-merkle-tree = { path = "crates/merkle-tree" }
 slop-poseidon2 = { path = "crates/poseidon2" }
 slop-commit = { path = "crates/commit" }
@@ -99,6 +102,9 @@ slop-alloc = { path = "crates/alloc" }
 slop-basefold-prover = { path = "crates/basefold-prover" }
 slop-stacked = { path = "crates/stacked" }
 slop-futures = { path = "crates/futures" }
+slop-keccak-air = { path = "crates/keccak-air" }
+slop-uni-stark = { path = "crates/uni-stark" }
+slop-pgspcs = { path = "crates/pgspcs" }
 
 # For local development. 
 # p3-air = { path = "../Plonky3/air" }
