@@ -1,4 +1,5 @@
 use slop_algebra::Field;
+use sp1_primitives::{poseidon2_init, SP1Perm};
 
 /// The digest size.
 pub const DIGEST_SIZE: usize = 8;
@@ -35,6 +36,6 @@ pub fn log2_ceil_usize(n: usize) -> usize {
 
 /// Get the inner perm
 #[must_use]
-pub fn inner_perm() -> sp1_primitives::SP1Perm {
-    sp1_primitives::poseidon2_init()
+pub fn inner_perm() -> SP1Perm {
+    poseidon2_init()
 }

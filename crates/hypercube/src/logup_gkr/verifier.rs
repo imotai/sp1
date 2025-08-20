@@ -7,7 +7,9 @@ use std::{
 use itertools::Itertools;
 use slop_algebra::{ExtensionField, Field};
 use slop_challenger::FieldChallenger;
-use slop_multilinear::{full_geq, Mle, MleEval, MultilinearPcsChallenger, Point};
+use slop_multilinear::{
+    full_geq, partial_lagrange_blocking, Mle, MleEval, MultilinearPcsChallenger, Point,
+};
 use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
 use thiserror::Error;
 
@@ -72,7 +74,7 @@ where
         shard_chips: &BTreeSet<Chip<F, A>>,
         degrees: &BTreeMap<String, Point<F>>,
         alpha: EF,
-        beta: EF,
+        beta_seed: &Point<EF>,
         cumulative_sum: EF,
         max_log_row_count: usize,
         proof: &LogupGkrProof<EF>,
@@ -205,6 +207,8 @@ where
             return Err(LogupGkrVerificationError::TracePointMismatch);
         }
 
+        let betas = partial_lagrange_blocking(beta_seed);
+
         // Compute the expected opening of the last layer numerator and denominator values from the
         // trace openings.
         let mut numerator_values = Vec::with_capacity(num_of_interactions);
@@ -249,7 +253,7 @@ where
                     preprocessed_trace_evaluations.as_ref(),
                     main_trace_evaluations,
                     alpha,
-                    &beta,
+                    betas.as_slice(),
                 );
                 let padding_trace_opening =
                     MleEval::from(vec![EF::zero(); main_trace_evaluations.num_polynomials()]);
@@ -260,7 +264,7 @@ where
                     padding_preprocessed_opening.as_ref(),
                     &padding_trace_opening,
                     alpha,
-                    &beta,
+                    betas.as_slice(),
                 );
 
                 let numerator_eval = real_numerator - padding_numerator * geq_eval;

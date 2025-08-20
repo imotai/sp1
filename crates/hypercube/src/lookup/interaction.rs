@@ -116,7 +116,7 @@ impl<F: Field> Interaction<F> {
         preprocessed: Option<&MleEval<Var>>,
         main: &MleEval<Var>,
         alpha: Expr,
-        beta: &Expr,
+        betas: &[Expr],
     ) -> (Expr, Expr)
     where
         F: Into<Expr>,
@@ -124,7 +124,6 @@ impl<F: Field> Interaction<F> {
         Var: Into<Expr> + Copy,
     {
         let mut multiplicity_eval = self.multiplicity.constant.into();
-        let mut betas = beta.powers();
         for (column, weight) in self.multiplicity.column_weights.iter() {
             let weight: Expr = (*weight).into();
             match column {
@@ -135,15 +134,16 @@ impl<F: Field> Interaction<F> {
             }
         }
 
+        let mut betas = betas.iter().cloned();
         let mut fingerprint_eval =
             alpha + betas.next().unwrap() * Expr::from_canonical_usize(self.argument_index());
-        for (element, beta_pow) in self.values.iter().zip(betas) {
+        for (element, beta) in self.values.iter().zip(betas) {
             let evaluation = if let Some(preprocessed) = preprocessed {
                 element.apply::<Expr, Var>(preprocessed, main)
             } else {
                 element.apply::<Expr, Var>(&[], main)
             };
-            fingerprint_eval += evaluation * beta_pow;
+            fingerprint_eval += evaluation * beta;
         }
 
         (multiplicity_eval, fingerprint_eval)

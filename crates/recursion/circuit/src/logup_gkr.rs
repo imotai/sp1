@@ -39,7 +39,7 @@ where
         shard_chips: &BTreeSet<Chip<C::F, A>>,
         degrees: &[Point<Felt<C::F>>],
         alpha: Ext<C::F, C::EF>,
-        beta: Ext<C::F, C::EF>,
+        beta_seed: Point<Ext<C::F, C::EF>>,
         cumulative_sum: SymbolicExt<C::F, C::EF>,
         max_log_row_count: usize,
         proof: &LogupGkrProof<Ext<C::F, C::EF>>,
@@ -152,7 +152,9 @@ where
         let mut point_extended = IntoSymbolic::<C>::as_symbolic(point);
 
         let alpha = IntoSymbolic::<C>::as_symbolic(&alpha);
-        let beta = IntoSymbolic::<C>::as_symbolic(&beta);
+        let betas = slop_multilinear::partial_lagrange_blocking(&IntoSymbolic::<C>::as_symbolic(
+            &beta_seed,
+        ));
         point_extended.add_dimension(SymbolicExt::zero());
         for ((chip, openings), threshold) in
             shard_chips.iter().zip_eq(chip_openings.values()).zip_eq(degrees)
@@ -181,7 +183,7 @@ where
                     preprocessed_trace_evaluations.as_ref(),
                     main_trace_evaluations,
                     alpha,
-                    &beta,
+                    betas.as_slice(),
                 );
                 let padding_trace_opening =
                     MleEval::from(vec![C::F::zero(); main_trace_evaluations.num_polynomials()]);
@@ -192,7 +194,7 @@ where
                     padding_preprocessed_opening.as_ref(),
                     &padding_trace_opening,
                     alpha,
-                    &beta,
+                    betas.as_slice(),
                 );
 
                 let numerator_eval = real_numerator - padding_numerator * geq_eval;

@@ -16,7 +16,7 @@ use slop_jagged::{
     JaggedPcsVerifierError, MachineJaggedPcsVerifier,
 };
 use slop_matrix::dense::RowMajorMatrixView;
-use slop_multilinear::{full_geq, Evaluations, Mle, MleEval, MultilinearPcsVerifier};
+use slop_multilinear::{full_geq, Evaluations, Mle, MleEval, MultilinearPcsVerifier, Point};
 use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
 use thiserror::Error;
 
@@ -407,12 +407,13 @@ where
     pub fn verify_public_values(
         &self,
         challenge: C::EF,
-        alpha: C::EF,
-        beta: C::EF,
+        alpha: &C::EF,
+        beta_seed: &Point<C::EF>,
         public_values: &[C::F],
     ) -> Result<C::EF, ShardVerifierConfigError<C>> {
+        let betas = slop_multilinear::partial_lagrange_blocking(beta_seed).into_buffer().into_vec();
         let mut folder = VerifierPublicValuesConstraintFolder::<C> {
-            perm_challenges: &[alpha, beta],
+            perm_challenges: (alpha, &betas),
             alpha: challenge,
             accumulator: C::EF::zero(),
             local_interaction_digest: C::EF::zero(),
@@ -485,13 +486,6 @@ where
             }
         }
 
-        let alpha = challenger.sample_ext_element::<C::EF>();
-        let beta = challenger.sample_ext_element::<C::EF>();
-        let pv_challenge = challenger.sample_ext_element::<C::EF>();
-
-        let cumulative_sum =
-            -self.verify_public_values(pv_challenge, alpha, beta, public_values)?;
-
         let shard_chips = self
             .machine
             .chips()
@@ -500,10 +494,28 @@ where
             .cloned()
             .collect::<BTreeSet<_>>();
 
+        let max_interaction_arity = shard_chips
+            .iter()
+            .flat_map(|c| c.sends().iter().chain(c.receives().iter()))
+            .map(|i| i.values.len() + 1)
+            .max()
+            .unwrap();
+        let beta_seed_dim = max_interaction_arity.next_power_of_two().ilog2();
+
+        let alpha = challenger.sample_ext_element::<C::EF>();
+        let beta_seed = (0..beta_seed_dim)
+            .map(|_| challenger.sample_ext_element::<C::EF>())
+            .collect::<Point<_>>();
+        let pv_challenge = challenger.sample_ext_element::<C::EF>();
+
+        let max_log_row_count = self.pcs_verifier.max_log_row_count;
+        let cumulative_sum =
+            -self.verify_public_values(pv_challenge, &alpha, &beta_seed, public_values)?;
+
         let degrees = opened_values
             .chips
             .iter()
-            .map(|(name, x)| (name.clone(), x.degree.clone()))
+            .map(|x| (x.0.clone(), x.1.degree.clone()))
             .collect::<BTreeMap<_, _>>();
 
         if shard_chips.len() != opened_values.chips.len()
@@ -527,7 +539,7 @@ where
             &shard_chips,
             &degrees,
             alpha,
-            beta,
+            &beta_seed,
             cumulative_sum,
             max_log_row_count,
             logup_gkr_proof,

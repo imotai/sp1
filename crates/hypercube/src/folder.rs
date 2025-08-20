@@ -406,7 +406,7 @@ pub type VerifierPublicValuesConstraintFolder<'a, C> = GenericVerifierPublicValu
 /// A folder for verifier constraints.
 pub struct GenericVerifierPublicValuesConstraintFolder<'a, F, EF, PubVar, Var, Expr> {
     /// The challenges for the permutation.
-    pub perm_challenges: &'a [Var],
+    pub perm_challenges: (&'a Var, &'a [Expr]),
     /// The constraint folding challenge.
     pub alpha: Var,
     /// The accumulator for the constraint folding.
@@ -554,7 +554,7 @@ where
     }
 
     fn permutation_randomness(&self) -> &[Self::Var] {
-        self.perm_challenges
+        unimplemented!()
     }
 }
 
@@ -623,26 +623,22 @@ where
     PubVar: Into<Expr> + Copy,
 {
     fn send(&mut self, message: AirInteraction<Expr>, _scope: InteractionScope) {
-        let mut denominator: Expr = self.perm_challenges[0].into();
-        let beta: Expr = self.perm_challenges[1].into();
-        let mut pow_beta: Expr = F::one().into();
-        denominator += pow_beta.clone() * F::from_canonical_usize(message.kind as usize);
+        let mut denominator: Expr = (*self.perm_challenges.0).into();
+        let mut betas = self.perm_challenges.1.iter().cloned();
+        denominator += betas.next().unwrap() * F::from_canonical_usize(message.kind as usize);
         for value in message.values {
-            pow_beta = pow_beta.clone() * beta.clone();
-            denominator += value * pow_beta.clone();
+            denominator += value * betas.next().unwrap();
         }
         let digest = message.multiplicity / denominator;
         self.local_interaction_digest += digest;
     }
 
     fn receive(&mut self, message: AirInteraction<Expr>, _scope: InteractionScope) {
-        let mut denominator: Expr = self.perm_challenges[0].into();
-        let beta: Expr = self.perm_challenges[1].into();
-        let mut pow_beta: Expr = F::one().into();
-        denominator += pow_beta.clone() * F::from_canonical_usize(message.kind as usize);
+        let mut denominator: Expr = (*self.perm_challenges.0).into();
+        let mut betas = self.perm_challenges.1.iter().cloned();
+        denominator += betas.next().unwrap() * F::from_canonical_usize(message.kind as usize);
         for value in message.values {
-            pow_beta = pow_beta.clone() * beta.clone();
-            denominator += value * pow_beta.clone();
+            denominator += value * betas.next().unwrap();
         }
         let digest = message.multiplicity / denominator;
         self.local_interaction_digest -= digest;
@@ -692,7 +688,7 @@ pub type DebugPublicValuesConstraintFolder<'a, F> =
 /// A folder for verifier constraints.
 pub struct GenericDebugPublicValuesConstraintFolder<'a, F, EF, PubVar, Var, Expr> {
     /// The challenges for the permutation.
-    pub perm_challenges: &'a [Var],
+    pub perm_challenges: (&'a Var, &'a [Var]),
     /// The constraint folding challenge.
     pub alpha: Var,
     /// The accumulator for the constraint folding.
@@ -840,7 +836,7 @@ where
     }
 
     fn permutation_randomness(&self) -> &[Self::Var] {
-        self.perm_challenges
+        unimplemented!()
     }
 }
 

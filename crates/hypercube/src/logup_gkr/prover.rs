@@ -46,7 +46,7 @@ pub trait LogUpGkrProver: 'static + Send + Sync {
         traces: Traces<Self::F, Self::B>,
         public_values: Vec<Self::F>,
         alpha: Self::EF,
-        beta: Self::EF,
+        beta_seed: Point<Self::EF>,
         challenger: &mut Self::Challenger,
     ) -> impl Future<Output = LogupGkrProof<Self::EF>> + Send;
 }
@@ -188,7 +188,7 @@ impl<GkrComponents: LogUpGkrProverComponents> LogUpGkrProver for GkrProverImpl<G
         traces: Traces<Self::F, Self::B>,
         public_values: Vec<Self::F>,
         alpha: Self::EF,
-        beta: Self::EF,
+        beta_seed: Point<Self::EF>,
         challenger: &mut Self::Challenger,
     ) -> LogupGkrProof<Self::EF> {
         let num_interactions =
@@ -203,7 +203,7 @@ impl<GkrComponents: LogUpGkrProverComponents> LogUpGkrProver for GkrProverImpl<G
                 traces.clone(),
                 public_values,
                 alpha,
-                beta,
+                beta_seed,
             )
             .instrument(tracing::info_span!("generate GKR circuit"))
             .await;

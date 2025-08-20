@@ -2,10 +2,10 @@ use futures::prelude::*;
 
 use itertools::Itertools;
 use rayon::prelude::*;
-use slop_algebra::{ExtensionField, Field, Powers};
+use slop_algebra::{ExtensionField, Field};
 use slop_alloc::{Backend, CpuBackend};
 use slop_matrix::dense::RowMajorMatrix;
-use slop_multilinear::{Mle, PaddedMle, Padding, Point};
+use slop_multilinear::{Mle, PaddedMle, Padding, PartialLagrangeBackend, Point};
 use std::{
     collections::{BTreeMap, BTreeSet},
     future::Future,
@@ -38,7 +38,7 @@ pub trait LogUpGkrTraceGenerator<F: Field, EF: ExtensionField<F>, A: MachineAir<
         traces: Traces<F, B>,
         public_values: Vec<F>,
         alpha: EF,
-        beta: EF,
+        beta_seed: Point<EF>,
     ) -> impl Future<Output = (LogUpGkrOutput<EF, B>, Self::Circuit)> + Send;
 }
 
@@ -60,14 +60,14 @@ pub(crate) fn generate_interaction_vals<F: Field, EF: ExtensionField<F>>(
     main_row: &[F],
     is_send: bool,
     alpha: EF,
-    betas: &Powers<EF>,
+    betas: &[EF],
 ) -> (F, EF) {
     let mut denominator = alpha;
-    let mut betas = betas.clone();
-    denominator += betas.next().unwrap() * EF::from_canonical_usize(interaction.argument_index());
+    let mut betas = betas.iter();
+    denominator += *betas.next().unwrap() * EF::from_canonical_usize(interaction.argument_index());
     for (columns, beta) in interaction.values.iter().zip(betas) {
         let apply = columns.apply::<F, F>(preprocessed_row, main_row);
-        denominator += beta * apply;
+        denominator += *beta * apply;
     }
     let mut mult = interaction.multiplicity.apply::<F, F>(preprocessed_row, main_row);
 
@@ -166,7 +166,7 @@ impl<F: Field, EF: ExtensionField<F>, A> LogupGkrCpuTraceGenerator<F, EF, A> {
         main_traces: &Traces<F, CpuBackend>,
         preprocessed_traces: &Traces<F, CpuBackend>,
         alpha: EF,
-        beta: EF,
+        beta_seed: Point<EF>,
     ) -> LogUpGkrCpuLayer<F, EF> {
         let first_trace = main_traces.values().next().unwrap();
         let num_row_variables = first_trace.num_variables();
@@ -175,7 +175,7 @@ impl<F: Field, EF: ExtensionField<F>, A> LogupGkrCpuTraceGenerator<F, EF, A> {
         let mut denominator_0 = Vec::new();
         let mut numerator_1 = Vec::new();
         let mut denominator_1 = Vec::new();
-        let betas = beta.powers();
+        let betas = CpuBackend::partial_lagrange(&beta_seed).await.into_buffer().into_vec();
         let mut total_interactions = 0;
         for (name, interactions) in interactions.iter() {
             let main_trace = main_traces.get(name).unwrap().clone();

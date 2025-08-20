@@ -160,7 +160,7 @@ where
     }
 
     let mut folder = DebugPublicValuesConstraintFolder::<F> {
-        perm_challenges: &[F::zero(), F::zero()],
+        perm_challenges: (&F::zero(), &[]),
         alpha: F::zero(),
         accumulator: F::zero(),
         interactions: vec![],

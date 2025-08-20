@@ -173,7 +173,7 @@ impl SP1RecursionProofShape {
             DEFAULT_ARITY => [
                 (CompressAir::<SP1Field>::MemoryConst(MemoryConstChip::default()), 341_024),
                 (CompressAir::<SP1Field>::MemoryVar(MemoryVarChip::default()), 431_104),
-                (CompressAir::<SP1Field>::BaseAlu(BaseAluChip), 397_664),
+                (CompressAir::<SP1Field>::BaseAlu(BaseAluChip), 397_728),
                 (CompressAir::<SP1Field>::ExtAlu(ExtAluChip), 755_776),
                 (CompressAir::<SP1Field>::Poseidon2Wide(Poseidon2WideChip), 100_448),
                 (CompressAir::<SP1Field>::PrefixSumChecks(PrefixSumChecksChip), 225_440),
@@ -654,20 +654,8 @@ mod tests {
         setup_logger();
         let prover = SP1ProverBuilder::new().without_recursion_vks().build().await;
 
-        let shape = [
-            (CompressAir::<SP1Field>::MemoryConst(MemoryConstChip::default()), 341_024),
-            (CompressAir::<SP1Field>::MemoryVar(MemoryVarChip::default()), 431_104),
-            (CompressAir::<SP1Field>::BaseAlu(BaseAluChip), 397_664),
-            (CompressAir::<SP1Field>::ExtAlu(ExtAluChip), 755_776),
-            (CompressAir::<SP1Field>::Poseidon2Wide(Poseidon2WideChip), 100_448),
-            (CompressAir::<SP1Field>::PrefixSumChecks(PrefixSumChecksChip), 225_440),
-            (CompressAir::<SP1Field>::Select(SelectChip), 677_984),
-            (CompressAir::<SP1Field>::PublicValues(PublicValuesChip), 16),
-        ]
-        .into_iter()
-        .collect();
-
-        let reduce_shape = SP1RecursionProofShape { shape };
+        let reduce_shape = SP1RecursionProofShape::compress_proof_shape_from_arity(DEFAULT_ARITY)
+            .expect("default arity shape should be valid");
 
         let arity = reduce_shape.max_arity(prover.recursion()).await;
         tracing::info!("arity: {}", arity);

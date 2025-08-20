@@ -8,7 +8,7 @@ use crate::{air::InteractionScope, debug_interactions_with_all_chips, Interactio
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::CpuBackend;
 use slop_challenger::FieldChallenger;
-use slop_multilinear::{Mle, PaddedMle};
+use slop_multilinear::{Mle, PaddedMle, Point};
 use slop_sumcheck::reduce_sumcheck_to_evaluation;
 
 use crate::{air::MachineAir, prover::Traces, Chip, LogupRoundPolynomial, PolynomialLayer};
@@ -89,7 +89,7 @@ impl<F: Field, EF: ExtensionField<F>, A: MachineAir<F>> LogUpGkrTraceGenerator<F
         traces: Traces<F, CpuBackend>,
         public_values: Vec<F>,
         alpha: EF,
-        beta: EF,
+        beta_seed: Point<EF>,
     ) -> (LogUpGkrOutput<EF>, Self::Circuit) {
         let interactions = chips
             .iter()
@@ -118,7 +118,7 @@ impl<F: Field, EF: ExtensionField<F>, A: MachineAir<F>> LogUpGkrTraceGenerator<F
         }
 
         let first_layer = self
-            .generate_first_layer(&interactions, &traces, &preprocessed_traces, alpha, beta)
+            .generate_first_layer(&interactions, &traces, &preprocessed_traces, alpha, beta_seed)
             .await;
         let num_row_variables = first_layer.num_row_variables;
         // println!("num_row_variables: {:?}", num_row_variables);

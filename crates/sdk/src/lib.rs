@@ -78,7 +78,7 @@ pub use utils::setup_logger;
 mod tests {
     use sp1_primitives::io::SP1PublicValues;
 
-    use crate::{utils, ProveRequest, Prover, ProverClient, SP1Stdin};
+    use crate::{utils, Prover, ProverClient, SP1Stdin};
 
     #[tokio::test]
     async fn test_execute() {
@@ -152,7 +152,7 @@ mod tests {
     #[cfg(feature = "unsound")]
     #[tokio::test]
     async fn test_e2e_compressed() {
-        use crate::CpuProver;
+        use crate::{prover::ProveRequest, CpuProver};
 
         utils::setup_logger();
         let client = CpuProver::new_unsound().await;

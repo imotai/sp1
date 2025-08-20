@@ -11,13 +11,14 @@ use crate::{
         RecursiveMachineJaggedPcsVerifier,
     },
     logup_gkr::RecursiveLogUpGkrVerifier,
+    symbolic::IntoSymbolic,
     zerocheck::RecursiveVerifierConstraintFolder,
     CircuitConfig, SP1FieldConfigVariable,
 };
 use slop_air::Air;
 use slop_algebra::{extension::BinomialExtensionField, AbstractField, TwoAdicField};
 use slop_commit::Rounds;
-use slop_multilinear::{Evaluations, MleEval};
+use slop_multilinear::{Evaluations, MleEval, Point};
 use slop_sumcheck::PartialSumcheckProof;
 use sp1_hypercube::{
     air::MachineAir, septic_digest::SepticDigest, ChipDimensions,
@@ -137,12 +138,15 @@ where
         &self,
         builder: &mut Builder<C>,
         challenge: Ext<C::F, C::EF>,
-        alpha: Ext<C::F, C::EF>,
-        beta: Ext<C::F, C::EF>,
+        alpha: &Ext<C::F, C::EF>,
+        beta_seed: &Point<Ext<C::F, C::EF>>,
         public_values: &[Felt<C::F>],
     ) -> SymbolicExt<C::F, C::EF> {
+        let beta_symbolic = IntoSymbolic::<C>::as_symbolic(beta_seed);
+        let betas =
+            slop_multilinear::partial_lagrange_blocking(&beta_symbolic).into_buffer().into_vec();
         let mut folder = RecursiveVerifierPublicValuesConstraintFolder::<C> {
-            perm_challenges: &[alpha, beta],
+            perm_challenges: (alpha, &betas),
             alpha: challenge,
             accumulator: SymbolicExt::zero(),
             local_interaction_digest: SymbolicExt::zero(),
@@ -211,14 +215,13 @@ where
             }
         }
 
-        // Sample the permutation challenges.
-        let alpha = challenger.sample_ext(builder);
-        let beta = challenger.sample_ext(builder);
-        // Sample the public value challenge.
-        let pv_challenge = challenger.sample_ext(builder);
-
-        let cumulative_sum =
-            -self.verify_public_values(builder, pv_challenge, alpha, beta, public_values);
+        for (chip, dimensions) in vk.preprocessed_chip_information.iter() {
+            if let Some(height) = height_felts_map.get(chip) {
+                builder.assert_felt_eq(*height, dimensions.height);
+            } else {
+                builder.assert_felt_eq(SymbolicFelt::zero(), SymbolicFelt::one());
+            }
+        }
 
         let shard_chips = self
             .machine
@@ -227,6 +230,26 @@ where
             .filter(|chip| shard_chips.contains(&chip.name()))
             .cloned()
             .collect::<BTreeSet<_>>();
+
+        // Sample the permutation challenges.
+        let alpha = challenger.sample_ext(builder);
+        let max_interaction_arity = shard_chips
+            .iter()
+            .flat_map(|c| c.sends().iter().chain(c.receives().iter()))
+            .map(|i| i.values.len() + 1)
+            .max()
+            .unwrap();
+        let beta_seed_dim = max_interaction_arity.next_power_of_two().ilog2();
+        let beta_seed =
+            Point::from_iter((0..beta_seed_dim).map(|_| challenger.sample_ext(builder)));
+        tracing::warn!("Beta seed dimension: {}", beta_seed_dim);
+        // Sample the public value challenge.
+        let pv_challenge = challenger.sample_ext(builder);
+
+        builder.cycle_tracker_v2_enter("verify-public-values");
+        let cumulative_sum =
+            -self.verify_public_values(builder, pv_challenge, &alpha, &beta_seed, public_values);
+        builder.cycle_tracker_v2_exit();
 
         let degrees = opened_values.chips.values().map(|x| x.degree.clone()).collect::<Vec<_>>();
 
@@ -239,7 +262,7 @@ where
             &shard_chips,
             &degrees,
             alpha,
-            beta,
+            beta_seed,
             cumulative_sum,
             max_log_row_count,
             logup_gkr_proof,

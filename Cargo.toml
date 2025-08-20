@@ -78,7 +78,7 @@ sp1-lib = { path = "crates/zkvm/lib", version = "6.0.0", default-features = fals
 sp1-zkvm = { path = "crates/zkvm/entrypoint", version = "6.0.0", default-features = false }
 
 # slop
-slop-algebra = { git = "https://github.com/succinctlabs/slop"}
+slop-algebra = { git = "https://github.com/succinctlabs/slop" }
 slop-alloc = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold = { git = "https://github.com/succinctlabs/slop" }
 slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
@@ -109,7 +109,6 @@ slop-keccak-air = { git = "https://github.com/succinctlabs/slop" }
 # slop-basefold-prover = { path = "../slop/crates/basefold-prover" }
 # slop-commit = { path = "../slop/crates/commit" }
 # slop-jagged = { path = "../slop/crates/jagged" }
-# slop-fri = { path = "../slop/crates/fri" }
 # slop-sumcheck = { path = "../slop/crates/sumcheck" }
 # slop-stacked = { path = "../slop/crates/stacked" }
 # slop-tensor = { path = "../slop/crates/tensor" }
