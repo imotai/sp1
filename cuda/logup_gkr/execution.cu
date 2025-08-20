@@ -104,21 +104,20 @@ template <typename F, typename EF>
 __device__ __forceinline__ GkrInput<F, EF>
 InteractionValue(size_t index, size_t rowIdx, Interactions<F> const interactions,
                  F *const preprocessed, F *const main, EF const alpha,
-                 EF const beta, size_t height)
+                 EF *const betas, size_t height)
 {
     // Initialize the denominator and beta powers.
     EF denominator = alpha;
-    EF beta_power = EF::one();
+    // EF beta_power = EF::one();
 
     // Add argument index to the denominator.
     EF argument_index = EF(interactions.arg_indices[index]);
-    denominator += beta_power * argument_index;
+    denominator += betas[0] * argument_index;
 
     // Add the interaction values.
     for (size_t k = interactions.values_ptr[index];
          k < interactions.values_ptr[index + 1]; k++)
     {
-        beta_power *= beta;
         EF acc = EF(interactions.values_constants[k]);
         for (size_t l = interactions.values_col_weights_ptr[k];
              l < interactions.values_col_weights_ptr[k + 1]; l++)
@@ -126,7 +125,7 @@ InteractionValue(size_t index, size_t rowIdx, Interactions<F> const interactions
             acc += EF(interactions.values_col_weights[l].get(preprocessed, main,
                                                              rowIdx, height));
         }
-        denominator += beta_power * acc;
+        denominator += betas[k - interactions.values_ptr[index]+1] * acc;
     }
 
     // Calculate the multiplicity values.
@@ -162,7 +161,7 @@ __global__ void populateLastCircuitLayer(
     F *const preprocessed,
     F *const main,
     EF alpha,
-    EF beta,
+    EF *beta,
     size_t interactionOffset,
     size_t traceHeight,
     size_t halfTraceHeight,

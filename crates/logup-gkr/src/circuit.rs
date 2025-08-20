@@ -1,8 +1,9 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use csl_cuda::TaskScope;
+use csl_cuda::{PartialLagrangeKernel, TaskScope};
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::{Backend, Buffer, CpuBackend};
+use slop_multilinear::Point;
 use slop_tensor::Tensor;
 use sp1_hypercube::{prover::Traces, LogUpGkrCircuit};
 
@@ -52,7 +53,7 @@ pub struct GkrInputData<F: Field, EF> {
     pub traces: Traces<F, TaskScope>,
     pub preprocessed_traces: Traces<F, TaskScope>,
     pub alpha: EF,
-    pub beta: EF,
+    pub beta_seed: Point<EF>,
 }
 
 pub struct FirstLayerData<F, EF, B: Backend> {
@@ -81,7 +82,8 @@ impl<F: Field, EF: ExtensionField<F>, A> LogUpGkrCircuit for LogUpCudaCircuit<F,
 where
     TaskScope: PopulateLastCircuitLayerKernel<F, EF>
         + CircuitTransitionKernel<EF>
-        + FirstLayerTransitionKernel<F, EF>,
+        + FirstLayerTransitionKernel<F, EF>
+        + PartialLagrangeKernel<EF>,
     A: Send + Sync,
 {
     type CircuitLayer = GkrCircuitLayer<F, EF>;

@@ -18,13 +18,13 @@ use csl_cuda::{
         },
         runtime::KernelPtr,
     },
-    TaskScope, ToDevice,
+    PartialLagrangeKernel, TaskScope, ToDevice,
 };
 use itertools::Itertools;
 use slop_algebra::{extension::BinomialExtensionField, ExtensionField, Field};
 use slop_alloc::{Buffer, HasBackend};
 use slop_koala_bear::KoalaBear;
-use slop_multilinear::Mle;
+use slop_multilinear::{Mle, Point};
 use slop_tensor::Tensor;
 use sp1_hypercube::{
     air::MachineAir, prover::Traces, Chip, LogUpGkrOutput, LogUpGkrTraceGenerator,
@@ -71,7 +71,8 @@ impl<F, EF, A> LogUpGkrCudaTraceGenerator<F, EF, A>
 where
     F: Field,
     EF: ExtensionField<F>,
-    TaskScope: CircuitTransitionKernel<EF> + FirstLayerTransitionKernel<F, EF>,
+    TaskScope:
+        CircuitTransitionKernel<EF> + FirstLayerTransitionKernel<F, EF> + PartialLagrangeKernel<EF>,
 {
     pub fn extract_outputs(
         &self,
@@ -152,19 +153,24 @@ where
         const ROW_STRIDE: usize = 8;
         const INTERACTION_STRIDE: usize = 4;
 
+        let beta = input_data.beta_seed.clone();
+        let beta = beta.to_device_in(&backend).await.unwrap();
+
+        let betas = Mle::partial_lagrange(&beta).await;
+
         let mut interaction_offset = 0;
         let handles = FuturesUnordered::new();
         for ((name, interactions), dimension) in input_data.interactions.iter().zip_eq(dimensions) {
             let trace = input_data.traces.get(name).unwrap().clone();
             let preprocessed_trace = input_data.preprocessed_traces.get(name).cloned();
             let alpha = input_data.alpha;
-            let beta = input_data.beta;
             let interactions = interactions.clone();
             let num_interactions = interactions.num_interactions;
             let interaction_start_indices = unsafe { interaction_start_indices.owned_unchecked() };
             let mut interaction_data = unsafe { interaction_data.owned_unchecked() };
             let mut numerator = unsafe { numerator.owned_unchecked() };
             let mut denominator = unsafe { denominator.owned_unchecked() };
+            let betas = unsafe { betas.owned_unchecked() };
             let handle = backend.run_in_place(move |s| async move {
                 let real_height = trace.num_real_entries();
                 assert_eq!(real_height % 2, 0);
@@ -197,7 +203,7 @@ where
                         preprocessed_ptr,
                         main_ptr,
                         alpha,
-                        beta,
+                        betas.guts().as_ptr(),
                         interaction_offset,
                         real_height,
                         half_height,
@@ -408,7 +414,8 @@ where
     TaskScope: CircuitTransitionKernel<EF>
         + FirstLayerTransitionKernel<F, EF>
         + PopulateLastCircuitLayerKernel<F, EF>
-        + ExtractOutputKernel<EF>,
+        + ExtractOutputKernel<EF>
+        + PartialLagrangeKernel<EF>,
 {
     type Circuit = LogUpCudaCircuit<F, EF, A>;
 
@@ -419,7 +426,7 @@ where
         traces: Traces<F, TaskScope>,
         _public_values: Vec<F>,
         alpha: EF,
-        beta: EF,
+        beta_seed: Point<EF>,
     ) -> (LogUpGkrOutput<EF, TaskScope>, Self::Circuit) {
         let interactions = chips
             .iter()
@@ -428,7 +435,8 @@ where
                 (chip.name(), Arc::new(interactions))
             })
             .collect::<BTreeMap<_, _>>();
-        let input_data = GkrInputData { interactions, preprocessed_traces, traces, alpha, beta };
+        let input_data =
+            GkrInputData { interactions, preprocessed_traces, traces, alpha, beta_seed };
 
         let mut materialized_layers = Vec::new();
 
