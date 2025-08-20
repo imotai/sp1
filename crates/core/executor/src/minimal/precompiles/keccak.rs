@@ -13,11 +13,11 @@ pub unsafe fn keccak_permute(ctx: &mut JitContext, arg1: u64, arg2: u64) -> Opti
         panic!("Expected arg2 to be 0, got {arg2}");
     }
 
-    let mut state = Vec::new();
+    let mut state: Vec<u64> = Vec::new();
     let mut memory = ctx.memory();
 
     let state_values = memory.mr_slice(state_ptr, STATE_NUM_WORDS);
-    state.extend_from_slice(state_values);
+    state.extend(state_values);
 
     let mut state = state.try_into().unwrap();
     keccakf(&mut state);

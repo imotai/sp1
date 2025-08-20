@@ -116,11 +116,15 @@ impl<E: EllipticCurveParameters> AffinePoint<E> {
         out
     }
 
-    pub fn from_words_le(words: &[u64]) -> Self {
+    pub fn from_words_le<'a>(words: impl IntoIterator<Item = &'a u64> + Clone) -> Self {
+        let words = words.into_iter().collect::<Vec<_>>();
+
         let x_bytes =
             words[0..words.len() / 2].iter().flat_map(|n| n.to_le_bytes()).collect::<Vec<_>>();
+
         let y_bytes =
             &words[words.len() / 2..].iter().flat_map(|n| n.to_le_bytes()).collect::<Vec<_>>();
+
         let x = BigUint::from_bytes_le(x_bytes.as_slice());
         let y = BigUint::from_bytes_le(y_bytes.as_slice());
         Self { x, y, _marker: std::marker::PhantomData }

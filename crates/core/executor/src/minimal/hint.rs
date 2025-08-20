@@ -8,20 +8,31 @@ pub unsafe fn hint_read(ctx: &mut JitContext, ptr: u64, len: u64) -> Option<u64>
     let mut memory = ctx.memory();
 
     assert_eq!(vec.len() as u64, len, "hint input stream read length mismatch");
-    assert_eq!(ptr % 4, 0, "hint read address not aligned to 4 bytes");
-    // Iterate through the vec in 4-byte chunks
-    for i in (0..len as u32).step_by(4) {
-        // Get each byte in the chunk
-        let b1 = vec[i as usize];
-        // In case the vec is not a multiple of 4, right-pad with 0s. This is fine because we
-        // are assuming the word is uninitialized, so filling it with 0s makes sense.
-        let b2 = vec.get(i as usize + 1).copied().unwrap_or(0);
-        let b3 = vec.get(i as usize + 2).copied().unwrap_or(0);
-        let b4 = vec.get(i as usize + 3).copied().unwrap_or(0);
-        let word = u32::from_le_bytes([b1, b2, b3, b4]);
+    assert_eq!(ptr % 8, 0, "hint read address not aligned to 8 bytes");
 
-        memory.mw(ptr + i as u64, word as u64);
+    // Chunk the bytes into words.
+    let chunks = vec.chunks_exact(8);
+    // Get the number of chunks.
+    let chunk_count = chunks.len();
+    // Get the remainder of the bytes.
+    let remainder = chunks.remainder();
+
+    // For each chunk, write the word to the memory.
+    for (i, chunk) in chunks.enumerate() {
+        let word = u64::from_le_bytes([
+            chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
+        ]);
+
+        memory.mw_hint(ptr + (i * 8) as u64, word);
     }
+
+    // Write the final word to the memory.
+    let final_word = {
+        let mut buf = [0u8; 8];
+        buf[..remainder.len()].copy_from_slice(remainder);
+        u64::from_le_bytes(buf)
+    };
+    memory.mw_hint(ptr + (chunk_count * 8) as u64, final_word);
 
     None
 }

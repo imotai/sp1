@@ -3,8 +3,10 @@ use crate::{
     JitContext, JitFunction, MemoryInstructions, RiscOperand, RiscRegister, SP1RiscvTranspiler,
     SystemInstructions, TraceCollector,
 };
-use std::io;
-use std::sync::{mpsc, OnceLock};
+use std::{
+    io,
+    sync::{mpsc, OnceLock},
+};
 
 #[allow(clippy::type_complexity)]
 static DEBUG_REGISTERS: OnceLock<mpsc::Sender<Option<(u64, u64, [u64; 32])>>> = OnceLock::new();
@@ -59,7 +61,6 @@ impl<B: SP1RiscvTranspiler + Debuggable> SP1RiscvTranspiler for DebugBackend<B> 
         }
 
         self.backend.start_instr();
-
         self.backend.call_extern_fn(collect_registers);
         self.backend.call_extern_fn(print_bar);
         self.backend.print_ctx();
@@ -405,6 +406,12 @@ impl<B: SP1RiscvTranspiler> ControlFlowInstructions for DebugBackend<B> {
 
 impl<B: SP1RiscvTranspiler> SystemInstructions for DebugBackend<B> {
     fn ecall(&mut self) {
+        extern "C" fn ecall(ctx: *mut JitContext) {
+            let ctx = unsafe { &mut *ctx };
+            eprintln!("ecall at pc: {}", ctx.pc);
+        }
+
+        self.backend.call_extern_fn(ecall);
         self.backend.ecall();
     }
 
@@ -747,8 +754,8 @@ impl<B: SP1RiscvTranspiler> TraceCollector for DebugBackend<B> {
         self.backend.trace_clk_start();
     }
 
-    fn trace_mem_value(&mut self, src: RiscRegister) {
-        self.backend.trace_mem_value(src);
+    fn trace_mem_value(&mut self, rs1: RiscRegister, imm: u64) {
+        self.backend.trace_mem_value(rs1, imm);
     }
 
     fn trace_pc_start(&mut self) {

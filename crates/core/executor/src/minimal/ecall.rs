@@ -1,18 +1,22 @@
 use crate::syscalls::SyscallCode;
 
-use super::hint::{hint_len, hint_read};
-use super::precompiles::edwards::{edwards_add, edwards_decompress_syscall};
-use super::precompiles::fptower::{fp2_addsub_syscall, fp2_mul_syscall, fp_op_syscall};
-use super::precompiles::keccak::keccak_permute;
-use super::precompiles::sha256::{sha256_compress, sha256_extend};
-use super::precompiles::uint256::uint256_mul;
-use super::precompiles::uint256x2048::u256x2048_mul;
-use super::precompiles::weierstrass::{
-    weierstrass_add_assign_syscall, weierstrass_decompress_syscall,
-    weierstrass_double_assign_syscall,
+use super::{
+    hint::{hint_len, hint_read},
+    precompiles::{
+        edwards::{edwards_add, edwards_decompress_syscall},
+        fptower::{fp2_addsub_syscall, fp2_mul_syscall, fp_op_syscall},
+        keccak::keccak_permute,
+        sha256::{sha256_compress, sha256_extend},
+        uint256::uint256_mul,
+        uint256x2048::u256x2048_mul,
+        weierstrass::{
+            weierstrass_add_assign_syscall, weierstrass_decompress_syscall,
+            weierstrass_double_assign_syscall,
+        },
+    },
+    unconstrained::{enter_unconstrained, exit_unconstrained},
+    write::write,
 };
-use super::unconstrained::{enter_unconstrained, exit_unconstrained};
-use super::write::write;
 
 use sp1_curves::{
     edwards::ed25519::Ed25519,
@@ -105,7 +109,7 @@ pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut JitContext) -> u64 {
         SyscallCode::WRITE => unsafe { write(ctx, arg1, arg2) },
         SyscallCode::HALT => {
             ctx.pc = 1;
-            ctx.clk += 256;
+            ctx.clk += 256 + 8;
             return code as u64;
         }
         SyscallCode::COMMIT | SyscallCode::COMMIT_DEFERRED_PROOFS => None,
@@ -114,7 +118,7 @@ pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut JitContext) -> u64 {
 
     // Default syscall behavior
     ctx.pc += 4;
-    ctx.clk += 256;
+    ctx.clk += 256 + 8;
 
     res.unwrap_or(code as u64)
 }

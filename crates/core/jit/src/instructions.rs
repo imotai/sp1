@@ -39,7 +39,8 @@ pub trait ComputeInstructions: Sized {
     /// srl: rd = rs1 >> rs2
     fn srl(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand);
 
-    /// Shift the values of two registers right by the amount specified by the second register, using arithmetic right shift.
+    /// Shift the values of two registers right by the amount specified by the second register,
+    /// using arithmetic right shift.
     ///
     /// sra: rd = rs1 >> rs2
     fn sra(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand);
@@ -94,37 +95,44 @@ pub trait ComputeInstructions: Sized {
     /// remu: rd = rs2 == 0 ? 0 : rs1 % rs2
     fn remu(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand);
 
-    /// Add the values of two registers together, using 64bit arithmetic, but only keeping lower 32 bits.
+    /// Add the values of two registers together, using 64bit arithmetic, but only keeping lower 32
+    /// bits.
     ///
     /// addw: rd = (rs1 + rs2) & 0xFFFFFFFF (sign-extended to 64-bit)
     fn addw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand);
 
-    /// Subtract the values of two registers, using 64bit arithmetic, but only keeping lower 32 bits.
+    /// Subtract the values of two registers, using 64bit arithmetic, but only keeping lower 32
+    /// bits.
     ///
     /// subw: rd = (rs1 - rs2) & 0xFFFFFFFF (sign-extended to 64-bit)
     fn subw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand);
 
-    /// Shift the values of two registers left by the amount specified by the second register (32-bit).
+    /// Shift the values of two registers left by the amount specified by the second register
+    /// (32-bit).
     ///
     /// sllw: rd = (rs1 << (rs2 & 0x1F)) & 0xFFFFFFFF (sign-extended to 64-bit)
     fn sllw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand);
 
-    /// Shift the values of two registers right by the amount specified by the second register (32-bit logical).
+    /// Shift the values of two registers right by the amount specified by the second register
+    /// (32-bit logical).
     ///
     /// srlw: rd = ((rs1 & 0xFFFFFFFF) >> (rs2 & 0x1F)) (sign-extended to 64-bit)
     fn srlw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand);
 
-    /// Shift the values of two registers right by the amount specified by the second register (32-bit arithmetic).
+    /// Shift the values of two registers right by the amount specified by the second register
+    /// (32-bit arithmetic).
     ///
     /// sraw: rd = ((rs1 as i32) >> (rs2 & 0x1F)) (sign-extended to 64-bit)
     fn sraw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand);
 
-    /// Multiply the values of two registers together, using 32bit arithmetic (sign-extended to 64-bit).
+    /// Multiply the values of two registers together, using 32bit arithmetic (sign-extended to
+    /// 64-bit).
     ///
     /// mulw: rd = (rs1 * rs2) & 0xFFFFFFFF (sign-extended to 64-bit)
     fn mulw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand);
 
-    /// Divide the values of two registers together, using 32bit arithmetic (sign-extended to 64-bit).
+    /// Divide the values of two registers together, using 32bit arithmetic (sign-extended to
+    /// 64-bit).
     ///
     /// divw: rd = rs2 == 0 ? 0xFFFFFFFF : (rs1 as i32) / (rs2 as i32) (sign-extended to 64-bit)
     fn divw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand);
@@ -134,7 +142,8 @@ pub trait ComputeInstructions: Sized {
     /// divuw: rd = rs2 == 0 ? 0xFFFFFFFF : (rs1 as u32) / (rs2 as u32) (sign-extended to 64-bit)
     fn divuw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand);
 
-    /// Remainder the values of two registers together, using 32bit arithmetic (sign-extended to 64-bit).
+    /// Remainder the values of two registers together, using 32bit arithmetic (sign-extended to
+    /// 64-bit).
     ///
     /// remw: rd = rs2 == 0 ? rs1 : (rs1 as i32) % (rs2 as i32) (sign-extended to 64-bit)
     fn remw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand);
@@ -161,7 +170,8 @@ pub trait ControlFlowInstructions: Sized {
     /// beq: pc = pc + ((rs1 == rs2) ? imm : 4)
     ///
     /// NOTE: During transpilatiom, this method will emit the PC bumps for you,
-    /// typically however, you will want to explicty call [`SP1RiscvTranspiler::set_pc`] at the end of each instruction.
+    /// typically however, you will want to explicty call [`SP1RiscvTranspiler::set_pc`] at the end
+    /// of each instruction.
     fn beq(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64);
 
     /// Compare the values of two registers, and jump to an address if they are not equal.
@@ -169,39 +179,48 @@ pub trait ControlFlowInstructions: Sized {
     /// bne: pc = pc + ((rs1 != rs2) ? imm : 4)
     ///
     /// NOTE: During transpilatiom, this method will emit the PC bumps for you,
-    /// typically however, you will want to explicty call [`SP1RiscvTranspiler::set_pc`] at the end of each instruction.
+    /// typically however, you will want to explicty call [`SP1RiscvTranspiler::set_pc`] at the end
+    /// of each instruction.
     fn bne(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64);
 
-    /// Compare the values of two registers, and jump to an address if the first is less than the second.
+    /// Compare the values of two registers, and jump to an address if the first is less than the
+    /// second.
     ///
     /// blt: pc = pc + ((rs1 < rs2) ? imm : 4)
     ///
     /// NOTE: During transpilatiom, this method will emit the PC bumps for you,
-    /// typically however, you will want to explicty call [`SP1RiscvTranspiler::set_pc`] at the end of each instruction.
+    /// typically however, you will want to explicty call [`SP1RiscvTranspiler::set_pc`] at the end
+    /// of each instruction.
     fn blt(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64);
 
-    /// Compare the values of two registers, and jump to an address if the first is greater than or equal to the second.
+    /// Compare the values of two registers, and jump to an address if the first is greater than or
+    /// equal to the second.
     ///
     /// bge: pc = pc + ((rs1 >= rs2) ? imm : 4)
     ///
     /// NOTE: During transpilatiom, this method will emit the PC bumps for you,
-    /// typically however, you will want to explicty call [`SP1RiscvTranspiler::set_pc`] at the end of each instruction.
+    /// typically however, you will want to explicty call [`SP1RiscvTranspiler::set_pc`] at the end
+    /// of each instruction.
     fn bge(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64);
 
-    /// Compare the values of two registers, and jump to an address if the first is less than the second, unsigned.
+    /// Compare the values of two registers, and jump to an address if the first is less than the
+    /// second, unsigned.
     ///
     /// bltu: pc = pc + ((rs1 < rs2) ? imm : 4)
     ///
     /// NOTE: During transpilatiom, this method will emit the PC bumps for you,
-    /// typically however, you will want to explicty call [`SP1RiscvTranspiler::set_pc`] at the end of each instruction.
+    /// typically however, you will want to explicty call [`SP1RiscvTranspiler::set_pc`] at the end
+    /// of each instruction.
     fn bltu(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64);
 
-    /// Compare the values of two registers, and jump to an address if the first is greater than or equal to the second, unsigned.
+    /// Compare the values of two registers, and jump to an address if the first is greater than or
+    /// equal to the second, unsigned.
     ///
     /// bgeu: pc = pc + ((rs1 >= rs2) ? imm : 4)
     ///
     /// NOTE: During transpilatiom, this method will emit the PC bumps for you,
-    /// typically however, you will want to explicty call [`SP1RiscvTranspiler::set_pc`] at the end of each instruction.
+    /// typically however, you will want to explicty call [`SP1RiscvTranspiler::set_pc`] at the end
+    /// of each instruction.
     fn bgeu(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64);
 
     /// Jump to an address.
@@ -209,7 +228,8 @@ pub trait ControlFlowInstructions: Sized {
     /// jal: rd = pc + 4, pc = pc + imm
     ///
     /// NOTE: During transpilatiom, this method will emit the PC bumps for you,
-    /// typically however, you will want to explicty call [`SP1RiscvTranspiler::set_pc`] at the end of each instruction.
+    /// typically however, you will want to explicty call [`SP1RiscvTranspiler::set_pc`] at the end
+    /// of each instruction.
     fn jal(&mut self, rd: RiscRegister, imm: u64);
 
     /// Jump to an address, and return to the previous address.
@@ -217,7 +237,8 @@ pub trait ControlFlowInstructions: Sized {
     /// jalr: rd = pc + 4, pc = rs1 + imm
     ///
     /// NOTE: During transpilatiom, this method will emit the PC bumps for you,
-    /// typically however, you will want to explicty call [`SP1RiscvTranspiler::set_pc`] at the end of each instruction.
+    /// typically however, you will want to explicty call [`SP1RiscvTranspiler::set_pc`] at the end
+    /// of each instruction.
     fn jalr(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64);
 }
 

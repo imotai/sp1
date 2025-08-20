@@ -99,16 +99,16 @@ pub struct MemoryReadRecord {
 #[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, DeepSizeOf)]
 #[repr(C)]
 pub struct MemoryWriteRecord {
-    /// The value.
-    pub value: u64,
-    /// The timestamp.
-    pub timestamp: u64,
-    /// The previous value.
-    pub prev_value: u64,
     /// The previous timestamp.
     pub prev_timestamp: u64,
     /// The page prot record.
     pub prev_page_prot_record: Option<PageProtRecord>,
+    /// The previous value.
+    pub prev_value: u64,
+    /// The timestamp.
+    pub timestamp: u64,
+    /// The value.
+    pub value: u64,
 }
 
 /// Memory Record Enum.

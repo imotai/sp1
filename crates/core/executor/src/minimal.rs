@@ -31,6 +31,24 @@ impl MinimalExecutor {
         Self { program, compiled: None, tracing, debug, input: VecDeque::new() }
     }
 
+    /// Create a new minimal executor with no tracing or debugging.
+    #[must_use]
+    pub const fn simple(program: Arc<Program>) -> Self {
+        Self::new(program, false, false)
+    }
+
+    /// Create a new minimal executor with tracing.
+    #[must_use]
+    pub const fn tracing(program: Arc<Program>) -> Self {
+        Self::new(program, true, false)
+    }
+
+    /// Create a new minimal executor with debugging.
+    #[must_use]
+    pub const fn debug(program: Arc<Program>) -> Self {
+        Self::new(program, false, true)
+    }
+
     /// Add input to the executor.
     pub fn with_input(&mut self, input: &[u8]) {
         self.input.push_back(input.to_vec());
@@ -47,7 +65,11 @@ impl MinimalExecutor {
                 // SAFETY: The backend is assumed to output valid JIT functions.
                 let trace_buf = unsafe { compiled.call()? };
 
-                return Some(TraceChunk::copy_from_bytes(&trace_buf));
+                if self.tracing {
+                    return Some(TraceChunk::copy_from_bytes(&trace_buf));
+                }
+
+                return None;
             }
 
             // If the JIT function is not compiled, compile it.
@@ -55,12 +77,18 @@ impl MinimalExecutor {
         }
     }
 
-    /// Get the number of cycles executed by the JIT function.
+    /// Get the current clock of the JIT function.
+    ///
+    /// This clock is incremented by 8 or 256 depending on the instruction.
     #[must_use]
     pub fn clk(&self) -> u64 {
         self.compiled.as_ref().map_or(0, |c| c.clk)
     }
 
+    /// Get the global clock of the JIT function.
+    ///
+    /// This clock is incremented by 1 per instruction.
+    #[must_use]
     pub fn global_clk(&self) -> u64 {
         self.compiled.as_ref().map_or(0, |c| c.global_clk)
     }
@@ -76,11 +104,15 @@ impl MinimalExecutor {
 
     /// Transpile the program, saving the JIT function.
     pub fn transpile(&mut self) {
+        let trace_buf_size = if self.tracing { 2_u64.pow(34) as usize } else { 0 };
+
         let mut backend = TranspilerBackend::new(
             self.program.instructions.len(),
             2_u64.pow(MAX_LOG_ADDR as u32) as usize,
             // About 35GB of memory.
-            2_u64.pow(34) as usize,
+            // todo: based on the cycle limit set, if any, we can use the worst case size of this
+            // buf to set this value.
+            trace_buf_size,
             self.program.pc_start_abs,
             self.program.pc_base,
         )
@@ -106,9 +138,6 @@ impl MinimalExecutor {
 
             let next_pc = ((i + 1) * 4) as u64 + self.program.pc_base;
 
-            // Add the base amount of cycles for the instruction.
-            backend.bump_clk(8);
-
             match instruction.opcode {
                 Opcode::LB
                 | Opcode::LH
@@ -128,9 +157,11 @@ impl MinimalExecutor {
                 | Opcode::BGE
                 | Opcode::BLTU
                 | Opcode::BGEU => {
+                    backend.bump_clk(8);
                     Self::transpile_branch_instruction(&mut backend, instruction);
                 }
                 Opcode::JAL | Opcode::JALR => {
+                    backend.bump_clk(8);
                     Self::transpile_jump_instruction(&mut backend, instruction);
                 }
                 Opcode::ADD
@@ -183,11 +214,22 @@ impl MinimalExecutor {
                 _ => panic!("Invalid instruction: {:?}", instruction.opcode),
             }
 
+            // Add the base amount of cycles for the instruction.
+            // Jumps and branches bump the clk before the instruction is executed, since nothing can
+            // be included after the instruction is executed as its jumping to a new location.
+            //
+            // Tehcnically this check isnt needed, itll just be ignored.
+            if !instruction.is_ecall_instruction()
+                && !instruction.is_branch_instruction()
+                && !instruction.is_jump_instruction()
+            {
+                backend.bump_clk(8);
+            }
+
             // The following instructions will modify the PC directly,
             // so we don't need to set the PC here.
             if !(instruction.is_branch_instruction()
                 || instruction.is_jump_instruction()
-                || instruction.opcode == Opcode::AUIPC
                 || instruction.is_ecall_instruction())
             {
                 backend.set_pc(next_pc);
@@ -207,6 +249,12 @@ impl MinimalExecutor {
     ) {
         let (rd, rs1, imm) = instruction.i_type();
 
+        // For each load, we want to trace the value at the address as well as the previous clock
+        // at that address.
+        if tracing {
+            backend.trace_mem_value(rs1.into(), imm);
+        }
+
         match instruction.opcode {
             Opcode::LB => backend.lb(rd.into(), rs1.into(), imm),
             Opcode::LH => backend.lh(rd.into(), rs1.into(), imm),
@@ -217,10 +265,6 @@ impl MinimalExecutor {
             Opcode::LWU => backend.lwu(rd.into(), rs1.into(), imm),
             _ => unreachable!("Invalid load opcode: {:?}", instruction.opcode),
         }
-
-        if tracing {
-            backend.trace_mem_value(rd.into());
-        }
     }
 
     fn transpile_store_instruction<B: SP1RiscvTranspiler>(
@@ -230,9 +274,10 @@ impl MinimalExecutor {
     ) {
         let (rs1, rs2, imm) = instruction.s_type();
 
+        // For stores, its the same logic as a load, we want the last known clk and value at the
+        // address.
         if tracing {
-            // todo, we need to trace the memory value before the store.
-            let _: () = ();
+            backend.trace_mem_value(rs1.into(), imm);
         }
 
         // Note: We switch around rs1 and rs2 operaneds to align with the executor.
@@ -394,7 +439,7 @@ mod test {
 
         let mut executor = MinimalExecutor::new(program.clone(), false, false);
         let start = std::time::Instant::now();
-        executor.execute_chunk().expect("JIT failed");
+        executor.execute_chunk();
         let jit_time = start.elapsed();
 
         // convert to mhz
@@ -448,14 +493,15 @@ mod test {
         // executor.debug();
         executor.with_input(&serialize(&5_usize).unwrap());
         for i in 0..5 {
-            executor.with_input(&serialize(&i).unwrap());
+            executor.with_input(&serialize(&vec![i; i]).unwrap());
         }
-        executor.execute_chunk().expect("JIT failed");
+        executor.execute_chunk();
 
-        let mut interpreter = crate::executor::Executor::new(program.clone(), Default::default());
+        let mut interpreter =
+            crate::executor::Executor::new(program.clone(), crate::SP1CoreOpts::default());
         interpreter.write_stdin_slice(&serialize(&5_usize).unwrap());
         for i in 0..5 {
-            interpreter.write_stdin_slice(&serialize(&i).unwrap());
+            interpreter.write_stdin_slice(&serialize(&vec![i; i]).unwrap());
         }
         interpreter.run_fast().expect("Interpreter failed");
 
@@ -661,19 +707,18 @@ mod test {
 
     // #[test]
     // fn test_compare_registers_at_each_timestamp() {
-    //     const ELF: Elf = test_artifacts::KECCAK_PERMUTE_ELF;
+    //     const ELF: Elf = test_artifacts::SHA_EXTEND_ELF;
 
     //     let program = Program::from(&ELF).unwrap();
     //     let program = Arc::new(program);
 
-    //     let jit_rx = sp1_jit::init_debug_registers();
+    //     let jit_rx = sp1_jit::debug::init_debug_registers();
     //     let interpreter_rx = crate::executor::init_debug_registers();
 
     //     let jit_handle = std::thread::spawn({
     //         let program = program.clone();
     //         move || {
-    //             let mut executor = MinimalExecutor::new(program.clone());
-    //             executor.debug();
+    //             let mut executor = MinimalExecutor::new(program.clone(), false, true);
     //             executor.execute_chunk();
 
     //             eprintln!(
@@ -756,8 +801,8 @@ mod test {
     //                 eprintln!("{},jit=        {:?}", jit_clk, jit);
     //                 eprintln!("{},interpreter={:?}", jit_clk, interpreter);
     //                 eprintln!(
-    //                     "😨  REGISTER MISMATCH at index: {}, clk = {}, jit[{i}]={:?}, interpreter[{i}]={:?}",
-    //                     i,
+    //                     "😨  REGISTER MISMATCH at index: {}, clk = {}, jit[{i}]={:?},
+    // interpreter[{i}]={:?}",                     i,
     //                     jit_clk,
     //                     jit[i],
     //                     interpreter[i]

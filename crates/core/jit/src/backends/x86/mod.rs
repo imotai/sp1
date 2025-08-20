@@ -52,6 +52,9 @@ const SAVED_STACK_PTR: u8 = Rq::R15 as u8;
 /// The offset of the pc in the JitContext.
 const PC_OFFSET: i32 = offset_of!(JitContext, pc) as i32;
 
+/// The offset of the clk in the JitContext.
+const CLK_OFFSET: i32 = offset_of!(JitContext, clk) as i32;
+
 /// The offset of the memory pointer in the JitContext.
 const MEMORY_PTR_OFFSET: i32 = offset_of!(JitContext, memory) as i32;
 
@@ -113,35 +116,67 @@ impl TraceCollector for TranspilerBackend {
         }
     }
 
-    /// Write the value in the RiscRegister into the memory buffer.
-    ///
-    /// Its assumed that the value is actually the result of the memory read.
-    fn trace_mem_value(&mut self, src: RiscRegister) {
+    /// Write the value at [rs1 + imm] into the trace buffer.
+    fn trace_mem_value(&mut self, rs1: RiscRegister, imm: u64) {
         const TAIL_START_OFFSET: i32 = std::mem::size_of::<TraceChunkRaw>() as i32;
         const NUM_MEM_READS_OFFSET: i32 = offset_of!(TraceChunkRaw, num_mem_reads) as i32;
 
         // Load the value, assumed to be of a memory read, into TEMP_A.
-        self.emit_risc_operand_load(src.into(), TEMP_B);
+        self.emit_risc_operand_load(rs1.into(), TEMP_A);
+        self.load_memory_ptr(TEMP_B);
 
         dynasm! {
             self;
             .arch x64;
 
+            // ------------------------------------
+            // Compute the address to load from.
+            // ------------------------------------
+            add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
-            // 1. Load the num mem reads and convert to a byte offset.
+            // Align to the start of the word
+            // and scale by the entry size.
             // ------------------------------------
-            mov Rq(TEMP_A), QWORD [Rq(TRACE_BUF) + NUM_MEM_READS_OFFSET];
-            shl Rq(TEMP_A), 3; // num_mem_reads * 8, the size of a u64
-            add Rq(TEMP_A), TAIL_START_OFFSET;
+            and Rq(TEMP_A), -8;
+            shl Rq(TEMP_A), 1;
 
             // ------------------------------------
-            // 3. Store the value into the tail.
+            // Add the physical memory pointer.
             // ------------------------------------
-            mov [Rq(TRACE_BUF) + Rq(TEMP_A)], Rq(TEMP_B);
+            add Rq(TEMP_A), Rq(TEMP_B);
 
             // ------------------------------------
-            // 2. Increment the num mem reads, since weve pushed into it.
+            // Compute the pointer to the tail
+            // and store into `rax`.
+            // ------------------------------------
+            mov rax, QWORD [Rq(TRACE_BUF) + NUM_MEM_READS_OFFSET];
+            shl rax, 4; // scale by the size of a `MemValue`.
+            add rax, TAIL_START_OFFSET;
+            add rax, Rq(TRACE_BUF);
+
+            // ------------------------------------
+            // Load the clk from the memory entry into TEMP_B
+            // and store it into the tail.
+            // ------------------------------------
+            mov Rq(TEMP_B), QWORD [Rq(TEMP_A)];
+            mov [rax], Rq(TEMP_B);
+
+            // ------------------------------------
+            // Bump the current clk in the memory entry.
+            // ------------------------------------
+            mov Rq(TEMP_B), QWORD [Rq(CONTEXT) + CLK_OFFSET];
+            mov [Rq(TEMP_A)], Rq(TEMP_B);
+
+            // ------------------------------------
+            // Load the word into TEMP_B
+            // and store it into the tail.
+            // ------------------------------------
+            mov Rq(TEMP_B), QWORD [Rq(TEMP_A) + 8];
+            mov [rax + 8], Rq(TEMP_B);
+
+            // ------------------------------------
+            // Increment the num mem reads, since weve pushed into it.
             // ------------------------------------
             add QWORD [Rq(TRACE_BUF) + NUM_MEM_READS_OFFSET], 1
         }
@@ -314,8 +349,8 @@ impl TranspilerBackend {
 
     /// RiscV registers are mapped to XMM registers.
     ///
-    /// We load the value from the XMM register into the general purpose register for the backend to operate on.
-    /// We do this to avoid accidently clobbering the XMM registers.
+    /// We load the value from the XMM register into the general purpose register for the backend to
+    /// operate on. We do this to avoid accidently clobbering the XMM registers.
     ///
     /// NOTE: This aliases the full 64 bits of the register.
     fn emit_risc_operand_load(&mut self, op: RiscOperand, dst: u8) {

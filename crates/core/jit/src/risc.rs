@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -121,8 +123,8 @@ pub struct TraceChunkRaw {
 /// We transmute this type directly from bytes, and the buffer should be of [TraceChunkRaw] form,
 /// plus, a slice of the memory reads.
 ///
-/// When we read this type from the buffer, we will copy the registers, the pc/clk start and end, and take a pointer
-/// to the memory reads, by reading the num_mem_vals field.
+/// When we read this type from the buffer, we will copy the registers, the pc/clk start and end,
+/// and take a pointer to the memory reads, by reading the num_mem_vals field.
 ///
 /// The fields should be placed in the buffer according to the layout of [TraceChunkRaw].
 #[repr(C)]
@@ -131,7 +133,18 @@ pub struct TraceChunk {
     pub start_registers: [u64; 32],
     pub pc_start: u64,
     pub clk_start: u64,
-    pub mem_reads: Vec<u64>,
+    #[serde(
+        deserialize_with = "ser::deserialize_mem_reads",
+        serialize_with = "ser::serialize_mem_reads"
+    )]
+    pub mem_reads: Arc<[MemValue]>,
+}
+
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MemValue {
+    pub clk: u64,
+    pub value: u64,
 }
 
 impl TraceChunk {
@@ -160,7 +173,7 @@ impl TraceChunk {
 
         /* ---------- 3. tail must fit ---------- */
         let n_words = raw.num_mem_reads as usize;
-        let n_bytes = n_words.checked_mul(8).expect("Num mem reads too large");
+        let n_bytes = n_words.checked_mul(size_of::<MemValue>()).expect("Num mem reads too large");
         let total = HDR.checked_add(n_bytes).expect("Num mem reads too large");
         if src.len() < total {
             panic!("TraceChunk tail too small");
@@ -168,30 +181,56 @@ impl TraceChunk {
 
         /* ---------- 4. extract tail ---------- */
         let tail = &src[HDR..total]; // only after the length check
-        let mut mem_reads = Vec::with_capacity(n_words);
+
+        let mem_reads = Arc::<[MemValue]>::new_uninit_slice(n_words);
 
         // SAFETY:
-        // - The tail contains valid u64s, so doing a bitwise copy preserves the validity and endianness.
-        // - tail is likely unaligned, so casting to a u8 pointer gives the alignmnt guarantee the compiler needs to do a copy.
+        // - The tail contains valid u64s, so doing a bitwise copy preserves the validity and
+        //   endianness.
+        // - tail is likely unaligned, so casting to a u8 pointer gives the alignmnt guarantee the
+        //   compiler needs to do a copy.
         // - `mem_reads` was just allocated to have enough space.
         // - u8 has minimum alignment, so casting the pointer allocated by the vec is valid.
+        // - The cast from const -> mut is valid since there are no other references to the memory.
         //
         // This trick is mostly taken from [`std::ptr::read_unaligned`]
         // see: <https://doc.rust-lang.org/src/core/ptr/mod.rs.html#1811>.
         unsafe {
-            std::ptr::copy_nonoverlapping(tail.as_ptr(), mem_reads.as_mut_ptr() as *mut u8, n_bytes)
+            std::ptr::copy_nonoverlapping(tail.as_ptr(), mem_reads.as_ptr() as *mut u8, n_bytes)
         };
-
-        // SAFETY:
-        // - `mem_reads` was just allocated to have enough space.
-        // - `copy_nonoverlapping` ensures that the memory is properly initialized.
-        unsafe { mem_reads.set_len(n_words) };
 
         Self {
             start_registers: raw.start_registers,
             pc_start: raw.pc_start,
             clk_start: raw.clk_start,
-            mem_reads,
+            // SAFETY: We know the memory is initialized, so we can assume it.
+            mem_reads: unsafe { mem_reads.assume_init() },
         }
+    }
+}
+
+mod ser {
+    use super::*;
+
+    pub(super) fn deserialize_mem_reads<'de, D>(
+        deserializer: D,
+    ) -> Result<Arc<[MemValue]>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let bytes = Vec::<MemValue>::deserialize(deserializer)?;
+        Ok(Arc::from(bytes))
+    }
+
+    pub(super) fn serialize_mem_reads<S>(
+        mem_reads: &Arc<[MemValue]>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let vec = mem_reads.to_vec();
+
+        Vec::serialize(&vec, serializer)
     }
 }

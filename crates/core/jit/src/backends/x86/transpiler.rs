@@ -10,8 +10,7 @@ use dynasmrt::{
     x64::{Assembler, Rq},
     DynasmApi, DynasmLabelApi,
 };
-use std::io;
-use std::mem::offset_of;
+use std::{io, mem::offset_of};
 
 impl SP1RiscvTranspiler for TranspilerBackend {
     type ScratchRegister = ScratchRegisterX86;
@@ -35,7 +34,9 @@ impl SP1RiscvTranspiler for TranspilerBackend {
         let mut this = Self {
             inner,
             jump_table: Vec::with_capacity(program_size),
-            memory_size,
+            // Double the size of memory.
+            // We are going to store entries of the form (clk, word).
+            memory_size: memory_size * 2,
             trace_buf_size,
             has_instructions: false,
             pc_base,
@@ -98,7 +99,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // Add the amount to the global_clk field in the context.
             // ------------------------------------
-            add QWORD [Rq(CONTEXT) + global_clk_offset], 1 as i32
+            add QWORD [Rq(CONTEXT) + global_clk_offset], 1
         }
     }
 

@@ -15,7 +15,8 @@ macro_rules! assert_register_is {
 }
 
 fn new_backend() -> TranspilerBackend {
-    TranspilerBackend::new(0, 1024, std::mem::size_of::<TraceChunkRaw>() * 100, 100, 100).unwrap()
+    TranspilerBackend::new(0, 1024 * 2, std::mem::size_of::<TraceChunkRaw>() * 100, 100, 100)
+        .unwrap()
 }
 
 /// Finalize the function and call it.
@@ -941,6 +942,8 @@ mod control_flow {
 }
 
 mod memory {
+    use crate::MemValue;
+
     use super::*;
 
     fn run_test_with_memory(assembler: TranspilerBackend, memory: &[(u32, u32)]) {
@@ -950,11 +953,12 @@ mod memory {
             assert!(*addr < func.memory.len() as u32, "Addr out of bounds");
             assert!(*addr % 4 == 0, "Addr must be 4 byte aligned");
 
+            let addr = 2 * *addr as usize + 8;
             let bytes = val.to_le_bytes();
-            func.memory[*addr as usize] = bytes[0];
-            func.memory[*addr as usize + 1] = bytes[1];
-            func.memory[*addr as usize + 2] = bytes[2];
-            func.memory[*addr as usize + 3] = bytes[3];
+            func.memory[addr] = bytes[0];
+            func.memory[addr + 1] = bytes[1];
+            func.memory[addr + 2] = bytes[2];
+            func.memory[addr + 3] = bytes[3];
         }
 
         unsafe {
@@ -962,14 +966,18 @@ mod memory {
         }
     }
 
-    fn run_test_and_check_memory(assembler: TranspilerBackend, check: impl Fn(&[u8])) {
+    fn run_test_and_check_memory(assembler: TranspilerBackend, check: impl Fn(&[MemValue])) {
         let mut func = assembler.finalize().expect("Failed to finalize function");
 
         unsafe {
             func.call();
         }
 
-        check(&func.memory);
+        unsafe fn caster(input: &[u8]) -> &[MemValue] {
+            std::mem::transmute(input)
+        }
+
+        check(unsafe { caster(&func.memory) });
     }
 
     #[test]
@@ -1041,7 +1049,7 @@ mod memory {
         backend.sw(RiscRegister::X0, RiscRegister::X1, 0); // SW: m(rs1 + imm) = rs2
 
         run_test_and_check_memory(backend, |memory| {
-            assert_eq!(memory[0], 5);
+            assert_eq!(memory[0].value, 5);
         });
     }
 
@@ -1058,12 +1066,7 @@ mod memory {
         backend.sh(RiscRegister::X0, RiscRegister::X1, 0);
 
         run_test_and_check_memory(backend, |memory| {
-            assert_eq!(memory[0], 0xF2); // low byte
-            assert_eq!(memory[1], 0x01); // high byte
-
-            // sanity check: ensure we didn't clobber the rest
-            assert_eq!(memory[2], 0x00);
-            assert_eq!(memory[3], 0x00);
+            assert_eq!(memory[0].value, 0x01F2); // low byte
         });
     }
 
@@ -1080,10 +1083,10 @@ mod memory {
         backend.sb(RiscRegister::X0, RiscRegister::X1, 0);
 
         run_test_and_check_memory(backend, |memory| {
-            assert_eq!(memory[0], 0xAB);
+            assert_eq!(memory[0].value, 0xAB);
 
             // confirm surrounding bytes remain zero
-            assert_eq!(memory[1], 0x00);
+            assert_eq!(memory[1].value, 0x00);
         });
     }
 
@@ -1100,8 +1103,8 @@ mod memory {
         run_test_with_memory(backend, &[(0, 0xABCD_1234)]);
     }
 
-    /// 0xABCD lives in the *high* half-word (bytes 2–3) of that same word
     #[test]
+    /// 0xABCD lives in the *high* half-word (bytes 2–3) of that same word
     fn test_lhu_high_halfword() {
         let mut backend = new_backend();
 
@@ -1157,8 +1160,9 @@ mod memory {
             assert!(*addr % 8 == 0, "Addr must be 8 byte aligned");
 
             let bytes = val.to_le_bytes();
+            let actual_addr = 2 * *addr as usize + 8;
             for (i, byte) in bytes.iter().enumerate() {
-                func.memory[*addr as usize + i] = *byte;
+                func.memory[actual_addr + i] = *byte;
             }
         }
 
@@ -1218,10 +1222,7 @@ mod memory {
         backend.sd(RiscRegister::X0, RiscRegister::X1, 0);
 
         run_test_and_check_memory(backend, |memory| {
-            let val = u64::from_le_bytes([
-                memory[0], memory[1], memory[2], memory[3], memory[4], memory[5], memory[6],
-                memory[7],
-            ]);
+            let val = memory[0].value;
             assert_eq!(val, 0xFEDCBA9876543210);
         });
     }
@@ -1242,10 +1243,7 @@ mod memory {
         backend.sd(RiscRegister::X2, RiscRegister::X1, 16);
 
         run_test_and_check_memory(backend, |memory| {
-            let val = u64::from_le_bytes([
-                memory[24], memory[25], memory[26], memory[27], memory[28], memory[29], memory[30],
-                memory[31],
-            ]);
+            let val = memory[3].value;
             assert_eq!(val, 0x12345678 + 0x12345678);
         });
     }
@@ -1328,7 +1326,7 @@ mod infra {
 }
 
 mod trace {
-    use crate::{TraceChunk, TraceCollector};
+    use crate::{MemValue, TraceChunk, TraceCollector};
 
     use super::*;
 
@@ -1338,17 +1336,31 @@ mod trace {
 
         extern "C" fn some_precompile(ctx: *mut JitContext) {
             let ctx = unsafe { &mut *ctx };
-            unsafe { ctx.trace_mem_access(&[15, 20]) };
+            unsafe {
+                ctx.trace_mem_access(&[
+                    MemValue { clk: 5, value: 15 },
+                    MemValue { clk: 10, value: 20 },
+                ])
+            };
         }
 
         backend.start_instr();
-        // Simualte a read into X1 and trace it.
+
+        // Do a store into addr = 0, and trace it.
         backend.add(RiscRegister::X1, RiscOperand::Immediate(5), RiscOperand::Immediate(0));
-        backend.trace_mem_value(RiscRegister::X1);
-        // Simualte a read into X2 and trace it.
+        backend.sw(RiscRegister::X0, RiscRegister::X1, 0);
+        backend.trace_mem_value(RiscRegister::X0, 0);
+
+        // Do a store into addr = 8, and trace it.
         backend.add(RiscRegister::X2, RiscOperand::Immediate(10), RiscOperand::Immediate(0));
-        backend.trace_mem_value(RiscRegister::X2);
-        // Call a precompile that traces some memory accesses.
+        backend.sw(RiscRegister::X0, RiscRegister::X2, 8);
+
+        // Bump the clk by 8.
+        backend.bump_clk(8);
+        backend.trace_mem_value(RiscRegister::X0, 8);
+        // The last trace call should have bumped the clk by 8.
+        backend.trace_mem_value(RiscRegister::X0, 8);
+
         backend.call_extern_fn(some_precompile);
 
         backend.set_pc(4);
@@ -1362,10 +1374,20 @@ mod trace {
         assert_eq!(trace.start_registers[1], 5);
         assert_eq!(trace.start_registers[2], 10);
         assert_eq!(trace.pc_start, 4);
-        assert_eq!(trace.mem_reads.len(), 4);
-        assert_eq!(trace.mem_reads[0], 5);
-        assert_eq!(trace.mem_reads[1], 10);
-        assert_eq!(trace.mem_reads[2], 15);
-        assert_eq!(trace.mem_reads[3], 20);
+        assert_eq!(trace.mem_reads.len(), 5);
+
+        // Check the values.
+        assert_eq!(trace.mem_reads[0].value, 5);
+        assert_eq!(trace.mem_reads[1].value, 10);
+        assert_eq!(trace.mem_reads[2].value, 10);
+        assert_eq!(trace.mem_reads[3].value, 15);
+        assert_eq!(trace.mem_reads[4].value, 20);
+
+        // Check the clks.
+        assert_eq!(trace.mem_reads[0].clk, 0);
+        assert_eq!(trace.mem_reads[1].clk, 0);
+        assert_eq!(trace.mem_reads[2].clk, 9);
+        assert_eq!(trace.mem_reads[3].clk, 5);
+        assert_eq!(trace.mem_reads[4].clk, 10);
     }
 }

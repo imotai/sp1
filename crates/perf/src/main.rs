@@ -80,7 +80,8 @@ fn main() {}
 //     let stdin = std::fs::read(args.stdin).expect("failed to read stdin");
 //     let stdin: SP1Stdin = bincode::deserialize(&stdin).expect("failed to deserialize stdin");
 //     let prover =
-//         SP1ProverBuilder::<CpuSP1ProverComponents>::new().without_vk_verification().build().await;
+//         SP1ProverBuilder::<CpuSP1ProverComponents>::new().without_vk_verification().build().
+// await;
 
 //     let opts = LocalProverOpts::default();
 //     let prover = Arc::new(LocalProver::new(prover, opts));
@@ -102,7 +103,8 @@ fn main() {}
 //             let machine_proof: MachineProof<_> =
 //                 MachineProof { shard_proofs: core_proof.proof.0.clone() };
 //             let (_, verify_core_duration) =
-//                 time_operation(|| prover.prover().core().verifier().verify(&vk.vk, &machine_proof));
+//                 time_operation(|| prover.prover().core().verifier().verify(&vk.vk,
+// &machine_proof));
 
 //             let proofs = stdin.proofs.into_iter().map(|(proof, _)| proof).collect::<Vec<_>>();
 //             let (compress_proof, compress_duration) = time_operation_fut(|| async {
@@ -128,8 +130,8 @@ fn main() {}
 
 //             let (_, verify_wrap_duration) =
 //                 time_operation(|| prover.prover().verify_wrap_bn254(&wrapped_bn254_proof, &vk));
-//             // pub fn time_operation<T, F: FnOnce() -> T>(operation: F) -> (T, std::time::Duration) {
-//             //     let start = Instant::now();
+//             // pub fn time_operation<T, F: FnOnce() -> T>(operation: F) -> (T,
+// std::time::Duration) {             //     let start = Instant::now();
 //             //     let result = operation();
 //             //     let duration = start.elapsed();
 //             //     (result, duration)
@@ -141,7 +143,8 @@ fn main() {}
 
 //             //     let elf = std::fs::read(args.program).expect("failed to read program");
 //             //     let stdin = std::fs::read(args.stdin).expect("failed to read stdin");
-//             //     let stdin: SP1Stdin = bincode::deserialize(&stdin).expect("failed to deserialize stdin");
+//             //     let stdin: SP1Stdin = bincode::deserialize(&stdin).expect("failed to
+// deserialize stdin");
 
 //             //     let opts = SP1ProverOpts::auto();
 
@@ -161,15 +164,17 @@ fn main() {}
 //             //             let (_, verify_core_duration) =
 //             //                 time_operation(|| prover.verify(&core_proof.proof, &vk));
 
-//             //             let proofs = stdin.proofs.into_iter().map(|(proof, _)| proof).collect::<Vec<_>>();
-//             //             let (compress_proof, compress_duration) =
-//             //                 time_operation(|| prover.compress(&vk, core_proof.clone(), proofs, opts).unwrap());
+//             //             let proofs = stdin.proofs.into_iter().map(|(proof, _)|
+// proof).collect::<Vec<_>>();             //             let (compress_proof, compress_duration) =
+//             //                 time_operation(|| prover.compress(&vk, core_proof.clone(), proofs,
+// opts).unwrap());
 
 //             //             let (_, verify_compressed_duration) =
 //             //                 time_operation(|| prover.verify_compressed(&compress_proof, &vk));
 
 //             //             let (shrink_proof, shrink_duration) =
-//             //                 time_operation(|| prover.shrink(compress_proof.clone(), opts).unwrap());
+//             //                 time_operation(|| prover.shrink(compress_proof.clone(),
+// opts).unwrap());
 
 //             //             let (_, verify_shrink_duration) =
 //             //                 time_operation(|| prover.verify_shrink(&shrink_proof, &vk));
@@ -178,11 +183,12 @@ fn main() {}
 //             //                 time_operation(|| prover.wrap_bn254(shrink_proof, opts).unwrap());
 
 //             //             let (_, verify_wrap_duration) =
-//             //                 time_operation(|| prover.verify_wrap_bn254(&wrapped_bn254_proof, &vk));
+//             //                 time_operation(|| prover.verify_wrap_bn254(&wrapped_bn254_proof,
+// &vk));
 
-//             //             // Generate a proof that verifies two deferred proofs from the proof above.
-//             //             let (_, pk_verify_proof_d, pk_verify_program, vk_verify_proof) =
-//             //                 prover.setup(VERIFY_PROOF_ELF);
+//             //             // Generate a proof that verifies two deferred proofs from the proof
+// above.             //             let (_, pk_verify_proof_d, pk_verify_program, vk_verify_proof)
+// =             //                 prover.setup(VERIFY_PROOF_ELF);
 //             //             let pv = core_proof.public_values.to_vec();
 
 //             //             let mut stdin = SP1Stdin::new();
@@ -195,15 +201,15 @@ fn main() {}
 //             //             let context = SP1Context::default();
 //             //             let (core_proof, _) = time_operation(|| {
 //             //                 prover
-//             //                     .prove_core(&pk_verify_proof_d, pk_verify_program, &stdin, opts, context)
-//             //                     .unwrap()
+//             //                     .prove_core(&pk_verify_proof_d, pk_verify_program, &stdin,
+// opts, context)             //                     .unwrap()
 //             //             });
 //             //             let deferred_proofs =
-//             //                 stdin.proofs.into_iter().map(|(proof, _)| proof).collect::<Vec<_>>();
-//             //             let (compress_proof, _) = time_operation(|| {
-//             //                 prover
-//             //                     .compress(&vk_verify_proof, core_proof.clone(), deferred_proofs, opts)
-//             //                     .unwrap()
+//             //                 stdin.proofs.into_iter().map(|(proof, _)|
+// proof).collect::<Vec<_>>();             //             let (compress_proof, _) =
+// time_operation(|| {             //                 prover
+//             //                     .compress(&vk_verify_proof, core_proof.clone(),
+// deferred_proofs, opts)             //                     .unwrap()
 //             //             });
 //             //             prover.verify_compressed(&compress_proof, &vk_verify_proof).unwrap();
 
@@ -238,7 +244,8 @@ fn main() {}
 //             //             let (report, execution_duration) =
 //             //                 time_operation(|| prover.execute(&elf, &stdin, context.clone()));
 
-//             //             let cycles = report.expect("execution failed").2.total_instruction_count();
+//             //             let cycles = report.expect("execution
+// failed").2.total_instruction_count();
 
 //             let (core_proof, prove_core_duration) = time_operation_fut(|| async {
 //                 server.core(&cuda_pk, stdin.clone()).await.unwrap()
@@ -248,7 +255,8 @@ fn main() {}
 //             let machine_proof: MachineProof<_> =
 //                 MachineProof { shard_proofs: core_proof.proof.0.clone() };
 //             let (_, verify_core_duration) =
-//                 time_operation(|| prover.prover().core().verifier().verify(&vk.vk, &machine_proof));
+//                 time_operation(|| prover.prover().core().verifier().verify(&vk.vk,
+// &machine_proof));
 
 //             let proofs = stdin.proofs.into_iter().map(|(proof, _)| proof).collect::<Vec<_>>();
 //             let (compress_proof, compress_duration) = time_operation_fut(|| async {
@@ -267,7 +275,8 @@ fn main() {}
 //             //     time_operation(|| prover.prover().verify_shrink(&shrink_proof, &vk));
 
 //             // let (wrap_proof, wrap_duration) =
-//             //     time_operation_fut(|| async { server.wrap(shrink_proof).await.unwrap() }).await;
+//             //     time_operation_fut(|| async { server.wrap(shrink_proof).await.unwrap()
+// }).await;
 
 //             // let (_, verify_wrap_duration) =
 //             //     time_operation(|| prover.prover().verify_wrap_bn254(&wrap_proof, &vk));
@@ -330,7 +339,8 @@ fn main() {}
 // //             let (_, verify_shrink_duration) =
 // //                 time_operation(|| prover.verify_shrink(&shrink_proof, &vk));
 
-// //             let (_, wrap_duration) = time_operation(|| server.wrap_bn254(shrink_proof).unwrap());
+// //             let (_, wrap_duration) = time_operation(||
+// server.wrap_bn254(shrink_proof).unwrap());
 
 // //             // TODO: FIX
 // //             //

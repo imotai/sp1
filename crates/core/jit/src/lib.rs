@@ -4,6 +4,7 @@
 compile_error!("This crate is only supported on little endian targets.");
 
 pub mod backends;
+pub mod context;
 pub mod instructions;
 mod macros;
 pub mod risc;
@@ -11,15 +12,10 @@ pub mod risc;
 use dynasmrt::ExecutableBuffer;
 use hashbrown::HashMap;
 use memmap2::{Mmap, MmapMut, MmapOptions};
-use std::collections::VecDeque;
-use std::io;
-use std::ops::BitAnd;
-use std::os::fd::AsRawFd;
-use std::os::fd::RawFd;
-use std::ptr::NonNull;
-use std::sync::Arc;
+use std::{collections::VecDeque, io, ops::BitAnd, os::fd::AsRawFd, ptr::NonNull, sync::Arc};
 
 pub use backends::*;
+pub use context::*;
 pub use instructions::*;
 pub use risc::*;
 
@@ -41,15 +37,16 @@ pub type DebugFn = extern "C" fn(u64);
 /// This transpiler should generate an entrypoint of the form: [`fn(*mut JitContext)`]
 ///
 /// For each instruction, you will typically want to call [`SP1RiscvTranspiler::start_instr`]
-/// before transpiling the instruction. This maps a "riscv instruction index" to some physical native address, as there
-/// are multiple native instructions per riscv instruction.
+/// before transpiling the instruction. This maps a "riscv instruction index" to some physical
+/// native address, as there are multiple native instructions per riscv instruction.
 ///
-/// You will also likely want to call [`SP1RiscvTranspiler::bump_clk`] to increment the clock counter, and
-/// [`SP1RiscvTranspiler::set_pc`] to set the PC.
+/// You will also likely want to call [`SP1RiscvTranspiler::bump_clk`] to increment the clock
+/// counter, and [`SP1RiscvTranspiler::set_pc`] to set the PC.
 ///
 /// # Note
-/// Some instructions will directly modify the PC, such as [`SP1RiscvTranspiler::jal`] and [`SP1RiscvTranspiler::jalr`], and all the branch instructions,
-/// for these instructions, you would not want to call [`SP1RiscvTranspiler::set_pc`] as it will be called for you.
+/// Some instructions will directly modify the PC, such as [`SP1RiscvTranspiler::jal`] and
+/// [`SP1RiscvTranspiler::jalr`], and all the branch instructions, for these instructions, you would
+/// not want to call [`SP1RiscvTranspiler::set_pc`] as it will be called for you.
 ///
 ///
 /// ```rust,no_run,ignore
@@ -161,10 +158,8 @@ pub trait TraceCollector {
     /// For SP1 this is only called once in the beginning of a "chunk".
     fn trace_registers(&mut self);
 
-    /// Write the value in the RiscRegister into the memory buffer.
-    ///
-    /// Its assumed that the value is actually the result of the memory read.
-    fn trace_mem_value(&mut self, src: RiscRegister);
+    /// Write the value located at rs1 + imm into the trace buf.
+    fn trace_mem_value(&mut self, rs1: RiscRegister, imm: u64);
 
     /// Write the start pc of the trace chunk.
     fn trace_pc_start(&mut self);
@@ -323,8 +318,8 @@ impl JitFunction {
         let mut trace_buf =
             MmapMut::map_anon(self.trace_buf_size).expect("Failed to create trace buf mmap");
 
-        let align_4_offset = self.memory.as_ptr().align_offset(std::mem::align_of::<u32>());
-        let mem_ptr = self.memory.as_mut_ptr().add(align_4_offset);
+        let align_offset = self.memory.as_ptr().align_offset(std::mem::align_of::<u64>());
+        let mem_ptr = self.memory.as_mut_ptr().add(align_offset);
 
         // SAFETY:
         // - The jump table is valid for the duration of the function call, its owned by self.
@@ -342,6 +337,7 @@ impl JitFunction {
             pc: self.pc,
             clk: self.clk,
             global_clk: self.global_clk,
+            tracing: self.trace_buf_size > 0,
         };
 
         as_fn(&mut ctx);
@@ -358,7 +354,8 @@ impl JitFunction {
 
     /// Reset the JIT function to the initial state.
     ///
-    /// This will clear the registers, the program counter, the clock, and the memory, restoring the initial memory image.
+    /// This will clear the registers, the program counter, the clock, and the memory, restoring the
+    /// initial memory image.
     pub fn reset(&mut self) {
         self.pc = self.pc_start;
         self.registers = [0; 32];
@@ -391,241 +388,22 @@ impl JitFunction {
 
     fn insert_memory_image(&mut self) {
         for (addr, val) in self.initial_memory_image.iter() {
-            // Technically, this crate is probably only used on little endian targets, but just to sure.
+            // Technically, this crate is probably only used on little endian targets, but just to
+            // sure.
             let bytes = val.to_le_bytes();
 
+            if addr % 8 > 0 {
+                panic!("Address {addr} is not aligned to 8");
+            }
+
+            let actual_addr = 2 * addr + 8;
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     bytes.as_ptr(),
-                    self.memory.as_mut_ptr().add(*addr as usize),
+                    self.memory.as_mut_ptr().add(actual_addr as usize),
                     bytes.len(),
                 )
             };
         }
-    }
-}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct JitContext {
-    /// Mapping from (pc - pc_base) / 4 => absolute address of the instruction.
-    jump_table: NonNull<*const u8>,
-    /// The pointer to the program memory.
-    memory: NonNull<u8>,
-    /// The pointer to the trace buffer.
-    trace_buf: NonNull<u8>,
-    /// The registers to start the execution with,
-    /// these are loaded into real native registers at the start of execution.
-    registers: [u64; 32],
-    /// The input buffer to the program.
-    input_buffer: NonNull<VecDeque<Vec<u8>>>,
-    /// The memory file descriptor, this is used to create the COW memory at runtime.
-    memory_fd: RawFd,
-    /// The unconstrained context, this is used to create the COW memory at runtime.
-    maybe_unconstrained: Option<UnconstrainedCtx>,
-    /// The current program counter
-    pub pc: u64,
-    /// The number of cycles executed.
-    pub clk: u64,
-    /// The number of cycles executed.
-    pub global_clk: u64,
-}
-
-impl JitContext {
-    /// # Safety
-    /// - todo
-    pub unsafe fn trace_mem_access(&self, reads: &[u64]) {
-        // QUESTIONABLE: I think as long as Self is not `Sync` youre mostly fine, but its unclear,
-        // how to actually call this method safe without taking a `&mut self`.
-
-        // Read the current num reads from the trace buf.
-        let raw = self.trace_buf.as_ptr();
-        let num_reads_offset = std::mem::offset_of!(TraceChunkRaw, num_mem_reads);
-        let num_reads_ptr = raw.add(num_reads_offset);
-        let num_reads = std::ptr::read_unaligned(num_reads_ptr as *mut u64);
-
-        // Write the new num reads to the trace buf.
-        let new_num_reads = num_reads + reads.len() as u64;
-        std::ptr::write_unaligned(num_reads_ptr as *mut u64, new_num_reads);
-
-        // Write the new reads to the trace buf.
-        let reads_start = std::mem::size_of::<TraceChunkRaw>();
-        // Scale the num reads by the size of a u64.
-        let tail_ptr = raw.add(reads_start).add(num_reads as usize * 8);
-        for (i, read) in reads.iter().enumerate() {
-            // Scale the index by the size of a u64.
-            std::ptr::write_unaligned(tail_ptr.add(i * 8) as *mut u64, *read);
-        }
-    }
-
-    /// Enter the unconstrained context, this will create a COW memory map of the memory file descriptor.
-    pub fn enter_unconstrained(&mut self) -> io::Result<()> {
-        // SAFETY: The memory is allocated by the [JitFunction] and is valid, not alisiaed, and has enough
-        // space for the alignment.
-        let mut cow_memory =
-            unsafe { MmapOptions::new().no_reserve_swap().map_copy(self.memory_fd)? };
-        let cow_memory_ptr = cow_memory.as_mut_ptr();
-
-        // Align the ptr to u32.
-        // SAFETY: u8 has the minimum alignment, so any larger alignment will be a multiple of this.
-        let align_offset = cow_memory_ptr.align_offset(std::mem::align_of::<u32>());
-        let cow_memory_ptr = unsafe { cow_memory_ptr.add(align_offset) };
-
-        // To match the semantics of the interpreter, we need to subtract 8 from the clock.
-        // In the minimal executor, we bump the clock at the start of each instruction.
-        self.clk -= 8;
-
-        // Preserve the current state of the JIT context.
-        self.maybe_unconstrained = Some(UnconstrainedCtx {
-            cow_memory,
-            actual_memory_ptr: self.memory,
-            pc: self.pc,
-            clk: self.clk,
-            global_clk: self.global_clk,
-            registers: self.registers,
-        });
-
-        // Bump the PC to the next instruction.
-        self.pc = self.pc.wrapping_add(4);
-
-        // Set the memory pointer used by the JIT as the COW memory.
-        //
-        // SAFETY: [memmap2] does not return a null pointer.
-        self.memory = unsafe { NonNull::new_unchecked(cow_memory_ptr) };
-
-        Ok(())
-    }
-
-    /// Exit the unconstrained context, this will restore the original memory map.
-    pub fn exit_unconstrained(&mut self) {
-        let unconstrained = std::mem::take(&mut self.maybe_unconstrained)
-            .expect("Exit unconstrained called but not context is present, this is a bug.");
-
-        self.memory = unconstrained.actual_memory_ptr;
-        self.pc = unconstrained.pc;
-        self.registers = unconstrained.registers;
-
-        // To match the semantics of the interpreter, we need to add 8 to the clock.
-        self.clk = unconstrained.clk + 8;
-
-        // On drop of [UnconstrainedCtx], the COW memory will be unmapped.
-    }
-
-    /// Obtain a mutable view of the emulated memory.
-    pub const fn memory(&mut self) -> ContextMemory<'_> {
-        ContextMemory::new(self)
-    }
-
-    /// # Safety
-    /// - The input buffer must be non null and valid to read from.
-    pub const unsafe fn input_buffer(&mut self) -> &mut VecDeque<Vec<u8>> {
-        self.input_buffer.as_mut()
-    }
-
-    /// Obtain a view of the registers.
-    pub const fn registers(&self) -> &[u64; 32] {
-        &self.registers
-    }
-
-    pub const fn rw(&mut self, reg: RiscRegister, val: u64) {
-        self.registers[reg as usize] = val;
-    }
-
-    pub const fn rr(&self, reg: RiscRegister) -> u64 {
-        self.registers[reg as usize]
-    }
-}
-
-/// The saved context of the JIT runtime, when entering the unconstrained context.
-#[derive(Debug)]
-pub struct UnconstrainedCtx {
-    // An COW version of the memory.
-    pub cow_memory: MmapMut,
-    // The pointer to the actual memory.
-    pub actual_memory_ptr: NonNull<u8>,
-    // The program counter.
-    pub pc: u64,
-    // The clock.
-    pub clk: u64,
-    // The clock.
-    pub global_clk: u64,
-    // The registers.
-    pub registers: [u64; 32],
-}
-
-/// A type representing the memory of the emulated program.
-///
-/// This is used to read and write to the memory in precompile impls.
-pub struct ContextMemory<'a> {
-    ctx: &'a mut JitContext,
-}
-
-impl<'a> ContextMemory<'a> {
-    /// Create a new memory view.
-    ///
-    /// This type takes in a mutable refrence with a lifetime to avoid aliasing the underlying memory region.
-    const fn new(ctx: &'a mut JitContext) -> Self {
-        Self { ctx }
-    }
-
-    /// Read a u64 from the memory.
-    pub fn mr(&self, addr: u64) -> u64 {
-        let ptr = unsafe { self.ctx.memory.add(addr as usize) };
-
-        // SAFETY: The pointer is valid to read from, as it was aligned by us during allocation.
-        // See [JitFunction::new] for more details.
-        let value = unsafe { std::ptr::read(ptr.as_ptr() as *const u64) };
-
-        unsafe { self.ctx.trace_mem_access(&[value]) };
-
-        value
-    }
-
-    /// Write a u64 to the memory.
-    pub const fn mw(&mut self, addr: u64, val: u64) {
-        let ptr = unsafe { self.ctx.memory.add(addr as usize) };
-
-        // SAFETY: The pointer is valid to write to, as it was aligned by us during allocation.
-        // See [JitFunction::new] for more details.
-        unsafe { std::ptr::write(ptr.as_ptr() as *mut u64, val) };
-    }
-
-    /// Read a slice of u64 from the memory.
-    pub fn mr_slice(&self, addr: u64, len: usize) -> &[u64] {
-        let ptr = unsafe { self.ctx.memory.add(addr as usize) };
-        let ptr = ptr.as_ptr() as *const u64;
-
-        // SAFETY: The pointer is valid to write to, as it was aligned by us during allocation.
-        // See [JitFunction::new] for more details.
-        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
-
-        unsafe { self.ctx.trace_mem_access(slice) };
-
-        slice
-    }
-
-    /// Write a slice of u64 to the memory.
-    pub fn mw_slice(&mut self, addr: u64, vals: &[u64]) {
-        let ptr = unsafe { self.ctx.memory.add(addr as usize) };
-        let ptr = ptr.as_ptr() as *mut u64;
-
-        // SAFETY: The pointer is valid to write to, as it was aligned by us during allocation.
-        // See [JitFunction::new] for more details
-        //
-        // Non overlapping is safe here since we have a mut self, so any refrences to this same memory allocation,
-        // assuming it was accquried through this type, would cause a borrow checker error.
-        unsafe { std::ptr::copy_nonoverlapping(vals.as_ptr(), ptr, vals.len()) };
-    }
-
-    /// Read a byte from the memory.
-    pub fn byte(&self, addr: u64) -> u8 {
-        let ptr = unsafe { self.ctx.memory.add(addr as usize) };
-        let ptr = ptr.as_ptr() as *const u8;
-
-        // SAFETY: The pointer is valid to write to, as it was aligned by us during allocation.
-        // See [JitFunction::new] for more details
-        //
-        // All alignments are valid for u8, so we can read from it directly.
-        unsafe { std::ptr::read(ptr) }
     }
 }

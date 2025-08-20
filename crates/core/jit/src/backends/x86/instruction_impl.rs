@@ -2,9 +2,9 @@
 
 use super::{TranspilerBackend, CONTEXT, JUMP_TABLE, PC_OFFSET, TEMP_A, TEMP_B};
 use crate::{
-    impl_alu32_imm_opt, impl_alu_imm_opt, impl_risc_alu, impl_shift32_imm_opt, ComputeInstructions,
-    ControlFlowInstructions, JitContext, MemoryInstructions, RiscOperand, RiscRegister,
-    SP1RiscvTranspiler, SystemInstructions,
+    impl_alu32_imm_opt, impl_alu_imm_opt, impl_risc_alu, impl_shift32_imm_opt, x86::CLK_OFFSET,
+    ComputeInstructions, ControlFlowInstructions, JitContext, MemoryInstructions, RiscOperand,
+    RiscRegister, SP1RiscvTranspiler, SystemInstructions,
 };
 use dynasmrt::{dynasm, x64::Rq, DynasmApi, DynasmLabelApi};
 
@@ -555,7 +555,8 @@ impl ComputeInstructions for TranspilerBackend {
     }
 
     fn sraw(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
-        // sraw performs arithmetic right shift on lower 32 bits, then sign-extends result to 64 bits
+        // sraw performs arithmetic right shift on lower 32 bits, then sign-extends result to 64
+        // bits
         impl_shift32_imm_opt!(self, rd, rs1, rs2, sar);
     }
 
@@ -689,7 +690,6 @@ impl ComputeInstructions for TranspilerBackend {
 
     fn auipc(&mut self, rd: RiscRegister, imm: u64) {
         // rd <- pc + imm
-        // pc <- pc + 4
         dynasm! {
             self;
             .arch x64;
@@ -702,12 +702,7 @@ impl ComputeInstructions for TranspilerBackend {
             // ------------------------------------
             // 2. Increment the PC by the immediate.
             // ------------------------------------
-            add Rq(TEMP_A), imm as i32;
-
-            // ------------------------------------
-            // 3. Increment the PC to the next instruction.
-            // ------------------------------------
-            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4
+            add Rq(TEMP_A), imm as i32
         }
 
         // Store the result in the destination register.
@@ -1083,7 +1078,7 @@ impl ControlFlowInstructions for TranspilerBackend {
 impl MemoryInstructions for TranspilerBackend {
     fn lb(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
         // ------------------------------------
-        // 1. Load in the base address and the phy sical memory pointer.
+        // Load in the base address and the phy sical memory pointer.
         // ------------------------------------
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
         self.load_memory_ptr(TEMP_B);
@@ -1093,29 +1088,70 @@ impl MemoryInstructions for TranspilerBackend {
             .arch x64;
 
             // ------------------------------------
-            // 2. Add the immediate to the base address
+            // Add the immediate to the base address
+            // Scaled to account for the entry size.
+            //
+            // TEMP_A = rs1 + imm = addr
             // ------------------------------------
             add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
-            // 3. Add the risc32 byte offset to the physical memory pointer
+            // Store the intra-word offset.
             // ------------------------------------
-            add Rq(TEMP_B), Rq(TEMP_A);
+            mov rax, Rq(TEMP_A);
+            and rax, 7;
+
+            // ------------------------------------
+            // Align to the start of the word.
+            //
+            // Scale to account for the entry size.
+            // ------------------------------------
+            and Rq(TEMP_A), -8;
+            shl Rq(TEMP_A), 1;
+
+            // ------------------------------------
+            // Add the risc32 byte offset to the physical memory pointer
+            //
+            // TEMP_A = addr + physical_memory_pointer
+            // ------------------------------------
+            add Rq(TEMP_A), Rq(TEMP_B);
+
+            // ------------------------------------
+            // Load the clk into TEMP_B
+            //
+            // TEMP_B = clk
+            // TEMP_A = addr + physical_memory_pointer
+            // ------------------------------------
+            mov Rq(TEMP_B), QWORD [Rq(CONTEXT) + CLK_OFFSET];
+
+            // ------------------------------------
+            // 5. Store the clk into the address
+            //
+            // TEMP_B = clk
+            // TEMP_A = addr + physical_memory_pointer
+            // [addr + physical_memory_pointer] = clk
+            // ------------------------------------
+            mov [Rq(TEMP_A)], Rq(TEMP_B);
 
             // ------------------------------------
             // 4. Load byte → sign-extend to 32 bits
+            //
+            // TEMP_B = clk
+            // TEMP_A = addr + physical_memory_pointer
+            // [addr + physical_memory_pointer] = clk
+            // TEMP_A = [addr + physical_memory_pointer + 8]
             // ------------------------------------
-            movsx Rq(TEMP_B), BYTE [Rq(TEMP_B)]
+            movsx Rq(TEMP_A), BYTE [Rq(TEMP_A) + 8 + rax]
         }
 
         // 4. Write back to destination register
-        self.emit_risc_register_store(TEMP_B, rd);
+        self.emit_risc_register_store(TEMP_A, rd);
     }
 
     fn lbu(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
         // ------------------------------------
-        // 1. Load in the base address
-        //    and the physical memory pointer.
+        // Load in the base address
+        // and the physical memory pointer.
         // ------------------------------------
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
         self.load_memory_ptr(TEMP_B);
@@ -1125,29 +1161,46 @@ impl MemoryInstructions for TranspilerBackend {
             .arch x64;
 
             // ------------------------------------
-            // 2. Add the immediate to the base address
+            // Add the immediate to the base address
+            //
+            // TEMP_A = rs1 + imm = addr
             // ------------------------------------
             add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
-            // 3. Add the risc32 byte offset to
-            //    the physical memory pointer
+            // Store the intra-word offset.
             // ------------------------------------
-            add Rq(TEMP_B), Rq(TEMP_A);
+            mov rax, Rq(TEMP_A);
+            and rax, 7;
 
             // ------------------------------------
-            // 4. Load byte → zero-extend to 32 bits
+            // Align to the start of the word.
+            //
+            // Scale to account for the entry size.
             // ------------------------------------
-            movzx Rq(TEMP_B), BYTE [Rq(TEMP_B)]
+            and Rq(TEMP_A), -8;
+            shl Rq(TEMP_A), 1;
+
+            // ------------------------------------
+            // Add the risc32 byte offset to the physical memory pointer
+            //
+            // TEMP_A = addr + physical_memory_pointer
+            // ------------------------------------
+            add Rq(TEMP_A), Rq(TEMP_B);
+
+            // ------------------------------------
+            // Load byte → zero-extend to 32 bits
+            // ------------------------------------
+            movzx Rq(TEMP_A), BYTE [Rq(TEMP_A) + 8 + rax]
         }
 
-        self.emit_risc_register_store(TEMP_B, rd);
+        self.emit_risc_register_store(TEMP_A, rd);
     }
 
     fn lh(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
         // ------------------------------------
-        // 1. Load in the base address
-        //    and the physical memory pointer.
+        // Load in the base address
+        // and the physical memory pointer.
         // ------------------------------------
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
         self.load_memory_ptr(TEMP_B);
@@ -1157,28 +1210,46 @@ impl MemoryInstructions for TranspilerBackend {
             .arch x64;
 
             // ------------------------------------
-            // 2. Add the immediate to the base address
+            // Add the immediate to the base address
+            //
+            // TEMP_A = rs1 + imm = addr
             // ------------------------------------
             add Rq(TEMP_A), imm as i32;
 
+             // ------------------------------------
+            // Store the intra-word offset.
             // ------------------------------------
-            // 3. Add the risc32 byte offset to the physical memory pointer
-            // ------------------------------------
-            add Rq(TEMP_B), Rq(TEMP_A);
+            mov rax, Rq(TEMP_A);
+            and rax, 7;
 
             // ------------------------------------
-            // 4. Load half-word → sign-extend to 32 bits
+            // Align to the start of the word.
+            //
+            // Scale to account for the entry size.
             // ------------------------------------
-            movsx Rq(TEMP_B), WORD [Rq(TEMP_B)]
+            and Rq(TEMP_A), -8;
+            shl Rq(TEMP_A), 1;
+
+            // ------------------------------------
+            // Add the risc32 byte offset to the physical memory pointer
+            //
+            // TEMP_A = addr + physical_memory_pointer
+            // ------------------------------------
+            add Rq(TEMP_A), Rq(TEMP_B);
+
+            // ------------------------------------
+            // Load half-word → sign-extend to 32 bits
+            // ------------------------------------
+            movsx Rq(TEMP_A), WORD [Rq(TEMP_A) + 8 + rax]
         }
 
-        self.emit_risc_register_store(TEMP_B, rd);
+        self.emit_risc_register_store(TEMP_A, rd);
     }
 
     fn lhu(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
         // ------------------------------------
-        // 1. Load in the base address
-        //    and the physical memory pointer.
+        //  Load in the base address
+        //  and the physical memory pointer.
         // ------------------------------------
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
         self.load_memory_ptr(TEMP_B);
@@ -1188,27 +1259,45 @@ impl MemoryInstructions for TranspilerBackend {
             .arch x64;
 
             // ------------------------------------
-            // 2. Add the immediate to the base address
+            // Add the immediate to the base address
+            //
+            // TEMP_A = rs1 + imm = addr
             // ------------------------------------
             add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
-            // 3. Add the risc32 byte offset to the physical memory pointer
+            // Store the intra-word offset.
             // ------------------------------------
-            add Rq(TEMP_B), Rq(TEMP_A);
+            mov rax, Rq(TEMP_A);
+            and rax, 7;
 
             // ------------------------------------
-            // 4. Load half-word → zero-extend to 32 bits
+            // Align to the start of the word.
+            //
+            // Scale to account for the entry size.
             // ------------------------------------
-            movzx Rq(TEMP_B), WORD [Rq(TEMP_B)]
+            and Rq(TEMP_A), -8;
+            shl Rq(TEMP_A), 1;
+
+            // ------------------------------------
+            // Add the risc32 byte offset to the physical memory pointer
+            //
+            // TEMP_A = addr + physical_memory_pointer
+            // ------------------------------------
+            add Rq(TEMP_A), Rq(TEMP_B);
+
+            // ------------------------------------
+            // Load 16 bits, zero-extend to 32 bits
+            // ------------------------------------
+            movzx Rq(TEMP_A), WORD [Rq(TEMP_A) + 8 + rax]
         }
 
-        self.emit_risc_register_store(TEMP_B, rd);
+        self.emit_risc_register_store(TEMP_A, rd);
     }
 
     fn lw(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
         // ------------------------------------
-        // 1. Load the base address into TEMP_A
+        // Load the base address into TEMP_A
         // and physical memory pointer into TEMP_B
         // ------------------------------------
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
@@ -1219,33 +1308,48 @@ impl MemoryInstructions for TranspilerBackend {
             .arch x64;
 
             // ------------------------------------
-            // 2. Add the immediate to the base address
+            // Add the immediate to the base address
+            //
+            // TEMP_A = rs1 + imm = addr
             // ------------------------------------
             add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
-            // 3. Add the risc32 byte offset to the physical memory pointer
-            //
-            // We use 64 bit arithmetic since were dealing with native memory.
-            // If there was an overflow it wouldve been handled correctly by the previous add.
+            // Store the intra-word offset.
             // ------------------------------------
-            add Rq(TEMP_B), Rq(TEMP_A);
+            mov rax, Rq(TEMP_A);
+            and rax, 7;
 
             // ------------------------------------
-            // 3. Load the word from physical memory into TEMP_B (sign-extended to 64-bit)
+            // Align to the start of the word.
+            //
+            // Scale to account for the entry size.
             // ------------------------------------
-            movsxd Rq(TEMP_B), DWORD [Rq(TEMP_B)]
+            and Rq(TEMP_A), -8;
+            shl Rq(TEMP_A), 1;
+
+            // ------------------------------------
+            // 3. Add the risc32 byte offset to the physical memory pointer
+            //
+            // TEMP_A = addr + physical_memory_pointer
+            // ------------------------------------
+            add Rq(TEMP_A), Rq(TEMP_B);
+
+            // ------------------------------------
+            // 4. Load the word from physical memory into TEMP_A (sign-extended to 64-bit)
+            // ------------------------------------
+            movsxd Rq(TEMP_A), DWORD [Rq(TEMP_A) + 8 + rax]
         }
 
         // ------------------------------------
-        // 4. Store the result in the destination register.
+        // 5. Store the result in the destination register.
         // ------------------------------------
-        self.emit_risc_register_store(TEMP_B, rd);
+        self.emit_risc_register_store(TEMP_A, rd);
     }
 
     fn lwu(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
         // ------------------------------------
-        // 1. Load the base address into TEMP_A
+        // Load the base address into TEMP_A
         // and physical memory pointer into TEMP_B
         // ------------------------------------
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
@@ -1256,28 +1360,43 @@ impl MemoryInstructions for TranspilerBackend {
             .arch x64;
 
             // ------------------------------------
-            // 2. Add the immediate to the base address
+            // Add the immediate to the base address
+            //
+            // TEMP_A = rs1 + imm = addr
             // ------------------------------------
             add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
-            // 3. Add the risc32 byte offset to the physical memory pointer
-            //
-            // We use 64 bit arithmetic since were dealing with native memory.
-            // If there was an overflow it wouldve been handled correctly by the previous add.
+            // Store the intra-word offset.
             // ------------------------------------
-            add Rq(TEMP_B), Rq(TEMP_A);
+            mov rax, Rq(TEMP_A);
+            and rax, 7;
 
             // ------------------------------------
-            // 3. Load the word from physical memory into TEMP_B (zero-extended to 64-bit)
+            // Align to the start of the word.
+            //
+            // Scale to account for the entry size.
             // ------------------------------------
-            mov Rd(TEMP_B), DWORD [Rq(TEMP_B)]
+            and Rq(TEMP_A), -8;
+            shl Rq(TEMP_A), 1;
+
+            // ------------------------------------
+            // 3. Add the risc32 byte offset to the physical memory pointer
+            //
+            // TEMP_A = addr + physical_memory_pointer
+            // ------------------------------------
+            add Rq(TEMP_A), Rq(TEMP_B);
+
+            // ------------------------------------
+            // 4. Load the word from physical memory into TEMP_B (zero-extended to 64-bit)
+            // ------------------------------------
+            mov Rd(TEMP_A), DWORD [Rq(TEMP_A) + 8 + rax]
         }
 
         // ------------------------------------
-        // 4. Store the result in the destination register.
+        // 5. Store the result in the destination register.
         // ------------------------------------
-        self.emit_risc_register_store(TEMP_B, rd);
+        self.emit_risc_register_store(TEMP_A, rd);
     }
 
     fn ld(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
@@ -1293,33 +1412,41 @@ impl MemoryInstructions for TranspilerBackend {
             .arch x64;
 
             // ------------------------------------
-            // 2. Add the immediate to the base address
+            //  Add the immediate to the base address
+            //
+            // TEMP_A = rs1 + imm = addr
             // ------------------------------------
             add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
-            // 3. Add the risc32 byte offset to the physical memory pointer
+            // Scale to account for the entry size.
             //
-            // We use 64 bit arithmetic since were dealing with native memory.
-            // If there was an overflow it wouldve been handled correctly by the previous add.
+            // Assume the addr is properly aligned.
             // ------------------------------------
-            add Rq(TEMP_B), Rq(TEMP_A);
+            shl Rq(TEMP_A), 1;
 
             // ------------------------------------
-            // 3. Load the word from physical memory into TEMP_B
+            // Add the risc byte offset to the physical memory pointer
+            //
+            // TEMP_A = addr + physical_memory_pointer
             // ------------------------------------
-            mov Rq(TEMP_B), QWORD [Rq(TEMP_B)]
+            add Rq(TEMP_A), Rq(TEMP_B);
+
+            // ------------------------------------
+            // Load the word from physical memory into TEMP_A
+            // ------------------------------------
+            mov Rq(TEMP_A), QWORD [Rq(TEMP_A) + 8]
         }
 
         // ------------------------------------
-        // 4. Store the result in the destination register.
+        // Store the result in the destination register.
         // ------------------------------------
-        self.emit_risc_register_store(TEMP_B, rd);
+        self.emit_risc_register_store(TEMP_A, rd);
     }
 
     fn sb(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64) {
         // ------------------------------------
-        // 1. Load the base address into TEMP_A
+        // Load the base address into TEMP_A
         // and physical memory pointer into TEMP_B
         // ------------------------------------
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
@@ -1330,35 +1457,49 @@ impl MemoryInstructions for TranspilerBackend {
             .arch x64;
 
             // ------------------------------------
-            // 2. Add the immediate to the base address
+            // Add the immediate to the base address
             // ------------------------------------
             add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
-            // 3. Add the risc32 byte offset to the physical memory pointer
+            // Store the intra-word offset.
+            // ------------------------------------
+            mov rax, Rq(TEMP_A);
+            and rax, 7;
+
+            // ------------------------------------
+            // Align to the start of the word.
+            //
+            // Scale to account for the entry size.
+            // ------------------------------------
+            and Rq(TEMP_A), -8;
+            shl Rq(TEMP_A), 1;
+
+            // ------------------------------------
+            // Add the risc32 byte offset to the physical memory pointer
             // ------------------------------------
             add Rq(TEMP_B), Rq(TEMP_A)
         }
 
         // ------------------------------------
-        // 4. Load the word from the RISC register into TEMP_A
+        // Load the word from the RISC register into TEMP_A
         // ------------------------------------
         self.emit_risc_operand_load(rs2.into(), TEMP_A);
 
         // ------------------------------------
-        // 5. Store the word into physical memory
+        // Store the word into physical memory
         // ------------------------------------
         dynasm! {
             self;
             .arch x64;
 
-            mov BYTE [Rq(TEMP_B)], Rb(TEMP_A)
+            mov BYTE [Rq(TEMP_B) + 8 + rax], Rb(TEMP_A)
         }
     }
 
     fn sh(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64) {
         // ------------------------------------
-        // 1. Load the base address into TEMP_A
+        // Load the base address into TEMP_A
         // and physical memory pointer into TEMP_B
         // ------------------------------------
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
@@ -1369,35 +1510,48 @@ impl MemoryInstructions for TranspilerBackend {
             .arch x64;
 
             // ------------------------------------
-            // 2. Add the immediate to the base address
+            // Add the immediate to the base address
             // ------------------------------------
             add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
-            // 3. Add the risc32 byte offset to the physical memory pointer
+            // Store the intra-word offset.
+            // ------------------------------------
+            mov rax, Rq(TEMP_A);
+            and rax, 7;
+
+            // ------------------------------------
+            // Align to the start of the word.
+            // Scale to account for the entry size.
+            // ------------------------------------
+            and Rq(TEMP_A), -8;
+            shl Rq(TEMP_A), 1;
+
+            // ------------------------------------
+            // Add the risc32 byte offset to the physical memory pointer
             // ------------------------------------
             add Rq(TEMP_B), Rq(TEMP_A)
         }
 
         // ------------------------------------
-        // 4. Load the word from the RISC register into TEMP_A
+        // Load the word from the RISC register into TEMP_A
         // ------------------------------------
         self.emit_risc_operand_load(rs2.into(), TEMP_A);
 
         // ------------------------------------
-        // 5. Store the word into physical memory
+        // Store the word into physical memory
         // ------------------------------------
         dynasm! {
             self;
             .arch x64;
 
-            mov WORD [Rq(TEMP_B)], Rw(TEMP_A)
+            mov WORD [Rq(TEMP_B) + 8 + rax], Rw(TEMP_A)
         }
     }
 
     fn sw(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64) {
         // ------------------------------------
-        // 1. Load the base address into TEMP_A
+        // Load the base address into TEMP_A
         // and physical memory pointer into TEMP_B
         // ------------------------------------
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
@@ -1408,35 +1562,48 @@ impl MemoryInstructions for TranspilerBackend {
             .arch x64;
 
             // ------------------------------------
-            // 2. Add the immediate to the base address
+            // Add the immediate to the base address
             // ------------------------------------
             add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
-            // 3. Add the risc32 byte offset to the physical memory pointer
+            // Store the intra-word offset.
+            // ------------------------------------
+            mov rax, Rq(TEMP_A);
+            and rax, 7;
+
+            // ------------------------------------
+            // Align to the start of the word.
+            // Scale to account for the entry size.
+            // ------------------------------------
+            and Rq(TEMP_A), -8;
+            shl Rq(TEMP_A), 1;
+
+            // ------------------------------------
+            // Add the risc32 byte offset to the physical memory pointer
             // ------------------------------------
             add Rq(TEMP_B), Rq(TEMP_A)
         }
 
         // ------------------------------------
-        // 4. Load the word from the RISC register into TEMP_A
+        // Load the word from the RISC register into TEMP_A
         // ------------------------------------
         self.emit_risc_operand_load(rs2.into(), TEMP_A);
 
         // ------------------------------------
-        // 5. Store the word into physical memory
+        // Store the word into physical memory
         // ------------------------------------
         dynasm! {
             self;
             .arch x64;
 
-            mov DWORD [Rq(TEMP_B)], Rd(TEMP_A)
+            mov DWORD [Rq(TEMP_B) + 8 + rax], Rd(TEMP_A)
         }
     }
 
     fn sd(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64) {
         // ------------------------------------
-        // 1. Load the base address into TEMP_A
+        // Load the base address into TEMP_A
         // and physical memory pointer into TEMP_B
         // ------------------------------------
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
@@ -1447,9 +1614,16 @@ impl MemoryInstructions for TranspilerBackend {
             .arch x64;
 
             // ------------------------------------
-            // 2. Add the immediate to the base address
+            // Add the immediate to the base address
             // ------------------------------------
             add Rq(TEMP_A), imm as i32;
+
+            // ------------------------------------
+            // Scale to account for the entry size.
+            //
+            // Assume the addr is properly aligned.
+            // ------------------------------------
+            shl Rq(TEMP_A), 1;
 
             // ------------------------------------
             // 3. Add the risc32 byte offset to the physical memory pointer
@@ -1458,18 +1632,18 @@ impl MemoryInstructions for TranspilerBackend {
         }
 
         // ------------------------------------
-        // 4. Load the word from the RISC register into TEMP_A
+        // Load the word from the RISC register into TEMP_A
         // ------------------------------------
         self.emit_risc_operand_load(rs2.into(), TEMP_A);
 
         // ------------------------------------
-        // 5. Store the word into physical memory
+        // Store the word into physical memory
         // ------------------------------------
         dynasm! {
             self;
             .arch x64;
 
-            mov QWORD [Rq(TEMP_B)], Rq(TEMP_A)
+            mov QWORD [Rq(TEMP_B) + 8], Rq(TEMP_A)
         }
     }
 }

@@ -92,14 +92,13 @@ pub mod fd {
 }
 
 /// Converts a slice of words to a byte vector in little endian.
-pub fn words_to_bytes_le_vec(words: &[u64]) -> Vec<u8> {
-    words.iter().flat_map(|word| word.to_le_bytes().into_iter()).collect::<Vec<_>>()
+pub fn words_to_bytes_le_vec<'a>(words: impl IntoIterator<Item = &'a u64>) -> Vec<u8> {
+    words.into_iter().flat_map(|word| word.to_le_bytes().into_iter()).collect::<Vec<_>>()
 }
 
 /// Converts a slice of words to a slice of bytes in little endian.
-pub fn words_to_bytes_le<const B: usize>(words: &[u64]) -> [u8; B] {
-    debug_assert_eq!(words.len() * 8, B);
-    let mut iter = words.iter().flat_map(|word| word.to_le_bytes().into_iter());
+pub fn words_to_bytes_le<'a, const B: usize>(words: impl IntoIterator<Item = &'a u64>) -> [u8; B] {
+    let mut iter = words.into_iter().flat_map(|word| word.to_le_bytes().into_iter());
     core::array::from_fn(|_| iter.next().unwrap())
 }
 
@@ -141,12 +140,12 @@ pub fn u32_to_u64(limbs: &[u32]) -> Vec<u64> {
 }
 
 /// Converts a little endian u64 array into u32 array.
-pub fn u64_to_u32(limbs: &[u64]) -> Vec<u32> {
+pub fn u64_to_u32<'a>(limbs: impl IntoIterator<Item = &'a u64>) -> Vec<u32> {
     limbs
-        .iter()
-        .flat_map(|&x| {
-            let lo = x as u32;
-            let hi = (x >> 32) as u32;
+        .into_iter()
+        .flat_map(|x| {
+            let lo = *x as u32;
+            let hi = (*x >> 32) as u32;
             [lo, hi]
         })
         .collect()
