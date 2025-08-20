@@ -82,10 +82,10 @@ fn main() {
 
             let (_, execution_duration) = time_operation(|| minimal.execute_chunk());
             println!("Minimal mode:");
-            println!("cycles: {}", executor.state.global_clk);
+            println!("cycles: {}", minimal.global_clk());
             println!(
                 "MHZ: {}",
-                executor.state.global_clk as f64 / 1_000_000.0 / execution_duration.as_secs_f64()
+                minimal.global_clk() as f64 / 1_000_000.0 / execution_duration.as_secs_f64()
             );
 
             minimal.reset();
@@ -95,10 +95,10 @@ fn main() {
 
             let (_, execution_duration) = time_operation(|| minimal.execute_chunk());
             println!("Minimal mode after reset:");
-            println!("cycles: {}", executor.state.global_clk);
+            println!("cycles: {}", minimal.global_clk());
             println!(
                 "MHZ: {}",
-                executor.state.global_clk as f64 / 1_000_000.0 / execution_duration.as_secs_f64()
+                minimal.global_clk() as f64 / 1_000_000.0 / execution_duration.as_secs_f64()
             );
         } // ExecutorMode::Checkpoint => {
         //     let (_, execution_duration) = time_operation(|| executor.run_checkpoint(true));

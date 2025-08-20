@@ -223,6 +223,7 @@ pub struct JitFunction {
     pub pc: u64,
     pub registers: [u64; 32],
     pub clk: u64,
+    pub global_clk: u64,
 }
 
 #[cfg(target_os = "linux")]
@@ -253,6 +254,7 @@ impl JitFunction {
             trace_buf_size,
             pc: pc_start,
             clk: 1,
+            global_clk: 0,
             registers: [0; 32],
             initial_memory_image: Arc::new(HashMap::new()),
             pc_start,
@@ -339,6 +341,7 @@ impl JitFunction {
             registers: self.registers,
             pc: self.pc,
             clk: self.clk,
+            global_clk: self.global_clk,
         };
 
         as_fn(&mut ctx);
@@ -347,6 +350,7 @@ impl JitFunction {
         self.pc = ctx.pc;
         self.registers = ctx.registers;
         self.clk = ctx.clk;
+        self.global_clk = ctx.global_clk;
         self.maybe_unconstrained = std::mem::take(&mut ctx.maybe_unconstrained);
 
         Some(trace_buf.make_read_only().expect("Failed to make trace buf read only"))
@@ -359,6 +363,7 @@ impl JitFunction {
         self.pc = self.pc_start;
         self.registers = [0; 32];
         self.clk = 1;
+        self.global_clk = 0;
         self.input_buffer = VecDeque::new();
 
         // Store the original size of the memory.
@@ -422,6 +427,8 @@ pub struct JitContext {
     pub pc: u64,
     /// The number of cycles executed.
     pub clk: u64,
+    /// The number of cycles executed.
+    pub global_clk: u64,
 }
 
 impl JitContext {
@@ -474,6 +481,7 @@ impl JitContext {
             actual_memory_ptr: self.memory,
             pc: self.pc,
             clk: self.clk,
+            global_clk: self.global_clk,
             registers: self.registers,
         });
 
@@ -539,6 +547,8 @@ pub struct UnconstrainedCtx {
     pub pc: u64,
     // The clock.
     pub clk: u64,
+    // The clock.
+    pub global_clk: u64,
     // The registers.
     pub registers: [u64; 32],
 }

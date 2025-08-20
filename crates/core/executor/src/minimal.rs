@@ -61,6 +61,10 @@ impl MinimalExecutor {
         self.compiled.as_ref().map_or(0, |c| c.clk)
     }
 
+    pub fn global_clk(&self) -> u64 {
+        self.compiled.as_ref().map_or(0, |c| c.global_clk)
+    }
+
     /// Reset the JIT function, to start from the beginning of the program.
     pub fn reset(&mut self) {
         if let Some(ref mut compiled) = self.compiled {

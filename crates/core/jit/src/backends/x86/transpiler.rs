@@ -84,6 +84,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
 
     fn bump_clk(&mut self, amt: u32) {
         let clk_offset = offset_of!(JitContext, clk) as i32;
+        let global_clk_offset = offset_of!(JitContext, global_clk) as i32;
 
         dynasm! {
             self;
@@ -92,7 +93,12 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             // ------------------------------------
             // Add the amount to the clk field in the context.
             // ------------------------------------
-            add QWORD [Rq(CONTEXT) + clk_offset], amt as i32
+            add QWORD [Rq(CONTEXT) + clk_offset], amt as i32;
+
+            // ------------------------------------
+            // Add the amount to the global_clk field in the context.
+            // ------------------------------------
+            add QWORD [Rq(CONTEXT) + global_clk_offset], 1 as i32
         }
     }
 
