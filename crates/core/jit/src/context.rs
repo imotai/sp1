@@ -16,6 +16,8 @@ pub struct JitContext {
     pub(crate) registers: [u64; 32],
     /// The input buffer to the program.
     pub(crate) input_buffer: NonNull<VecDeque<Vec<u8>>>,
+    /// The hints read by the program, with thier corresponding start address.
+    pub(crate) hints: NonNull<Vec<(u64, Vec<u8>)>>,
     /// The memory file descriptor, this is used to create the COW memory at runtime.
     pub(crate) memory_fd: RawFd,
     /// The unconstrained context, this is used to create the COW memory at runtime.
@@ -72,10 +74,6 @@ impl JitContext {
         let align_offset = cow_memory_ptr.align_offset(std::mem::align_of::<u64>());
         let cow_memory_ptr = unsafe { cow_memory_ptr.add(align_offset) };
 
-        // To match the semantics of the interpreter, we need to subtract 8 from the clock.
-        // In the minimal executor, we bump the clock at the start of each instruction.
-        self.clk -= 8;
-
         // Preserve the current state of the JIT context.
         self.maybe_unconstrained = Some(UnconstrainedCtx {
             cow_memory,
@@ -105,11 +103,25 @@ impl JitContext {
         self.memory = unconstrained.actual_memory_ptr;
         self.pc = unconstrained.pc;
         self.registers = unconstrained.registers;
-
-        // To match the semantics of the interpreter, we need to add 8 to the clock.
-        self.clk = unconstrained.clk + 8;
+        self.clk = unconstrained.clk;
 
         // On drop of [UnconstrainedCtx], the COW memory will be unmapped.
+    }
+
+    /// Indicate that the program has read a hint.
+    ///
+    /// This is used to store the hints read by the program.
+    ///
+    /// # Safety
+    /// - The address must be aligned to 8 bytes.
+    /// - The hints pointer must not be mutably aliased.
+    pub unsafe fn trace_hint(&mut self, addr: u64, value: Vec<u8>) {
+        #[cfg(debug_assertions)]
+        if addr % 8 > 0 {
+            panic!("Address {addr} is not aligned to 8");
+        }
+
+        self.hints.as_mut().push((addr, value));
     }
 
     /// Obtain a mutable view of the emulated memory.
@@ -134,6 +146,10 @@ impl JitContext {
 
     pub const fn rr(&self, reg: RiscRegister) -> u64 {
         self.registers[reg as usize]
+    }
+
+    pub const fn tracing(&self) -> bool {
+        self.tracing
     }
 }
 
@@ -176,8 +192,8 @@ impl<'a> ContextMemory<'a> {
         Self { ctx }
     }
 
-    fn tracing(&self) -> bool {
-        self.ctx.tracing
+    pub const fn tracing(&self) -> bool {
+        self.ctx.tracing()
     }
 
     /// Read a u64 from the memory.

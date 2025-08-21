@@ -5,6 +5,11 @@ pub unsafe fn hint_read(ctx: &mut JitContext, ptr: u64, len: u64) -> Option<u64>
 
     // SAFETY: The input stream is not empty, as checked above, so the back is not None
     let vec = unsafe { ctx.input_buffer().pop_front().unwrap_unchecked() };
+
+    if ctx.tracing() {
+        ctx.trace_hint(ptr, vec.clone());
+    }
+
     let mut memory = ctx.memory();
 
     assert_eq!(vec.len() as u64, len, "hint input stream read length mismatch");

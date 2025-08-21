@@ -118,7 +118,7 @@ pub struct TraceChunkRaw {
     pub num_mem_reads: u64,
 }
 
-/// A trace chunk is a collection of traces for a given program.
+/// A trace chunk is all the data needed to continue the execution of a program at pc_start/clk_start.
 ///
 /// We transmute this type directly from bytes, and the buffer should be of [TraceChunkRaw] form,
 /// plus, a slice of the memory reads.

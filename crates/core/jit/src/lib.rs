@@ -203,6 +203,9 @@ pub struct JitFunction {
     initial_memory_image: Arc<HashMap<u64, u64>>,
     pc_start: u64,
     input_buffer: VecDeque<Vec<u8>>,
+    /// During execution, the hints are read by the program, and we store them here.
+    /// This is effectively a mapping from start address to the value of the hint.
+    hints: Vec<(u64, Vec<u8>)>,
 
     /// The unconstrained context, this is used to create the COW memory at runtime.
     /// We preserve it here in case the execution ends due to cycle count.
@@ -255,6 +258,7 @@ impl JitFunction {
             pc_start,
             input_buffer: VecDeque::new(),
             maybe_unconstrained: None,
+            hints: Vec::new(),
         })
     }
 
@@ -285,6 +289,8 @@ impl JitFunction {
         );
 
         self.input_buffer.push_back(input);
+
+        self.hints.reserve(1);
     }
 
     /// Set the entire input buffer.
@@ -298,6 +304,8 @@ impl JitFunction {
             "The input buffer should only be supplied before using the JIT function."
         );
 
+        // Reserve the space for the hints.
+        self.hints.reserve(input.len());
         self.input_buffer = input;
     }
 
@@ -331,6 +339,7 @@ impl JitFunction {
             memory: NonNull::new_unchecked(mem_ptr),
             trace_buf: NonNull::new_unchecked(trace_buf.as_mut_ptr()),
             input_buffer: NonNull::new_unchecked(&mut self.input_buffer),
+            hints: NonNull::new_unchecked(&mut self.hints),
             maybe_unconstrained: std::mem::take(&mut self.maybe_unconstrained),
             memory_fd: self.mem_fd.as_raw_fd(),
             registers: self.registers,
@@ -362,6 +371,7 @@ impl JitFunction {
         self.clk = 1;
         self.global_clk = 0;
         self.input_buffer = VecDeque::new();
+        self.hints = Vec::new();
 
         // Store the original size of the memory.
         let memory_size = self.memory.len();
@@ -392,6 +402,7 @@ impl JitFunction {
             // sure.
             let bytes = val.to_le_bytes();
 
+            #[cfg(debug_assertions)]
             if addr % 8 > 0 {
                 panic!("Address {addr} is not aligned to 8");
             }
