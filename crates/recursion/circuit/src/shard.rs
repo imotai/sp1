@@ -242,7 +242,6 @@ where
         let beta_seed_dim = max_interaction_arity.next_power_of_two().ilog2();
         let beta_seed =
             Point::from_iter((0..beta_seed_dim).map(|_| challenger.sample_ext(builder)));
-        tracing::warn!("Beta seed dimension: {}", beta_seed_dim);
         // Sample the public value challenge.
         let pv_challenge = challenger.sample_ext(builder);
 
