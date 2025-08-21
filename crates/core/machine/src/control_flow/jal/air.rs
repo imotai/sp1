@@ -4,9 +4,9 @@ use crate::{
     operations::{AddOperation, AddOperationInput},
 };
 use slop_air::{Air, AirBuilder};
-use slop_algebra::AbstractField;
+use slop_algebra::{AbstractField, Field};
 use slop_matrix::Matrix;
-use sp1_core_executor::{Opcode, CLK_INC};
+use sp1_core_executor::{ByteOpcode, Opcode, CLK_INC};
 use sp1_hypercube::Word;
 use std::borrow::Borrow;
 
@@ -46,6 +46,15 @@ where
 
         let next_pc = local.add_operation.value;
         builder.assert_zero(next_pc[3]);
+
+        // Check that the `next_pc` value is a multiple of 4.
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+            next_pc[0].into() * AB::F::from_canonical_u32(4).inverse(),
+            AB::Expr::from_canonical_u32(14),
+            AB::Expr::zero(),
+            local.is_real,
+        );
 
         // Constrain the state of the CPU.
         // The `next_pc` is constrained by the AIR.

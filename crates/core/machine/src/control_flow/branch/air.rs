@@ -12,7 +12,7 @@ use crate::{
     air::{SP1CoreAirBuilder, SP1Operation},
     operations::{LtOperationSigned, LtOperationSignedInput},
 };
-use sp1_core_executor::{Opcode, CLK_INC, PC_INC};
+use sp1_core_executor::{ByteOpcode, Opcode, CLK_INC, PC_INC};
 
 use super::{BranchChip, BranchColumns};
 
@@ -159,6 +159,14 @@ where
             builder.when(is_real.clone() - local.is_branching).assert_bool(carry.clone());
         }
 
-        builder.slice_range_check_u16(&local.next_pc, is_real);
+        // Check that the `next_pc` value is a multiple of 4.
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+            local.next_pc[0].into() * AB::F::from_canonical_u32(4).inverse(),
+            AB::Expr::from_canonical_u32(14),
+            AB::Expr::zero(),
+            is_real.clone(),
+        );
+        builder.slice_range_check_u16(&local.next_pc[1..3], is_real);
     }
 }

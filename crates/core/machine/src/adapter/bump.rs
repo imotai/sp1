@@ -78,7 +78,8 @@ impl<F: PrimeField32> MachineAir<F> for StateBumpChip {
                     blu.add_bit_range_check((next_clk_0_16 - 1) / 8, 13);
                     blu.add_bit_range_check(next_clk_32_48, 16);
                     blu.add_u8_range_checks(&[next_clk_16_24, next_clk_24_32]);
-                    blu.add_u16_range_checks(&[pc_0, pc_1, pc_2]);
+                    blu.add_bit_range_check(pc_0 / 4, 14);
+                    blu.add_u16_range_checks(&[pc_1, pc_2]);
                 });
                 blu
             })
@@ -227,6 +228,15 @@ where
             builder.assert_bool(carry.clone());
         }
         builder.assert_zero(carry);
-        builder.slice_range_check_u16(&local.next_pc, local.is_real);
+
+        // Check that the `next_pc` is a multiple of `4`.
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
+            local.next_pc[0].into() * AB::F::from_canonical_u32(4).inverse(),
+            AB::Expr::from_canonical_u32(14),
+            AB::Expr::zero(),
+            local.is_real,
+        );
+        builder.slice_range_check_u16(&local.next_pc[1..3], local.is_real);
     }
 }
