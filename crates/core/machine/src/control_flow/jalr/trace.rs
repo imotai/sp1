@@ -87,7 +87,7 @@ impl JalrChip {
         // `event.c` is unused, since we ought to use a `JalrEvent` rather than a `JumpEvent`.
         cols.is_real = F::one();
         cols.op_a_value = event.a.into();
-        let low_limb = ((event.b + imm) & 0xFFFF) as u16;
+        let low_limb = (event.b.wrapping_add(imm) & 0xFFFF) as u16;
         blu.add_bit_range_check(low_limb / 4, 14);
         cols.add_operation.populate(blu, event.b, imm);
         if !event.op_a_0 {

@@ -632,6 +632,7 @@ mod tests {
         recursion::normalize_program_from_input,
         CORE_LOG_BLOWUP,
     };
+    use serial_test::serial;
     use sp1_core_executor::{SP1Context, ELEMENT_THRESHOLD, MAX_PROGRAM_SIZE};
     use sp1_core_machine::{
         bytes::columns::NUM_BYTE_PREPROCESSED_COLS, io::SP1Stdin,
@@ -746,6 +747,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_core_shape_fit() {
         setup_logger();
         let elf = test_artifacts::FIBONACCI_ELF;
@@ -779,8 +781,17 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_build_vk_map() {
         setup_logger();
+
+        // Use a temporary directory for the vk_map file to avoid conflicts
+        let temp_dir = std::env::temp_dir();
+        let vk_map_path = temp_dir.join("vk_map.bin");
+
+        // Clean up any existing file from previous runs
+        let _ = std::fs::remove_file(&vk_map_path);
+
         let prover = SP1ProverBuilder::new().build().await;
 
         let elf = test_artifacts::FIBONACCI_ELF;
@@ -821,7 +832,7 @@ mod tests {
         let shape_indices_len = shape_indices.len();
 
         build_vk_map_to_file(
-            "../../../".into(),
+            temp_dir,
             DEFAULT_ARITY,
             false,
             1,
@@ -835,8 +846,10 @@ mod tests {
         tracing::info!("Built vk map with {} shapes", shape_indices_len);
 
         // Build a new prover that performs the vk verification check using the built vk map.
-        let prover =
-            SP1ProverBuilder::new().with_vk_map_path("../../../vk_map.bin".into()).build().await;
+        let prover = SP1ProverBuilder::new()
+            .with_vk_map_path(vk_map_path.display().to_string())
+            .build()
+            .await;
 
         tracing::info!("Rebuilt prover with vk map.");
 
@@ -862,6 +875,6 @@ mod tests {
             .verify_shrink(&shrink_proof, &vk)
             .expect("Failed to verify shrink proof");
 
-        std::fs::remove_file("../../../vk_map.bin").unwrap();
+        std::fs::remove_file(vk_map_path).unwrap();
     }
 }

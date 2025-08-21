@@ -52,7 +52,7 @@ impl<F: PrimeField32> MachineAir<F> for JalChip {
                     if idx < input.jal_events.len() {
                         let event = &input.jal_events[idx];
                         cols.is_real = F::one();
-                        let low_limb = ((event.0.pc + event.0.b) & 0xFFFF) as u16;
+                        let low_limb = (event.0.pc.wrapping_add(event.0.b) & 0xFFFF) as u16;
                         blu.add_bit_range_check(low_limb / 4, 14);
                         cols.add_operation.populate(&mut blu, event.0.pc, event.0.b);
                         if !event.0.op_a_0 {
