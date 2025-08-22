@@ -16,7 +16,7 @@ use crate::builder::SP1RecursionAirBuilder;
 
 use super::{MemoryAccessCols, NUM_MEM_ACCESS_COLS};
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct MemoryVarChip<F, const VAR_EVENTS_PER_ROW: usize> {
     _marker: PhantomData<F>,
 }

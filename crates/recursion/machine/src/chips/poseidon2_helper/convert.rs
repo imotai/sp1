@@ -16,7 +16,7 @@ use crate::builder::SP1RecursionAirBuilder;
 
 pub const NUM_CONVERT_ENTRIES_PER_ROW: usize = 1;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ConvertChip;
 
 pub const NUM_CONVERT_COLS: usize = core::mem::size_of::<ConvertCols<u8>>();

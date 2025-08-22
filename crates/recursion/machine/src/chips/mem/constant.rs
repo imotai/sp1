@@ -17,7 +17,7 @@ use super::MemoryAccessCols;
 
 pub const NUM_CONST_MEM_ENTRIES_PER_ROW: usize = 1;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct MemoryConstChip<F> {
     _marker: PhantomData<F>,
 }

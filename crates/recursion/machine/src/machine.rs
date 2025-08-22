@@ -22,7 +22,7 @@ use crate::chips::{
     select::SelectChip,
 };
 
-#[derive(sp1_derive::MachineAir, EnumDiscriminants)]
+#[derive(sp1_derive::MachineAir, EnumDiscriminants, Clone)]
 #[sp1_core_path = "sp1_core_machine"]
 #[execution_record_path = "ExecutionRecord<F>"]
 #[program_path = "RecursionProgram<F>"]

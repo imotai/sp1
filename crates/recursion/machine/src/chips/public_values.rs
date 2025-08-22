@@ -21,7 +21,7 @@ pub const NUM_PUBLIC_VALUES_PREPROCESSED_COLS: usize =
 
 pub const PUB_VALUES_LOG_HEIGHT: usize = 4;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct PublicValuesChip;
 
 /// The preprocessed columns for the CommitPVHash instruction.

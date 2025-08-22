@@ -38,6 +38,10 @@ impl<F: PrimeField32> RecursionShape<F> {
         self.heights.insert(air.name(), height);
     }
 
+    pub fn insert_with_name(&mut self, name: &str, height: usize) {
+        self.heights.insert(name.to_string(), height);
+    }
+
     pub const fn empty() -> Self {
         Self { heights: BTreeMap::new(), _marker: PhantomData }
     }
@@ -82,5 +86,14 @@ impl<F: Field> IntoIterator for RecursionShape<F> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.heights.into_iter()
+    }
+}
+
+impl<'a, F: Field> IntoIterator for &'a RecursionShape<F> {
+    type Item = (&'a String, &'a usize);
+    type IntoIter = <&'a BTreeMap<String, usize> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.heights.iter()
     }
 }

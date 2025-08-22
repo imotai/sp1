@@ -17,7 +17,7 @@ use crate::builder::SP1RecursionAirBuilder;
 
 pub const NUM_SBOX_ENTRIES_PER_ROW: usize = 1;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Poseidon2SBoxChip;
 
 pub const NUM_SBOX_COLS: usize = core::mem::size_of::<Poseidon2SBoxCols<u8>>();

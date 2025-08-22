@@ -20,7 +20,7 @@ use crate::builder::SP1RecursionAirBuilder;
 
 pub const NUM_LINEAR_ENTRIES_PER_ROW: usize = 1;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Poseidon2LinearLayerChip;
 
 pub const NUM_LINEAR_COLS: usize = core::mem::size_of::<Poseidon2LinearLayerCols<u8>>();

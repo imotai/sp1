@@ -14,10 +14,10 @@
 pub mod build;
 pub mod components;
 // pub mod gas; // TODO reimplement gas
-mod core;
+pub mod core;
 pub mod error;
 pub mod local;
-mod recursion;
+pub mod recursion;
 pub mod shapes;
 mod types;
 pub mod utils;

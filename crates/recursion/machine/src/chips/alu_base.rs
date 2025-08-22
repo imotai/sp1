@@ -15,7 +15,7 @@ use std::{borrow::BorrowMut, iter::zip};
 
 pub const NUM_BASE_ALU_ENTRIES_PER_ROW: usize = 1;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct BaseAluChip;
 
 pub const NUM_BASE_ALU_COLS: usize = core::mem::size_of::<BaseAluCols<u8>>();

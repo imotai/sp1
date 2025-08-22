@@ -62,6 +62,7 @@ hex = "0.4"
 
 [dev-dependencies]
 test-artifacts = { path = "../test-artifacts" }
+anyhow = "1.0.83"
 
 # [[bin]]
 # name = "build_plonk_bn254"
@@ -87,9 +88,12 @@ path = "scripts/build_recursion_vks.rs"
 # name = "find_oom_shapes"
 # path = "scripts/find_oom_shapes.rs"
 
-# [[bin]]
-# name = "find_recursion_shapes"
-# path = "scripts/find_recursion_shapes.rs"
+[[bin]]
+name = "find_recursion_shape"
+path = "scripts/find_recursion_shape.rs"
+
+[dependencies.test-artifacts]
+workspace = true
 
 # [[bin]]
 # name = "test_shape_fixing"

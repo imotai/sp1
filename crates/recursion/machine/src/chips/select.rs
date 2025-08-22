@@ -14,7 +14,7 @@ use std::borrow::BorrowMut;
 
 use crate::builder::SP1RecursionAirBuilder;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct SelectChip;
 
 pub const SELECT_COLS: usize = core::mem::size_of::<SelectCols<u8>>();

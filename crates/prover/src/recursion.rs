@@ -408,7 +408,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
 
     #[inline]
     #[must_use]
-    pub(crate) fn compose_program_from_input(
+    pub fn compose_program_from_input(
         &self,
         input: &SP1CompressWithVKeyWitnessValues<InnerSC>,
     ) -> RecursionProgram<SP1Field> {
@@ -419,7 +419,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         self.dummy_reduce_input_with_shape(arity, &self.reduce_shape)
     }
 
-    pub(crate) fn dummy_reduce_input_with_shape(
+    pub fn dummy_reduce_input_with_shape(
         &self,
         arity: usize,
         shape: &SP1RecursionProofShape,

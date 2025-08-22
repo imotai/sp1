@@ -17,7 +17,7 @@ use crate::builder::SP1RecursionAirBuilder;
 
 pub const NUM_EXT_ALU_ENTRIES_PER_ROW: usize = 1;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ExtAluChip;
 
 pub const NUM_EXT_ALU_COLS: usize = core::mem::size_of::<ExtAluCols<u8>>();
