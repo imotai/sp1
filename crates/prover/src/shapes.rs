@@ -176,8 +176,8 @@ impl SP1RecursionProofShape {
     pub fn compress_proof_shape_from_arity(arity: usize) -> Option<Self> {
         match arity {
             DEFAULT_ARITY => {
-                let file = File::open("compress_shape.json").ok();
-                file.and_then(|file| serde_json::from_reader(file).ok()).or_else(|| {
+                let file = include_bytes!("../compress_shape.json");
+                serde_json::from_slice(file).ok().or_else(|| {
                     tracing::warn!("Failed to load compress_shape.json, using default shape.");
                     // This is not a well-tuned shape, but is likely to be big enough even if
                     // relatively substantial changes are made to the verifier.
@@ -798,8 +798,8 @@ mod tests {
 
     #[derive(Debug, Error)]
     enum ShapeError {
-        #[error("Expected arity to be {DEFAULT_ARITY}")]
-        WrongArity,
+        #[error("Expected arity to be {DEFAULT_ARITY}, found {_0}")]
+        WrongArity(usize),
         #[error(
             "Expected the arity {DEFAULT_ARITY} shape to be large enough
                 to accommodate all core shard proof shapes."
@@ -842,7 +842,7 @@ mod tests {
             SP1RecursionProofShape::compress_proof_shape_from_arity(DEFAULT_ARITY).unwrap();
         let arity = reduce_shape.max_arity(prover.recursion()).await;
         if arity != DEFAULT_ARITY {
-            return Err(ShapeError::WrongArity).context(context);
+            return Err(ShapeError::WrongArity(arity)).context(context);
         }
 
         let arity_4_count = build_recursion_count_from_shape(&reduce_shape.shape);
