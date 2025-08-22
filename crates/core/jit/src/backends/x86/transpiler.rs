@@ -63,6 +63,17 @@ impl SP1RiscvTranspiler for TranspilerBackend {
         self.jump_table.push(offset.0);
     }
 
+    fn end_instr(&mut self, jump_to_pc: bool) {
+        // Add the base amount of cycles for the instruction.
+        self.bump_clk(8);
+        // If the instruction is branch, jal, jalr or ecall then we need to emit a jump to pc
+        if jump_to_pc {
+            self.jump_to_pc();
+        } else {
+            self.bump_pc(4);
+        }
+    }
+
     fn load_riscv_operand(&mut self, op: RiscOperand, dst: Self::ScratchRegister) {
         self.emit_risc_operand_load(op, dst as u8);
     }
@@ -86,6 +97,7 @@ impl SP1RiscvTranspiler for TranspilerBackend {
     fn bump_clk(&mut self, amt: u32) {
         let clk_offset = offset_of!(JitContext, clk) as i32;
         let global_clk_offset = offset_of!(JitContext, global_clk) as i32;
+        let is_unconstrained_offset = offset_of!(JitContext, is_unconstrained) as i32;
 
         dynasm! {
             self;
@@ -97,14 +109,24 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             add QWORD [Rq(CONTEXT) + clk_offset], amt as i32;
 
             // ------------------------------------
-            // Add the amount to the global_clk field in the context.
+            // Add to global_clk based on is_unconstrained:
+            // - If is_unconstrained == 0, add 1
+            // - If is_unconstrained == 1, add 0
             // ------------------------------------
-            add QWORD [Rq(CONTEXT) + global_clk_offset], 1
+
+            // Load is_unconstrained (8-bit) into TEMP_A with zero extension
+            movzx Rq(TEMP_A), BYTE [Rq(CONTEXT) + is_unconstrained_offset];
+
+            // XOR with 1 to invert: 0 -> 1, 1 -> 0
+            xor Rq(TEMP_A), 1;
+
+            // Add the inverted value to global_clk
+            add QWORD [Rq(CONTEXT) + global_clk_offset], Rq(TEMP_A)
         }
     }
 
     fn exit_if_clk_exceeds(&mut self, max_cycles: u64) {
-        let clk_offset = offset_of!(JitContext, clk) as i32;
+        let clk_offset = offset_of!(JitContext, global_clk) as i32;
 
         dynasm! {
             self;

@@ -878,6 +878,66 @@ mod control_flow {
     }
 
     #[test]
+    fn test_bump_global_clk_unconstrained() {
+        let mut backend = new_backend();
+
+        extern "C" fn assert_global_clk_is_1(ctx: *mut JitContext) {
+            let ctx = unsafe { &mut *ctx };
+
+            assert_eq!(ctx.global_clk, 1);
+        }
+
+        extern "C" fn assert_global_clk_is_2(ctx: *mut JitContext) {
+            let ctx = unsafe { &mut *ctx };
+
+            assert_eq!(ctx.global_clk, 2);
+        }
+
+        extern "C" fn enter_unconstrained(ctx: *mut JitContext) {
+            let ctx = unsafe { &mut *ctx };
+
+            ctx.is_unconstrained = 1;
+        }
+
+        extern "C" fn exit_unconstrained(ctx: *mut JitContext) {
+            let ctx = unsafe { &mut *ctx };
+
+            ctx.is_unconstrained = 0;
+        }
+
+        backend.start_instr();
+        backend.bump_clk(1);
+        backend.call_extern_fn(assert_global_clk_is_1);
+
+        backend.call_extern_fn(enter_unconstrained);
+        backend.bump_clk(1);
+        backend.call_extern_fn(assert_global_clk_is_1);
+
+        backend.call_extern_fn(exit_unconstrained);
+        backend.bump_clk(1);
+        backend.call_extern_fn(assert_global_clk_is_2);
+        run_test(backend);
+    }
+
+    #[test]
+    fn test_exit_if_clk_exceeds() {
+        let mut backend = new_backend();
+
+        extern "C" fn assert_false(_: *mut JitContext) {
+            assert!(false);
+        }
+
+        backend.start_instr();
+        backend.bump_clk(100);
+        // global_clk increased by 1 every bump_clk
+        backend.exit_if_clk_exceeds(1);
+        // unreachable
+        backend.call_extern_fn(assert_false);
+
+        run_test(backend);
+    }
+
+    #[test]
     fn test_jump_skips_instruction() {
         let mut backend = new_backend();
 
@@ -894,6 +954,7 @@ mod control_flow {
         // PC = 2
         backend.start_instr();
         backend.jal(RiscRegister::X0, 4 * 4); // jump to PC = 4
+        backend.end_instr(true);
 
         backend.print_ctx();
 
@@ -935,7 +996,11 @@ mod control_flow {
         // Branch to PC = 1 if X1 != X2
         backend.start_instr();
         backend.bne(RiscRegister::X1, RiscRegister::X2, u64::MAX);
+        backend.end_instr(true);
         backend.inspect_register(RiscRegister::X2, assert_register_is!(5));
+        // dummy
+        backend.start_instr();
+        backend.add(RiscRegister::X0, RiscRegister::X0.into(), RiscOperand::Immediate(0));
 
         run_test(backend);
     }

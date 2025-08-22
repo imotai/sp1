@@ -110,6 +110,11 @@ pub trait SP1RiscvTranspiler:
     /// This method should be called for "each pc" in the program.
     fn start_instr(&mut self);
 
+    /// This method should be called for "each pc" in the program.
+    /// Handle logics when finishing execution of an instruction such as bumping clk and jump to
+    /// branch destination.
+    fn end_instr(&mut self, jump_to_pc: bool);
+
     /// Load a [RiscRegister] or an immedeatie into a native register.
     fn load_riscv_operand(&mut self, src: RiscOperand, dst: Self::ScratchRegister);
 
@@ -347,6 +352,7 @@ impl JitFunction {
             clk: self.clk,
             global_clk: self.global_clk,
             tracing: self.trace_buf_size > 0,
+            is_unconstrained: 0,
         };
 
         as_fn(&mut ctx);

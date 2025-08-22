@@ -109,7 +109,7 @@ pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut JitContext) -> u64 {
         SyscallCode::WRITE => unsafe { write(ctx, arg1, arg2) },
         SyscallCode::HALT => {
             ctx.pc = 1;
-            ctx.clk += 256 + 8;
+            ctx.clk += 256;
             return code as u64;
         }
         SyscallCode::COMMIT | SyscallCode::COMMIT_DEFERRED_PROOFS => None,
@@ -118,7 +118,7 @@ pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut JitContext) -> u64 {
 
     // Default syscall behavior
     ctx.pc += 4;
-    ctx.clk += 256 + 8;
+    ctx.clk += 256;
 
     res.unwrap_or(code as u64)
 }

@@ -744,9 +744,6 @@ impl ControlFlowInstructions for TranspilerBackend {
 
         // Adjust the PC store in the context by the immediate.
         self.bump_pc(imm as u32);
-
-        // Jump the ASM code corresponding to the PC.
-        self.jump_to_pc();
     }
 
     fn jalr(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
@@ -780,18 +777,12 @@ impl ControlFlowInstructions for TranspilerBackend {
         // 3. Store the computed PC into rd
         // ------------------------------------
         self.emit_risc_register_store(TEMP_B, rd);
-
-        // ------------------------------------
-        // 3. Jump to the target pc.
-        // ------------------------------------
-        self.jump_to_pc();
     }
 
     fn beq(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64) {
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
         self.emit_risc_operand_load(rs2.into(), TEMP_B);
 
-        let pc_base = self.pc_base as i32;
         // Compare the registers
         dynasm! {
             self;
@@ -807,23 +798,7 @@ impl ControlFlowInstructions for TranspilerBackend {
             // 0. Bump the pc by the immediate.
             // ------------------------------------
             add QWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
-
-            // ------------------------------------
-            // 1. Load the current pc into TEMP_A
-            // ------------------------------------
-            mov Rq(TEMP_A), QWORD [Rq(CONTEXT) + PC_OFFSET];
-
-            // ------------------------------------
-            // 2. Lookup into the jump table and load the asm offset into TEMP_A
-            // ------------------------------------
-            sub Rq(TEMP_A), pc_base;
-            shr Rq(TEMP_A), 2;
-            mov Rq(TEMP_A), QWORD [Rq(JUMP_TABLE) + Rq(TEMP_A) * 8];
-
-            // ------------------------------------
-            // 3. Jump to the target pc.
-            // ------------------------------------
-            jmp Rq(TEMP_A);
+            jmp >done;
 
             // ------------------------------------
             // Not branched:
@@ -833,7 +808,9 @@ impl ControlFlowInstructions for TranspilerBackend {
             // ------------------------------------
             // 1. Bump the pc by 4
             // ------------------------------------
-            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4;
+
+            done:
         }
     }
 
@@ -841,7 +818,6 @@ impl ControlFlowInstructions for TranspilerBackend {
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
         self.emit_risc_operand_load(rs2.into(), TEMP_B);
 
-        let pc_base = self.pc_base as i32;
         dynasm! {
             self;
             .arch x64;
@@ -856,23 +832,7 @@ impl ControlFlowInstructions for TranspilerBackend {
             // 0. Bump the pc by the immediate.
             // ------------------------------------
             add QWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
-
-            // ------------------------------------
-            // 1. Load the current pc into TEMP_A
-            // ------------------------------------
-            mov Rq(TEMP_A), QWORD [Rq(CONTEXT) + PC_OFFSET];
-
-            // ------------------------------------
-            // 2. Lookup into the jump table and load the asm offset into TEMP_A
-            // ------------------------------------
-            sub Rq(TEMP_A), pc_base;
-            shr Rq(TEMP_A), 2; // Divide by 4 to get the index.
-            mov Rq(TEMP_A), QWORD [Rq(JUMP_TABLE) + Rq(TEMP_A) * 8];
-
-            // ------------------------------------
-            // 3. Jump to the target pc.
-            // ------------------------------------
-            jmp Rq(TEMP_A);
+            jmp >done;
 
             // ------------------------------------
             // Not branched:
@@ -882,7 +842,9 @@ impl ControlFlowInstructions for TranspilerBackend {
             // ------------------------------------
             // 1. Bump the pc by 4
             // ------------------------------------
-            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4;
+
+            done:
         }
     }
 
@@ -890,7 +852,6 @@ impl ControlFlowInstructions for TranspilerBackend {
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
         self.emit_risc_operand_load(rs2.into(), TEMP_B);
 
-        let pc_base = self.pc_base as i32;
         dynasm! {
             self;
             .arch x64;
@@ -904,23 +865,7 @@ impl ControlFlowInstructions for TranspilerBackend {
             // 0. Bump the pc by the immediate.
             // ------------------------------------
             add QWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
-
-            // ------------------------------------
-            // 1. Load the current pc into TEMP_A
-            // ------------------------------------
-            mov Rq(TEMP_A), QWORD [Rq(CONTEXT) + PC_OFFSET];
-
-            // ------------------------------------
-            // 2. Lookup into the jump table and load the asm offset into TEMP_A
-            // ------------------------------------
-            sub Rq(TEMP_A), pc_base;
-            shr Rq(TEMP_A), 2;
-            mov Rq(TEMP_A), QWORD [Rq(JUMP_TABLE) + Rq(TEMP_A) * 8];
-
-            // ------------------------------------
-            // 3. Jump to the target pc.
-            // ------------------------------------
-            jmp Rq(TEMP_A);
+            jmp >done;
 
             // ------------------------------------
             // Not branched:
@@ -930,7 +875,8 @@ impl ControlFlowInstructions for TranspilerBackend {
             // ------------------------------------
             // 1. Bump the pc by 4
             // ------------------------------------
-            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4;
+            done:
         }
     }
 
@@ -938,7 +884,6 @@ impl ControlFlowInstructions for TranspilerBackend {
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
         self.emit_risc_operand_load(rs2.into(), TEMP_B);
 
-        let pc_base = self.pc_base as i32;
         dynasm! {
             self;
             .arch x64;
@@ -954,23 +899,7 @@ impl ControlFlowInstructions for TranspilerBackend {
             // 0. Bump the pc by the immediate.
             // ------------------------------------
             add QWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
-
-            // ------------------------------------
-            // 1. Load the current pc into TEMP_A
-            // ------------------------------------
-            mov Rq(TEMP_A), QWORD [Rq(CONTEXT) + PC_OFFSET];
-
-            // ------------------------------------
-            // 2. Lookup into the jump table and load the asm offset into TEMP_A
-            // ------------------------------------
-            sub Rq(TEMP_A), pc_base;
-            shr Rq(TEMP_A), 2; // Divide by 4 to get the index.
-            mov Rq(TEMP_A), QWORD [Rq(JUMP_TABLE) + Rq(TEMP_A) * 8];
-
-            // ------------------------------------
-            // 3. Jump to the target pc.
-            // ------------------------------------
-            jmp Rq(TEMP_A);
+            jmp >done;
 
             // ------------------------------------
             // Not branched:
@@ -980,7 +909,9 @@ impl ControlFlowInstructions for TranspilerBackend {
             // ------------------------------------
             // 1. Bump the pc by 4
             // ------------------------------------
-            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4;
+
+            done:
         }
     }
 
@@ -988,7 +919,6 @@ impl ControlFlowInstructions for TranspilerBackend {
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
         self.emit_risc_operand_load(rs2.into(), TEMP_B);
 
-        let pc_base = self.pc_base as i32;
         dynasm! {
             self;
             .arch x64;
@@ -1000,23 +930,7 @@ impl ControlFlowInstructions for TranspilerBackend {
             // 0. Bump the pc by the immediate.
             // ------------------------------------
             add QWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
-
-            // ------------------------------------
-            // 1. Load the current pc into TEMP_A
-            // ------------------------------------
-            mov Rq(TEMP_A), QWORD [Rq(CONTEXT) + PC_OFFSET];
-
-            // ------------------------------------
-            // 2. Lookup into the jump table and load the asm offset into TEMP_A
-            // ------------------------------------
-            sub Rq(TEMP_A), pc_base;
-            shr Rq(TEMP_A), 2; // Divide by 4 to get the index.
-            mov Rq(TEMP_A), QWORD [Rq(JUMP_TABLE) + Rq(TEMP_A) * 8];
-
-            // ------------------------------------
-            // 3. Jump to the target pc.
-            // ------------------------------------
-            jmp Rq(TEMP_A);
+            jmp >done;
 
             // ------------------------------------
             // Not branched:
@@ -1024,7 +938,9 @@ impl ControlFlowInstructions for TranspilerBackend {
             not_branched:;
 
             // 1. Bump the pc by 4
-            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4;
+
+            done:
         }
     }
 
@@ -1032,7 +948,6 @@ impl ControlFlowInstructions for TranspilerBackend {
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
         self.emit_risc_operand_load(rs2.into(), TEMP_B);
 
-        let pc_base = self.pc_base as i32;
         dynasm! {
             self;
             .arch x64;
@@ -1044,23 +959,7 @@ impl ControlFlowInstructions for TranspilerBackend {
             // 0. Bump the pc in the context by the immediate.
             // ------------------------------------
             add QWORD [Rq(CONTEXT) + PC_OFFSET], imm as i32;
-
-            // ------------------------------------
-            // 1. Load the current pc into TEMP_A
-            // ------------------------------------
-            mov Rq(TEMP_A), QWORD [Rq(CONTEXT) + PC_OFFSET];
-
-            // ------------------------------------
-            // 2. Lookup into the jump table and load the asm offset into TEMP_A
-            // ------------------------------------
-            sub Rq(TEMP_A), pc_base;
-            shr Rq(TEMP_A), 2; // Divide by 4 to get the index.
-            mov Rq(TEMP_A), QWORD [Rq(JUMP_TABLE) + Rq(TEMP_A) * 8];
-
-            // ------------------------------------
-            // 3. Jump to the target pc.
-            // ------------------------------------
-            jmp Rq(TEMP_A);
+            jmp >done;
 
             // ------------------------------------
             // Not branched:
@@ -1070,7 +969,9 @@ impl ControlFlowInstructions for TranspilerBackend {
             // ------------------------------------
             // 1. Bump the pc by 4
             // ------------------------------------
-            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4
+            add QWORD [Rq(CONTEXT) + PC_OFFSET], 4;
+
+            done:
         }
     }
 }
@@ -1661,9 +1562,6 @@ impl SystemInstructions for TranspilerBackend {
 
         // The ecall returns a u64 in RAX.
         self.emit_risc_register_store(Rq::RAX as u8, RiscRegister::X5);
-
-        // The ecall may have modified the PC, so we need to jump to the next instruction.
-        self.jump_to_pc();
     }
 
     fn unimp(&mut self) {

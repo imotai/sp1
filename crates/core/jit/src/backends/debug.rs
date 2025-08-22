@@ -66,6 +66,10 @@ impl<B: SP1RiscvTranspiler + Debuggable> SP1RiscvTranspiler for DebugBackend<B> 
         self.backend.print_ctx();
     }
 
+    fn end_instr(&mut self, jump_to_pc: bool) {
+        self.backend.end_instr(jump_to_pc);
+    }
+
     fn load_riscv_operand(&mut self, src: RiscOperand, dst: Self::ScratchRegister) {
         self.backend.load_riscv_operand(src, dst);
     }

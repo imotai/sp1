@@ -30,6 +30,8 @@ pub struct JitContext {
     pub clk: u64,
     /// The number of cycles executed.
     pub global_clk: u64,
+    /// This context is in unconstrainted mode.
+    pub is_unconstrained: u8,
 }
 
 impl JitContext {
@@ -92,6 +94,8 @@ impl JitContext {
         // SAFETY: [memmap2] does not return a null pointer.
         self.memory = unsafe { NonNull::new_unchecked(cow_memory_ptr) };
 
+        self.is_unconstrained = 1;
+
         Ok(())
     }
 
@@ -104,7 +108,7 @@ impl JitContext {
         self.pc = unconstrained.pc;
         self.registers = unconstrained.registers;
         self.clk = unconstrained.clk;
-
+        self.is_unconstrained = 0;
         // On drop of [UnconstrainedCtx], the COW memory will be unmapped.
     }
 

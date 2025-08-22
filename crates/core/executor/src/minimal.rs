@@ -22,31 +22,37 @@ pub struct MinimalExecutor {
     debug: bool,
     tracing: bool,
     input: VecDeque<Vec<u8>>,
+    max_cycles: Option<u64>,
 }
 
 impl MinimalExecutor {
     /// Create a new minimal executor.
     #[must_use]
-    pub const fn new(program: Arc<Program>, tracing: bool, debug: bool) -> Self {
-        Self { program, compiled: None, tracing, debug, input: VecDeque::new() }
+    pub const fn new(
+        program: Arc<Program>,
+        tracing: bool,
+        debug: bool,
+        max_cycles: Option<u64>,
+    ) -> Self {
+        Self { program, compiled: None, tracing, debug, input: VecDeque::new(), max_cycles }
     }
 
     /// Create a new minimal executor with no tracing or debugging.
     #[must_use]
-    pub const fn simple(program: Arc<Program>) -> Self {
-        Self::new(program, false, false)
+    pub const fn simple(program: Arc<Program>, max_cycles: Option<u64>) -> Self {
+        Self::new(program, false, false, max_cycles)
     }
 
     /// Create a new minimal executor with tracing.
     #[must_use]
-    pub const fn tracing(program: Arc<Program>) -> Self {
-        Self::new(program, true, false)
+    pub const fn tracing(program: Arc<Program>, max_cycles: Option<u64>) -> Self {
+        Self::new(program, true, false, max_cycles)
     }
 
     /// Create a new minimal executor with debugging.
     #[must_use]
     pub const fn debug(program: Arc<Program>) -> Self {
-        Self::new(program, false, true)
+        Self::new(program, false, true, None)
     }
 
     /// Add input to the executor.
@@ -135,8 +141,7 @@ impl MinimalExecutor {
 
         for (i, instruction) in self.program.instructions.iter().enumerate() {
             backend.start_instr();
-
-            let next_pc = ((i + 1) * 4) as u64 + self.program.pc_base;
+            let mut jump_to_pc = false;
 
             match instruction.opcode {
                 Opcode::LB
@@ -157,11 +162,11 @@ impl MinimalExecutor {
                 | Opcode::BGE
                 | Opcode::BLTU
                 | Opcode::BGEU => {
-                    backend.bump_clk(8);
+                    jump_to_pc = true;
                     Self::transpile_branch_instruction(&mut backend, instruction);
                 }
                 Opcode::JAL | Opcode::JALR => {
-                    backend.bump_clk(8);
+                    jump_to_pc = true;
                     Self::transpile_jump_instruction(&mut backend, instruction);
                 }
                 Opcode::ADD
@@ -206,6 +211,7 @@ impl MinimalExecutor {
                     backend.lui(rd.into(), imm);
                 }
                 Opcode::ECALL => {
+                    jump_to_pc = true;
                     backend.ecall();
                 }
                 Opcode::EBREAK | Opcode::UNIMP => {
@@ -214,26 +220,11 @@ impl MinimalExecutor {
                 _ => panic!("Invalid instruction: {:?}", instruction.opcode),
             }
 
-            // Add the base amount of cycles for the instruction.
-            // Jumps and branches bump the clk before the instruction is executed, since nothing can
-            // be included after the instruction is executed as its jumping to a new location.
-            //
-            // Tehcnically this check isnt needed, itll just be ignored.
-            if !instruction.is_ecall_instruction()
-                && !instruction.is_branch_instruction()
-                && !instruction.is_jump_instruction()
-            {
-                backend.bump_clk(8);
+            if let Some(max_cycles) = self.max_cycles {
+                backend.exit_if_clk_exceeds(max_cycles);
             }
 
-            // The following instructions will modify the PC directly,
-            // so we don't need to set the PC here.
-            if !(instruction.is_branch_instruction()
-                || instruction.is_jump_instruction()
-                || instruction.is_ecall_instruction())
-            {
-                backend.set_pc(next_pc);
-            }
+            backend.end_instr(jump_to_pc);
         }
 
         let mut finalized = backend.finalize().expect("Failed to finalize function");
@@ -437,7 +428,7 @@ mod test {
         interpreter.run_fast().expect("Interpreter failed");
         let interpreter_time = start.elapsed();
 
-        let mut executor = MinimalExecutor::new(program.clone(), false, false);
+        let mut executor = MinimalExecutor::new(program.clone(), false, false, None);
         let start = std::time::Instant::now();
         executor.execute_chunk();
         let jit_time = start.elapsed();
@@ -479,6 +470,12 @@ mod test {
             interpreter.state.clk,
             "JIT and interpreter final clk mismatch"
         );
+
+        assert_eq!(
+            executor.compiled.as_ref().expect("JIT not compiled").global_clk,
+            interpreter.state.global_clk,
+            "JIT and interpreter final global_clk mismatch"
+        );
     }
 
     #[test]
@@ -489,7 +486,7 @@ mod test {
         let program = Program::from(&KECCAK256_ELF).unwrap();
         let program = Arc::new(program);
 
-        let mut executor = MinimalExecutor::new(program.clone(), false, false);
+        let mut executor = MinimalExecutor::new(program.clone(), false, false, None);
         // executor.debug();
         executor.with_input(&serialize(&5_usize).unwrap());
         for i in 0..5 {
@@ -534,6 +531,12 @@ mod test {
             executor.compiled.as_ref().expect("JIT not compiled").clk,
             interpreter.state.clk,
             "JIT and interpreter final clk mismatch"
+        );
+
+        assert_eq!(
+            executor.compiled.as_ref().expect("JIT not compiled").global_clk,
+            interpreter.state.global_clk,
+            "JIT and interpreter final global_clk mismatch"
         );
     }
 
