@@ -924,7 +924,7 @@ mod control_flow {
         let mut backend = new_backend();
 
         extern "C" fn assert_false(_: *mut JitContext) {
-            assert!(false);
+            unreachable!();
         }
 
         backend.start_instr();

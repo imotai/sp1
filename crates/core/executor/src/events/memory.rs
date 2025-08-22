@@ -286,6 +286,12 @@ impl MemoryInitializeFinalizeEvent {
     pub const fn finalize_from_record(addr: u64, record: &MemoryEntry) -> Self {
         Self { addr, value: record.value, timestamp: record.timestamp }
     }
+
+    /// Creates a new [``MemoryInitializeFinalizeEvent``].
+    #[must_use]
+    pub const fn finalize(addr: u64, value: u64, timestamp: u64) -> Self {
+        Self { addr, value, timestamp }
+    }
 }
 
 impl From<MemoryReadRecord> for MemoryRecordEnum {

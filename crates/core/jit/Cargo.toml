@@ -16,10 +16,7 @@ serde = { workspace = true, features = ["derive"]}
 tracing.workspace = true
 uuid = { version = "1.17.0", features = ["v4"] }
 hashbrown = { workspace = true }
-
-#todo remove this if pr upstreamed
-# https://github.com/RazrFalcon/memmap2-rs/pull/153
-memmap2 = { git = "https://github.com/nhtyy/memmap2-rs", branch = "n/noreserve" }
+memmap2 = "0.9.8"
 
 [lints]
 workspace = true

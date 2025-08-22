@@ -61,6 +61,15 @@ const MEMORY_PTR_OFFSET: i32 = offset_of!(JitContext, memory) as i32;
 /// The offset of the registers in the JitContext.
 const REGISTERS_OFFSET: i32 = offset_of!(JitContext, registers) as i32;
 
+/// The offset of the touched addresses writes in the JitContext.
+const TOUCHED_ADDRESS_WRITES_OFFSET: i32 = offset_of!(JitContext, touched_address_writes) as i32;
+
+/// The offset of the touched addresses data in the JitContext.
+const TOUCHED_ADDRESS_DATA_OFFSET: i32 = offset_of!(JitContext, touched_address_data) as i32;
+
+/// The offset of the is_unconstrained flag in the JitContext.
+const IS_UNCONSTRAINED_OFFSET: i32 = offset_of!(JitContext, is_unconstrained) as i32;
+
 /// The x86 backend for JIT transpipling RISC-V instructions to x86-64, according to the
 /// [crate::SP1RiscvTranspiler] trait.
 pub struct TranspilerBackend {
@@ -135,10 +144,42 @@ impl TraceCollector for TranspilerBackend {
             add Rq(TEMP_A), imm as i32;
 
             // ------------------------------------
-            // Align to the start of the word
-            // and scale by the entry size.
+            // Align to the start of the word.
             // ------------------------------------
             and Rq(TEMP_A), -8;
+
+            // ------------------------- touched addresses tracing ------------------------------------
+
+            // ------------------------------------
+            // Load the number of touched addresses writes pointer into rax
+            // and compute the byte address of the slot into rdx.
+            // ------------------------------------
+            mov rax, QWORD [Rq(CONTEXT) + TOUCHED_ADDRESS_WRITES_OFFSET];
+            mov rdx, [rax];
+            shl rdx, 3;
+            add rdx, QWORD [Rq(CONTEXT) + TOUCHED_ADDRESS_DATA_OFFSET];
+
+            // ------------------------------------
+            // Branchless: inc = !is_unconstrained (0/1), mask = -inc (0/-1).
+            // ------------------------------------
+            mov rcx, QWORD [Rq(CONTEXT) + IS_UNCONSTRAINED_OFFSET];
+            xor rcx, 1;
+            mov r8, rcx;
+            neg r8;
+
+            // ------------------------------------
+            // Store masked address and publish by +inc.
+            // ------------------------------------
+            mov r9, Rq(TEMP_A);
+            and r9, r8;
+            mov [rdx], r9;
+            add QWORD [rax], rcx;
+
+            // ------------------------- (clk, word) tracing ------------------------------------
+
+            // ------------------------------------
+            // Scale by the entry size.
+            // ------------------------------------
             shl Rq(TEMP_A), 1;
 
             // ------------------------------------
@@ -297,6 +338,25 @@ impl TranspilerBackend {
 
             // Define the exit global label.
             ->exit:
+        }
+
+        // Store the sentinel value to the touched addresses writes to indicate that we
+        // are done with execution.
+        if self.trace_buf_size > 0 {
+            dynasm! {
+                self;
+                .arch x64;
+
+                // Load the current number of touched addresses ptr.
+                mov rax, QWORD [Rq(CONTEXT) + TOUCHED_ADDRESS_WRITES_OFFSET];
+
+                // Create the `DONE` mask.
+                mov rcx, 1;
+                shl rcx, 63;
+
+                // Store the sentinel value.
+                or QWORD [rax], rcx
+            };
         }
 
         // Ensure the registers are saved to the context.

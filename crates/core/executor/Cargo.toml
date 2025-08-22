@@ -48,6 +48,7 @@ subenum = "1.1.2"
 range-set-blaze = "0.1.16"
 serde_arrays = "0.2"
 deepsize2 = { workspace = true }
+memmap2 = "0.9.8"
 
 # profiling
 goblin = { version = "0.9", optional = true }

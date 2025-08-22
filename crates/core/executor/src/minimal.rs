@@ -1,16 +1,21 @@
 #![allow(clippy::items_after_statements)]
 
 use crate::memory::MAX_LOG_ADDR;
+use hashbrown::HashSet;
 use sp1_jit::{
-    DebugBackend, JitFunction, RiscOperand, RiscRegister, SP1RiscvTranspiler, TraceChunk,
-    TranspilerBackend,
+    DebugBackend, JitFunction, MemoryView, RiscOperand, RiscRegister, SP1RiscvTranspiler,
+    TraceChunk, TranspilerBackend,
 };
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Mutex},
+};
 
 use crate::{Instruction, Opcode, Program, Register};
 
 mod ecall;
 mod hint;
+mod postprocess;
 mod precompiles;
 mod unconstrained;
 mod write;
@@ -18,40 +23,37 @@ mod write;
 /// A minimal trace executor.
 pub struct MinimalExecutor {
     program: Arc<Program>,
-    compiled: Option<JitFunction>,
-    debug: bool,
-    tracing: bool,
+    compiled: JitFunction,
     input: VecDeque<Vec<u8>>,
-    max_cycles: Option<u64>,
+    tracing: bool,
 }
 
 impl MinimalExecutor {
-    /// Create a new minimal executor.
+    /// Create a new minimal executor and transpiles the program.
     #[must_use]
-    pub const fn new(
-        program: Arc<Program>,
-        tracing: bool,
-        debug: bool,
-        max_cycles: Option<u64>,
-    ) -> Self {
-        Self { program, compiled: None, tracing, debug, input: VecDeque::new(), max_cycles }
+    pub fn new(program: Arc<Program>, tracing: bool, debug: bool, max_cycles: Option<u64>) -> Self {
+        eprintln!("transpiling program, tracing={tracing}, debug={debug}");
+
+        let compiled = Self::transpile(program.as_ref(), debug, tracing, max_cycles);
+
+        Self { program, compiled, input: VecDeque::new(), tracing }
     }
 
     /// Create a new minimal executor with no tracing or debugging.
     #[must_use]
-    pub const fn simple(program: Arc<Program>, max_cycles: Option<u64>) -> Self {
+    pub fn simple(program: Arc<Program>, max_cycles: Option<u64>) -> Self {
         Self::new(program, false, false, max_cycles)
     }
 
     /// Create a new minimal executor with tracing.
     #[must_use]
-    pub const fn tracing(program: Arc<Program>, max_cycles: Option<u64>) -> Self {
+    pub fn tracing(program: Arc<Program>, max_cycles: Option<u64>) -> Self {
         Self::new(program, true, false, max_cycles)
     }
 
     /// Create a new minimal executor with debugging.
     #[must_use]
-    pub const fn debug(program: Arc<Program>) -> Self {
+    pub fn debug(program: Arc<Program>) -> Self {
         Self::new(program, false, true, None)
     }
 
@@ -62,25 +64,18 @@ impl MinimalExecutor {
 
     /// Execute the program. Returning a trace chunk if the program has not completed.
     pub fn execute_chunk(&mut self) -> Option<TraceChunk> {
-        loop {
-            if let Some(ref mut compiled) = self.compiled {
-                if !self.input.is_empty() {
-                    compiled.set_input_buffer(std::mem::take(&mut self.input));
-                }
-
-                // SAFETY: The backend is assumed to output valid JIT functions.
-                let trace_buf = unsafe { compiled.call()? };
-
-                if self.tracing {
-                    return Some(TraceChunk::copy_from_bytes(&trace_buf));
-                }
-
-                return None;
-            }
-
-            // If the JIT function is not compiled, compile it.
-            self.transpile();
+        if !self.input.is_empty() {
+            self.compiled.set_input_buffer(std::mem::take(&mut self.input));
         }
+
+        // SAFETY: The backend is assumed to output valid JIT functions.
+        let trace_buf = unsafe { self.compiled.call()? };
+
+        if self.tracing {
+            return Some(TraceChunk::copy_from_bytes(&trace_buf));
+        }
+
+        None
     }
 
     /// Get the current clock of the JIT function.
@@ -88,7 +83,7 @@ impl MinimalExecutor {
     /// This clock is incremented by 8 or 256 depending on the instruction.
     #[must_use]
     pub fn clk(&self) -> u64 {
-        self.compiled.as_ref().map_or(0, |c| c.clk)
+        self.compiled.clk
     }
 
     /// Get the global clock of the JIT function.
@@ -96,50 +91,76 @@ impl MinimalExecutor {
     /// This clock is incremented by 1 per instruction.
     #[must_use]
     pub fn global_clk(&self) -> u64 {
-        self.compiled.as_ref().map_or(0, |c| c.global_clk)
+        self.compiled.global_clk
+    }
+
+    /// Get the touched addresses of the JIT function.
+    #[must_use]
+    pub fn touched_addresses(&self) -> &Mutex<HashSet<u64>> {
+        &self.compiled.touched_addresses
+    }
+
+    /// Get the hints of the JIT function.
+    #[must_use]
+    pub fn hints(&self) -> &Vec<(u64, Vec<u8>)> {
+        &self.compiled.hints
+    }
+
+    /// Get a view of the current memory of the JIT function.
+    #[must_use]
+    pub fn memory(&self) -> MemoryView<'_> {
+        MemoryView::new(&self.compiled.memory)
     }
 
     /// Reset the JIT function, to start from the beginning of the program.
     pub fn reset(&mut self) {
-        if let Some(ref mut compiled) = self.compiled {
-            compiled.reset();
-        }
+        self.compiled.reset();
 
         let _ = std::mem::take(&mut self.input);
     }
 
     /// Transpile the program, saving the JIT function.
-    pub fn transpile(&mut self) {
-        let trace_buf_size = if self.tracing { 2_u64.pow(34) as usize } else { 0 };
+    pub fn transpile(
+        program: &Program,
+        debug: bool,
+        tracing: bool,
+        max_cycles: Option<u64>,
+    ) -> JitFunction {
+        let trace_buf_size = if tracing { 2_u64.pow(34) as usize } else { 0 };
 
         let mut backend = TranspilerBackend::new(
-            self.program.instructions.len(),
+            program.instructions.len(),
             2_u64.pow(MAX_LOG_ADDR as u32) as usize,
             // About 35GB of memory.
             // todo: based on the cycle limit set, if any, we can use the worst case size of this
             // buf to set this value.
             trace_buf_size,
-            self.program.pc_start_abs,
-            self.program.pc_base,
+            program.pc_start_abs,
+            program.pc_base,
         )
         .expect("Failed to create transpiler backend");
 
         backend.register_ecall_handler(ecall::sp1_ecall_handler);
 
-        if self.debug {
-            self.transpile_instructions(DebugBackend::new(backend));
+        if debug {
+            Self::transpile_instructions(DebugBackend::new(backend), program, tracing, max_cycles)
         } else {
-            self.transpile_instructions(backend);
+            Self::transpile_instructions(backend, program, tracing, max_cycles)
         }
     }
 
-    fn transpile_instructions<B: SP1RiscvTranspiler>(&mut self, mut backend: B) {
-        if self.tracing {
+    fn transpile_instructions<B: SP1RiscvTranspiler>(
+        mut backend: B,
+        program: &Program,
+        tracing: bool,
+        max_cycles: Option<u64>,
+    ) -> JitFunction {
+        if tracing {
             backend.trace_clk_start();
             backend.trace_pc_start();
         }
 
-        for (i, instruction) in self.program.instructions.iter().enumerate() {
+        for instruction in program.instructions.iter() {
             backend.start_instr();
             let mut jump_to_pc = false;
 
@@ -151,10 +172,10 @@ impl MinimalExecutor {
                 | Opcode::LHU
                 | Opcode::LD
                 | Opcode::LWU => {
-                    Self::transpile_load_instruction(&mut backend, instruction, self.tracing);
+                    Self::transpile_load_instruction(&mut backend, instruction, tracing);
                 }
                 Opcode::SB | Opcode::SH | Opcode::SW | Opcode::SD => {
-                    Self::transpile_store_instruction(&mut backend, instruction, self.tracing);
+                    Self::transpile_store_instruction(&mut backend, instruction, tracing);
                 }
                 Opcode::BEQ
                 | Opcode::BNE
@@ -220,7 +241,7 @@ impl MinimalExecutor {
                 _ => panic!("Invalid instruction: {:?}", instruction.opcode),
             }
 
-            if let Some(max_cycles) = self.max_cycles {
+            if let Some(max_cycles) = max_cycles {
                 backend.exit_if_clk_exceeds(max_cycles);
             }
 
@@ -228,9 +249,9 @@ impl MinimalExecutor {
         }
 
         let mut finalized = backend.finalize().expect("Failed to finalize function");
-        finalized.with_initial_memory_image(self.program.memory_image.clone());
+        finalized.with_initial_memory_image(program.memory_image.clone());
 
-        self.compiled = Some(finalized);
+        finalized
     }
 
     fn transpile_load_instruction<B: SP1RiscvTranspiler>(
@@ -268,7 +289,7 @@ impl MinimalExecutor {
         // For stores, its the same logic as a load, we want the last known clk and value at the
         // address.
         if tracing {
-            backend.trace_mem_value(rs1.into(), imm);
+            backend.trace_mem_value(rs2.into(), imm);
         }
 
         // Note: We switch around rs1 and rs2 operaneds to align with the executor.
@@ -419,27 +440,32 @@ mod test {
     use super::*;
     use sp1_primitives::Elf;
 
-    fn run_program_and_compare_end_state(program: Elf) {
-        let program = Program::from(&program).unwrap();
+    #[allow(clippy::cast_precision_loss)]
+    fn run_program_and_compare_end_state(program: &Elf) {
+        const TRACING: bool = true;
+        const DEBUG: bool = false;
+
+        let program = Program::from(program).unwrap();
         let program = Arc::new(program);
 
-        let mut interpreter = crate::executor::Executor::new(program.clone(), Default::default());
+        let mut interpreter =
+            crate::executor::Executor::new(program.clone(), crate::SP1CoreOpts::default());
         let start = std::time::Instant::now();
         interpreter.run_fast().expect("Interpreter failed");
         let interpreter_time = start.elapsed();
 
-        let mut executor = MinimalExecutor::new(program.clone(), false, false, None);
+        let mut executor = MinimalExecutor::new(program.clone(), TRACING, DEBUG, None);
         let start = std::time::Instant::now();
         executor.execute_chunk();
         let jit_time = start.elapsed();
 
         // convert to mhz
-        let cycles = executor.compiled.as_ref().expect("JIT not compiled").clk;
+        let cycles = executor.compiled.global_clk;
         let mhz = cycles as f64 / (jit_time.as_micros() as f64);
         eprintln!("cycles={cycles}");
         eprintln!("jit mhz={mhz} mhz");
 
-        let interpreter_cycles = interpreter.state.clk;
+        let interpreter_cycles = interpreter.state.global_clk;
         let interpreter_mhz = interpreter_cycles as f64 / (interpreter_time.as_micros() as f64);
         eprintln!("interpreter mhz={interpreter_mhz} mhz");
 
@@ -452,7 +478,7 @@ mod test {
             .map(|r| r.map(|r| r.value).unwrap_or(0))
             .collect::<Vec<_>>();
 
-        let jit_registers = executor.compiled.as_ref().expect("JIT not compiled").registers;
+        let jit_registers = executor.compiled.registers;
 
         for i in 0..32 {
             if interpreter_registers[i] != jit_registers[i] {
@@ -466,16 +492,31 @@ mod test {
         }
 
         assert_eq!(
-            executor.compiled.as_ref().expect("JIT not compiled").clk,
-            interpreter.state.clk,
+            executor.compiled.clk, interpreter.state.clk,
             "JIT and interpreter final clk mismatch"
         );
 
         assert_eq!(
-            executor.compiled.as_ref().expect("JIT not compiled").global_clk,
-            interpreter.state.global_clk,
+            executor.compiled.global_clk, interpreter.state.global_clk,
             "JIT and interpreter final global_clk mismatch"
         );
+
+        if !TRACING {
+            return;
+        }
+        eprintln!("comparing touched addresses");
+
+        let mut touched_by_jit = executor.touched_addresses().lock().unwrap();
+        touched_by_jit.extend(program.memory_image.keys().copied());
+
+        let touched_by_interpreter =
+            interpreter.state.memory.page_table.keys().collect::<HashSet<_>>();
+
+        assert_eq!(
+            *touched_by_jit, touched_by_interpreter,
+            "JIT and interpreter touched addresses mismatch"
+        );
+        eprintln!("touched addresses length: {}", touched_by_jit.len());
     }
 
     #[test]
@@ -511,7 +552,7 @@ mod test {
             .map(|r| r.map(|r| r.value).unwrap_or(0))
             .collect::<Vec<_>>();
 
-        let jit_registers = executor.compiled.as_ref().expect("JIT not compiled").registers;
+        let jit_registers = executor.compiled.registers;
 
         for i in 0..32 {
             if interpreter_registers[i] != jit_registers[i] {
@@ -522,20 +563,17 @@ mod test {
         }
 
         assert_eq!(
-            executor.compiled.as_ref().expect("JIT not compiled").pc,
-            interpreter.state.pc,
+            executor.compiled.pc, interpreter.state.pc,
             "JIT and interpreter final pc mismatch"
         );
 
         assert_eq!(
-            executor.compiled.as_ref().expect("JIT not compiled").clk,
-            interpreter.state.clk,
+            executor.compiled.clk, interpreter.state.clk,
             "JIT and interpreter final clk mismatch"
         );
 
         assert_eq!(
-            executor.compiled.as_ref().expect("JIT not compiled").global_clk,
-            interpreter.state.global_clk,
+            executor.compiled.global_clk, interpreter.state.global_clk,
             "JIT and interpreter final global_clk mismatch"
         );
     }
@@ -544,168 +582,168 @@ mod test {
     fn test_run_fibonacci() {
         use crate::programs::tests::FIBONACCI_ELF;
 
-        run_program_and_compare_end_state(FIBONACCI_ELF);
+        run_program_and_compare_end_state(&FIBONACCI_ELF);
     }
 
     #[test]
     fn test_run_sha256() {
         use test_artifacts::SHA2_ELF;
 
-        run_program_and_compare_end_state(SHA2_ELF);
+        run_program_and_compare_end_state(&SHA2_ELF);
     }
 
     #[test]
     fn test_run_sha_extend() {
         use test_artifacts::SHA_EXTEND_ELF;
 
-        run_program_and_compare_end_state(SHA_EXTEND_ELF);
+        run_program_and_compare_end_state(&SHA_EXTEND_ELF);
     }
 
     #[test]
     fn test_run_sha_compress() {
         use test_artifacts::SHA_COMPRESS_ELF;
 
-        run_program_and_compare_end_state(SHA_COMPRESS_ELF);
+        run_program_and_compare_end_state(&SHA_COMPRESS_ELF);
     }
 
     #[test]
     fn test_run_keccak_permute() {
         use test_artifacts::KECCAK_PERMUTE_ELF;
 
-        run_program_and_compare_end_state(KECCAK_PERMUTE_ELF);
+        run_program_and_compare_end_state(&KECCAK_PERMUTE_ELF);
     }
 
     #[test]
     fn test_run_secp256k1_add() {
         use test_artifacts::SECP256K1_ADD_ELF;
 
-        run_program_and_compare_end_state(SECP256K1_ADD_ELF);
+        run_program_and_compare_end_state(&SECP256K1_ADD_ELF);
     }
 
     #[test]
     fn test_run_secp256k1_double() {
         use test_artifacts::SECP256K1_DOUBLE_ELF;
 
-        run_program_and_compare_end_state(SECP256K1_DOUBLE_ELF);
+        run_program_and_compare_end_state(&SECP256K1_DOUBLE_ELF);
     }
 
     #[test]
     fn test_run_secp256r1_add() {
         use test_artifacts::SECP256R1_ADD_ELF;
 
-        run_program_and_compare_end_state(SECP256R1_ADD_ELF);
+        run_program_and_compare_end_state(&SECP256R1_ADD_ELF);
     }
 
     #[test]
     fn test_run_secp256r1_double() {
         use test_artifacts::SECP256R1_DOUBLE_ELF;
 
-        run_program_and_compare_end_state(SECP256R1_DOUBLE_ELF);
+        run_program_and_compare_end_state(&SECP256R1_DOUBLE_ELF);
     }
 
     #[test]
     fn test_run_bls12_381_add() {
         use test_artifacts::BLS12381_ADD_ELF;
 
-        run_program_and_compare_end_state(BLS12381_ADD_ELF);
+        run_program_and_compare_end_state(&BLS12381_ADD_ELF);
     }
 
     #[test]
     fn test_ed_add() {
         use test_artifacts::ED_ADD_ELF;
 
-        run_program_and_compare_end_state(ED_ADD_ELF);
+        run_program_and_compare_end_state(&ED_ADD_ELF);
     }
 
     #[test]
     fn test_bn254_add() {
         use test_artifacts::BN254_ADD_ELF;
 
-        run_program_and_compare_end_state(BN254_ADD_ELF);
+        run_program_and_compare_end_state(&BN254_ADD_ELF);
     }
 
     #[test]
     fn test_bn254_double() {
         use test_artifacts::BN254_DOUBLE_ELF;
 
-        run_program_and_compare_end_state(BN254_DOUBLE_ELF);
+        run_program_and_compare_end_state(&BN254_DOUBLE_ELF);
     }
 
     #[test]
     fn test_bn254_mul() {
         use test_artifacts::BN254_MUL_ELF;
 
-        run_program_and_compare_end_state(BN254_MUL_ELF);
+        run_program_and_compare_end_state(&BN254_MUL_ELF);
     }
 
     #[test]
     fn test_uint256_mul() {
         use test_artifacts::UINT256_MUL_ELF;
 
-        run_program_and_compare_end_state(UINT256_MUL_ELF);
+        run_program_and_compare_end_state(&UINT256_MUL_ELF);
     }
 
     #[test]
     fn test_bls12_381_fp() {
         use test_artifacts::BLS12381_FP_ELF;
 
-        run_program_and_compare_end_state(BLS12381_FP_ELF);
+        run_program_and_compare_end_state(&BLS12381_FP_ELF);
     }
 
     #[test]
     fn test_bls12_381_fp2_mul() {
         use test_artifacts::BLS12381_FP2_MUL_ELF;
 
-        run_program_and_compare_end_state(BLS12381_FP2_MUL_ELF);
+        run_program_and_compare_end_state(&BLS12381_FP2_MUL_ELF);
     }
 
     #[test]
     fn test_bls12_381_fp2_addsub() {
         use test_artifacts::BLS12381_FP2_ADDSUB_ELF;
 
-        run_program_and_compare_end_state(BLS12381_FP2_ADDSUB_ELF);
+        run_program_and_compare_end_state(&BLS12381_FP2_ADDSUB_ELF);
     }
 
     #[test]
     fn test_bn254_fp() {
         use test_artifacts::BN254_FP_ELF;
 
-        run_program_and_compare_end_state(BN254_FP_ELF);
+        run_program_and_compare_end_state(&BN254_FP_ELF);
     }
 
     #[test]
     fn test_bn254_fp2_addsub() {
         use test_artifacts::BN254_FP2_ADDSUB_ELF;
 
-        run_program_and_compare_end_state(BN254_FP2_ADDSUB_ELF);
+        run_program_and_compare_end_state(&BN254_FP2_ADDSUB_ELF);
     }
 
     #[test]
     fn test_bn254_fp2_mul() {
         use test_artifacts::BN254_FP2_MUL_ELF;
 
-        run_program_and_compare_end_state(BN254_FP2_MUL_ELF);
+        run_program_and_compare_end_state(&BN254_FP2_MUL_ELF);
     }
 
     #[test]
     fn test_ed_decompress() {
         use test_artifacts::ED_DECOMPRESS_ELF;
 
-        run_program_and_compare_end_state(ED_DECOMPRESS_ELF);
+        run_program_and_compare_end_state(&ED_DECOMPRESS_ELF);
     }
 
     #[test]
     fn test_ed25519_verify() {
         use test_artifacts::ED25519_ELF;
 
-        run_program_and_compare_end_state(ED25519_ELF);
+        run_program_and_compare_end_state(&ED25519_ELF);
     }
 
     #[test]
     fn test_ssz_withdrawls() {
         use test_artifacts::SSZ_WITHDRAWALS_ELF;
 
-        run_program_and_compare_end_state(SSZ_WITHDRAWALS_ELF);
+        run_program_and_compare_end_state(&SSZ_WITHDRAWALS_ELF);
     }
 
     // #[test]

@@ -1,6 +1,6 @@
 #![allow(clippy::fn_to_numeric_cast)]
 
-use super::{TranspilerBackend, CONTEXT, JUMP_TABLE, PC_OFFSET, TEMP_A, TEMP_B};
+use super::{TranspilerBackend, CONTEXT, PC_OFFSET, TEMP_A, TEMP_B};
 use crate::{
     impl_alu32_imm_opt, impl_alu_imm_opt, impl_risc_alu, impl_shift32_imm_opt, x86::CLK_OFFSET,
     ComputeInstructions, ControlFlowInstructions, JitContext, MemoryInstructions, RiscOperand,

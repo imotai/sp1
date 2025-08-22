@@ -1188,7 +1188,7 @@ dependencies = [
  "byteorder",
  "dynasm",
  "fnv",
- "memmap2 0.9.7 (registry+https://github.com/rust-lang/crates.io-index)",
+ "memmap2",
 ]
 
 [[package]]
@@ -2343,17 +2343,9 @@ dependencies = [
 
 [[package]]
 name = "memmap2"
-version = "0.9.7"
+version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "483758ad303d734cec05e5c12b41d7e93e6a6390c5e9dae6bdeb7c1259012d28"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "memmap2"
-version = "0.9.7"
-source = "git+https://github.com/nhtyy/memmap2-rs?branch=n%2Fnoreserve#8bfe4e5440a859f0cbd6540f7623e277edda5c8e"
+checksum = "843a98750cd611cc2965a8213b53b43e715f13c37a9e096c6408e69990961db7"
 dependencies = [
  "libc",
 ]
@@ -4464,6 +4456,7 @@ dependencies = [
  "hex",
  "indicatif",
  "itertools 0.13.0",
+ "memmap2",
  "num",
  "range-set-blaze",
  "rrs-lib",
@@ -4654,7 +4647,7 @@ dependencies = [
  "dynasmrt",
  "hashbrown 0.14.5",
  "memfd",
- "memmap2 0.9.7 (git+https://github.com/nhtyy/memmap2-rs?branch=n%2Fnoreserve)",
+ "memmap2",
  "paste",
  "serde",
  "tracing",

@@ -1780,7 +1780,6 @@ impl<'a> Executor<'a> {
         let mut next_pc = self.state.pc.wrapping_add(4);
         // Will be set to a non-default value if the instruction is a syscall.
 
-        // eprintln!("instruction={:?}", instruction.opcode);
         // eprintln!("self.state.pc={}", self.state.pc);
 
         let (mut a, b, c): (u64, u64, u64);

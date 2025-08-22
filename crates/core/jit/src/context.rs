@@ -1,6 +1,12 @@
 use crate::{MemValue, RiscRegister, TraceChunkRaw};
 use memmap2::{MmapMut, MmapOptions};
-use std::{collections::VecDeque, io, os::fd::RawFd, ptr::NonNull};
+use std::{
+    collections::VecDeque,
+    io,
+    os::fd::RawFd,
+    ptr::NonNull,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -24,6 +30,12 @@ pub struct JitContext {
     pub(crate) maybe_unconstrained: Option<UnconstrainedCtx>,
     /// Whether the JIT is tracing.
     pub(crate) tracing: bool,
+    /// The pointer to the touched addresses.
+    /// Possibly null if tracing is disabled.
+    pub(crate) touched_address_data: *mut u64,
+    /// The pointer to the touched addresses writes.
+    /// Possibly null if tracing is disabled.
+    pub(crate) touched_address_writes: *mut usize,
     /// The current program counter
     pub pc: u64,
     /// The number of cycles executed.
@@ -31,7 +43,8 @@ pub struct JitContext {
     /// The number of cycles executed.
     pub global_clk: u64,
     /// This context is in unconstrainted mode.
-    pub is_unconstrained: u8,
+    /// 1 if unconstrained, 0 otherwise.
+    pub is_unconstrained: u64,
 }
 
 impl JitContext {
@@ -60,6 +73,25 @@ impl JitContext {
             // Scale the index by the size of `MemValue`.
             std::ptr::write_unaligned(tail_ptr.add(i), *read);
         }
+    }
+
+    /// Write the touched addresses to the trace buf.
+    ///
+    /// # Safety
+    /// - todo
+    pub unsafe fn trace_touched_addresses(&self, addr: u64) {
+        let writes_ptr = self.touched_address_writes;
+        let data_ptr = self.touched_address_data;
+
+        // Load the current writes count.
+        let writes = AtomicUsize::from_ptr(writes_ptr);
+        let count = writes.load(Ordering::Relaxed);
+
+        // Write the touched address.
+        std::ptr::write(data_ptr.add(count), addr);
+
+        // Release the new writes count.
+        writes.store(count + 1, Ordering::Release);
     }
 
     /// Enter the unconstrained context, this will create a COW memory map of the memory file
@@ -94,6 +126,7 @@ impl JitContext {
         // SAFETY: [memmap2] does not return a null pointer.
         self.memory = unsafe { NonNull::new_unchecked(cow_memory_ptr) };
 
+        // Set the is_unconstrained flag to 1.
         self.is_unconstrained = 1;
 
         Ok(())
@@ -109,7 +142,6 @@ impl JitContext {
         self.registers = unconstrained.registers;
         self.clk = unconstrained.clk;
         self.is_unconstrained = 0;
-        // On drop of [UnconstrainedCtx], the COW memory will be unmapped.
     }
 
     /// Indicate that the program has read a hint.
@@ -208,16 +240,20 @@ impl<'a> ContextMemory<'a> {
         }
 
         // Convert the byte address to the word address.
-        let addr = addr / 8;
+        let word_address = addr / 8;
 
         let ptr = self.ctx.memory.as_ptr() as *mut MemValue;
-        let ptr = unsafe { ptr.add(addr as usize) };
+        let ptr = unsafe { ptr.add(word_address as usize) };
 
         // SAFETY: The pointer is valid to read from, as it was aligned by us during allocation.
         // See [JitFunction::new] for more details.
         let entry = unsafe { std::ptr::read(ptr) };
 
         if self.tracing() {
+            unsafe {
+                self.ctx.trace_touched_addresses(addr);
+            }
+
             unsafe { self.ctx.trace_mem_access(&[entry]) };
 
             // Bump the clk
@@ -236,10 +272,10 @@ impl<'a> ContextMemory<'a> {
         }
 
         // Convert the byte address to the word address.
-        let addr = addr / 8;
+        let word_address = addr / 8;
 
         let ptr = self.ctx.memory.as_ptr() as *mut MemValue;
-        let ptr = unsafe { ptr.add(addr as usize) };
+        let ptr = unsafe { ptr.add(word_address as usize) };
 
         // Bump the clk and insert the new value.
         let value = MemValue { value: val, clk: self.ctx.clk };
@@ -247,6 +283,9 @@ impl<'a> ContextMemory<'a> {
         // Trace the current entry.
         if self.tracing() {
             unsafe {
+                self.ctx.trace_touched_addresses(addr);
+
+                // Trace the current entry.
                 let current_entry = std::ptr::read(ptr);
                 self.ctx.trace_mem_access(&[current_entry, value]);
             }
@@ -265,20 +304,25 @@ impl<'a> ContextMemory<'a> {
         }
 
         // Convert the byte address to the word address.
-        let addr = addr / 8;
+        let word_address = addr / 8;
 
         let ptr = self.ctx.memory.as_ptr() as *mut MemValue;
-        let ptr = unsafe { ptr.add(addr as usize) };
+        let ptr = unsafe { ptr.add(word_address as usize) };
 
         // SAFETY: The pointer is valid to write to, as it was aligned by us during allocation.
         // See [JitFunction::new] for more details.
         let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
 
         if self.tracing() {
+            // Trace the values read.
             unsafe { self.ctx.trace_mem_access(slice) };
 
-            // Bump the clk
+            // Bump the clk on the all current entries.
             for (i, entry) in slice.iter().enumerate() {
+                unsafe {
+                    self.ctx.trace_touched_addresses(addr + i as u64 * 8);
+                }
+
                 let new_entry = MemValue { value: entry.value, clk: self.ctx.clk };
                 unsafe { std::ptr::write(ptr.add(i), new_entry) };
             }
@@ -295,10 +339,10 @@ impl<'a> ContextMemory<'a> {
         }
 
         // Convert the byte address to the word address.
-        let addr = addr / 8;
+        let word_address = addr / 8;
 
         let ptr = self.ctx.memory.as_ptr() as *mut MemValue;
-        let ptr = unsafe { ptr.add(addr as usize) };
+        let ptr = unsafe { ptr.add(word_address as usize) };
 
         // Bump the clk and insert the new values.
         let values = vals.iter().map(|val| MemValue { value: *val, clk: self.ctx.clk });
@@ -308,7 +352,8 @@ impl<'a> ContextMemory<'a> {
             if self.tracing() {
                 let current_entries = std::slice::from_raw_parts(ptr, vals.len());
 
-                for (curr, new) in current_entries.iter().zip(values.clone()) {
+                for (i, (curr, new)) in current_entries.iter().zip(values.clone()).enumerate() {
+                    self.ctx.trace_touched_addresses(addr + i as u64 * 8);
                     self.ctx.trace_mem_access(&[*curr, new]);
                 }
             }
@@ -335,6 +380,9 @@ impl<'a> ContextMemory<'a> {
 
         if self.tracing() {
             unsafe { self.ctx.trace_mem_access(&[entry]) };
+
+            // Trace the touched address, rounded down to the start of the word.
+            unsafe { self.ctx.trace_touched_addresses(addr & -8_i64 as u64) };
 
             // Bump the clk
             let new_entry = MemValue { value: entry.value, clk: self.ctx.clk };

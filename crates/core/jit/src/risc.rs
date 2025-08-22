@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -134,11 +132,7 @@ pub struct TraceChunk {
     pub start_registers: [u64; 32],
     pub pc_start: u64,
     pub clk_start: u64,
-    #[serde(
-        deserialize_with = "ser::deserialize_mem_reads",
-        serialize_with = "ser::serialize_mem_reads"
-    )]
-    pub mem_reads: Arc<[MemValue]>,
+    pub mem_reads: Vec<MemValue>,
 }
 
 #[repr(C)]
@@ -183,7 +177,7 @@ impl TraceChunk {
         /* ---------- 4. extract tail ---------- */
         let tail = &src[HDR..total]; // only after the length check
 
-        let mem_reads = Arc::<[MemValue]>::new_uninit_slice(n_words);
+        let mut mem_reads = Vec::<MemValue>::with_capacity(n_words);
 
         // SAFETY:
         // - The tail contains valid u64s, so doing a bitwise copy preserves the validity and
@@ -200,38 +194,16 @@ impl TraceChunk {
             std::ptr::copy_nonoverlapping(tail.as_ptr(), mem_reads.as_ptr() as *mut u8, n_bytes)
         };
 
+        unsafe {
+            mem_reads.set_len(n_words);
+        }
+
         Self {
             start_registers: raw.start_registers,
             pc_start: raw.pc_start,
             clk_start: raw.clk_start,
             // SAFETY: We know the memory is initialized, so we can assume it.
-            mem_reads: unsafe { mem_reads.assume_init() },
+            mem_reads,
         }
-    }
-}
-
-mod ser {
-    use super::*;
-
-    pub(super) fn deserialize_mem_reads<'de, D>(
-        deserializer: D,
-    ) -> Result<Arc<[MemValue]>, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let bytes = Vec::<MemValue>::deserialize(deserializer)?;
-        Ok(Arc::from(bytes))
-    }
-
-    pub(super) fn serialize_mem_reads<S>(
-        mem_reads: &Arc<[MemValue]>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let vec = mem_reads.to_vec();
-
-        Vec::serialize(&vec, serializer)
     }
 }

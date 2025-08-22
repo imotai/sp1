@@ -4,14 +4,18 @@
 compile_error!("This crate is only supported on little endian targets.");
 
 pub mod backends;
+mod buffer;
 pub mod context;
 pub mod instructions;
 mod macros;
 pub mod risc;
 
+use buffer::AtomicBuffer;
 use dynasmrt::ExecutableBuffer;
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use memmap2::{Mmap, MmapMut, MmapOptions};
+#[cfg(target_os = "linux")]
+use std::sync::Mutex;
 use std::{collections::VecDeque, io, ops::BitAnd, os::fd::AsRawFd, ptr::NonNull, sync::Arc};
 
 pub use backends::*;
@@ -208,17 +212,16 @@ pub struct JitFunction {
     initial_memory_image: Arc<HashMap<u64, u64>>,
     pc_start: u64,
     input_buffer: VecDeque<Vec<u8>>,
-    /// During execution, the hints are read by the program, and we store them here.
-    /// This is effectively a mapping from start address to the value of the hint.
-    hints: Vec<(u64, Vec<u8>)>,
-
-    /// The unconstrained context, this is used to create the COW memory at runtime.
-    /// We preserve it here in case the execution ends due to cycle count.
-    maybe_unconstrained: Option<UnconstrainedCtx>,
 
     /// Keep around the memfd, and pass it to the JIT context,
     /// we can use this to create the COW memory at runtime.
     mem_fd: memfd::Memfd,
+
+    /// During execution, the hints are read by the program, and we store them here.
+    /// This is effectively a mapping from start address to the value of the hint.
+    pub hints: Vec<(u64, Vec<u8>)>,
+    /// The addresses that were touched during execution.
+    pub touched_addresses: Arc<Mutex<HashSet<u64>>>,
 
     /// The JIT funciton may stop "in the middle" of an program,
     /// we want to be able to resune it, so this is the information needed to do so.
@@ -262,8 +265,8 @@ impl JitFunction {
             initial_memory_image: Arc::new(HashMap::new()),
             pc_start,
             input_buffer: VecDeque::new(),
-            maybe_unconstrained: None,
             hints: Vec::new(),
+            touched_addresses: Arc::new(Mutex::new(HashSet::new())),
         })
     }
 
@@ -333,6 +336,23 @@ impl JitFunction {
 
         let align_offset = self.memory.as_ptr().align_offset(std::mem::align_of::<u64>());
         let mem_ptr = self.memory.as_mut_ptr().add(align_offset);
+        let tracing = self.trace_buf_size > 0;
+
+        let (touched_address_data, touched_address_writes) = if tracing {
+            let buffer =
+                AtomicBuffer::<u64>::new(self.trace_buf_size / std::mem::size_of::<MemValue>())
+                    .expect("Failed to create trace buf");
+
+            let data_ptr = buffer.data_ptr();
+            let writes_ptr = buffer.write_ptr();
+            let touched_addresses = self.touched_addresses.clone();
+            let _ =
+                std::thread::spawn(move || collect_touched_addresses(buffer, touched_addresses));
+
+            (data_ptr, writes_ptr)
+        } else {
+            (std::ptr::null_mut(), std::ptr::null_mut())
+        };
 
         // SAFETY:
         // - The jump table is valid for the duration of the function call, its owned by self.
@@ -345,14 +365,16 @@ impl JitFunction {
             trace_buf: NonNull::new_unchecked(trace_buf.as_mut_ptr()),
             input_buffer: NonNull::new_unchecked(&mut self.input_buffer),
             hints: NonNull::new_unchecked(&mut self.hints),
-            maybe_unconstrained: std::mem::take(&mut self.maybe_unconstrained),
+            maybe_unconstrained: None,
             memory_fd: self.mem_fd.as_raw_fd(),
             registers: self.registers,
+            touched_address_data,
+            touched_address_writes,
             pc: self.pc,
             clk: self.clk,
             global_clk: self.global_clk,
-            tracing: self.trace_buf_size > 0,
             is_unconstrained: 0,
+            tracing,
         };
 
         as_fn(&mut ctx);
@@ -362,7 +384,6 @@ impl JitFunction {
         self.registers = ctx.registers;
         self.clk = ctx.clk;
         self.global_clk = ctx.global_clk;
-        self.maybe_unconstrained = std::mem::take(&mut ctx.maybe_unconstrained);
 
         Some(trace_buf.make_read_only().expect("Failed to make trace buf read only"))
     }
@@ -378,6 +399,7 @@ impl JitFunction {
         self.global_clk = 0;
         self.input_buffer = VecDeque::new();
         self.hints = Vec::new();
+        self.touched_addresses.lock().unwrap().clear();
 
         // Store the original size of the memory.
         let memory_size = self.memory.len();
@@ -422,5 +444,40 @@ impl JitFunction {
                 )
             };
         }
+    }
+}
+
+pub struct MemoryView<'a> {
+    pub memory: &'a MmapMut,
+}
+
+impl<'a> MemoryView<'a> {
+    pub const fn new(memory: &'a MmapMut) -> Self {
+        Self { memory }
+    }
+
+    // Read a word from the memory at the address, not this read MUST be aligned to 8 bytes.
+    pub fn get(&self, addr: u64) -> MemValue {
+        assert!(addr % 8 == 0, "Address {addr} is not aligned to 8");
+
+        let word_address = addr / 8;
+        let entry_ptr = self.memory.as_ptr() as *mut MemValue;
+
+        unsafe { std::ptr::read(entry_ptr.add(word_address as usize)) }
+    }
+}
+
+fn collect_touched_addresses(
+    mut buffer: AtomicBuffer<u64>,
+    touched_addresses: Arc<Mutex<HashSet<u64>>>,
+) {
+    // Take the lock before we finish the loop.
+    // This way no one ever sees the partial set of touched addresses.
+    //
+    // The touched addreses should only be used at the end of all chunks anyway.
+    let mut touched = touched_addresses.lock().unwrap();
+
+    while let Some(val) = buffer.pop() {
+        touched.insert(val);
     }
 }
