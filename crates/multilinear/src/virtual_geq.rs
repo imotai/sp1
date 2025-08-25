@@ -24,6 +24,10 @@ impl<F: Field> VirtualGeq<F> {
 
     /// Fix last variable of the `VirtualGeq` polynomial.
     pub fn fix_last_variable<EF: ExtensionField<F>>(&self, alpha: EF) -> VirtualGeq<EF> {
+        assert_ne!(
+            self.num_vars, 0,
+            "fix_last_variable should not be called on VirtualGeq with num_vars == 0"
+        );
         // The new number of zeroes is half the old number of zeroes (rounded down).
         let new_threshold = self.threshold >> 1;
         // The value above the threshold is unchanged.
@@ -59,13 +63,6 @@ impl<F: Field> VirtualGeq<F> {
         eq_eval * self.eq_coefficient + geq_eval * self.geq_coefficient
     }
 
-    /// Sum all entries in the virtual polynomial.
-    pub fn sum(&self) -> F {
-        F::from_canonical_usize((1 << self.num_vars) - self.threshold as usize)
-            * self.geq_coefficient
-            + self.eq_coefficient
-    }
-
     pub fn to_extension<EF: ExtensionField<F>>(&self) -> VirtualGeq<EF> {
         VirtualGeq {
             threshold: self.threshold,
@@ -85,7 +82,7 @@ impl<F: Field> VirtualGeq<F> {
         } else if index == self.threshold as usize {
             self.eq_coefficient + self.geq_coefficient
         } else if index < (1 << self.num_vars) {
-            F::one()
+            self.geq_coefficient
         } else {
             F::zero()
         }
@@ -123,12 +120,6 @@ pub mod tests {
                     + eq_coefficient * partial_lagrange.blocking_eval_at(&point).to_vec()[0]
             );
 
-            assert_eq!(
-                geq.sum(),
-                geq_coefficient * partial_geq.iter().copied().sum::<F>()
-                    + eq_coefficient
-                        * partial_lagrange.guts().as_slice().iter().copied().sum::<F>()
-            );
             let alpha = rng.gen::<F>();
             let new_geq = geq.fix_last_variable(alpha);
             let new_lagrange = partial_lagrange.fix_last_variable(alpha).await;
