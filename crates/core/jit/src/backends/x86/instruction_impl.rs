@@ -4,7 +4,7 @@ use super::{TranspilerBackend, CONTEXT, PC_OFFSET, TEMP_A, TEMP_B};
 use crate::{
     impl_alu32_imm_opt, impl_alu_imm_opt, impl_risc_alu, impl_shift32_imm_opt, x86::CLK_OFFSET,
     ComputeInstructions, ControlFlowInstructions, JitContext, MemoryInstructions, RiscOperand,
-    RiscRegister, SP1RiscvTranspiler, SystemInstructions,
+    RiscRegister, RiscvTranspiler, SystemInstructions,
 };
 use dynasmrt::{dynasm, x64::Rq, DynasmApi, DynasmLabelApi};
 
@@ -726,6 +726,9 @@ impl ComputeInstructions for TranspilerBackend {
 
 impl ControlFlowInstructions for TranspilerBackend {
     fn jal(&mut self, rd: RiscRegister, imm: u64) {
+        // Mark that a control flow instruction has been inserted.
+        self.control_flow_instruction_inserted = true;
+
         // Store the current pc + 4 into
         self.load_pc_into_register(TEMP_A);
 
@@ -747,6 +750,9 @@ impl ControlFlowInstructions for TranspilerBackend {
     }
 
     fn jalr(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
+        // Mark that a control flow instruction has been inserted.
+        self.control_flow_instruction_inserted = true;
+
         // ------------------------------------
         // 1. Compute the PC to store into rd.
         // ------------------------------------
@@ -780,6 +786,9 @@ impl ControlFlowInstructions for TranspilerBackend {
     }
 
     fn beq(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64) {
+        // Mark that a control flow instruction has been inserted.
+        self.control_flow_instruction_inserted = true;
+
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
         self.emit_risc_operand_load(rs2.into(), TEMP_B);
 
@@ -815,6 +824,9 @@ impl ControlFlowInstructions for TranspilerBackend {
     }
 
     fn bge(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64) {
+        // Mark that a control flow instruction has been inserted.
+        self.control_flow_instruction_inserted = true;
+
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
         self.emit_risc_operand_load(rs2.into(), TEMP_B);
 
@@ -849,6 +861,9 @@ impl ControlFlowInstructions for TranspilerBackend {
     }
 
     fn bgeu(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64) {
+        // Mark that a control flow instruction has been inserted.
+        self.control_flow_instruction_inserted = true;
+
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
         self.emit_risc_operand_load(rs2.into(), TEMP_B);
 
@@ -881,6 +896,9 @@ impl ControlFlowInstructions for TranspilerBackend {
     }
 
     fn blt(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64) {
+        // Mark that a control flow instruction has been inserted.
+        self.control_flow_instruction_inserted = true;
+
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
         self.emit_risc_operand_load(rs2.into(), TEMP_B);
 
@@ -916,6 +934,9 @@ impl ControlFlowInstructions for TranspilerBackend {
     }
 
     fn bltu(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64) {
+        // Mark that a control flow instruction has been inserted.
+        self.control_flow_instruction_inserted = true;
+
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
         self.emit_risc_operand_load(rs2.into(), TEMP_B);
 
@@ -945,6 +966,9 @@ impl ControlFlowInstructions for TranspilerBackend {
     }
 
     fn bne(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64) {
+        // Mark that a control flow instruction has been inserted.
+        self.control_flow_instruction_inserted = true;
+
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
         self.emit_risc_operand_load(rs2.into(), TEMP_B);
 
@@ -1551,6 +1575,9 @@ impl MemoryInstructions for TranspilerBackend {
 
 impl SystemInstructions for TranspilerBackend {
     fn ecall(&mut self) {
+        // Mark that a control flow instruction has been inserted.
+        self.control_flow_instruction_inserted = true;
+
         // Load the JitContext pointer into the argument register.
         dynasm! {
             self;

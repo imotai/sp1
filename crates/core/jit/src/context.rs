@@ -1,16 +1,19 @@
-use crate::{MemValue, RiscRegister, TraceChunkRaw};
+use crate::{MemValue, RiscRegister, TraceChunkHeader};
 use memmap2::{MmapMut, MmapOptions};
-use std::{
-    collections::VecDeque,
-    io,
-    os::fd::RawFd,
-    ptr::NonNull,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use std::{collections::VecDeque, io, os::fd::RawFd, ptr::NonNull};
 
 #[repr(C)]
 #[derive(Debug)]
 pub struct JitContext {
+    /// The current program counter
+    pub pc: u64,
+    /// The number of cycles executed.
+    pub clk: u64,
+    /// The number of cycles executed.
+    pub global_clk: u64,
+    /// This context is in unconstrainted mode.
+    /// 1 if unconstrained, 0 otherwise.
+    pub is_unconstrained: u64,
     /// Mapping from (pc - pc_base) / 4 => absolute address of the instruction.
     pub(crate) jump_table: NonNull<*const u8>,
     /// The pointer to the program memory.
@@ -32,21 +35,6 @@ pub struct JitContext {
     pub(crate) maybe_unconstrained: Option<UnconstrainedCtx>,
     /// Whether the JIT is tracing.
     pub(crate) tracing: bool,
-    /// The pointer to the touched addresses.
-    /// Possibly null if tracing is disabled.
-    pub(crate) touched_address_data: *mut u64,
-    /// The pointer to the touched addresses writes.
-    /// Possibly null if tracing is disabled.
-    pub(crate) touched_address_writes: *mut usize,
-    /// The current program counter
-    pub pc: u64,
-    /// The number of cycles executed.
-    pub clk: u64,
-    /// The number of cycles executed.
-    pub global_clk: u64,
-    /// This context is in unconstrainted mode.
-    /// 1 if unconstrained, 0 otherwise.
-    pub is_unconstrained: u64,
 }
 
 impl JitContext {
@@ -58,7 +46,7 @@ impl JitContext {
 
         // Read the current num reads from the trace buf.
         let raw = self.trace_buf.as_ptr();
-        let num_reads_offset = std::mem::offset_of!(TraceChunkRaw, num_mem_reads);
+        let num_reads_offset = std::mem::offset_of!(TraceChunkHeader, num_mem_reads);
         let num_reads_ptr = raw.add(num_reads_offset);
         let num_reads = std::ptr::read_unaligned(num_reads_ptr as *mut u64);
 
@@ -67,33 +55,13 @@ impl JitContext {
         std::ptr::write_unaligned(num_reads_ptr as *mut u64, new_num_reads);
 
         // Write the new reads to the trace buf.
-        let reads_start = std::mem::size_of::<TraceChunkRaw>();
+        let reads_start = std::mem::size_of::<TraceChunkHeader>();
         let tail_ptr = raw.add(reads_start) as *mut MemValue;
         let tail_ptr = tail_ptr.add(num_reads as usize);
 
         for (i, read) in reads.iter().enumerate() {
-            // Scale the index by the size of `MemValue`.
             std::ptr::write_unaligned(tail_ptr.add(i), *read);
         }
-    }
-
-    /// Write the touched addresses to the trace buf.
-    ///
-    /// # Safety
-    /// - todo
-    pub unsafe fn trace_touched_addresses(&self, addr: u64) {
-        let writes_ptr = self.touched_address_writes;
-        let data_ptr = self.touched_address_data;
-
-        // Load the current writes count.
-        let writes = AtomicUsize::from_ptr(writes_ptr);
-        let count = writes.load(Ordering::Relaxed);
-
-        // Write the touched address.
-        std::ptr::write(data_ptr.add(count), addr);
-
-        // Release the new writes count.
-        writes.store(count + 1, Ordering::Release);
     }
 
     /// Enter the unconstrained context, this will create a COW memory map of the memory file
@@ -192,6 +160,7 @@ impl JitContext {
         self.registers[reg as usize]
     }
 
+    #[inline]
     pub const fn tracing(&self) -> bool {
         self.tracing
     }
@@ -236,6 +205,7 @@ impl<'a> ContextMemory<'a> {
         Self { ctx }
     }
 
+    #[inline]
     pub const fn tracing(&self) -> bool {
         self.ctx.tracing()
     }
@@ -259,14 +229,12 @@ impl<'a> ContextMemory<'a> {
 
         if self.tracing() {
             unsafe {
-                self.ctx.trace_touched_addresses(addr);
+                self.ctx.trace_mem_access(&[entry]);
+
+                // Bump the clk
+                let new_entry = MemValue { value: entry.value, clk: self.ctx.clk };
+                std::ptr::write(ptr, new_entry);
             }
-
-            unsafe { self.ctx.trace_mem_access(&[entry]) };
-
-            // Bump the clk
-            let new_entry = MemValue { value: entry.value, clk: self.ctx.clk };
-            unsafe { std::ptr::write(ptr, new_entry) };
         }
 
         entry.value
@@ -291,9 +259,7 @@ impl<'a> ContextMemory<'a> {
         // Trace the current entry.
         if self.tracing() {
             unsafe {
-                self.ctx.trace_touched_addresses(addr);
-
-                // Trace the current entry.
+                // Trace the current entry, the clock is bumped in the subsequent write.
                 let current_entry = std::ptr::read(ptr);
                 self.ctx.trace_mem_access(&[current_entry, value]);
             }
@@ -322,17 +288,13 @@ impl<'a> ContextMemory<'a> {
         let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
 
         if self.tracing() {
-            // Trace the values read.
-            unsafe { self.ctx.trace_mem_access(slice) };
-
-            // Bump the clk on the all current entries.
-            for (i, entry) in slice.iter().enumerate() {
-                unsafe {
-                    self.ctx.trace_touched_addresses(addr + i as u64 * 8);
+            unsafe {
+                self.ctx.trace_mem_access(slice);
+                // Bump the clk on the all current entries.
+                for (i, entry) in slice.iter().enumerate() {
+                    let new_entry = MemValue { value: entry.value, clk: self.ctx.clk };
+                    std::ptr::write(ptr.add(i), new_entry)
                 }
-
-                let new_entry = MemValue { value: entry.value, clk: self.ctx.clk };
-                unsafe { std::ptr::write(ptr.add(i), new_entry) };
             }
         }
 
@@ -356,12 +318,12 @@ impl<'a> ContextMemory<'a> {
         let values = vals.iter().map(|val| MemValue { value: *val, clk: self.ctx.clk });
 
         // Trace the current entries.
-        unsafe {
-            if self.tracing() {
+
+        if self.tracing() {
+            unsafe {
                 let current_entries = std::slice::from_raw_parts(ptr, vals.len());
 
-                for (i, (curr, new)) in current_entries.iter().zip(values.clone()).enumerate() {
-                    self.ctx.trace_touched_addresses(addr + i as u64 * 8);
+                for (curr, new) in current_entries.iter().zip(values.clone()) {
                     self.ctx.trace_mem_access(&[*curr, new]);
                 }
             }
@@ -387,14 +349,13 @@ impl<'a> ContextMemory<'a> {
         let entry = unsafe { std::ptr::read(ptr) };
 
         if self.tracing() {
-            unsafe { self.ctx.trace_mem_access(&[entry]) };
+            unsafe {
+                self.ctx.trace_mem_access(&[entry]);
 
-            // Trace the touched address, rounded down to the start of the word.
-            unsafe { self.ctx.trace_touched_addresses(addr & -8_i64 as u64) };
-
-            // Bump the clk
-            let new_entry = MemValue { value: entry.value, clk: self.ctx.clk };
-            unsafe { std::ptr::write(ptr, new_entry) };
+                // Bump the clk
+                let new_entry = MemValue { value: entry.value, clk: self.ctx.clk };
+                std::ptr::write(ptr, new_entry);
+            }
         }
 
         (entry.value >> (addr % 8 * 8)) as u8
@@ -407,7 +368,7 @@ impl<'a> ContextMemory<'a> {
         let ptr = self.ctx.memory.as_ptr() as *mut MemValue;
         let ptr = unsafe { ptr.add(words as usize) };
 
-        let new_entry = MemValue { value: val, clk: 1 };
+        let new_entry = MemValue { value: val, clk: 0 };
         unsafe { std::ptr::write(ptr, new_entry) };
     }
 }

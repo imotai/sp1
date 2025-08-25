@@ -1,8 +1,7 @@
 #![allow(clippy::fn_to_numeric_cast)]
 
 use crate::{
-    EcallHandler, JitContext, RiscOperand, RiscRegister, ScratchRegister, TraceChunkRaw,
-    TraceCollector,
+    EcallHandler, JitContext, RiscOperand, RiscRegister, TraceChunkHeader, TraceCollector,
 };
 use dynasmrt::{
     dynasm,
@@ -61,15 +60,6 @@ const MEMORY_PTR_OFFSET: i32 = offset_of!(JitContext, memory) as i32;
 /// The offset of the registers in the JitContext.
 const REGISTERS_OFFSET: i32 = offset_of!(JitContext, registers) as i32;
 
-/// The offset of the touched addresses writes in the JitContext.
-const TOUCHED_ADDRESS_WRITES_OFFSET: i32 = offset_of!(JitContext, touched_address_writes) as i32;
-
-/// The offset of the touched addresses data in the JitContext.
-const TOUCHED_ADDRESS_DATA_OFFSET: i32 = offset_of!(JitContext, touched_address_data) as i32;
-
-/// The offset of the is_unconstrained flag in the JitContext.
-const IS_UNCONSTRAINED_OFFSET: i32 = offset_of!(JitContext, is_unconstrained) as i32;
-
 /// The x86 backend for JIT transpipling RISC-V instructions to x86-64, according to the
 /// [crate::SP1RiscvTranspiler] trait.
 pub struct TranspilerBackend {
@@ -88,26 +78,12 @@ pub struct TranspilerBackend {
     pc_start: u64,
     /// The ecall handler.
     ecall_handler: EcallHandler,
-}
-
-#[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ScratchRegisterX86 {
-    A = TEMP_A,
-    B = TEMP_B,
-}
-
-impl ScratchRegister for ScratchRegisterX86 {
-    const A: Self = Self::A;
-    const B: Self = Self::B;
-}
-
-impl std::ops::BitAnd<u8> for ScratchRegisterX86 {
-    type Output = u8;
-
-    fn bitand(self, rhs: u8) -> Self::Output {
-        (self as u8).bitand(rhs)
-    }
+    /// If a control flow instruction has been inserted.
+    control_flow_instruction_inserted: bool,
+    /// Indicate that we are "within" an instruction.
+    instruction_started: bool,
+    /// The amount to bump the clk by each cycle.
+    clk_bump: u64,
 }
 
 impl TraceCollector for TranspilerBackend {
@@ -127,8 +103,8 @@ impl TraceCollector for TranspilerBackend {
 
     /// Write the value at [rs1 + imm] into the trace buffer.
     fn trace_mem_value(&mut self, rs1: RiscRegister, imm: u64) {
-        const TAIL_START_OFFSET: i32 = std::mem::size_of::<TraceChunkRaw>() as i32;
-        const NUM_MEM_READS_OFFSET: i32 = offset_of!(TraceChunkRaw, num_mem_reads) as i32;
+        const TAIL_START_OFFSET: i32 = std::mem::size_of::<TraceChunkHeader>() as i32;
+        const NUM_MEM_READS_OFFSET: i32 = offset_of!(TraceChunkHeader, num_mem_reads) as i32;
 
         // Load the value, assumed to be of a memory read, into TEMP_A.
         self.emit_risc_operand_load(rs1.into(), TEMP_A);
@@ -147,35 +123,6 @@ impl TraceCollector for TranspilerBackend {
             // Align to the start of the word.
             // ------------------------------------
             and Rq(TEMP_A), -8;
-
-            // ------------------------- touched addresses tracing ------------------------------------
-
-            // ------------------------------------
-            // Load the number of touched addresses writes pointer into rax
-            // and compute the byte address of the slot into rdx.
-            // ------------------------------------
-            mov rax, QWORD [Rq(CONTEXT) + TOUCHED_ADDRESS_WRITES_OFFSET];
-            mov rdx, [rax];
-            shl rdx, 3;
-            add rdx, QWORD [Rq(CONTEXT) + TOUCHED_ADDRESS_DATA_OFFSET];
-
-            // ------------------------------------
-            // Branchless: inc = !is_unconstrained (0/1), mask = -inc (0/-1).
-            // ------------------------------------
-            mov rcx, QWORD [Rq(CONTEXT) + IS_UNCONSTRAINED_OFFSET];
-            xor rcx, 1;
-            mov r8, rcx;
-            neg r8;
-
-            // ------------------------------------
-            // Store masked address and publish by +inc.
-            // ------------------------------------
-            mov r9, Rq(TEMP_A);
-            and r9, r8;
-            mov [rdx], r9;
-            add QWORD [rax], rcx;
-
-            // ------------------------- (clk, word) tracing ------------------------------------
 
             // ------------------------------------
             // Scale by the entry size.
@@ -225,7 +172,7 @@ impl TraceCollector for TranspilerBackend {
 
     /// Write the start pc of the trace chunk.
     fn trace_pc_start(&mut self) {
-        const PC_START_OFFSET: i32 = offset_of!(TraceChunkRaw, pc_start) as i32;
+        const PC_START_OFFSET: i32 = offset_of!(TraceChunkHeader, pc_start) as i32;
 
         self.load_pc_into_register(TEMP_A);
 
@@ -239,7 +186,7 @@ impl TraceCollector for TranspilerBackend {
 
     /// Write the start clk of the trace chunk.
     fn trace_clk_start(&mut self) {
-        const CLK_START_OFFSET: i32 = offset_of!(TraceChunkRaw, clk_start) as i32;
+        const CLK_START_OFFSET: i32 = offset_of!(TraceChunkHeader, clk_start) as i32;
 
         dynasm! {
             self;
@@ -278,38 +225,11 @@ impl TranspilerBackend {
             push Rq(TRACE_BUF);
             push Rq(SAVED_STACK_PTR);
 
-            // 0 the registers we are gonna use the lower half of.
-            // we alreadyt saved these registers on the stack.
-            xor Rq(TEMP_A), Rq(TEMP_A);
-            xor Rq(TEMP_B), Rq(TEMP_B);
-            xor Rq(CONTEXT), Rq(CONTEXT);
-            xor Rq(JUMP_TABLE), Rq(JUMP_TABLE);
-            xor Rq(TRACE_BUF), Rq(TRACE_BUF);
-            xor Rq(SAVED_STACK_PTR), Rq(SAVED_STACK_PTR);
-
             // Save some useful pointers to non-volatile registers so we can use them in ASM easily.
             mov Rq(JUMP_TABLE), [rdi + jump_table_offset];
             mov Rq(TRACE_BUF), [rdi + trace_buf_offset];
             // Save the JitContext pointer to a non-volatile register.
-            mov Rq(CONTEXT), rdi;
-
-            // Zero all the XMM registers we care about, they are volatile.
-            xorps xmm0, xmm0;
-            xorps xmm1, xmm1;
-            xorps xmm2, xmm2;
-            xorps xmm3, xmm3;
-            xorps xmm4, xmm4;
-            xorps xmm5, xmm5;
-            xorps xmm6, xmm6;
-            xorps xmm7, xmm7;
-            xorps xmm8, xmm8;
-            xorps xmm9, xmm9;
-            xorps xmm10, xmm10;
-            xorps xmm11, xmm11;
-            xorps xmm12, xmm12;
-            xorps xmm13, xmm13;
-            xorps xmm14, xmm14;
-            xorps xmm15, xmm15
+            mov Rq(CONTEXT), rdi
         };
 
         // For each register from the context, lets load it into a phyiscal register.
@@ -340,25 +260,6 @@ impl TranspilerBackend {
             ->exit:
         }
 
-        // Store the sentinel value to the touched addresses writes to indicate that we
-        // are done with execution.
-        if self.trace_buf_size > 0 {
-            dynasm! {
-                self;
-                .arch x64;
-
-                // Load the current number of touched addresses ptr.
-                mov rax, QWORD [Rq(CONTEXT) + TOUCHED_ADDRESS_WRITES_OFFSET];
-
-                // Create the `DONE` mask.
-                mov rcx, 1;
-                shl rcx, 63;
-
-                // Store the sentinel value.
-                or QWORD [rax], rcx
-            };
-        }
-
         // Ensure the registers are saved to the context.
         self.save_registers_to_context();
 
@@ -366,7 +267,7 @@ impl TranspilerBackend {
             self;
             .arch x64;
 
-            // Restore the caller saved registers.
+            // Restore the callee saved registers.
             pop Rq(SAVED_STACK_PTR);
             pop Rq(TRACE_BUF);
             pop Rq(JUMP_TABLE);
@@ -601,6 +502,38 @@ impl TranspilerBackend {
             mov Rq(TEMP_B), QWORD [Rq(JUMP_TABLE) + Rq(TEMP_A) * 8];
             // Jump to the target.
             jmp Rq(TEMP_B)
+        }
+    }
+
+    fn bump_clk(&mut self) {
+        let clk_offset = offset_of!(JitContext, clk) as i32;
+        let global_clk_offset = offset_of!(JitContext, global_clk) as i32;
+        let is_unconstrained_offset = offset_of!(JitContext, is_unconstrained) as i32;
+        let clk_bump = self.clk_bump as i32;
+
+        dynasm! {
+            self;
+            .arch x64;
+
+            // ------------------------------------
+            // Add the amount to the clk field in the context.
+            // ------------------------------------
+            add QWORD [Rq(CONTEXT) + clk_offset], clk_bump;
+
+            // ------------------------------------
+            // Add to global_clk based on is_unconstrained:
+            // - If is_unconstrained == 0, add 1
+            // - If is_unconstrained == 1, add 0
+            // ------------------------------------
+
+            // Load is_unconstrained (8-bit) into TEMP_A with zero extension
+            mov Rq(TEMP_A), QWORD [Rq(CONTEXT) + is_unconstrained_offset];
+
+            // XOR with 1 to invert: 0 -> 1, 1 -> 0
+            xor Rq(TEMP_A), 1;
+
+            // Add the inverted value to global_clk
+            add QWORD [Rq(CONTEXT) + global_clk_offset], Rq(TEMP_A)
         }
     }
 }

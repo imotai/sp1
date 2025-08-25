@@ -3,8 +3,8 @@
 use crate::memory::MAX_LOG_ADDR;
 use hashbrown::HashSet;
 use sp1_jit::{
-    DebugBackend, JitFunction, MemoryView, RiscOperand, RiscRegister, SP1RiscvTranspiler,
-    TraceChunk, TranspilerBackend,
+    DebugBackend, JitFunction, MemoryView, RiscOperand, RiscRegister, RiscvTranspiler, TraceChunk,
+    TraceChunkRaw, TranspilerBackend,
 };
 use std::{
     collections::VecDeque,
@@ -66,19 +66,13 @@ impl MinimalExecutor {
     }
 
     /// Execute the program. Returning a trace chunk if the program has not completed.
-    pub fn execute_chunk(&mut self) -> Option<TraceChunk> {
+    pub fn execute_chunk(&mut self) -> Option<TraceChunkRaw> {
         if !self.input.is_empty() {
             self.compiled.set_input_buffer(std::mem::take(&mut self.input));
         }
 
         // SAFETY: The backend is assumed to output valid JIT functions.
-        let trace_buf = unsafe { self.compiled.call()? };
-
-        if self.tracing {
-            return Some(TraceChunk::copy_from_bytes(&trace_buf));
-        }
-
-        None
+        unsafe { self.compiled.call() }
     }
 
     /// Get the current clock of the JIT function.
@@ -95,12 +89,6 @@ impl MinimalExecutor {
     #[must_use]
     pub fn global_clk(&self) -> u64 {
         self.compiled.global_clk
-    }
-
-    /// Get the touched addresses of the JIT function.
-    #[must_use]
-    pub fn touched_addresses(&self) -> &Mutex<HashSet<u64>> {
-        &self.compiled.touched_addresses
     }
 
     /// Get the hints of the JIT function.
@@ -140,6 +128,7 @@ impl MinimalExecutor {
             trace_buf_size,
             program.pc_start_abs,
             program.pc_base,
+            8,
         )
         .expect("Failed to create transpiler backend");
 
@@ -152,7 +141,7 @@ impl MinimalExecutor {
         }
     }
 
-    fn transpile_instructions<B: SP1RiscvTranspiler>(
+    fn transpile_instructions<B: RiscvTranspiler>(
         mut backend: B,
         program: &Program,
         tracing: bool,
@@ -165,7 +154,6 @@ impl MinimalExecutor {
 
         for instruction in program.instructions.iter() {
             backend.start_instr();
-            let mut jump_to_pc = false;
 
             match instruction.opcode {
                 Opcode::LB
@@ -186,11 +174,9 @@ impl MinimalExecutor {
                 | Opcode::BGE
                 | Opcode::BLTU
                 | Opcode::BGEU => {
-                    jump_to_pc = true;
                     Self::transpile_branch_instruction(&mut backend, instruction);
                 }
                 Opcode::JAL | Opcode::JALR => {
-                    jump_to_pc = true;
                     Self::transpile_jump_instruction(&mut backend, instruction);
                 }
                 Opcode::ADD
@@ -235,7 +221,6 @@ impl MinimalExecutor {
                     backend.lui(rd.into(), imm);
                 }
                 Opcode::ECALL => {
-                    jump_to_pc = true;
                     backend.ecall();
                 }
                 Opcode::EBREAK | Opcode::UNIMP => {
@@ -248,7 +233,7 @@ impl MinimalExecutor {
                 backend.exit_if_clk_exceeds(max_cycles);
             }
 
-            backend.end_instr(jump_to_pc);
+            backend.end_instr();
         }
 
         let mut finalized = backend.finalize().expect("Failed to finalize function");
@@ -257,7 +242,7 @@ impl MinimalExecutor {
         finalized
     }
 
-    fn transpile_load_instruction<B: SP1RiscvTranspiler>(
+    fn transpile_load_instruction<B: RiscvTranspiler>(
         backend: &mut B,
         instruction: &Instruction,
         tracing: bool,
@@ -282,7 +267,7 @@ impl MinimalExecutor {
         }
     }
 
-    fn transpile_store_instruction<B: SP1RiscvTranspiler>(
+    fn transpile_store_instruction<B: RiscvTranspiler>(
         backend: &mut B,
         instruction: &Instruction,
         tracing: bool,
@@ -305,7 +290,7 @@ impl MinimalExecutor {
         }
     }
 
-    fn transpile_branch_instruction<B: SP1RiscvTranspiler>(
+    fn transpile_branch_instruction<B: RiscvTranspiler>(
         backend: &mut B,
         instruction: &Instruction,
     ) {
@@ -321,10 +306,7 @@ impl MinimalExecutor {
         }
     }
 
-    fn transpile_jump_instruction<B: SP1RiscvTranspiler>(
-        backend: &mut B,
-        instruction: &Instruction,
-    ) {
+    fn transpile_jump_instruction<B: RiscvTranspiler>(backend: &mut B, instruction: &Instruction) {
         match instruction.opcode {
             Opcode::JAL => {
                 let (rd, imm) = instruction.j_type();
@@ -339,10 +321,7 @@ impl MinimalExecutor {
         }
     }
 
-    fn transpile_alu_instruction<B: SP1RiscvTranspiler>(
-        backend: &mut B,
-        instruction: &Instruction,
-    ) {
+    fn transpile_alu_instruction<B: RiscvTranspiler>(backend: &mut B, instruction: &Instruction) {
         let (rd, b, c): (RiscRegister, RiscOperand, RiscOperand) = if !instruction.imm_c {
             let (rd, rs1, rs2) = instruction.r_type();
 
@@ -503,23 +482,6 @@ mod test {
             executor.compiled.global_clk, interpreter.state.global_clk,
             "JIT and interpreter final global_clk mismatch"
         );
-
-        if !TRACING {
-            return;
-        }
-        eprintln!("comparing touched addresses");
-
-        let mut touched_by_jit = executor.touched_addresses().lock().unwrap();
-        touched_by_jit.extend(program.memory_image.keys().copied());
-
-        let touched_by_interpreter =
-            interpreter.state.memory.page_table.keys().collect::<HashSet<_>>();
-
-        assert_eq!(
-            *touched_by_jit, touched_by_interpreter,
-            "JIT and interpreter touched addresses mismatch"
-        );
-        eprintln!("touched addresses length: {}", touched_by_jit.len());
     }
 
     #[test]

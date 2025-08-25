@@ -1,9 +1,9 @@
 #![allow(clippy::fn_to_numeric_cast)]
 
-use super::{ScratchRegisterX86, TranspilerBackend, CONTEXT, PC_OFFSET, TEMP_A, TEMP_B};
+use super::{TranspilerBackend, CONTEXT, TEMP_A, TEMP_B};
 use crate::{
     DebugFn, EcallHandler, ExternFn, JitContext, JitFunction, RiscOperand, RiscRegister,
-    SP1RiscvTranspiler,
+    RiscvTranspiler,
 };
 use dynasmrt::{
     dynasm,
@@ -12,15 +12,14 @@ use dynasmrt::{
 };
 use std::{io, mem::offset_of};
 
-impl SP1RiscvTranspiler for TranspilerBackend {
-    type ScratchRegister = ScratchRegisterX86;
-
+impl RiscvTranspiler for TranspilerBackend {
     fn new(
         program_size: usize,
         memory_size: usize,
         trace_buf_size: usize,
         pc_start: u64,
         pc_base: u64,
+        clk_bump: u64,
     ) -> Result<Self, std::io::Error> {
         if pc_start < pc_base {
             return Err(std::io::Error::new(
@@ -43,6 +42,9 @@ impl SP1RiscvTranspiler for TranspilerBackend {
             pc_start,
             // Register a dummy ecall handler.
             ecall_handler: super::ecallk as _,
+            control_flow_instruction_inserted: false,
+            instruction_started: false,
+            clk_bump,
         };
 
         // Handle calling conventions and save anything were gonna clobber.
@@ -61,68 +63,27 @@ impl SP1RiscvTranspiler for TranspilerBackend {
 
         let offset = self.inner.offset();
         self.jump_table.push(offset.0);
+
+        if self.instruction_started {
+            panic!("start_instr called without calling end_instr");
+        }
+
+        self.instruction_started = true;
     }
 
-    fn end_instr(&mut self, jump_to_pc: bool) {
+    fn end_instr(&mut self) {
         // Add the base amount of cycles for the instruction.
-        self.bump_clk(8);
+        self.bump_clk();
+
         // If the instruction is branch, jal, jalr or ecall then we need to emit a jump to pc
-        if jump_to_pc {
+        if self.control_flow_instruction_inserted {
             self.jump_to_pc();
         } else {
             self.bump_pc(4);
         }
-    }
 
-    fn load_riscv_operand(&mut self, op: RiscOperand, dst: Self::ScratchRegister) {
-        self.emit_risc_operand_load(op, dst as u8);
-    }
-
-    fn store_riscv_register(&mut self, value: Self::ScratchRegister, rd: RiscRegister) {
-        self.emit_risc_register_store(value as u8, rd);
-    }
-
-    fn set_pc(&mut self, target: u64) {
-        dynasm! {
-            self;
-            .arch x64;
-
-            // ------------------------------------
-            // Set the PC in the context to the target.
-            // ------------------------------------
-            mov QWORD [Rq(CONTEXT) + PC_OFFSET], target as i32
-        }
-    }
-
-    fn bump_clk(&mut self, amt: u32) {
-        let clk_offset = offset_of!(JitContext, clk) as i32;
-        let global_clk_offset = offset_of!(JitContext, global_clk) as i32;
-        let is_unconstrained_offset = offset_of!(JitContext, is_unconstrained) as i32;
-
-        dynasm! {
-            self;
-            .arch x64;
-
-            // ------------------------------------
-            // Add the amount to the clk field in the context.
-            // ------------------------------------
-            add QWORD [Rq(CONTEXT) + clk_offset], amt as i32;
-
-            // ------------------------------------
-            // Add to global_clk based on is_unconstrained:
-            // - If is_unconstrained == 0, add 1
-            // - If is_unconstrained == 1, add 0
-            // ------------------------------------
-
-            // Load is_unconstrained (8-bit) into TEMP_A with zero extension
-            movzx Rq(TEMP_A), BYTE [Rq(CONTEXT) + is_unconstrained_offset];
-
-            // XOR with 1 to invert: 0 -> 1, 1 -> 0
-            xor Rq(TEMP_A), 1;
-
-            // Add the inverted value to global_clk
-            add QWORD [Rq(CONTEXT) + global_clk_offset], Rq(TEMP_A)
-        }
+        self.control_flow_instruction_inserted = false;
+        self.instruction_started = false;
     }
 
     fn exit_if_clk_exceeds(&mut self, max_cycles: u64) {

@@ -1,7 +1,7 @@
 use super::TranspilerBackend;
 use crate::{
     ComputeInstructions, ControlFlowInstructions, Debuggable, JitContext, MemoryInstructions,
-    RiscOperand, RiscRegister, SP1RiscvTranspiler, TraceChunkRaw,
+    RiscOperand, RiscRegister, RiscvTranspiler, TraceChunkRaw,
 };
 
 macro_rules! assert_register_is {
@@ -15,7 +15,7 @@ macro_rules! assert_register_is {
 }
 
 fn new_backend() -> TranspilerBackend {
-    TranspilerBackend::new(0, 1024 * 2, std::mem::size_of::<TraceChunkRaw>() * 100, 100, 100)
+    TranspilerBackend::new(0, 1024 * 2, std::mem::size_of::<TraceChunkRaw>() * 100, 100, 100, 8)
         .unwrap()
 }
 
@@ -829,23 +829,23 @@ mod control_flow {
     fn test_set_pc() {
         let mut backend = new_backend();
 
-        extern "C" fn assert_pc_is_100(ctx: *mut JitContext) {
+        extern "C" fn assert_pc_is_199(ctx: *mut JitContext) {
             let ctx = unsafe { &mut *ctx };
 
-            assert_eq!(ctx.pc, 100);
+            assert_eq!(ctx.pc, 199);
         }
 
-        extern "C" fn assert_pc_is_500(ctx: *mut JitContext) {
+        extern "C" fn assert_pc_is_599(ctx: *mut JitContext) {
             let ctx = unsafe { &mut *ctx };
 
-            assert_eq!(ctx.pc, 500);
+            assert_eq!(ctx.pc, 599);
         }
 
         backend.start_instr();
-        backend.set_pc(100);
-        backend.call_extern_fn(assert_pc_is_100);
-        backend.set_pc(500);
-        backend.call_extern_fn(assert_pc_is_500);
+        backend.bump_pc(99);
+        backend.call_extern_fn(assert_pc_is_199);
+        backend.bump_pc(400);
+        backend.call_extern_fn(assert_pc_is_599);
 
         run_test(backend);
     }
@@ -856,23 +856,23 @@ mod control_flow {
 
         // Note: The clk starts at 1.
 
-        extern "C" fn assert_clk_is_100(ctx: *mut JitContext) {
+        extern "C" fn assert_clk_is_9(ctx: *mut JitContext) {
             let ctx = unsafe { &mut *ctx };
 
-            assert_eq!(ctx.clk, 101);
+            assert_eq!(ctx.clk, 9);
         }
 
-        extern "C" fn assert_clk_is_500(ctx: *mut JitContext) {
+        extern "C" fn assert_clk_is_17(ctx: *mut JitContext) {
             let ctx = unsafe { &mut *ctx };
 
-            assert_eq!(ctx.clk, 501);
+            assert_eq!(ctx.clk, 17);
         }
 
         backend.start_instr();
-        backend.bump_clk(100);
-        backend.call_extern_fn(assert_clk_is_100);
-        backend.bump_clk(400);
-        backend.call_extern_fn(assert_clk_is_500);
+        backend.bump_clk();
+        backend.call_extern_fn(assert_clk_is_9);
+        backend.bump_clk();
+        backend.call_extern_fn(assert_clk_is_17);
 
         run_test(backend);
     }
@@ -906,17 +906,17 @@ mod control_flow {
         }
 
         backend.start_instr();
-        backend.bump_clk(1);
+        backend.bump_clk();
         backend.call_extern_fn(assert_global_clk_is_1);
 
         backend.call_extern_fn(enter_unconstrained);
-        backend.bump_clk(1);
+        backend.bump_clk();
         backend.call_extern_fn(assert_global_clk_is_1);
 
         backend.call_extern_fn(exit_unconstrained);
-        backend.bump_clk(1);
+        backend.bump_clk();
         backend.call_extern_fn(assert_global_clk_is_2);
-        run_test(backend);
+        run_test(backend)
     }
 
     #[test]
@@ -928,7 +928,7 @@ mod control_flow {
         }
 
         backend.start_instr();
-        backend.bump_clk(100);
+        backend.bump_clk();
         // global_clk increased by 1 every bump_clk
         backend.exit_if_clk_exceeds(1);
         // unreachable
@@ -944,29 +944,33 @@ mod control_flow {
         // PC = 0
         backend.start_instr();
         backend.add(RiscRegister::X1, RiscOperand::Immediate(1), RiscOperand::Immediate(1)); // 1 + 1 = 2
+        backend.end_instr();
 
         // // PC = 1
         backend.start_instr();
         backend.add(RiscRegister::X2, RiscOperand::Immediate(2), RiscOperand::Immediate(2)); // 2 + 2 = 4
+        backend.end_instr();
 
         backend.print_ctx();
 
         // PC = 2
         backend.start_instr();
-        backend.jal(RiscRegister::X0, 4 * 4); // jump to PC = 4
-        backend.end_instr(true);
+        backend.jal(RiscRegister::X0, 8); // jump to PC = 4
+        backend.end_instr();
 
         backend.print_ctx();
 
         // // PC = 3 (also skipped due to jump of 3)
         backend.start_instr();
         backend.add(RiscRegister::X3, RiscOperand::Immediate(100), RiscOperand::Immediate(23));
+        backend.end_instr();
 
         backend.print_ctx();
 
         // // // PC = 4
         backend.start_instr();
         backend.add(RiscRegister::X4, RiscOperand::Immediate(42), RiscOperand::Immediate(1)); // 42 + 1 = 43
+        backend.end_instr();
 
         backend.print_ctx();
 
@@ -985,19 +989,20 @@ mod control_flow {
         // PC = 0
         backend.start_instr();
         backend.add(RiscRegister::X1, RiscOperand::Immediate(5), RiscOperand::Immediate(0));
-        backend.set_pc(104);
+        backend.end_instr();
 
         // PC = 1
         backend.start_instr();
         backend.add(RiscRegister::X2, RiscRegister::X2.into(), RiscOperand::Immediate(1));
-        backend.set_pc(108);
+        backend.end_instr();
 
         // PC = 2
         // Branch to PC = 1 if X1 != X2
         backend.start_instr();
         backend.bne(RiscRegister::X1, RiscRegister::X2, u64::MAX);
-        backend.end_instr(true);
+        backend.end_instr();
         backend.inspect_register(RiscRegister::X2, assert_register_is!(5));
+
         // dummy
         backend.start_instr();
         backend.add(RiscRegister::X0, RiscRegister::X0.into(), RiscOperand::Immediate(0));
@@ -1108,6 +1113,7 @@ mod memory {
 
         backend.start_instr();
         backend.add(RiscRegister::X1, RiscOperand::Immediate(5), RiscOperand::Immediate(0));
+        backend.end_instr();
 
         // Store 5 into memory[0]
         backend.start_instr();
@@ -1125,6 +1131,7 @@ mod memory {
         // Put 0x01F2 (little-endian bytes F2 01) into x1
         backend.start_instr();
         backend.add(RiscRegister::X1, RiscOperand::Immediate(0x01F2), RiscOperand::Immediate(0));
+        backend.end_instr();
 
         // SH: store 16-bit value at address 0
         backend.start_instr();
@@ -1142,6 +1149,7 @@ mod memory {
         // Put 0xAB into x1
         backend.start_instr();
         backend.add(RiscRegister::X1, RiscOperand::Immediate(0xAB), RiscOperand::Immediate(0));
+        backend.end_instr();
 
         // SB: store 8-bit value at address 0
         backend.start_instr();
@@ -1421,38 +1429,44 @@ mod trace {
         backend.sw(RiscRegister::X0, RiscRegister::X2, 8);
 
         // Bump the clk by 8.
-        backend.bump_clk(8);
+        backend.bump_clk();
         backend.trace_mem_value(RiscRegister::X0, 8);
         // The last trace call should have bumped the clk by 8.
         backend.trace_mem_value(RiscRegister::X0, 8);
 
         backend.call_extern_fn(some_precompile);
 
-        backend.set_pc(4);
+        backend.bump_pc(3);
         backend.trace_registers();
         backend.trace_pc_start();
 
         let mut func = backend.finalize().expect("Failed to finalize function");
         let trace = unsafe { func.call() }.expect("No trace returned");
 
-        let trace = TraceChunk::copy_from_bytes(&trace);
-        assert_eq!(trace.start_registers[1], 5);
-        assert_eq!(trace.start_registers[2], 10);
-        assert_eq!(trace.pc_start, 4);
-        assert_eq!(trace.mem_reads.len(), 5);
+        let registers = trace.start_registers();
+        let pc = trace.pc_start();
+        let mem_reads = trace.num_mem_reads();
+
+        // let trace = TraceChunk::copy_from_bytes(&trace);
+        assert_eq!(registers[1], 5);
+        assert_eq!(registers[2], 10);
+        assert_eq!(pc, 103);
+        assert_eq!(mem_reads, 5);
+
+        let mem_reads = trace.mem_reads().collect::<Vec<_>>();
 
         // Check the values.
-        assert_eq!(trace.mem_reads[0].value, 5);
-        assert_eq!(trace.mem_reads[1].value, 10);
-        assert_eq!(trace.mem_reads[2].value, 10);
-        assert_eq!(trace.mem_reads[3].value, 15);
-        assert_eq!(trace.mem_reads[4].value, 20);
+        assert_eq!(mem_reads[0].value, 5);
+        assert_eq!(mem_reads[1].value, 10);
+        assert_eq!(mem_reads[2].value, 10);
+        assert_eq!(mem_reads[3].value, 15);
+        assert_eq!(mem_reads[4].value, 20);
 
         // Check the clks.
-        assert_eq!(trace.mem_reads[0].clk, 0);
-        assert_eq!(trace.mem_reads[1].clk, 0);
-        assert_eq!(trace.mem_reads[2].clk, 9);
-        assert_eq!(trace.mem_reads[3].clk, 5);
-        assert_eq!(trace.mem_reads[4].clk, 10);
+        assert_eq!(mem_reads[0].clk, 0);
+        assert_eq!(mem_reads[1].clk, 0);
+        assert_eq!(mem_reads[2].clk, 9);
+        assert_eq!(mem_reads[3].clk, 5);
+        assert_eq!(mem_reads[4].clk, 10);
     }
 }

@@ -4,19 +4,15 @@
 compile_error!("This crate is only supported on little endian targets.");
 
 pub mod backends;
-mod buffer;
 pub mod context;
 pub mod instructions;
 mod macros;
 pub mod risc;
 
-use buffer::AtomicBuffer;
 use dynasmrt::ExecutableBuffer;
-use hashbrown::{HashMap, HashSet};
-use memmap2::{Mmap, MmapMut, MmapOptions};
-#[cfg(target_os = "linux")]
-use std::sync::Mutex;
-use std::{collections::VecDeque, io, ops::BitAnd, os::fd::AsRawFd, ptr::NonNull, sync::Arc};
+use hashbrown::HashMap;
+use memmap2::{MmapMut, MmapOptions};
+use std::{collections::VecDeque, io, os::fd::AsRawFd, ptr::NonNull, sync::Arc};
 
 pub use backends::*;
 pub use context::*;
@@ -55,20 +51,18 @@ pub type DebugFn = extern "C" fn(u64);
 ///
 /// ```rust,no_run,ignore
 /// pub fn add_program() {
-///     let mut transpiler = SP1RiscvTranspiler::new(program_size, memory_size, trace_buf_size).unwrap();
+///     let mut transpiler = SP1RiscvTranspiler::new(program_size, memory_size, trace_buf_size, 100, 100).unwrap();
 ///      
 ///     // Transpile the first instruction.
 ///     transpiler.start_instr();
 ///     transpiler.add(RiscOperand::Reg(RiscRegister::A), RiscOperand::Reg(RiscRegister::B), RiscRegister::C);
-///     transpiler.bump_clk(4);
-///     transpiler.set_pc(4);
+///     transpiler.end_instr();
 ///     
 ///     // Transpile the second instruction.
 ///     transpiler.start_instr();
 ///
 ///     transpiler.add(RiscOperand::Reg(RiscRegister::A), RiscOperand::Reg(RiscRegister::B), RiscRegister::C);
-///     transpiler.bump_clk(4);
-///     transpiler.set_pc(8);
+///     transpiler.end_instr();
 ///     
 ///     let mut func = transpiler.finalize();
 ///
@@ -78,12 +72,7 @@ pub type DebugFn = extern "C" fn(u64);
 ///     // do stuff with the traces.
 /// }
 /// ```
-pub trait ScratchRegister: Copy + Sized + BitAnd<u8, Output = u8> {
-    const A: Self;
-    const B: Self;
-}
-
-pub trait SP1RiscvTranspiler:
+pub trait RiscvTranspiler:
     TraceCollector
     + ComputeInstructions
     + ControlFlowInstructions
@@ -91,8 +80,6 @@ pub trait SP1RiscvTranspiler:
     + SystemInstructions
     + Sized
 {
-    type ScratchRegister: ScratchRegister;
-
     /// Create a new transpiler.
     ///
     /// The program is used for the jump-table and is not a hard limit on the size of the program.
@@ -103,8 +90,10 @@ pub trait SP1RiscvTranspiler:
         trace_buf_size: usize,
         pc_start: u64,
         pc_base: u64,
+        clk_bump: u64,
     ) -> Result<Self, std::io::Error>;
 
+    /// Register a rust function of the form [`EcallHandler`] that will be used as the ECALL.
     fn register_ecall_handler(&mut self, handler: EcallHandler);
 
     /// Populates a jump table entry for the current instruction being transpiled.
@@ -117,20 +106,7 @@ pub trait SP1RiscvTranspiler:
     /// This method should be called for "each pc" in the program.
     /// Handle logics when finishing execution of an instruction such as bumping clk and jump to
     /// branch destination.
-    fn end_instr(&mut self, jump_to_pc: bool);
-
-    /// Load a [RiscRegister] or an immedeatie into a native register.
-    fn load_riscv_operand(&mut self, src: RiscOperand, dst: Self::ScratchRegister);
-
-    /// Load a [ScratchRegister] into a [`RiscRegister`].
-    fn store_riscv_register(&mut self, src: Self::ScratchRegister, dst: RiscRegister);
-
-    /// Adds amt to the clk in the context.
-    fn bump_clk(&mut self, amt: u32);
-
-    /// Set the PC in the context.
-    /// pc <- target
-    fn set_pc(&mut self, target: u64);
+    fn end_instr(&mut self);
 
     /// Exit if the clk is greater than some value.
     ///
@@ -181,7 +157,7 @@ pub trait Debuggable {
     fn print_ctx(&mut self);
 }
 
-impl<T: SP1RiscvTranspiler> Debuggable for T {
+impl<T: RiscvTranspiler> Debuggable for T {
     // Useful only for debugging.
     fn print_ctx(&mut self) {
         extern "C" fn print_ctx(ctx: *mut JitContext) {
@@ -223,8 +199,6 @@ pub struct JitFunction {
     /// During execution, the hints are read by the program, and we store them here.
     /// This is effectively a mapping from start address to the value of the hint.
     pub hints: Vec<(u64, Vec<u8>)>,
-    /// The addresses that were touched during execution.
-    pub touched_addresses: Arc<Mutex<HashSet<u64>>>,
 
     /// The JIT funciton may stop "in the middle" of an program,
     /// we want to be able to resune it, so this is the information needed to do so.
@@ -269,7 +243,6 @@ impl JitFunction {
             pc_start,
             input_buffer: VecDeque::new(),
             hints: Vec::new(),
-            touched_addresses: Arc::new(Mutex::new(HashSet::new())),
             public_values_stream: Vec::new(),
         })
     }
@@ -328,7 +301,7 @@ impl JitFunction {
     /// # SAFETY
     /// Relies on the builder to emit valid assembly
     /// and that the pointer is valid for the duration of the function call.
-    pub unsafe fn call(&mut self) -> Option<Mmap> {
+    pub unsafe fn call(&mut self) -> Option<TraceChunkRaw> {
         if self.pc == 1 {
             return None;
         }
@@ -341,22 +314,6 @@ impl JitFunction {
         let align_offset = self.memory.as_ptr().align_offset(std::mem::align_of::<u64>());
         let mem_ptr = self.memory.as_mut_ptr().add(align_offset);
         let tracing = self.trace_buf_size > 0;
-
-        let (touched_address_data, touched_address_writes) = if tracing {
-            let buffer =
-                AtomicBuffer::<u64>::new(self.trace_buf_size / std::mem::size_of::<MemValue>())
-                    .expect("Failed to create trace buf");
-
-            let data_ptr = buffer.data_ptr();
-            let writes_ptr = buffer.write_ptr();
-            let touched_addresses = self.touched_addresses.clone();
-            let _ =
-                std::thread::spawn(move || collect_touched_addresses(buffer, touched_addresses));
-
-            (data_ptr, writes_ptr)
-        } else {
-            (std::ptr::null_mut(), std::ptr::null_mut())
-        };
 
         // SAFETY:
         // - The jump table is valid for the duration of the function call, its owned by self.
@@ -373,8 +330,6 @@ impl JitFunction {
             public_values_stream: NonNull::new_unchecked(&mut self.public_values_stream),
             memory_fd: self.mem_fd.as_raw_fd(),
             registers: self.registers,
-            touched_address_data,
-            touched_address_writes,
             pc: self.pc,
             clk: self.clk,
             global_clk: self.global_clk,
@@ -390,7 +345,9 @@ impl JitFunction {
         self.clk = ctx.clk;
         self.global_clk = ctx.global_clk;
 
-        Some(trace_buf.make_read_only().expect("Failed to make trace buf read only"))
+        tracing.then_some(TraceChunkRaw::new(
+            trace_buf.make_read_only().expect("Failed to make trace buf read only"),
+        ))
     }
 
     /// Reset the JIT function to the initial state.
@@ -403,7 +360,6 @@ impl JitFunction {
         self.clk = 1;
         self.global_clk = 0;
         self.input_buffer = VecDeque::new();
-        self.touched_addresses.lock().unwrap().clear();
         self.hints = Vec::new();
         self.public_values_stream = Vec::new();
 
@@ -462,7 +418,11 @@ impl<'a> MemoryView<'a> {
         Self { memory }
     }
 
-    // Read a word from the memory at the address, not this read MUST be aligned to 8 bytes.
+    /// Read a word from the memory at the address.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the address is not aligned to 8 bytes.
     pub fn get(&self, addr: u64) -> MemValue {
         assert!(addr % 8 == 0, "Address {addr} is not aligned to 8");
 
@@ -470,20 +430,5 @@ impl<'a> MemoryView<'a> {
         let entry_ptr = self.memory.as_ptr() as *mut MemValue;
 
         unsafe { std::ptr::read(entry_ptr.add(word_address as usize)) }
-    }
-}
-
-fn collect_touched_addresses(
-    mut buffer: AtomicBuffer<u64>,
-    touched_addresses: Arc<Mutex<HashSet<u64>>>,
-) {
-    // Take the lock before we finish the loop.
-    // This way no one ever sees the partial set of touched addresses.
-    //
-    // The touched addreses should only be used at the end of all chunks anyway.
-    let mut touched = touched_addresses.lock().unwrap();
-
-    while let Some(val) = buffer.pop() {
-        touched.insert(val);
     }
 }

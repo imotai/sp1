@@ -1,6 +1,6 @@
 use crate::{
     ComputeInstructions, ControlFlowInstructions, DebugFn, Debuggable, EcallHandler, ExternFn,
-    JitContext, JitFunction, MemoryInstructions, RiscOperand, RiscRegister, SP1RiscvTranspiler,
+    JitContext, JitFunction, MemoryInstructions, RiscOperand, RiscRegister, RiscvTranspiler,
     SystemInstructions, TraceCollector,
 };
 use std::{
@@ -18,27 +18,27 @@ pub fn init_debug_registers() -> mpsc::Receiver<Option<(u64, u64, [u64; 32])>> {
     rx
 }
 
-pub struct DebugBackend<B: SP1RiscvTranspiler> {
+pub struct DebugBackend<B: RiscvTranspiler> {
     backend: B,
 }
 
-impl<B: SP1RiscvTranspiler> DebugBackend<B> {
+impl<B: RiscvTranspiler> DebugBackend<B> {
     pub const fn new(backend: B) -> Self {
         Self { backend }
     }
 }
 
-impl<B: SP1RiscvTranspiler + Debuggable> SP1RiscvTranspiler for DebugBackend<B> {
-    type ScratchRegister = B::ScratchRegister;
-
+impl<B: RiscvTranspiler + Debuggable> RiscvTranspiler for DebugBackend<B> {
     fn new(
         program_size: usize,
         memory_size: usize,
         trace_buf_size: usize,
         pc_start: u64,
         pc_base: u64,
+        clk_bump: u64,
     ) -> Result<Self, std::io::Error> {
-        let backend = B::new(program_size, memory_size, trace_buf_size, pc_start, pc_base)?;
+        let backend =
+            B::new(program_size, memory_size, trace_buf_size, pc_start, pc_base, clk_bump)?;
 
         Ok(Self::new(backend))
     }
@@ -66,24 +66,8 @@ impl<B: SP1RiscvTranspiler + Debuggable> SP1RiscvTranspiler for DebugBackend<B> 
         self.backend.print_ctx();
     }
 
-    fn end_instr(&mut self, jump_to_pc: bool) {
-        self.backend.end_instr(jump_to_pc);
-    }
-
-    fn load_riscv_operand(&mut self, src: RiscOperand, dst: Self::ScratchRegister) {
-        self.backend.load_riscv_operand(src, dst);
-    }
-
-    fn store_riscv_register(&mut self, src: Self::ScratchRegister, dst: RiscRegister) {
-        self.backend.store_riscv_register(src, dst);
-    }
-
-    fn bump_clk(&mut self, amt: u32) {
-        self.backend.bump_clk(amt);
-    }
-
-    fn set_pc(&mut self, target: u64) {
-        self.backend.set_pc(target);
+    fn end_instr(&mut self) {
+        self.backend.end_instr();
     }
 
     fn exit_if_clk_exceeds(&mut self, max_cycles: u64) {
@@ -103,23 +87,11 @@ impl<B: SP1RiscvTranspiler + Debuggable> SP1RiscvTranspiler for DebugBackend<B> 
     }
 
     fn finalize(self) -> io::Result<JitFunction> {
-        // todo fix this
-
-        // extern "C" fn finalize_registers(_: *mut JitContext) {
-        //     let tx = DEBUG_REGISTERS.lock().unwrap();
-        //     eprintln!("finalize_registers_jit");
-        //     if let Some(sender) = tx.as_ref() {
-        //         sender.send(None).unwrap();
-        //     }
-        // }
-
-        // self.backend.call_extern_fn(finalize_registers);
-
         self.backend.finalize()
     }
 }
 
-impl<B: SP1RiscvTranspiler> MemoryInstructions for DebugBackend<B> {
+impl<B: RiscvTranspiler> MemoryInstructions for DebugBackend<B> {
     fn lb(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
         extern "C" fn lb(ctx: *mut JitContext) {
             let ctx = unsafe { &mut *ctx };
@@ -304,7 +276,7 @@ impl<B: SP1RiscvTranspiler> MemoryInstructions for DebugBackend<B> {
     }
 }
 
-impl<B: SP1RiscvTranspiler> ControlFlowInstructions for DebugBackend<B> {
+impl<B: RiscvTranspiler> ControlFlowInstructions for DebugBackend<B> {
     fn beq(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64) {
         extern "C" fn beq(ctx: *mut JitContext) {
             let ctx = unsafe { &mut *ctx };
@@ -408,7 +380,7 @@ impl<B: SP1RiscvTranspiler> ControlFlowInstructions for DebugBackend<B> {
     }
 }
 
-impl<B: SP1RiscvTranspiler> SystemInstructions for DebugBackend<B> {
+impl<B: RiscvTranspiler> SystemInstructions for DebugBackend<B> {
     fn ecall(&mut self) {
         extern "C" fn ecall(ctx: *mut JitContext) {
             let ctx = unsafe { &mut *ctx };
@@ -429,7 +401,7 @@ impl<B: SP1RiscvTranspiler> SystemInstructions for DebugBackend<B> {
     }
 }
 
-impl<B: SP1RiscvTranspiler> ComputeInstructions for DebugBackend<B> {
+impl<B: RiscvTranspiler> ComputeInstructions for DebugBackend<B> {
     fn add(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
         extern "C" fn add(ctx: *mut JitContext) {
             let ctx = unsafe { &mut *ctx };
@@ -753,7 +725,7 @@ impl<B: SP1RiscvTranspiler> ComputeInstructions for DebugBackend<B> {
     }
 }
 
-impl<B: SP1RiscvTranspiler> TraceCollector for DebugBackend<B> {
+impl<B: RiscvTranspiler> TraceCollector for DebugBackend<B> {
     fn trace_clk_start(&mut self) {
         self.backend.trace_clk_start();
     }

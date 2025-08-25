@@ -35,10 +35,6 @@ impl MinimalExecutor {
             self.hints().iter().flat_map(|(addr, value)| chunked_memory_init_events(*addr, value));
 
         let memory = self.memory();
-        let _memory_finalize_events = self.touched_addresses().lock().unwrap().iter().map(|addr| {
-            let record = memory.get(*addr);
-            MemoryInitializeFinalizeEvent::finalize(*addr, record.value, record.clk)
-        });
 
         todo!()
     }

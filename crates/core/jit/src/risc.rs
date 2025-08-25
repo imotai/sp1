@@ -1,3 +1,6 @@
+use std::marker::PhantomData;
+
+use memmap2::Mmap;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -107,13 +110,101 @@ impl From<u64> for RiscOperand {
     }
 }
 
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MemValue {
+    pub clk: u64,
+    pub value: u64,
+}
+
 /// A convience structure for getting offsets of fields in the actual [TraceChunk].
 #[repr(C)]
-pub struct TraceChunkRaw {
+pub(crate) struct TraceChunkHeader {
     pub start_registers: [u64; 32],
     pub pc_start: u64,
     pub clk_start: u64,
     pub num_mem_reads: u64,
+}
+
+#[repr(C)]
+pub struct TraceChunkRaw {
+    pub inner: Mmap,
+}
+
+impl TraceChunkRaw {
+    pub(crate) fn new(inner: Mmap) -> Self {
+        Self { inner }
+    }
+
+    pub fn start_registers(&self) -> [u64; 32] {
+        let offset = std::mem::offset_of!(TraceChunkHeader, start_registers);
+
+        unsafe { std::ptr::read_unaligned(self.inner.as_ptr().add(offset) as *const [u64; 32]) }
+    }
+
+    pub fn pc_start(&self) -> u64 {
+        let offset = std::mem::offset_of!(TraceChunkHeader, pc_start);
+
+        unsafe { std::ptr::read_unaligned(self.inner.as_ptr().add(offset) as *const u64) }
+    }
+
+    pub fn clk_start(&self) -> u64 {
+        let offset = std::mem::offset_of!(TraceChunkHeader, clk_start);
+
+        unsafe { std::ptr::read_unaligned(self.inner.as_ptr().add(offset) as *const u64) }
+    }
+
+    pub fn num_mem_reads(&self) -> u64 {
+        let offset = std::mem::offset_of!(TraceChunkHeader, num_mem_reads);
+
+        unsafe { std::ptr::read_unaligned(self.inner.as_ptr().add(offset) as *const u64) }
+    }
+
+    pub fn mem_reads(&self) -> MemReads<'_> {
+        let header_end = std::mem::size_of::<TraceChunkHeader>();
+        let len = self.num_mem_reads() as usize;
+
+        debug_assert!(self.inner.len() - header_end >= len);
+
+        MemReads::new(&self.inner[header_end..], len)
+    }
+}
+
+pub struct MemReads<'a> {
+    pub inner: *const MemValue,
+    pub len: usize,
+    _phantom: PhantomData<&'a ()>,
+}
+
+impl<'a> MemReads<'a> {
+    pub(crate) fn new(inner: &'a [u8], len: usize) -> Self {
+        Self { inner: inner.as_ptr() as *const MemValue, len, _phantom: PhantomData }
+    }
+
+    /// Unsafely read a value from the underlying memory.
+    ///
+    /// # Safety
+    ///
+    /// - The underlying memory is valid a read of type [`T`].
+    pub unsafe fn read<T: Copy>(&self) -> T {
+        std::ptr::read_unaligned(self.inner as *const T)
+    }
+}
+
+impl<'a> Iterator for MemReads<'a> {
+    type Item = MemValue;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.len == 0 {
+            None
+        } else {
+            self.len -= 1;
+            let value = unsafe { std::ptr::read_unaligned(self.inner) };
+            self.inner = unsafe { self.inner.add(1) };
+
+            Some(value)
+        }
+    }
 }
 
 /// A trace chunk is all the data needed to continue the execution of a program at
@@ -135,11 +226,10 @@ pub struct TraceChunk {
     pub mem_reads: Vec<MemValue>,
 }
 
-#[repr(C)]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct MemValue {
-    pub clk: u64,
-    pub value: u64,
+impl From<TraceChunkRaw> for TraceChunk {
+    fn from(raw: TraceChunkRaw) -> Self {
+        TraceChunk::copy_from_bytes(raw.inner.as_ref())
+    }
 }
 
 impl TraceChunk {
@@ -150,7 +240,7 @@ impl TraceChunk {
     /// This method will panic if the buffer is not large enough,
     /// or the number of reads causes an overflow.
     pub fn copy_from_bytes(src: &[u8]) -> Self {
-        const HDR: usize = size_of::<TraceChunkRaw>();
+        const HDR: usize = size_of::<TraceChunkHeader>();
 
         /* ---------- 1. header must fit ---------- */
         if src.len() < HDR {
@@ -163,8 +253,8 @@ impl TraceChunk {
         // and `read_unaligne
         //
         // Note: All bit patterns are valid for `TraceChunkRaw`.
-        let raw: TraceChunkRaw =
-            unsafe { core::ptr::read_unaligned(src.as_ptr() as *const TraceChunkRaw) };
+        let raw: TraceChunkHeader =
+            unsafe { core::ptr::read_unaligned(src.as_ptr() as *const TraceChunkHeader) };
 
         /* ---------- 3. tail must fit ---------- */
         let n_words = raw.num_mem_reads as usize;
