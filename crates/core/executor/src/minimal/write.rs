@@ -33,6 +33,7 @@ pub(crate) unsafe fn write(ctx: &mut JitContext, arg1: u64, arg2: u64) -> Option
 
         return None;
     } else if fd as u32 == FD_PUBLIC_VALUES {
+        ctx.public_values_stream().extend_from_slice(slice);
         return None;
     } else if fd as u32 == FD_HINT {
         ctx.input_buffer().push_front(bytes);

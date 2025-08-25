@@ -20,6 +20,9 @@ mod precompiles;
 mod unconstrained;
 mod write;
 
+#[cfg(test)]
+mod tests;
+
 /// A minimal trace executor.
 pub struct MinimalExecutor {
     program: Arc<Program>,

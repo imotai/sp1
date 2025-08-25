@@ -213,6 +213,9 @@ pub struct JitFunction {
     pc_start: u64,
     input_buffer: VecDeque<Vec<u8>>,
 
+    /// A stream of public values from the program (global to entire program).
+    pub public_values_stream: Vec<u8>,
+
     /// Keep around the memfd, and pass it to the JIT context,
     /// we can use this to create the COW memory at runtime.
     mem_fd: memfd::Memfd,
@@ -267,6 +270,7 @@ impl JitFunction {
             input_buffer: VecDeque::new(),
             hints: Vec::new(),
             touched_addresses: Arc::new(Mutex::new(HashSet::new())),
+            public_values_stream: Vec::new(),
         })
     }
 
@@ -366,6 +370,7 @@ impl JitFunction {
             input_buffer: NonNull::new_unchecked(&mut self.input_buffer),
             hints: NonNull::new_unchecked(&mut self.hints),
             maybe_unconstrained: None,
+            public_values_stream: NonNull::new_unchecked(&mut self.public_values_stream),
             memory_fd: self.mem_fd.as_raw_fd(),
             registers: self.registers,
             touched_address_data,
@@ -398,8 +403,9 @@ impl JitFunction {
         self.clk = 1;
         self.global_clk = 0;
         self.input_buffer = VecDeque::new();
-        self.hints = Vec::new();
         self.touched_addresses.lock().unwrap().clear();
+        self.hints = Vec::new();
+        self.public_values_stream = Vec::new();
 
         // Store the original size of the memory.
         let memory_size = self.memory.len();

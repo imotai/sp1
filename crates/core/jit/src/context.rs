@@ -22,6 +22,8 @@ pub struct JitContext {
     pub(crate) registers: [u64; 32],
     /// The input buffer to the program.
     pub(crate) input_buffer: NonNull<VecDeque<Vec<u8>>>,
+    /// A stream of public values from the program (global to entire program).
+    pub(crate) public_values_stream: NonNull<Vec<u8>>,
     /// The hints read by the program, with thier corresponding start address.
     pub(crate) hints: NonNull<Vec<(u64, Vec<u8>)>>,
     /// The memory file descriptor, this is used to create the COW memory at runtime.
@@ -169,6 +171,12 @@ impl JitContext {
     /// - The input buffer must be non null and valid to read from.
     pub const unsafe fn input_buffer(&mut self) -> &mut VecDeque<Vec<u8>> {
         self.input_buffer.as_mut()
+    }
+
+    /// # Safety
+    /// - The public values stream must be non null and valid to read from.
+    pub const unsafe fn public_values_stream(&mut self) -> &mut Vec<u8> {
+        self.public_values_stream.as_mut()
     }
 
     /// Obtain a view of the registers.
