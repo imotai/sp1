@@ -92,9 +92,6 @@ path = "scripts/build_recursion_vks.rs"
 # name = "find_recursion_shape"
 # path = "scripts/find_recursion_shape.rs"
 
-# [dependencies.test-artifacts]
-# workspace = true
-
 # [[bin]]
 # name = "test_shape_fixing"
 # path = "scripts/test_shape_fixing.rs"

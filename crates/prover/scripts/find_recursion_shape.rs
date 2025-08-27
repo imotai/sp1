@@ -1,3 +1,4 @@
+#![cfg(test)]
 use std::sync::Arc;
 
 use sp1_core_machine::{riscv::RiscvAir, utils::setup_logger};
@@ -13,9 +14,8 @@ use sp1_prover::{
 };
 use sp1_recursion_executor::{shape::RecursionShape, RecursionAirEventCount};
 
-/// The expected behavior of this function is that
-#[tokio::main]
-async fn main() {
+#[tokio::test]
+async fn find_recursion_shape() {
     setup_logger();
     let elf = test_artifacts::FIBONACCI_ELF;
     let prover = SP1ProverBuilder::new().without_recursion_vks().build().await;
