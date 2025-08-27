@@ -122,12 +122,19 @@ async fn main() {
     let stage = args.stage;
     let (elf, stdin) = get_program_and_input(args.program, args.param);
 
-    let measurement =
-        csl_cuda::spawn(
-            move |t| async move { make_measurement(&name, &elf, stdin, stage, t).await },
-        )
-        .await
-        .unwrap();
+    // We default to page protect being false.
+    let mut with_page_protect = false;
+
+    // Enable page protection for arbitrum programs
+    if name.contains("arbitrum") {
+        with_page_protect = true;
+    }
+
+    let measurement = csl_cuda::spawn(move |t| async move {
+        make_measurement(&name, &elf, stdin, stage, t, with_page_protect).await
+    })
+    .await
+    .unwrap();
 
     if let Trace::Telemetry = args.trace {
         tokio::task::spawn_blocking(opentelemetry::global::shutdown_tracer_provider).await.unwrap();

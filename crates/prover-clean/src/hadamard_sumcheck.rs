@@ -528,7 +528,7 @@ mod tests {
                     println!("Warmup duration: {warmup_duration:?}");
                     println!("Old implementation: {avg_old_duration:?}");
                     println!("Simple implementation: {avg_simple_duration:?}");
-                    println!("Speedup: {:.2}x", speedup);
+                    println!("Speedup: {speedup:.2}x");
 
                     println!("Old implementation max: {max_old_duration:?}");
                     println!("Simple implementation max: {max_simple_duration:?}");

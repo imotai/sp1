@@ -442,8 +442,8 @@ pub(crate) mod tests {
             if col_mismatches.is_empty() {
                 println!("row {row_idx} matches   . event (assuming events/row = 1): {event:?}");
             } else {
-                println!("row {row_idx} MISMATCHES. event (assuming events/row = 1): {:?}", event);
-                println!("mismatched columns: {:?}", col_mismatches);
+                println!("row {row_idx} MISMATCHES. event (assuming events/row = 1): {event:?}");
+                println!("mismatched columns: {col_mismatches:?}");
             }
             if event.is_some() {
                 eventful_mismatched_columns.extend(col_mismatches);
