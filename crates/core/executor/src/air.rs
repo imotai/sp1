@@ -199,8 +199,24 @@ pub enum RiscvAirId {
     /// The mprotect chip.
     #[subenum(CoreAirId)]
     Mprotect = 65,
+    /// The instruction decode chip.
+    #[subenum(CoreAirId)]
+    InstructionDecode = 66,
+    /// The instruction fetch chip.
+    #[subenum(CoreAirId)]
+    InstructionFetch = 67,
+    /// The page prot chip.
+    #[subenum(CoreAirId)]
+    PageProt = 68,
+    /// The page prot local chip.
+    #[subenum(CoreAirId)]
+    PageProtLocal = 69,
+    /// The page prot global init chip.
+    PageProtGlobalInit = 70,
+    /// The page prot global finalize chip.
+    PageProtGlobalFinalize = 71,
     /// The poseidon2 chip.
-    Poseidon2 = 66,
+    Poseidon2 = 72,
 }
 
 impl RiscvAirId {
@@ -235,10 +251,14 @@ impl RiscvAirId {
             RiscvAirId::Branch,
             RiscvAirId::Jal,
             RiscvAirId::Jalr,
+            RiscvAirId::PageProt,
+            RiscvAirId::PageProtLocal,
             RiscvAirId::SyscallCore,
             RiscvAirId::SyscallInstrs,
             RiscvAirId::Global,
             RiscvAirId::Mprotect,
+            RiscvAirId::InstructionDecode,
+            RiscvAirId::InstructionFetch,
         ]
     }
 
@@ -254,7 +274,11 @@ impl RiscvAirId {
     pub fn is_memory(self) -> bool {
         matches!(
             self,
-            RiscvAirId::MemoryGlobalInit | RiscvAirId::MemoryGlobalFinalize | RiscvAirId::Global
+            RiscvAirId::MemoryGlobalInit
+                | RiscvAirId::MemoryGlobalFinalize
+                | RiscvAirId::Global
+                | RiscvAirId::PageProtGlobalInit
+                | RiscvAirId::PageProtGlobalFinalize
         )
     }
 

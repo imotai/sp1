@@ -1,3 +1,5 @@
+use hashbrown::HashMap;
+
 use crate::{memory::Memory, state::ForkState, ExecutorConfig, Unconstrained, HALT_PC};
 
 use super::{SyscallCode, SyscallContext};
@@ -23,6 +25,7 @@ pub fn enter_unconstrained_syscall<E: ExecutorConfig>(
         clk: ctx.rt.state.clk,
         pc: ctx.rt.state.pc,
         memory_diff: Memory::default(),
+        page_prots_diff: HashMap::new(),
     });
 
     // Write `1` to `x5` to indicate that unconstrained execution is active, and advance the PC.
@@ -48,6 +51,11 @@ pub fn enter_unconstrained_syscall<E: ExecutorConfig>(
                 ctx.rt.state.memory.remove(addr);
             }
         }
+    }
+
+    let page_prots_diff = std::mem::take(&mut ctx.rt.unconstrained_state.page_prots_diff);
+    for (addr, value) in page_prots_diff {
+        ctx.rt.state.page_prots.insert(addr, value);
     }
 
     ctx.rt.unconstrained_state = Box::new(ForkState::default());

@@ -220,6 +220,8 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
                         && !shard.contains_cpu()
                         && shard.global_memory_initialize_events.is_empty()
                         && shard.global_memory_finalize_events.is_empty()
+                        && shard.global_page_prot_initialize_events.is_empty()
+                        && shard.global_page_prot_finalize_events.is_empty()
                 }
             }
         }

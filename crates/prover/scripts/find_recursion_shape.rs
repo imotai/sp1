@@ -68,7 +68,11 @@ async fn main() {
                         expected_height,
                         real_height
                     );
-                    Some((chip, real_height))
+                    if chip == "PublicValues" {
+                        Some((chip, real_height))
+                    } else {
+                        Some((chip, real_height.next_multiple_of(32)))
+                    }
                 } else {
                     None
                 }

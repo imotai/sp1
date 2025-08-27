@@ -70,6 +70,18 @@ pub struct RecursionPublicValues<T> {
     /// Last MemoryFinalize address.
     pub last_finalize_addr: [T; 3],
 
+    /// Previous PageProtInit page index.
+    pub previous_init_page_idx: [T; 3],
+
+    /// Last PageProtInit page index.
+    pub last_init_page_idx: [T; 3],
+
+    /// Previous PageProtFinalize page index.
+    pub previous_finalize_page_idx: [T; 3],
+
+    /// Last PageProtFinalize page index.
+    pub last_finalize_page_idx: [T; 3],
+
     /// Start state of reconstruct_deferred_digest.
     pub start_reconstruct_deferred_digest: [T; POSEIDON_NUM_WORDS],
 
@@ -115,6 +127,9 @@ pub struct RecursionPublicValues<T> {
 
     /// The digest of all the previous public values elements.
     pub digest: [T; DIGEST_SIZE],
+
+    /// Whether page protect access is checked.
+    pub is_page_protect_active: T,
 }
 
 /// Converts the public values to an array of elements.

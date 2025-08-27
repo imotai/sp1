@@ -4,6 +4,12 @@ use serde::{Deserialize, Serialize};
 /// The number of local memory entries per row of the memory local chip.
 pub const NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC: usize = 1;
 
+/// The number of page prot entries per row of the page prot local chip.
+pub const NUM_LOCAL_PAGE_PROT_ENTRIES_PER_ROW_EXEC: usize = 1;
+
+/// The number of page prot entries per row of the page prot local chip.
+pub const NUM_PAGE_PROT_ENTRIES_PER_ROW_EXEC: usize = 4;
+
 /// Memory Record.
 ///
 /// This object encapsulates the information needed to prove a memory access operation. This
@@ -55,14 +61,16 @@ impl From<MemoryEntry> for MemoryRecord {
 /// C, B, A.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum MemoryAccessPosition {
+    /// Untrusted instruction access position.
+    UntrustedInstruction = 0,
     /// Memory access position.
-    Memory = 0,
+    Memory = 1,
     /// C register access position.
-    C = 1,
+    C = 2,
     /// B register access position.
-    B = 2,
+    B = 3,
     /// A register access position.
-    A = 3,
+    A = 4,
 }
 
 /// Memory Read Record.
@@ -79,6 +87,8 @@ pub struct MemoryReadRecord {
     pub timestamp: u64,
     /// The previous timestamp.
     pub prev_timestamp: u64,
+    /// The page prot record.
+    pub prev_page_prot_record: Option<PageProtRecord>,
 }
 
 /// Memory Write Record.
@@ -97,6 +107,8 @@ pub struct MemoryWriteRecord {
     pub prev_value: u64,
     /// The previous timestamp.
     pub prev_timestamp: u64,
+    /// The page prot record.
+    pub prev_page_prot_record: Option<PageProtRecord>,
 }
 
 /// Memory Record Enum.
@@ -137,6 +149,15 @@ impl MemoryRecordEnum {
             }
         }
     }
+
+    /// Retrieve the previous page prot record.
+    #[must_use]
+    pub fn previous_page_prot_record(&self) -> Option<PageProtRecord> {
+        match self {
+            MemoryRecordEnum::Read(record) => record.prev_page_prot_record,
+            MemoryRecordEnum::Write(record) => record.prev_page_prot_record,
+        }
+    }
 }
 
 /// Memory Initialize/Finalize Event.
@@ -154,15 +175,57 @@ pub struct MemoryInitializeFinalizeEvent {
     pub timestamp: u64,
 }
 
+/// Page prot Initialize/Finalize Event.
+///
+/// This object encapsulates the information needed to prove a page prot initialize or finalize
+/// operation. This includes the page index, page prot, and timestamp.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
+#[repr(C)]
+pub struct PageProtInitializeFinalizeEvent {
+    /// The page index.
+    pub page_idx: u64,
+    /// The page prot.
+    pub page_prot: u8,
+    /// The timestamp.
+    pub timestamp: u64,
+}
+
+impl PageProtInitializeFinalizeEvent {
+    /// Creates a new [``PageProtInitializeFinalizeEvent``] for an initialization.
+    #[must_use]
+    pub const fn initialize(page_idx: u64, page_prot: u8) -> Self {
+        Self { page_idx, page_prot, timestamp: 0 }
+    }
+
+    /// Creates a new [``PageProtInitializeFinalizeEvent``] for a finalization.
+    #[must_use]
+    pub const fn finalize_from_record(page_idx: u64, record: &PageProtRecord) -> Self {
+        Self { page_idx, page_prot: record.page_prot, timestamp: record.timestamp }
+    }
+}
+
 impl MemoryReadRecord {
     /// Creates a new [``MemoryReadRecord``].
     #[must_use]
     #[inline]
-    pub const fn new(entry: &MemoryEntry, prev_entry: &MemoryEntry) -> Self {
+    pub const fn new(
+        entry: &MemoryEntry,
+        prev_entry: &MemoryEntry,
+        prev_page_prot_record: Option<PageProtRecord>,
+    ) -> Self {
         let MemoryEntry { timestamp, value, .. } = *entry;
         let MemoryEntry { timestamp: prev_timestamp, value: _, .. } = *prev_entry;
         debug_assert!(timestamp > prev_timestamp);
-        Self { value, timestamp, prev_timestamp }
+        Self { value, timestamp, prev_timestamp, prev_page_prot_record }
+    }
+}
+
+impl From<MemoryRecordEnum> for MemoryReadRecord {
+    fn from(record: MemoryRecordEnum) -> Self {
+        match record {
+            MemoryRecordEnum::Read(record) => record,
+            MemoryRecordEnum::Write(_) => panic!("Cannot convert a write record to a read record"),
+        }
     }
 }
 
@@ -170,11 +233,24 @@ impl MemoryWriteRecord {
     /// Creates a new [``MemoryWriteRecord``].
     #[must_use]
     #[inline]
-    pub const fn new(entry: &MemoryEntry, prev_entry: &MemoryEntry) -> Self {
+    pub const fn new(
+        entry: &MemoryEntry,
+        prev_entry: &MemoryEntry,
+        prev_page_prot_record: Option<PageProtRecord>,
+    ) -> Self {
         let MemoryEntry { timestamp, value, .. } = *entry;
         let MemoryEntry { timestamp: prev_timestamp, value: prev_value, .. } = *prev_entry;
         debug_assert!(timestamp > prev_timestamp);
-        Self { value, timestamp, prev_value, prev_timestamp }
+        Self { value, timestamp, prev_value, prev_timestamp, prev_page_prot_record }
+    }
+}
+
+impl From<MemoryRecordEnum> for MemoryWriteRecord {
+    fn from(record: MemoryRecordEnum) -> Self {
+        match record {
+            MemoryRecordEnum::Read(_) => panic!("Cannot convert a read record to a write record"),
+            MemoryRecordEnum::Write(record) => record,
+        }
     }
 }
 
@@ -238,4 +314,35 @@ pub struct MemoryLocalEvent {
     pub initial_mem_access: MemoryRecord,
     /// The final memory access.
     pub final_mem_access: MemoryRecord,
+}
+
+/// Page Prot Record.
+///
+/// This object encapsulates the information needed to prove a page prot access operation. This
+/// includes the clk and page prot value.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, DeepSizeOf)]
+#[repr(C)]
+pub struct PageProtRecord {
+    /// The external flag.
+    pub external_flag: bool,
+    /// The timestamp.
+    pub timestamp: u64,
+    /// The page prot.
+    pub page_prot: u8,
+}
+
+/// Page Prot Local Event.
+///
+/// This object encapsulates the information needed to prove a page prot access operation within a
+/// shard. This includes the page, initial page access, and final page access within a
+/// shard.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, DeepSizeOf)]
+#[repr(C)]
+pub struct PageProtLocalEvent {
+    /// The page idx.
+    pub page_idx: u64,
+    /// The initial page prot access.
+    pub initial_page_prot_access: PageProtRecord,
+    /// The final page prot access.
+    pub final_page_prot_access: PageProtRecord,
 }

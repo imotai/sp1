@@ -192,6 +192,11 @@ where
             recursion_public_values.last_init_addr = public_values.last_init_addr;
             recursion_public_values.previous_finalize_addr = public_values.previous_finalize_addr;
             recursion_public_values.last_finalize_addr = public_values.last_finalize_addr;
+            recursion_public_values.previous_init_page_idx = public_values.previous_init_page_idx;
+            recursion_public_values.last_init_page_idx = public_values.last_init_page_idx;
+            recursion_public_values.previous_finalize_page_idx =
+                public_values.previous_finalize_page_idx;
+            recursion_public_values.last_finalize_page_idx = public_values.last_finalize_page_idx;
             recursion_public_values.start_reconstruct_deferred_digest = reconstruct_deferred_digest;
             recursion_public_values.end_reconstruct_deferred_digest = reconstruct_deferred_digest;
             recursion_public_values.sp1_vk_digest = vk_digest;
@@ -207,6 +212,7 @@ where
             recursion_public_values.prev_commit_deferred_syscall =
                 public_values.prev_commit_deferred_syscall;
             recursion_public_values.commit_deferred_syscall = public_values.commit_deferred_syscall;
+            recursion_public_values.is_page_protect_active = public_values.is_page_protect_active;
 
             // Calculate the digest and set it in the public values.
             recursion_public_values.digest =

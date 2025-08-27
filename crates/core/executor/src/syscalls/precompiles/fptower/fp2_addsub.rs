@@ -6,7 +6,7 @@ use sp1_curves::{
 use typenum::Unsigned;
 
 use crate::{
-    events::{FieldOperation, Fp2AddSubEvent, PrecompileEvent},
+    events::{FieldOperation, Fp2AddSubEvent, FpPageProtRecords, PrecompileEvent},
     syscalls::{SyscallCode, SyscallContext},
     ExecutorConfig,
 };
@@ -29,7 +29,7 @@ pub(crate) fn fp2_addsub_syscall<P: FpOpField, E: ExecutorConfig>(
     let op = syscall_code.fp_op_map();
 
     let x = rt.slice_unsafe(x_ptr, num_words);
-    let (y_memory_records, y) = rt.mr_slice(y_ptr, num_words);
+    let (y_memory_records, y, read_page_prot_records) = rt.mr_slice(y_ptr, num_words);
     rt.clk += 1;
 
     let x_32 = u64_to_u32(&x);
@@ -55,9 +55,12 @@ pub(crate) fn fp2_addsub_syscall<P: FpOpField, E: ExecutorConfig>(
     result.resize(num_words / 2, 0);
     result.append(&mut c1.to_u64_digits());
     result.resize(num_words, 0);
-    let x_memory_records = rt.mw_slice(x_ptr, &result);
+    let (x_memory_records, write_page_prot_records) = rt.mw_slice(x_ptr, &result, true);
 
     let op = syscall_code.fp_op_map();
+
+    let (local_mem_access, local_page_prot_access) = rt.postprocess();
+
     let event = Fp2AddSubEvent {
         clk,
         op,
@@ -67,7 +70,9 @@ pub(crate) fn fp2_addsub_syscall<P: FpOpField, E: ExecutorConfig>(
         y,
         x_memory_records,
         y_memory_records,
-        local_mem_access: rt.postprocess(),
+        local_mem_access,
+        page_prot_records: FpPageProtRecords { read_page_prot_records, write_page_prot_records },
+        local_page_prot_access,
     };
     match P::FIELD_TYPE {
         // All the fp2 add and sub events for a given curve are coalesced to the curve's fp2 add

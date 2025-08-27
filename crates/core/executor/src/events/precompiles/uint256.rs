@@ -3,8 +3,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::events::{
     memory::{MemoryReadRecord, MemoryWriteRecord},
-    MemoryLocalEvent,
+    MemoryLocalEvent, PageProtLocalEvent, PageProtRecord,
 };
+
+/// Uint256 Mul Page Prot Records.
+///
+/// This struct contains the page prot records for the uint256 mul operation.
+#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
+pub struct Uint256MulPageProtRecords {
+    /// The page prot records for writing the x address.
+    pub write_x_page_prot_records: Vec<PageProtRecord>,
+    /// The page prot records for reading the y||modulus address.
+    pub read_y_modulus_page_prot_records: Vec<PageProtRecord>,
+}
 
 /// Uint256 Mul Event.
 ///
@@ -31,4 +42,8 @@ pub struct Uint256MulEvent {
     pub modulus_memory_records: Vec<MemoryReadRecord>,
     /// The local memory access records.
     pub local_mem_access: Vec<MemoryLocalEvent>,
+    /// The page prot records.
+    pub page_prot_records: Uint256MulPageProtRecords,
+    /// The local page prot access events.
+    pub local_page_prot_access: Vec<PageProtLocalEvent>,
 }

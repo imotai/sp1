@@ -4,70 +4,66 @@ sp1_zkvm::entrypoint!(main);
 use sp1_primitives::consts::{PAGE_SIZE, PROT_EXEC, PROT_NONE, PROT_READ, PROT_WRITE};
 use sp1_zkvm::lib::mprotect::mprotect;
 
-const JIT_PROGRAM: &[u8] = include_bytes!("../../jit-program/mprotect-jit-program.bin");
-
 pub fn main() {
-    let execute_prot_should_fail = sp1_zkvm::io::read::<bool>();
-    let test_prot_none_fail = sp1_zkvm::io::read::<bool>();
+    println!("Starting simple mprotect example");
 
-    // Allocate 10 pages of memory for a JIT program.
-    let jit_memory = vec![0u8; 10 * PAGE_SIZE];
+    // Allocate 4 pages of memory
+    let memory = vec![0u8; 4 * PAGE_SIZE];
 
-    // Get a pointer to the JIT memory rounded up to the nearest page.
-    let jit_memory_ptr = jit_memory.as_ptr() as *const u8;
-    let jit_memory_aligned_ptr = (jit_memory_ptr as usize + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
-    let jit_memory_aligned_ptr = jit_memory_aligned_ptr as *mut u8;
+    // Get a pointer to the memory rounded up to the nearest page boundary
+    let memory_ptr = memory.as_ptr() as *const u8;
+    let aligned_ptr = (memory_ptr as usize + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
+    let aligned_ptr = aligned_ptr as *mut u8;
 
-    println!("JIT memory aligned pointer: {:p}", jit_memory_aligned_ptr);
+    println!("Memory aligned pointer: {:p}", aligned_ptr);
 
-    // Write the JIT program to the page aligned memory.
-    unsafe {
-        std::ptr::copy(JIT_PROGRAM.as_ptr(), jit_memory_aligned_ptr, JIT_PROGRAM.len());
-    }
+    // Test different protection settings on each page
 
-    // Set the first page to be executable.
-    let mut execute_page_flags = PROT_EXEC | PROT_READ;
+    // Page 1: Read/Write permissions
+    println!("Setting page 1 to READ|WRITE");
+    mprotect(aligned_ptr, PAGE_SIZE, PROT_READ | PROT_WRITE);
 
-    // Disable the execute flag if the test flag is set.
-    if execute_prot_should_fail {
-        execute_page_flags = PROT_READ;
-    }
+    // Page 2: Read-only permissions
+    println!("Setting page 2 to READ");
+    mprotect((aligned_ptr as usize + PAGE_SIZE) as *mut u8, PAGE_SIZE, PROT_READ);
 
-    mprotect(jit_memory_aligned_ptr, PAGE_SIZE, execute_page_flags);
+    // Page 3: No permissions (guard page)
+    println!("Setting page 3 to NONE (guard page)");
+    mprotect((aligned_ptr as usize + 2 * PAGE_SIZE) as *mut u8, PAGE_SIZE, PROT_NONE);
 
-    // Set the second page to be a guard page.
-    mprotect((jit_memory_aligned_ptr as usize + PAGE_SIZE) as *mut u8, PAGE_SIZE, PROT_NONE);
-
-    // The third page would be the jit program's stack.
+    // Page 4: Full permissions (read/write/execute)
+    println!("Setting page 4 to READ|WRITE|EXEC");
     mprotect(
-        (jit_memory_aligned_ptr as usize + 2 * PAGE_SIZE) as *mut u8,
+        (aligned_ptr as usize + 3 * PAGE_SIZE) as *mut u8,
         PAGE_SIZE,
-        PROT_WRITE | PROT_READ,
+        PROT_READ | PROT_WRITE | PROT_EXEC,
     );
 
-    // The fourth page is a guard page.
-    mprotect((jit_memory_aligned_ptr as usize + 3 * PAGE_SIZE) as *mut u8, PAGE_SIZE, PROT_NONE);
-
-    // Call the JIT program.
-    // Cast addr to function pointer: _start() -> u32
-    let func: extern "C" fn() -> u32 = unsafe { std::mem::transmute(jit_memory_aligned_ptr) };
-
-    let result = func();
-
-    // Print the result.
-    println!("JIT program result: {}", result);
-
-    // Test writing into the stack page.
-    let stack_ptr = (jit_memory_aligned_ptr as usize + 2 * PAGE_SIZE) as *mut u32;
+    // Test basic memory access on the read/write page
+    println!("Testing memory access on page 1 (read/write)");
+    let page1_ptr = aligned_ptr as *mut u32;
     unsafe {
-        *stack_ptr = 0x0;
+        *page1_ptr = 0x12345678;
+        let value = *page1_ptr;
+        println!("Successfully wrote and read value: 0x{:x}", value);
     }
 
-    // Test the failure case of trying to write into the guard page.
-    if test_prot_none_fail {
-        let guard_ptr = (jit_memory_aligned_ptr as usize + PAGE_SIZE) as *mut u32;
-        unsafe {
-            *guard_ptr = 0x0;
-        }
+    // Test read access on the read-only page
+    println!("Testing read access on page 2 (read-only)");
+    let page2_ptr = (aligned_ptr as usize + PAGE_SIZE) as *mut u32;
+    unsafe {
+        // Initialize the page with some data first, before setting it to read-only
+        // We'll do this by temporarily setting it back to read-write
+        mprotect((aligned_ptr as usize + PAGE_SIZE) as *mut u8, PAGE_SIZE, PROT_READ | PROT_WRITE);
+        *page2_ptr = 0x87654321;
+
+        // Now set it back to read-only
+        mprotect((aligned_ptr as usize + PAGE_SIZE) as *mut u8, PAGE_SIZE, PROT_READ);
+
+        let value = *page2_ptr;
+        println!("Successfully read value from read-only page: 0x{:x}", value);
     }
+
+    println!("Simple mprotect example completed successfully!");
+    println!("All mprotect syscalls were executed and processed by the chip");
 }

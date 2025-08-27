@@ -1,5 +1,9 @@
 use super::ShaExtendControlChip;
-use crate::{air::SP1CoreAirBuilder, operations::SyscallAddrOperation, utils::next_multiple_of_32};
+use crate::{
+    air::SP1CoreAirBuilder,
+    operations::{AddrAddOperation, AddressSlicePageProtOperation, SyscallAddrOperation},
+    utils::next_multiple_of_32,
+};
 use core::borrow::Borrow;
 use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
@@ -12,8 +16,9 @@ use sp1_core_executor::{
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::{
     air::{AirInteraction, InteractionScope, MachineAir},
-    InteractionKind,
+    InteractionKind, Word,
 };
+use sp1_primitives::consts::{PROT_READ, PROT_WRITE};
 use std::{borrow::BorrowMut, iter::once};
 
 impl ShaExtendControlChip {
@@ -30,6 +35,13 @@ pub struct ShaExtendControlCols<T> {
     pub clk_high: T,
     pub clk_low: T,
     pub w_ptr: SyscallAddrOperation<T>,
+    pub w_16th_addr: AddrAddOperation<T>,
+    pub w_17th_addr: AddrAddOperation<T>,
+    pub w_64th_addr: AddrAddOperation<T>,
+
+    pub initial_page_prot_access: AddressSlicePageProtOperation<T>,
+    pub extension_page_prot_access: AddressSlicePageProtOperation<T>,
+
     pub is_real: T,
 }
 
@@ -70,6 +82,36 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
             // This precompile accesses 64 words, which is 512 bytes.
             cols.w_ptr.populate(&mut blu_events, event.w_ptr, 512);
+            // Address of 16th element of W, last read only element
+            cols.w_16th_addr.populate(&mut blu_events, event.w_ptr, 15 * 8);
+            // Address of 17th element of W, first written element
+            cols.w_17th_addr.populate(&mut blu_events, event.w_ptr, 16 * 8);
+            // Address of 64th element of W, last written element
+            cols.w_64th_addr.populate(&mut blu_events, event.w_ptr, 63 * 8);
+            // Constsrain page prot access for initial 16 elements of W, read only
+            if input.public_values.is_page_protect_active == 1 {
+                cols.initial_page_prot_access.populate(
+                    &mut blu_events,
+                    event.w_ptr,
+                    event.w_ptr + 15 * 8,
+                    event.clk,
+                    PROT_READ,
+                    &event.page_prot_records.initial_page_prot_records[0],
+                    &event.page_prot_records.initial_page_prot_records.get(1).copied(),
+                    input.public_values.is_page_protect_active,
+                );
+                // Constsrain page prot access for extension 48 elements of W, read and write
+                cols.extension_page_prot_access.populate(
+                    &mut blu_events,
+                    event.w_ptr + 16 * 8,
+                    event.w_ptr + 63 * 8,
+                    event.clk + 1,
+                    PROT_READ | PROT_WRITE,
+                    &event.page_prot_records.extension_page_prot_records[0],
+                    &event.page_prot_records.extension_page_prot_records.get(1).copied(),
+                    input.public_values.is_page_protect_active,
+                );
+            }
             cols.is_real = F::one();
             rows.push(row);
         }
@@ -117,6 +159,67 @@ where
         let w_ptr =
             SyscallAddrOperation::<AB::F>::eval(builder, 512, local.w_ptr, local.is_real.into());
 
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([w_ptr[0].into(), w_ptr[1].into(), w_ptr[2].into(), AB::Expr::zero()]),
+            Word([
+                AB::Expr::from_canonical_u32(15 * 8),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+            ]),
+            local.w_16th_addr,
+            local.is_real.into(),
+        );
+
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([w_ptr[0].into(), w_ptr[1].into(), w_ptr[2].into(), AB::Expr::zero()]),
+            Word([
+                AB::Expr::from_canonical_u32(16 * 8),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+            ]),
+            local.w_17th_addr,
+            local.is_real.into(),
+        );
+
+        AddrAddOperation::<AB::F>::eval(
+            builder,
+            Word([w_ptr[0].into(), w_ptr[1].into(), w_ptr[2].into(), AB::Expr::zero()]),
+            Word([
+                AB::Expr::from_canonical_u32(63 * 8),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+            ]),
+            local.w_64th_addr,
+            local.is_real.into(),
+        );
+
+        AddressSlicePageProtOperation::<AB::F>::eval(
+            builder,
+            local.clk_high.into(),
+            local.clk_low.into(),
+            &w_ptr.map(Into::into),
+            &local.w_16th_addr.value.map(Into::into),
+            AB::Expr::from_canonical_u8(PROT_READ),
+            &local.initial_page_prot_access,
+            local.is_real.into(),
+        );
+
+        AddressSlicePageProtOperation::<AB::F>::eval(
+            builder,
+            local.clk_high.into(),
+            local.clk_low.into() + AB::Expr::one(),
+            &local.w_17th_addr.value.map(Into::into),
+            &local.w_64th_addr.value.map(Into::into),
+            AB::Expr::from_canonical_u8(PROT_READ | PROT_WRITE),
+            &local.extension_page_prot_access,
+            local.is_real.into(),
+        );
+
         // Receive the syscall.
         builder.receive_syscall(
             local.clk_high,
@@ -130,7 +233,7 @@ where
 
         // Send the initial state, with the starting index being 16.
         let send_values = once(local.clk_high.into())
-            .chain(once(local.clk_low.into()))
+            .chain(once(local.clk_low.into() + AB::Expr::one()))
             .chain(w_ptr.map(Into::into))
             .chain(once(AB::Expr::from_canonical_u32(16)))
             .collect::<Vec<_>>();
@@ -141,7 +244,7 @@ where
 
         // Receive the final state, with the final index being 64.
         let receive_values = once(local.clk_high.into())
-            .chain(once(local.clk_low.into()))
+            .chain(once(local.clk_low.into() + AB::Expr::one()))
             .chain(w_ptr.map(Into::into))
             .chain(once(AB::Expr::from_canonical_u32(64)))
             .collect::<Vec<_>>();

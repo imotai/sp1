@@ -49,7 +49,7 @@ pub const fn num_weierstrass_decompress_cols<P: FieldParameters + NumWords>() ->
 }
 
 /// A set of columns to compute `WeierstrassDecompress` that decompresses a point on a Weierstrass
-/// curve.
+/// curve. **TODO**: this precompile has no page protection, as it's expected to be deprecated.
 #[derive(Debug, Clone, AlignedBorrow)]
 #[repr(C)]
 pub struct WeierstrassDecompressCols<T, P: FieldParameters + NumWords> {
@@ -295,6 +295,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                             prev_timestamp: 0,
                             value: words[i],
                             timestamp: 1,
+                            prev_page_prot_record: None,
                         }),
                         &mut blu,
                     );

@@ -1,11 +1,3 @@
-use slop_air::{Air, BaseAir};
-use slop_matrix::Matrix;
-use sp1_derive::AlignedBorrow;
-use std::{
-    borrow::{Borrow, BorrowMut},
-    mem::size_of,
-};
-
 use crate::{
     adapter::{
         register::i_type::{ITypeReader, ITypeReaderImmutable, ITypeReaderImmutableInput},
@@ -19,13 +11,20 @@ use crate::{
 use hashbrown::HashMap;
 use itertools::Itertools;
 use rayon::iter::{ParallelBridge, ParallelIterator};
+use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::dense::RowMajorMatrix;
+use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
-    events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
+    events::{ByteLookupEvent, ByteRecord, MemInstrEvent, MemoryAccessPosition},
     ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
+use sp1_derive::AlignedBorrow;
 use sp1_hypercube::air::MachineAir;
+use sp1_primitives::consts::PROT_WRITE;
+use std::{
+    borrow::{Borrow, BorrowMut},
+    mem::size_of,
+};
 
 #[derive(Default)]
 pub struct StoreDoubleChip;
@@ -50,6 +49,9 @@ pub struct StoreDoubleColumns<T> {
 
     /// Whether this is a real store word instruction.
     pub is_real: T,
+
+    /// Whether the page protection is active.
+    pub is_page_protect_active: T,
 }
 
 impl<F> BaseAir<F> for StoreDoubleChip {
@@ -98,6 +100,8 @@ impl<F: PrimeField32> MachineAir<F> for StoreDoubleChip {
                     if idx < input.memory_store_double_events.len() {
                         let event = &input.memory_store_double_events[idx];
                         self.event_to_row(&event.0, cols, &mut blu);
+                        cols.is_page_protect_active =
+                            F::from_canonical_u32(input.public_values.is_page_protect_active);
                         cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                         cols.adapter.populate(&mut blu, event.1);
                     }
@@ -153,6 +157,7 @@ where
         let funct3 = AB::Expr::from_canonical_u8(Opcode::SD.funct3().unwrap());
         let funct7 = AB::Expr::from_canonical_u8(Opcode::SD.funct7().unwrap_or(0));
         let base_opcode = AB::Expr::from_canonical_u32(Opcode::SD.base_opcode().0);
+        let instr_type = AB::Expr::from_canonical_u32(Opcode::SD.instruction_type().0 as u32);
 
         builder.assert_bool(local.is_real);
 
@@ -170,14 +175,28 @@ where
             ),
         );
 
-        // Step 2. Write at the memory address.
+        // Step 2. Write at the memory address and check page prot access.
         builder.eval_memory_access_write(
             clk_high.clone(),
-            clk_low.clone(),
-            &aligned_addr.map(Into::into),
+            clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::Memory as u32),
+            &aligned_addr.clone().map(Into::into),
             local.memory_access,
             *local.adapter.prev_a(),
             local.is_real,
+        );
+
+        // Check page protect active is set correctly based on public value and is_real
+        let public_values = builder.extract_public_values();
+        let expected_page_protect_active =
+            public_values.is_page_protect_active.into() * local.is_real;
+        builder.assert_eq(local.is_page_protect_active, expected_page_protect_active);
+
+        builder.send_page_prot(
+            clk_high.clone(),
+            clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::Memory as u32),
+            &aligned_addr.map(Into::into),
+            AB::Expr::from_canonical_u8(PROT_WRITE),
+            local.is_page_protect_active.into(),
         );
 
         // Constrain the state of the CPU.
@@ -203,7 +222,7 @@ where
                 clk_low,
                 local.state.pc,
                 opcode,
-                [base_opcode, funct3, funct7],
+                [instr_type, base_opcode, funct3, funct7],
                 local.adapter,
                 local.is_real.into(),
             ),

@@ -5,6 +5,7 @@ use deepsize2::DeepSizeOf;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, PrimeField32};
+use sp1_primitives::consts::split_page_idx;
 
 use crate::{septic_curve::SepticCurve, septic_digest::SepticDigest, PROOF_MAX_NUM_PVS};
 
@@ -63,6 +64,18 @@ pub struct PublicValues<W1, W2, W3, T> {
     /// The largest address that is witnessed for finalization in the current shard.
     pub last_finalize_addr: W2,
 
+    /// The largest page idx that is witnessed for initialization in the previous shard.
+    pub previous_init_page_idx: W2,
+
+    /// The largest page idx that is witnessed for initialization in the current shard.
+    pub last_init_page_idx: W2,
+
+    /// The largest page idx that is witnessed for finalization in the previous shard.
+    pub previous_finalize_page_idx: W2,
+
+    /// The largest page idx that is witnessed for finalization in the current shard.
+    pub last_finalize_page_idx: W2,
+
     /// The initial timestamp of the shard.
     pub initial_timestamp: W3,
 
@@ -86,6 +99,12 @@ pub struct PublicValues<W1, W2, W3, T> {
 
     /// The number of global memory finalizations in the shard.
     pub global_finalize_count: T,
+
+    /// The number of global page prot initializations in the shard.
+    pub global_page_prot_init_count: T,
+
+    /// The number of global page prot finalizations in the shard.
+    pub global_page_prot_finalize_count: T,
 
     /// The number of global interactions in the shard.
     pub global_count: T,
@@ -114,8 +133,11 @@ pub struct PublicValues<W1, W2, W3, T> {
     /// Whether or not this shard is the first shard of the proof.
     pub is_first_shard: T,
 
+    /// Whether page protect access is checked.
+    pub is_page_protect_active: T,
+
     /// This field is here to ensure that the size of the public values struct is a multiple of 8.
-    pub empty: [T; 7],
+    pub empty: [T; 0],
 }
 
 impl PublicValues<u32, u64, u64, u32> {
@@ -142,6 +164,10 @@ impl PublicValues<u32, u64, u64, u32> {
         copy.last_init_addr = 0;
         copy.previous_finalize_addr = 0;
         copy.last_finalize_addr = 0;
+        copy.previous_init_page_idx = 0;
+        copy.last_init_page_idx = 0;
+        copy.previous_finalize_page_idx = 0;
+        copy.last_finalize_page_idx = 0;
         copy
     }
 }
@@ -201,6 +227,10 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             last_init_addr,
             previous_finalize_addr,
             last_finalize_addr,
+            previous_init_page_idx,
+            last_init_page_idx,
+            previous_finalize_page_idx,
+            last_finalize_page_idx,
             initial_timestamp,
             last_timestamp,
             is_timestamp_high_eq,
@@ -209,12 +239,15 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             inv_timestamp_low,
             global_init_count,
             global_finalize_count,
+            global_page_prot_init_count,
+            global_page_prot_finalize_count,
             global_count,
             global_cumulative_sum,
             prev_commit_syscall,
             commit_syscall,
             prev_commit_deferred_syscall,
             commit_deferred_syscall,
+            is_page_protect_active,
             initial_timestamp_inv,
             last_timestamp_inv,
             is_first_shard,
@@ -278,6 +311,17 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             F::from_canonical_u16(((last_finalize_addr >> 16) & 0xFFFF) as u16),
             F::from_canonical_u16(((last_finalize_addr >> 32) & 0xFFFF) as u16),
         ];
+        let previous_init_page_idx: [F; 3] = core::array::from_fn(|i| {
+            F::from_canonical_u16(split_page_idx(previous_init_page_idx)[i])
+        });
+        let last_init_page_idx: [F; 3] =
+            core::array::from_fn(|i| F::from_canonical_u16(split_page_idx(last_init_page_idx)[i]));
+        let previous_finalize_page_idx: [F; 3] = core::array::from_fn(|i| {
+            F::from_canonical_u16(split_page_idx(previous_finalize_page_idx)[i])
+        });
+        let last_finalize_page_idx: [F; 3] = core::array::from_fn(|i| {
+            F::from_canonical_u16(split_page_idx(last_finalize_page_idx)[i])
+        });
         let initial_timestamp = [
             F::from_canonical_u16((initial_timestamp >> 32) as u16),
             F::from_canonical_u8(((initial_timestamp >> 24) & 0xFF) as u8),
@@ -298,6 +342,9 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
 
         let global_init_count = F::from_canonical_u32(global_init_count);
         let global_finalize_count = F::from_canonical_u32(global_finalize_count);
+        let global_page_prot_init_count = F::from_canonical_u32(global_page_prot_init_count);
+        let global_page_prot_finalize_count =
+            F::from_canonical_u32(global_page_prot_finalize_count);
         let global_count = F::from_canonical_u32(global_count);
         let global_cumulative_sum =
             SepticDigest(SepticCurve::convert(global_cumulative_sum.0, F::from_canonical_u32));
@@ -310,6 +357,7 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
         let initial_timestamp_inv = F::from_canonical_u32(initial_timestamp_inv);
         let last_timestamp_inv = F::from_canonical_u32(last_timestamp_inv);
         let is_first_shard = F::from_canonical_u32(is_first_shard);
+        let is_page_protect_active = F::from_canonical_u32(is_page_protect_active);
 
         Self {
             prev_committed_value_digest,
@@ -325,6 +373,10 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             last_init_addr,
             previous_finalize_addr,
             last_finalize_addr,
+            previous_init_page_idx,
+            last_init_page_idx,
+            previous_finalize_page_idx,
+            last_finalize_page_idx,
             initial_timestamp,
             last_timestamp,
             is_timestamp_high_eq,
@@ -333,12 +385,15 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             inv_timestamp_low,
             global_init_count,
             global_finalize_count,
+            global_page_prot_init_count,
+            global_page_prot_finalize_count,
             global_count,
             global_cumulative_sum,
             prev_commit_syscall,
             commit_syscall,
             prev_commit_deferred_syscall,
             commit_deferred_syscall,
+            is_page_protect_active,
             initial_timestamp_inv,
             last_timestamp_inv,
             is_first_shard,

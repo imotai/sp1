@@ -98,15 +98,18 @@ impl ShaExtendChip {
         rows: &mut Option<Vec<[F; NUM_SHA_EXTEND_COLS]>>,
         blu: &mut impl ByteRecord,
     ) {
+        // Extend now begins one cycle after the actual syscall itself, therefore need to use
+        // a bumped clk.
+        let bumped_clk = event.clk + 1;
         for j in 0..48usize {
             let mut row = [F::zero(); NUM_SHA_EXTEND_COLS];
             let cols: &mut ShaExtendCols<F> = row.as_mut_slice().borrow_mut();
             cols.is_real = F::one();
             let i = j as u64 + 16;
             cols.i = F::from_canonical_u64(i);
-            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
-            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
-            cols.next_clk.populate(blu, event.clk, j as u64);
+            cols.clk_high = F::from_canonical_u32((bumped_clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((bumped_clk & 0xFFFFFF) as u32);
+            cols.next_clk.populate(blu, bumped_clk, j as u64);
             cols.w_ptr = [
                 F::from_canonical_u64((event.w_ptr & 0xFFFF) as u64),
                 F::from_canonical_u64(((event.w_ptr >> 16) & 0xFFFF) as u64),
@@ -118,10 +121,14 @@ impl ShaExtendChip {
             cols.w_i_minus_7_ptr.populate(blu, event.w_ptr, (i - 7) * 8);
             cols.w_i_ptr.populate(blu, event.w_ptr, i * 8);
 
-            let w_i_minus_15_read = MemoryRecordEnum::Read(event.w_i_minus_15_reads[j]);
-            let w_i_minus_2_read = MemoryRecordEnum::Read(event.w_i_minus_2_reads[j]);
-            let w_i_minus_16_read = MemoryRecordEnum::Read(event.w_i_minus_16_reads[j]);
-            let w_i_minus_7_read = MemoryRecordEnum::Read(event.w_i_minus_7_reads[j]);
+            let w_i_minus_15_read =
+                MemoryRecordEnum::Read(event.memory_records[j].w_i_minus_15_reads);
+            let w_i_minus_2_read =
+                MemoryRecordEnum::Read(event.memory_records[j].w_i_minus_2_reads);
+            let w_i_minus_16_read =
+                MemoryRecordEnum::Read(event.memory_records[j].w_i_minus_16_reads);
+            let w_i_minus_7_read =
+                MemoryRecordEnum::Read(event.memory_records[j].w_i_minus_7_reads);
 
             cols.w_i_minus_15.populate(w_i_minus_15_read, blu);
             cols.w_i_minus_2.populate(w_i_minus_2_read, blu);
@@ -130,7 +137,7 @@ impl ShaExtendChip {
 
             // `s0 := (w[i-15] rightrotate 7) xor (w[i-15] rightrotate 18) xor (w[i-15] rightshift
             // 3)`.
-            let w_i_minus_15 = event.w_i_minus_15_reads[j].value;
+            let w_i_minus_15 = event.memory_records[j].w_i_minus_15_reads.value;
             let w_i_minus_15_rr_7 = cols.w_i_minus_15_rr_7.populate(blu, w_i_minus_15 as u32, 7);
             let w_i_minus_15_rr_18 = cols.w_i_minus_15_rr_18.populate(blu, w_i_minus_15 as u32, 18);
             let w_i_minus_15_rs_3 = cols.w_i_minus_15_rs_3.populate(blu, w_i_minus_15 as u32, 3);
@@ -143,7 +150,7 @@ impl ShaExtendChip {
 
             // `s1 := (w[i-2] rightrotate 17) xor (w[i-2] rightrotate 19) xor (w[i-2] rightshift
             // 10)`.
-            let w_i_minus_2 = event.w_i_minus_2_reads[j].value;
+            let w_i_minus_2 = event.memory_records[j].w_i_minus_2_reads.value;
             let w_i_minus_2_rr_17 = cols.w_i_minus_2_rr_17.populate(blu, w_i_minus_2 as u32, 17);
             let w_i_minus_2_rr_19 = cols.w_i_minus_2_rr_19.populate(blu, w_i_minus_2 as u32, 19);
             let w_i_minus_2_rs_10 = cols.w_i_minus_2_rs_10.populate(blu, w_i_minus_2 as u32, 10);
@@ -152,11 +159,11 @@ impl ShaExtendChip {
             let s1 = cols.s1.populate_xor_u32(blu, s1_intermediate, w_i_minus_2_rs_10);
 
             // Compute `s2`.
-            let w_i_minus_7 = event.w_i_minus_7_reads[j].value;
-            let w_i_minus_16 = event.w_i_minus_16_reads[j].value;
+            let w_i_minus_7 = event.memory_records[j].w_i_minus_7_reads.value;
+            let w_i_minus_16 = event.memory_records[j].w_i_minus_16_reads.value;
             cols.s2.populate(blu, w_i_minus_16 as u32, s0, w_i_minus_7 as u32, s1);
 
-            let w_i_write = MemoryRecordEnum::Write(event.w_i_writes[j]);
+            let w_i_write = MemoryRecordEnum::Write(event.memory_records[j].w_i_write);
             cols.w_i.populate(w_i_write, blu);
             blu.add_byte_lookup_event(ByteLookupEvent {
                 opcode: ByteOpcode::LTU,

@@ -85,6 +85,10 @@ pub fn estimate_trace_elements(
     cells += (num_events_per_air[RiscvAirId::MemoryLocal]).next_multiple_of(32)
         * costs_per_air[RiscvAirId::MemoryLocal];
     max_height = max_height.max(num_events_per_air[RiscvAirId::MemoryLocal]);
+    // Compute the page prot local chip contribution.
+    cells += (num_events_per_air[RiscvAirId::PageProtLocal]).next_multiple_of(32)
+        * costs_per_air[RiscvAirId::PageProtLocal];
+    max_height = max_height.max(num_events_per_air[RiscvAirId::PageProtLocal]);
     // Compute the branch chip contribution.
     cells += (num_events_per_air[RiscvAirId::Branch]).next_multiple_of(32)
         * costs_per_air[RiscvAirId::Branch];
@@ -129,6 +133,19 @@ pub fn estimate_trace_elements(
     cells += (num_events_per_air[RiscvAirId::StoreDouble]).next_multiple_of(32)
         * costs_per_air[RiscvAirId::StoreWord];
     max_height = max_height.max(num_events_per_air[RiscvAirId::StoreDouble]);
+    // Compute the page protection chip contribution.
+    cells += (num_events_per_air[RiscvAirId::PageProt]).next_multiple_of(32)
+        * costs_per_air[RiscvAirId::PageProt];
+    max_height = max_height.max(num_events_per_air[RiscvAirId::PageProt]);
+
+    // Compute the instruction fetch chip contribution.
+    cells += (num_events_per_air[RiscvAirId::InstructionFetch]).next_multiple_of(32)
+        * costs_per_air[RiscvAirId::InstructionFetch];
+    max_height = max_height.max(num_events_per_air[RiscvAirId::InstructionFetch]);
+    // Compute the instruction decode chip contribution.
+    cells += (num_events_per_air[RiscvAirId::InstructionDecode]).next_multiple_of(32)
+        * costs_per_air[RiscvAirId::InstructionDecode];
+    max_height = max_height.max(num_events_per_air[RiscvAirId::InstructionDecode]);
 
     // Compute the syscall instruction chip contribution.
     cells += (num_events_per_air[RiscvAirId::SyscallInstrs]).next_multiple_of(32)

@@ -162,6 +162,7 @@ where
         let funct3 = AB::Expr::from_canonical_u8(Opcode::SUB.funct3().unwrap());
         let funct7 = AB::Expr::from_canonical_u8(Opcode::SUB.funct7().unwrap());
         let base_opcode = AB::Expr::from_canonical_u32(Opcode::SUB.base_opcode().0);
+        let instr_type = AB::Expr::from_canonical_u32(Opcode::SUB.instruction_type().0 as u32);
 
         // Constrain the sub operation over `op_b` and `op_c`.
         let op_input = SubOperationInput::<AB>::new(
@@ -197,7 +198,7 @@ where
                 pc: local.state.pc,
                 opcode,
                 op_a_write_value: local.sub_operation.value.map(|x| x.into()),
-                instr_field_consts: [base_opcode, funct3, funct7],
+                instr_field_consts: [instr_type, base_opcode, funct3, funct7],
                 cols: local.adapter,
                 is_real: local.is_real.into(),
             },

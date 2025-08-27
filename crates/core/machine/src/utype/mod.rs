@@ -81,15 +81,19 @@ where
         let funct3_auipc = AB::Expr::from_canonical_u8(Opcode::AUIPC.funct3().unwrap_or(0));
         let funct7_auipc = AB::Expr::from_canonical_u8(Opcode::AUIPC.funct7().unwrap_or(0));
         let base_opcode_auipc = AB::Expr::from_canonical_u32(Opcode::AUIPC.base_opcode().0);
+        let instr_type_auipc =
+            AB::Expr::from_canonical_u32(Opcode::AUIPC.instruction_type().0 as u32);
 
         let funct3_lui = AB::Expr::from_canonical_u8(Opcode::LUI.funct3().unwrap_or(0));
         let funct7_lui = AB::Expr::from_canonical_u8(Opcode::LUI.funct7().unwrap_or(0));
         let base_opcode_lui = AB::Expr::from_canonical_u32(Opcode::LUI.base_opcode().0);
+        let instr_type_lui = AB::Expr::from_canonical_u32(Opcode::LUI.instruction_type().0 as u32);
 
         let is_lui = AB::Expr::one() - local.is_auipc;
         let funct3 = local.is_auipc * funct3_auipc + is_lui.clone() * funct3_lui;
         let funct7 = local.is_auipc * funct7_auipc + is_lui.clone() * funct7_lui;
-        let base_opcode = local.is_auipc * base_opcode_auipc + is_lui * base_opcode_lui;
+        let base_opcode = local.is_auipc * base_opcode_auipc + is_lui.clone() * base_opcode_lui;
+        let instr_type = local.is_auipc * instr_type_auipc + is_lui * instr_type_lui;
 
         // Constrain the state of the CPU.
         <CPUState<AB::F> as SP1Operation<AB>>::eval(
@@ -143,7 +147,7 @@ where
                 local.state.clk_low::<AB>(),
                 local.state.pc,
                 opcode,
-                [base_opcode, funct3, funct7],
+                [instr_type, base_opcode, funct3, funct7],
                 local.add_operation.value.map(|x| x.into()),
                 local.adapter,
                 local.is_real.into(),

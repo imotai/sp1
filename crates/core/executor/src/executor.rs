@@ -4,16 +4,26 @@ use std::{num::Wrapping, str::FromStr, sync::Arc};
 
 #[cfg(feature = "profiling")]
 use crate::profiler::Profiler;
-use crate::{estimator::RecordEstimator, StatusCode, NUM_REGISTERS};
+use crate::{
+    estimator::RecordEstimator,
+    events::{
+        InstructionDecodeEvent, InstructionFetchEvent, PageProtInitializeFinalizeEvent,
+        PageProtLocalEvent, PageProtRecord, NUM_LOCAL_PAGE_PROT_ENTRIES_PER_ROW_EXEC,
+        NUM_PAGE_PROT_ENTRIES_PER_ROW_EXEC,
+    },
+    StatusCode, NUM_REGISTERS,
+};
 
 use clap::ValueEnum;
 use enum_map::EnumMap;
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 use rrs_lib::process_instruction;
 use serde::{Deserialize, Serialize};
 use sp1_hypercube::air::PublicValues;
-use sp1_primitives::consts::{MAXIMUM_MEMORY_SIZE, PAGE_SIZE, PROT_EXEC, PROT_READ, PROT_WRITE};
+use sp1_primitives::consts::{
+    DEFAULT_PAGE_PROT, MAXIMUM_MEMORY_SIZE, PAGE_SIZE, PROT_EXEC, PROT_READ, PROT_WRITE,
+};
 use thiserror::Error;
 
 use crate::{
@@ -128,6 +138,9 @@ pub struct Executor<'a> {
     /// Local memory access events.
     pub local_memory_access: HashMap<u64, MemoryLocalEvent>,
 
+    /// Local page prot access events.
+    pub local_page_prot_access: HashMap<u64, PageProtLocalEvent>,
+
     /// A counter for the number of cycles that have been executed in certain functions.
     pub cycle_tracker: HashMap<String, (u64, u32)>,
 
@@ -185,6 +198,9 @@ pub struct Executor<'a> {
 
     /// Decoded instruction cache.
     decoded_instruction_cache: HashMap<u64, Instruction>,
+
+    /// Decoded instruction events.
+    decoded_instruction_events: HashMap<u32, InstructionDecodeEvent>,
 }
 
 /// The configuration of the executor.
@@ -249,6 +265,8 @@ pub struct LocalCounts {
     pub state_bump_counts: u64,
     /// The number of syscalls sent globally in the current shard.
     pub syscalls_sent: usize,
+    /// The number of page protection events that occurred in this shard.
+    pub page_prot: usize,
     /// The number of addresses touched in this shard.
     ///
     /// We increment the local memory event counter precisely when the main shard touches an
@@ -282,6 +300,15 @@ pub struct LocalCounts {
     /// of an uninterrupted telescoping series of memory operations in a single SP1 shard --
     /// that is, the data of a local memory event.
     pub local_mem: usize,
+
+    /// The number of page protection events that occurred in this shard.
+    pub local_page_prot: usize,
+
+    /// The number of instruction fetch events that occurred in this shard.
+    pub local_instruction_fetch: usize,
+
+    /// The number of instruction decode events that occurred in this shard.
+    pub shard_distinct_instructions: HashSet<(u64, u32)>,
 }
 
 /// Errors that the [``Executor``] can throw.
@@ -290,6 +317,10 @@ pub enum ExecutionError {
     /// The execution failed with an invalid memory access.
     #[error("invalid memory access for opcode {0} and address {1}")]
     InvalidMemoryAccess(Opcode, u64),
+
+    /// The address for a untrusted program instruction is not aligned to 4 bytes.
+    #[error("invalid memory access for untrusted program at address {0}, not aligned to 4 bytes")]
+    InvalidMemoryAccessUntrustedProgram(u64),
 
     /// The execution failed with an unimplemented syscall.
     #[error("unimplemented syscall {0}")]
@@ -322,6 +353,10 @@ pub enum ExecutionError {
     /// The program ended with an unexpected status code.
     #[error("Unexpected exit code: {0}")]
     UnexpectedExitCode(u32),
+
+    /// Page protect is off, and the instruction is not found.
+    #[error("Instruction not found, page protect/ untrusted program set to off")]
+    InstructionNotFound(),
 }
 
 impl<'a> Executor<'a> {
@@ -428,6 +463,7 @@ impl<'a> Executor<'a> {
             memory_checkpoint: Memory::default(),
             uninitialized_memory_checkpoint: Memory::default(),
             local_memory_access: HashMap::new(),
+            local_page_prot_access: HashMap::new(),
             costs: costs.into_iter().map(|(k, v)| (k, v as u64)).collect(),
             size_check_frequency: 16,
             sharding_threshold: Some(opts.sharding_threshold),
@@ -439,6 +475,7 @@ impl<'a> Executor<'a> {
             total_unconstrained_cycles: 0,
             transpiler: InstructionTranspiler,
             decoded_instruction_cache: HashMap::new(),
+            decoded_instruction_events: HashMap::new(),
             opts,
         }
     }
@@ -566,6 +603,68 @@ impl<'a> Executor<'a> {
         self.state.clk + *position as u64
     }
 
+    /// Read a page prot entry and create an access record.
+    pub fn page_prot_access<E: ExecutorConfig>(
+        &mut self,
+        page_idx: u64,
+        page_prot_bitmap: u8,
+        external_flag: bool,
+        timestamp: u64,
+        local_page_prot_access: Option<&mut HashMap<u64, PageProtLocalEvent>>,
+    ) -> PageProtRecord {
+        let page_prot_record = self.state.page_prots.entry(page_idx).or_insert(PageProtRecord {
+            external_flag,
+            timestamp: 0,
+            page_prot: DEFAULT_PAGE_PROT,
+        });
+
+        if E::UNCONSTRAINED {
+            self.unconstrained_state.page_prots_diff.entry(page_idx).or_insert(*page_prot_record);
+        }
+
+        if !E::UNCONSTRAINED
+            && ((page_prot_record.timestamp < self.state.initial_timestamp
+                || page_prot_record.external_flag)
+                && !external_flag)
+        {
+            self.local_counts.local_page_prot += 1;
+        }
+
+        // Check the page permissions.
+        assert!(page_prot_record.page_prot & page_prot_bitmap != 0);
+
+        // Generate the previous record.
+        let prev_page_prot_record = *page_prot_record;
+
+        // Update the current record's timestamp.
+        page_prot_record.external_flag = external_flag;
+        page_prot_record.timestamp = timestamp;
+
+        if !E::UNCONSTRAINED && E::MODE == ExecutorMode::Trace {
+            let local_page_prot_access =
+                if let Some(local_page_prot_access) = local_page_prot_access {
+                    local_page_prot_access
+                } else {
+                    &mut self.local_page_prot_access
+                };
+
+            local_page_prot_access
+                .entry(page_idx)
+                .and_modify(|e| {
+                    e.final_page_prot_access = *page_prot_record;
+                })
+                .or_insert(PageProtLocalEvent {
+                    page_idx,
+                    initial_page_prot_access: prev_page_prot_record,
+                    final_page_prot_access: *page_prot_record,
+                });
+        }
+
+        self.local_counts.page_prot += 1;
+
+        prev_page_prot_record
+    }
+
     /// Read a word from memory and create an access record.
     pub fn mr<E: ExecutorConfig>(
         &mut self,
@@ -577,12 +676,6 @@ impl<'a> Executor<'a> {
         if !addr.is_multiple_of(8) || addr <= Register::X31 as u64 || addr > MAXIMUM_MEMORY_SIZE {
             panic!("Invalid memory access: addr={addr}");
         }
-
-        // Check that the page is readable.
-        let page_prot_page_idx = addr / PAGE_SIZE as u64;
-        let page_prot =
-            self.state.page_prots.get(&page_prot_page_idx).unwrap_or(&(PROT_READ | PROT_WRITE));
-        assert!(*page_prot & PROT_READ != 0);
 
         // Get the memory record entry.
         let entry = self.state.memory.page_table.entry(addr);
@@ -654,7 +747,7 @@ impl<'a> Executor<'a> {
         }
 
         // Construct the memory read record.
-        MemoryReadRecord::new(record, &prev_record)
+        MemoryReadRecord::new(record, &prev_record, None)
     }
 
     /// Read a register and return its value.
@@ -794,8 +887,9 @@ impl<'a> Executor<'a> {
                 });
         }
         // Construct the memory read record.
-        MemoryReadRecord::new(record, &prev_record)
+        MemoryReadRecord::new(record, &prev_record, None)
     }
+
     /// Write a word to memory and create an access record.
     pub fn mw<E: ExecutorConfig>(
         &mut self,
@@ -808,12 +902,6 @@ impl<'a> Executor<'a> {
         if !addr.is_multiple_of(8) || addr <= Register::X31 as u64 || addr > MAXIMUM_MEMORY_SIZE {
             panic!("Invalid memory access: addr={addr}");
         }
-
-        // Check that the page is writable.
-        let page_prot_page_idx = addr / PAGE_SIZE as u64;
-        let page_prot =
-            self.state.page_prots.get(&page_prot_page_idx).unwrap_or(&(PROT_READ | PROT_WRITE));
-        assert!(*page_prot & PROT_WRITE != 0);
 
         // Get the memory record entry.
         let entry = self.state.memory.page_table.entry(addr);
@@ -864,6 +952,7 @@ impl<'a> Executor<'a> {
         record.value = value;
         record.external_flag = external_flag;
         record.timestamp = timestamp;
+
         if !E::UNCONSTRAINED && E::MODE == ExecutorMode::Trace {
             let local_memory_access = if let Some(local_memory_access) = local_memory_access {
                 local_memory_access
@@ -884,7 +973,7 @@ impl<'a> Executor<'a> {
         }
 
         // Construct the memory write record.
-        MemoryWriteRecord::new(record, &prev_record)
+        MemoryWriteRecord::new(record, &prev_record, None)
     }
 
     /// Write a word to a register and create an access record.
@@ -972,7 +1061,7 @@ impl<'a> Executor<'a> {
         }
 
         // Construct the memory write record.
-        MemoryWriteRecord::new(record, &prev_record)
+        MemoryWriteRecord::new(record, &prev_record, None)
     }
 
     /// Write a word to a register and create an access record.
@@ -1042,8 +1131,24 @@ impl<'a> Executor<'a> {
     /// Read from memory, assuming that all addresses are aligned.
     #[inline]
     pub fn mr_cpu<E: ExecutorConfig>(&mut self, addr: u64) -> u64 {
+        let timestamp = self.timestamp(&MemoryAccessPosition::Memory);
+
         // Read the address from memory and create a memory read record.
-        let record = self.mr::<E>(addr, false, self.timestamp(&MemoryAccessPosition::Memory), None);
+        let mut record =
+            self.mr::<E>(addr, false, self.timestamp(&MemoryAccessPosition::Memory), None);
+
+        if self.opts.page_protect {
+            let page_prot_record = self.page_prot_access::<E>(
+                addr / PAGE_SIZE as u64,
+                PROT_READ,
+                false,
+                timestamp,
+                None,
+            );
+
+            record.prev_page_prot_record = Some(page_prot_record);
+        }
+
         // If we're not in unconstrained mode, record the access for the current cycle.
         if E::MODE == ExecutorMode::Trace {
             self.memory_accesses.memory = Some(record.into());
@@ -1069,6 +1174,9 @@ impl<'a> Executor<'a> {
                     MemoryAccessPosition::Memory => {
                         self.memory_accesses.memory = Some(record.into());
                     }
+                    MemoryAccessPosition::UntrustedInstruction => {
+                        panic!("Untrusted instruction should not be read from rr_cpu")
+                    }
                 }
             }
             record.value
@@ -1084,9 +1192,24 @@ impl<'a> Executor<'a> {
     /// This function will panic if the address is not aligned or if the memory accesses are already
     /// initialized.
     pub fn mw_cpu<E: ExecutorConfig>(&mut self, addr: u64, value: u64) {
+        let timestamp = self.timestamp(&MemoryAccessPosition::Memory);
+
         // Read the address from memory and create a memory read record.
-        let record =
+        let mut record =
             self.mw::<E>(addr, value, false, self.timestamp(&MemoryAccessPosition::Memory), None);
+
+        if self.opts.page_protect {
+            let page_prot_record = self.page_prot_access::<E>(
+                addr / PAGE_SIZE as u64,
+                PROT_WRITE,
+                false,
+                timestamp,
+                None,
+            );
+
+            record.prev_page_prot_record = Some(page_prot_record);
+        }
+
         // If we're not in unconstrained mode, record the access for the current cycle.
         if E::MODE == ExecutorMode::Trace {
             debug_assert!(self.memory_accesses.memory.is_none());
@@ -1129,7 +1252,7 @@ impl<'a> Executor<'a> {
         b: u64,
         c: u64,
         op_a_0: bool,
-        record: MemoryAccessRecord,
+        record: &MemoryAccessRecord,
         exit_code: u32,
     ) {
         self.record.pc_start.get_or_insert(self.state.pc);
@@ -1192,6 +1315,22 @@ impl<'a> Executor<'a> {
         } else {
             unreachable!()
         }
+
+        if let Some((_record, instruction_value)) = self.memory_accesses.untrusted_instruction {
+            let encoded_instruction = instruction_value;
+            let memory_accesses = self.memory_accesses;
+
+            self.emit_instruction_fetch_event(instruction, encoded_instruction, &memory_accesses);
+
+            self.decoded_instruction_events
+                .entry(encoded_instruction)
+                .and_modify(|e| e.multiplicity += 1)
+                .or_insert_with(|| InstructionDecodeEvent {
+                    instruction: *instruction,
+                    encoded_instruction,
+                    multiplicity: 1,
+                });
+        }
     }
 
     /// Emit an ALU event.
@@ -1201,7 +1340,7 @@ impl<'a> Executor<'a> {
         a: u64,
         b: u64,
         c: u64,
-        record: MemoryAccessRecord,
+        record: &MemoryAccessRecord,
         op_a_0: bool,
     ) {
         let opcode = instruction.opcode;
@@ -1270,7 +1409,7 @@ impl<'a> Executor<'a> {
         a: u64,
         b: u64,
         c: u64,
-        record: MemoryAccessRecord,
+        record: &MemoryAccessRecord,
         op_a_0: bool,
     ) {
         let opcode = instruction.opcode;
@@ -1325,7 +1464,7 @@ impl<'a> Executor<'a> {
         a: u64,
         b: u64,
         c: u64,
-        record: MemoryAccessRecord,
+        record: &MemoryAccessRecord,
         op_a_0: bool,
         next_pc: u64,
     ) {
@@ -1352,7 +1491,7 @@ impl<'a> Executor<'a> {
         a: u64,
         b: u64,
         c: u64,
-        record: MemoryAccessRecord,
+        record: &MemoryAccessRecord,
         op_a_0: bool,
         next_pc: u64,
     ) {
@@ -1379,7 +1518,7 @@ impl<'a> Executor<'a> {
         a: u64,
         b: u64,
         c: u64,
-        record: MemoryAccessRecord,
+        record: &MemoryAccessRecord,
         op_a_0: bool,
         next_pc: u64,
     ) {
@@ -1405,7 +1544,7 @@ impl<'a> Executor<'a> {
         a: u64,
         b: u64,
         c: u64,
-        record: MemoryAccessRecord,
+        record: &MemoryAccessRecord,
         op_a_0: bool,
     ) {
         let event = UTypeEvent {
@@ -1459,7 +1598,7 @@ impl<'a> Executor<'a> {
         syscall_code: SyscallCode,
         arg1: u64,
         arg2: u64,
-        record: MemoryAccessRecord,
+        record: &MemoryAccessRecord,
         op_a_0: bool,
         next_pc: u64,
         exit_code: u32,
@@ -1469,6 +1608,23 @@ impl<'a> Executor<'a> {
             self.syscall_event(clk, syscall_code, arg1, arg2, op_a_0, next_pc, exit_code);
         let record = RTypeRecord::new(record, instruction);
         self.record.syscall_events.push((syscall_event, record));
+    }
+
+    /// Emit a instruction fetch event.
+    #[allow(clippy::too_many_arguments)]
+    fn emit_instruction_fetch_event(
+        &mut self,
+        instruction: &Instruction,
+        encoded_instruction: u32,
+        record: &MemoryAccessRecord,
+    ) {
+        let event = InstructionFetchEvent {
+            clk: self.state.clk,
+            pc: self.state.pc,
+            instruction: *instruction,
+            encoded_instruction,
+        };
+        self.record.instruction_fetch_events.push((event, *record));
     }
 
     /// Fetch the destination register and input operand values for an ALU instruction.
@@ -1533,35 +1689,58 @@ impl<'a> Executor<'a> {
 
     /// Fetch the instruction at the current program counter.
     #[inline]
-    fn fetch<E: ExecutorConfig>(&mut self) -> Instruction {
+    fn fetch<E: ExecutorConfig>(&mut self) -> Result<Instruction, ExecutionError> {
         let program_instruction = self.program.fetch(self.state.pc);
         if let Some(instruction) = program_instruction {
-            *instruction
-        } else {
-            // Check that the page is executable.
-            let page_prot_page_idx = self.state.pc / PAGE_SIZE as u64;
-            let page_prot =
-                self.state.page_prots.get(&page_prot_page_idx).unwrap_or(&(PROT_READ | PROT_WRITE));
-            assert!(*page_prot & PROT_EXEC != 0);
-
-            // Fetch it from memory.
+            Ok(*instruction)
+        } else if self.opts.page_protect {
             let aligned_pc = align(self.state.pc);
 
-            // TODO: Add a record for a dynamic program entry.
-            let memory_value = self.double_word::<E>(aligned_pc);
+            let timestamp = self.timestamp(&MemoryAccessPosition::UntrustedInstruction);
+
+            let mut record = self.mr::<E>(aligned_pc, false, timestamp, None);
+            self.local_counts.local_instruction_fetch += 1;
+
+            let page_prot_record = self.page_prot_access::<E>(
+                aligned_pc / PAGE_SIZE as u64,
+                PROT_EXEC,
+                false,
+                timestamp,
+                None,
+            );
+
+            record.prev_page_prot_record = Some(page_prot_record);
+
+            let memory_value = record.value;
 
             let alignment_offset = self.state.pc - aligned_pc;
+            // TODO: What's the best way to return error? Can we have this return a result?
+            if !aligned_pc.is_multiple_of(4) {
+                return Err(ExecutionError::InvalidMemoryAccessUntrustedProgram(aligned_pc));
+            }
             let instruction_value: u32 =
                 (memory_value >> (alignment_offset * 8) & 0xffffffff).try_into().unwrap();
 
-            if let Some(instruction) = self.decoded_instruction_cache.get(&self.state.pc) {
-                *instruction
-            } else {
-                let instruction =
-                    process_instruction(&mut self.transpiler, instruction_value).unwrap();
-                self.decoded_instruction_cache.insert(self.state.pc, instruction);
-                instruction
+            if E::MODE == ExecutorMode::Trace {
+                self.memory_accesses.untrusted_instruction =
+                    Some((record.into(), instruction_value));
             }
+
+            let instruction: Instruction;
+            if let Some(cached_instruction) = self.decoded_instruction_cache.get(&self.state.pc) {
+                instruction = *cached_instruction;
+            } else {
+                instruction = process_instruction(&mut self.transpiler, instruction_value).unwrap();
+                self.decoded_instruction_cache.insert(self.state.pc, instruction);
+            }
+
+            self.local_counts
+                .shard_distinct_instructions
+                .insert((self.state.pc, instruction_value));
+
+            Ok(instruction)
+        } else {
+            Err(ExecutionError::InstructionNotFound())
         }
     }
 
@@ -1579,10 +1758,6 @@ impl<'a> Executor<'a> {
         // Will be set to a non-default value if the instruction is a syscall.
 
         let (mut a, b, c): (u64, u64, u64);
-
-        if E::MODE == ExecutorMode::Trace {
-            self.memory_accesses = MemoryAccessRecord::default();
-        }
 
         // The syscall id for precompiles.  This is only used/set when opcode == ECALL.
         let mut syscall = SyscallCode::default();
@@ -1645,6 +1820,7 @@ impl<'a> Executor<'a> {
 
         // Emit the events for this cycle.
         if E::MODE == ExecutorMode::Trace {
+            let memory_accesses = self.memory_accesses;
             self.emit_events(
                 clk,
                 next_pc,
@@ -1654,7 +1830,7 @@ impl<'a> Executor<'a> {
                 b,
                 c,
                 op_a_0,
-                self.memory_accesses,
+                &memory_accesses,
                 exit_code,
             );
         }
@@ -1885,6 +2061,9 @@ impl<'a> Executor<'a> {
     fn execute_ecall<E: ExecutorConfig>(
         &mut self,
     ) -> Result<(u64, u64, u64, u64, u64, SyscallCode, u32), ExecutionError> {
+        // Assert that only the trusted program can call ecall.
+        assert!(self.memory_accesses.untrusted_instruction.is_none());
+
         // We peek at register x5 to get the syscall id. The reason we don't `self.rr` this
         // register is that we write to it later.
         let t0 = Register::X5;
@@ -2012,8 +2191,12 @@ impl<'a> Executor<'a> {
     #[inline]
     #[allow(clippy::too_many_lines)]
     fn execute_cycle<E: ExecutorConfig>(&mut self) -> Result<bool, ExecutionError> {
+        if E::MODE == ExecutorMode::Trace {
+            self.memory_accesses = MemoryAccessRecord::default();
+        }
+
         // Fetch the instruction at the current program counter.
-        let instruction = self.fetch::<E>();
+        let instruction = self.fetch::<E>()?;
 
         // Log the current state of the runtime.
         self.log::<E>(&instruction);
@@ -2064,7 +2247,7 @@ impl<'a> Executor<'a> {
                         tracing::info!(
                             "stopping shard at clk {}, max height {}",
                             self.state.clk,
-                            max_height
+                            max_height,
                         );
                         maximal_size_reached = false;
                     }
@@ -2118,9 +2301,21 @@ impl<'a> Executor<'a> {
         .0;
         self.local_counts = LocalCounts::default();
         // Copy all of the existing local memory accesses to the record's local_memory_access vec.
+
         if E::MODE == ExecutorMode::Trace {
             for (_, event) in self.local_memory_access.drain() {
                 self.record.cpu_local_memory_access.push(event);
+            }
+            if self.opts.page_protect {
+                for (_, event) in self.local_page_prot_access.drain() {
+                    self.record.cpu_local_page_prot_access.push(event);
+                }
+                let decoded_events =
+                    std::mem::replace(&mut self.decoded_instruction_events, HashMap::new());
+                self.record.instruction_decode_events.extend(decoded_events.into_values());
+            } else {
+                assert!(self.local_page_prot_access.is_empty());
+                assert!(self.decoded_instruction_events.is_empty());
             }
         }
 
@@ -2145,7 +2340,7 @@ impl<'a> Executor<'a> {
         Ok((std::mem::take(&mut self.record), done))
     }
 
-    /// Execute the program unitl the shard boundry.
+    /// Execute the program until the shard boundry.
     ///
     /// # Errors
     ///
@@ -2162,7 +2357,6 @@ impl<'a> Executor<'a> {
         let memory = std::mem::take(&mut self.state.memory);
         let uninitialized_memory = std::mem::take(&mut self.state.uninitialized_memory);
         let proof_stream = std::mem::take(&mut self.state.proof_stream);
-        let page_prots = self.state.page_prots.clone();
         let mut checkpoint = tracing::debug_span!("clone").in_scope(|| self.state.clone());
         self.state.memory = memory;
         self.state.uninitialized_memory = uninitialized_memory;
@@ -2186,7 +2380,6 @@ impl<'a> Executor<'a> {
                 // all memory so that memory events can be emitted from the checkpoint. But we need
                 // to first reset any modified memory to as it was before the execution.
                 checkpoint.memory.clone_from(&self.state.memory);
-                checkpoint.page_prots = page_prots;
                 memory_checkpoint.into_iter().for_each(|(addr, record)| {
                     if let Some(record) = record {
                         checkpoint.memory.insert(addr, record);
@@ -2265,7 +2458,7 @@ impl<'a> Executor<'a> {
         let mut done = false;
         while !done {
             // Fetch the instruction at the current program counter.
-            let instruction = self.fetch::<Unconstrained>();
+            let instruction = self.fetch::<Unconstrained>()?;
 
             // Execute the instruction.
             self.execute_instruction::<Unconstrained>(&instruction)?;
@@ -2371,6 +2564,9 @@ impl<'a> Executor<'a> {
         self.record.public_values.deferred_proofs_digest = public_values.deferred_proofs_digest;
         self.record.public_values.commit_syscall = public_values.commit_syscall;
         self.record.public_values.commit_deferred_syscall = public_values.commit_deferred_syscall;
+        // Set is_page_protect_active from the page_protect option
+        self.record.public_values.is_page_protect_active = self.opts.page_protect as u32;
+
         if self.record.contains_cpu() {
             self.record.public_values.pc_start = self.record.pc_start.unwrap();
             self.record.public_values.next_pc = self.record.next_pc;
@@ -2498,6 +2694,29 @@ impl<'a> Executor<'a> {
                 memory_finalize_events
                     .push(MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record));
             }
+            if self.opts.page_protect {
+                let page_prot_initialize_events =
+                    &mut self.record.global_page_prot_initialize_events;
+                page_prot_initialize_events.reserve_exact(self.state.page_prots.len());
+
+                let page_prot_finalize_events = &mut self.record.global_page_prot_finalize_events;
+                page_prot_finalize_events.reserve_exact(self.state.page_prots.len());
+
+                for page_idx in self.state.page_prots.keys() {
+                    let record = self.state.page_prots.get(page_idx).unwrap();
+
+                    page_prot_initialize_events.push(PageProtInitializeFinalizeEvent::initialize(
+                        *page_idx,
+                        DEFAULT_PAGE_PROT,
+                    ));
+
+                    page_prot_finalize_events.push(
+                        PageProtInitializeFinalizeEvent::finalize_from_record(*page_idx, record),
+                    );
+                }
+            } else {
+                assert!(self.state.page_prots.is_empty());
+            }
         }
     }
 
@@ -2510,7 +2729,11 @@ impl<'a> Executor<'a> {
         internal_syscalls_air_id: &[RiscvAirId],
     ) {
         let touched_addresses: u64 = local_counts.local_mem as u64;
+        let touched_page_prot: u64 = local_counts.local_page_prot as u64;
+        let page_prot: u64 = local_counts.page_prot as u64;
         let syscalls_sent: u64 = local_counts.syscalls_sent as u64;
+        let instruction_fetch: u64 = local_counts.local_instruction_fetch as u64;
+        let instruction_decode: u64 = local_counts.shard_distinct_instructions.len() as u64;
         let opcode_counts: &EnumMap<Opcode, u64> = &local_counts.event_counts;
 
         // Compute the maximum number of MemoryBump events.
@@ -2573,6 +2796,10 @@ impl<'a> Executor<'a> {
         event_counts[RiscvAirId::MemoryLocal] =
             touched_addresses.div_ceil(NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC as u64);
 
+        // Compute the number of events in the page protection local chip.
+        event_counts[RiscvAirId::PageProtLocal] =
+            touched_page_prot.div_ceil(NUM_LOCAL_PAGE_PROT_ENTRIES_PER_ROW_EXEC as u64);
+
         // Compute the number of events in the branch chip.
         event_counts[RiscvAirId::Branch] = opcode_counts[Opcode::BEQ]
             + opcode_counts[Opcode::BNE]
@@ -2600,14 +2827,24 @@ impl<'a> Executor<'a> {
         event_counts[RiscvAirId::StoreWord] = opcode_counts[Opcode::SW];
         event_counts[RiscvAirId::StoreDouble] = opcode_counts[Opcode::SD];
 
+        event_counts[RiscvAirId::PageProt] =
+            page_prot.div_ceil(NUM_PAGE_PROT_ENTRIES_PER_ROW_EXEC as u64);
+
         // Compute the number of events in the syscall instruction chip.
         event_counts[RiscvAirId::SyscallInstrs] = opcode_counts[Opcode::ECALL];
 
         // Compute the number of events in the syscall core chip.
         event_counts[RiscvAirId::SyscallCore] = syscalls_sent;
 
+        // Compute the number of events in the instruction fetch chip.
+        event_counts[RiscvAirId::InstructionFetch] = instruction_fetch;
+
+        // Compute the number of events in the instruction decode chip.
+        event_counts[RiscvAirId::InstructionDecode] = instruction_decode;
+
         // Compute the number of events in the global chip.
-        event_counts[RiscvAirId::Global] = 2 * touched_addresses + syscalls_sent;
+        event_counts[RiscvAirId::Global] =
+            2 * touched_addresses + 2 * touched_page_prot + syscalls_sent;
 
         // Compute the number of events in the retained precompiles.
         for &air_id in internal_syscalls_air_id {
@@ -2946,7 +3183,7 @@ mod tests {
         // Updated for 64-bit: negative immediate values must be properly sign-extended
         let mut instructions = vec![
             Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::ADD, 30, 29, 0xFFFFFFFFFFFFFFFF, false, true), // -1 in 64-bit
+            Instruction::new(Opcode::ADD, 30, 29, 0xFFFFFFFFFFFFFFFF, false, true), /* -1 in 64-bit */
             Instruction::new(Opcode::ADD, 31, 30, 4, false, true),
         ];
         add_halt(&mut instructions);
@@ -2969,7 +3206,7 @@ mod tests {
 
         // Test with 64-bit boundary values
         let mut instructions3 = vec![
-            Instruction::new(Opcode::ADD, 25, 0, 0x7FFFFFFFFFFFFFFF, false, true), // i64::MAX
+            Instruction::new(Opcode::ADD, 25, 0, 0x7FFFFFFFFFFFFFFF, false, true), /* i64::MAX */
             Instruction::new(Opcode::ADD, 24, 25, 1, false, true), // Overflow to negative
         ];
         add_halt(&mut instructions3);

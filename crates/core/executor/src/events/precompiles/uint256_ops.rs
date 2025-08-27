@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::events::{
     memory::{MemoryReadRecord, MemoryWriteRecord},
-    MemoryLocalEvent,
+    MemoryLocalEvent, PageProtLocalEvent, PageProtRecord,
 };
 
 /// Uint256 operation types.
@@ -14,6 +14,21 @@ pub enum Uint256Operation {
     Add,
     /// Multiplication operation.
     Mul,
+}
+
+/// Uint256 Ops Page Prot Records.
+#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
+pub struct Uint256OpsPageProtRecords {
+    /// The page prot records for reading the a address.
+    pub read_a_page_prot_records: Vec<PageProtRecord>,
+    /// The page prot records for reading the b address.
+    pub read_b_page_prot_records: Vec<PageProtRecord>,
+    /// The page prot records for reading the c address.
+    pub read_c_page_prot_records: Vec<PageProtRecord>,
+    /// The page prot records for writing the d address.
+    pub write_d_page_prot_records: Vec<PageProtRecord>,
+    /// The page prot records for writing the e address.
+    pub write_e_page_prot_records: Vec<PageProtRecord>,
 }
 
 /// Uint256 operations event.
@@ -61,4 +76,8 @@ pub struct Uint256OpsEvent {
     pub e_memory_records: Vec<MemoryWriteRecord>,
     /// The local memory access events.
     pub local_mem_access: Vec<MemoryLocalEvent>,
+    /// The page prot records.
+    pub page_prot_records: Uint256OpsPageProtRecords,
+    /// The local page prot access events.
+    pub local_page_prot_access: Vec<PageProtLocalEvent>,
 }

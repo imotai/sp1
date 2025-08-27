@@ -1,7 +1,7 @@
 use crate::{
     air::SP1CoreAirBuilder,
     memory::MemoryAccessCols,
-    operations::{AddrAddOperation, SyscallAddrOperation},
+    operations::{AddrAddOperation, AddressSlicePageProtOperation, SyscallAddrOperation},
     utils::next_multiple_of_32,
 };
 
@@ -20,6 +20,7 @@ use sp1_hypercube::{
     air::{AirInteraction, InteractionScope, MachineAir},
     InteractionKind, Word,
 };
+use sp1_primitives::consts::{PROT_READ, PROT_WRITE};
 use std::{borrow::BorrowMut, iter::once};
 
 impl KeccakPermuteControlChip {
@@ -41,6 +42,10 @@ pub struct KeccakPermuteControlCols<T> {
     pub initial_memory_access: [MemoryAccessCols<T>; 25],
     pub final_memory_access: [MemoryAccessCols<T>; 25],
     pub final_value: [Word<T>; 25],
+
+    /// Array Slice Page Prot Access.
+    pub read_state_slice_page_prot_access: AddressSlicePageProtOperation<T>,
+    pub write_state_slice_page_prot_access: AddressSlicePageProtOperation<T>,
 }
 
 impl<F> BaseAir<F> for KeccakPermuteControlChip {
@@ -77,6 +82,28 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
                 cols.final_memory_access[j]
                     .populate(MemoryRecordEnum::Write(*write_record), &mut blu_events);
                 cols.final_value[j] = Word::from(write_record.value);
+            }
+            if input.public_values.is_page_protect_active == 1 {
+                cols.read_state_slice_page_prot_access.populate(
+                    &mut blu_events,
+                    event.state_addr,
+                    event.state_addr + 8 * (STATE_NUM_WORDS - 1) as u64,
+                    event.clk,
+                    PROT_READ,
+                    &event.page_prot_records.read_pre_state_page_prot_records[0],
+                    &event.page_prot_records.read_pre_state_page_prot_records.get(1).copied(),
+                    input.public_values.is_page_protect_active,
+                );
+                cols.write_state_slice_page_prot_access.populate(
+                    &mut blu_events,
+                    event.state_addr,
+                    event.state_addr + 8 * (STATE_NUM_WORDS - 1) as u64,
+                    event.clk + 1,
+                    PROT_WRITE,
+                    &event.page_prot_records.write_post_state_page_prot_records[0],
+                    &event.page_prot_records.write_post_state_page_prot_records.get(1).copied(),
+                    input.public_values.is_page_protect_active,
+                );
             }
         }
         output.add_byte_lookup_events(blu_events);
@@ -118,7 +145,28 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
                     .populate(MemoryRecordEnum::Write(*write_record), &mut blu_events);
                 cols.final_value[j] = Word::from(write_record.value);
             }
-
+            if input.public_values.is_page_protect_active == 1 {
+                cols.read_state_slice_page_prot_access.populate(
+                    &mut blu_events,
+                    event.state_addr,
+                    event.state_addr + 8 * (STATE_NUM_WORDS - 1) as u64,
+                    event.clk,
+                    PROT_READ,
+                    &event.page_prot_records.read_pre_state_page_prot_records[0],
+                    &event.page_prot_records.read_pre_state_page_prot_records.get(1).copied(),
+                    input.public_values.is_page_protect_active,
+                );
+                cols.write_state_slice_page_prot_access.populate(
+                    &mut blu_events,
+                    event.state_addr,
+                    event.state_addr + 8 * (STATE_NUM_WORDS - 1) as u64,
+                    event.clk + 1,
+                    PROT_WRITE,
+                    &event.page_prot_records.write_post_state_page_prot_records[0],
+                    &event.page_prot_records.write_post_state_page_prot_records.get(1).copied(),
+                    input.public_values.is_page_protect_active,
+                );
+            }
             rows.push(row);
         }
 
@@ -244,5 +292,28 @@ where
                 local.is_real,
             );
         }
+
+        // Evaluate the page prot accesses.
+        AddressSlicePageProtOperation::<AB::F>::eval(
+            builder,
+            local.clk_high.into(),
+            local.clk_low.into(),
+            &local.state_addr.addr.map(Into::into),
+            &local.addrs[STATE_NUM_WORDS - 1].value.map(Into::into),
+            AB::Expr::from_canonical_u8(PROT_READ),
+            &local.read_state_slice_page_prot_access,
+            local.is_real.into(),
+        );
+
+        AddressSlicePageProtOperation::<AB::F>::eval(
+            builder,
+            local.clk_high.into(),
+            local.clk_low.into() + AB::Expr::one(),
+            &local.state_addr.addr.map(Into::into),
+            &local.addrs[STATE_NUM_WORDS - 1].value.map(Into::into),
+            AB::Expr::from_canonical_u8(PROT_WRITE),
+            &local.write_state_slice_page_prot_access,
+            local.is_real.into(),
+        );
     }
 }

@@ -30,6 +30,7 @@ pub const PROT_NONE: u8 = 0b000;
 pub const PROT_READ: u8 = 0b001;
 pub const PROT_WRITE: u8 = 0b010;
 pub const PROT_EXEC: u8 = 0b100;
+pub const DEFAULT_PAGE_PROT: u8 = PROT_READ | PROT_WRITE;
 
 /// The stack top for the 64-bit zkvm.
 pub const STACK_TOP: u64 = 0x78000000;
@@ -154,4 +155,10 @@ pub fn u32_to_u16_limbs(value: u32) -> [u16; 2] {
 /// Converts a 64-bit integer to four 16-bit integers.
 pub fn u64_to_u16_limbs(value: u64) -> [u16; 4] {
     [(value & 0xFFFF) as u16, (value >> 16) as u16, (value >> 32) as u16, (value >> 48) as u16]
+}
+
+// Utility function to split a 64 bit page index into 3 limbs sized 4 bit, 16 bit, and 16 bit (least
+// significant first).
+pub fn split_page_idx(page_idx: u64) -> [u16; 3] {
+    [(page_idx & 0xF) as u16, ((page_idx >> 4) & 0xFFFF) as u16, ((page_idx >> 20) & 0xFFFF) as u16]
 }

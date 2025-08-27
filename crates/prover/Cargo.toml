@@ -88,12 +88,12 @@ path = "scripts/build_recursion_vks.rs"
 # name = "find_oom_shapes"
 # path = "scripts/find_oom_shapes.rs"
 
-[[bin]]
-name = "find_recursion_shape"
-path = "scripts/find_recursion_shape.rs"
+# [[bin]]
+# name = "find_recursion_shape"
+# path = "scripts/find_recursion_shape.rs"
 
-[dependencies.test-artifacts]
-workspace = true
+# [dependencies.test-artifacts]
+# workspace = true
 
 # [[bin]]
 # name = "test_shape_fixing"

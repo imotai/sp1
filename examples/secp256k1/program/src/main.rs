@@ -108,22 +108,6 @@ pub fn main() {
         sp1_curves::weierstrass::secp256k1::Secp256k1BaseField::MODULUS,
     );
 
-    let compressed_key: [u8; 33] = sp1_zkvm::io::read_vec().try_into().unwrap();
-    let mut decompressed_key: [u64; 8] = [0; 8];
-    as_bytes_le(&mut decompressed_key)[..32].copy_from_slice(&compressed_key[1..]);
-    let is_odd = match compressed_key[0] {
-        2 => false,
-        3 => true,
-        _ => panic!("Invalid compressed key"),
-    };
-    syscall_secp256k1_decompress(&mut decompressed_key, is_odd);
-
-    let mut result: [u8; 65] = [0; 65];
-    result[0] = 4;
-    result[1..].copy_from_slice(as_bytes_le(&mut decompressed_key));
-
-    sp1_zkvm::io::commit_slice(&result);
-
     // generator.
     // 55066263022277343669578718895168534326250603453777594175500187360389116729240
     // 32670510020758816978083085130507043184471273380659243275938904335757337482424

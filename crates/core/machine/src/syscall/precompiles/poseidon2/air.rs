@@ -3,7 +3,8 @@ use crate::{
     memory::MemoryAccessCols,
     operations::{
         poseidon2::{permutation::Poseidon2Cols, Poseidon2Operation},
-        AddrAddOperation, SP1FieldWordRangeChecker, SyscallAddrOperation,
+        AddrAddOperation, AddressSlicePageProtOperation, SP1FieldWordRangeChecker,
+        SyscallAddrOperation,
     },
     utils::{next_multiple_of_32, zeroed_f_vec},
 };
@@ -23,6 +24,7 @@ use sp1_hypercube::{
     air::{InteractionScope, MachineAir},
     Word,
 };
+use sp1_primitives::consts::{PROT_READ, PROT_WRITE};
 use std::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
@@ -71,6 +73,9 @@ pub struct Poseidon2Cols2<T: Copy> {
 
     /// The Poseidon2 operation columns.
     pub poseidon2_operation: Poseidon2Operation<T>,
+
+    /// Array Slice Page Prot Access.
+    pub address_slice_page_prot_access: AddressSlicePageProtOperation<T>,
 
     /// Whether this row is real.
     pub is_real: T,
@@ -152,7 +157,7 @@ impl<F: PrimeField32> MachineAir<F> for Poseidon2Chip {
                     }
 
                     // Extract the input values from memory.
-                    let input: [F; 16] = {
+                    let posiedon_input: [F; 16] = {
                         let mut values = [F::zero(); 16];
                         for i in 0..8 {
                             let val = event.memory_records[i].prev_value;
@@ -169,7 +174,7 @@ impl<F: PrimeField32> MachineAir<F> for Poseidon2Chip {
                     };
 
                     // Extract the output values that will be written.
-                    let output: [F; 16] = {
+                    let poseidon_output: [F; 16] = {
                         let mut values = [F::zero(); 16];
                         for i in 0..8 {
                             let val = event.memory_records[i].value;
@@ -182,9 +187,22 @@ impl<F: PrimeField32> MachineAir<F> for Poseidon2Chip {
                     // Populate the Poseidon2 operation.
                     cols.poseidon2_operation =
                         crate::operations::poseidon2::trace::populate_perm_deg3(
-                            input,
-                            Some(output),
+                            posiedon_input,
+                            Some(poseidon_output),
                         );
+                    if input.public_values.is_page_protect_active == 1 {
+                        // Populate the address slice page prot access.
+                        cols.address_slice_page_prot_access.populate(
+                            &mut byte_lookup_events,
+                            event.ptr,
+                            event.ptr + 7 * 8,
+                            event.clk,
+                            PROT_READ | PROT_WRITE,
+                            &event.page_prot_records[0],
+                            &event.page_prot_records.get(1).copied(),
+                            input.public_values.is_page_protect_active,
+                        );
+                    }
                 } else {
                     // Populate with dummy Poseidon2 operation for padding rows.
                     let dummy_input = [F::zero(); 16];
@@ -218,7 +236,18 @@ impl<F: PrimeField32> MachineAir<F> for Poseidon2Chip {
                     };
 
                     cols.ptr.populate(&mut blu, event.ptr, 64);
-
+                    if input.public_values.is_page_protect_active == 1 {
+                        cols.address_slice_page_prot_access.populate(
+                            &mut blu,
+                            event.ptr,
+                            event.ptr + 7 * 8,
+                            event.clk,
+                            PROT_READ | PROT_WRITE,
+                            &event.page_prot_records[0],
+                            &event.page_prot_records.get(1).copied(),
+                            input.public_values.is_page_protect_active,
+                        );
+                    }
                     // Populate memory columns for the 8 u64 words.
                     for i in 0..8 {
                         cols.addrs[i].populate(&mut blu, event.ptr, 8 * i as u64);
@@ -420,6 +449,17 @@ where
         for i in 0..16 {
             builder.when(local.is_real).assert_eq(perm_output[i], output[i].clone());
         }
+
+        AddressSlicePageProtOperation::<AB::F>::eval(
+            builder,
+            local.clk_high.into(),
+            local.clk_low.into(),
+            &ptr.map(Into::into),
+            &local.addrs[local.addrs.len() - 1].value.map(Into::into),
+            AB::Expr::from_canonical_u8(PROT_READ | PROT_WRITE),
+            &local.address_slice_page_prot_access,
+            local.is_real.into(),
+        );
 
         // Receive the syscall.
         builder.receive_syscall(

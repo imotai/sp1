@@ -132,9 +132,6 @@ pub struct DivRemCols<T> {
     /// Flag to indicate whether the opcode is REMUW.
     pub is_remuw: T,
 
-    /// The base opcode for the divrem instruction.
-    pub base_op_code: T,
-
     /// Flag to indicate whether the division operation overflows.
     ///
     /// Overflow occurs in a specific case of signed 32-bit integer division: when `b` is the
@@ -276,38 +273,6 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                 cols.is_divuw = F::from_bool(event.opcode == Opcode::DIVUW);
                 cols.is_remw = F::from_bool(event.opcode == Opcode::REMW);
                 cols.is_remuw = F::from_bool(event.opcode == Opcode::REMUW);
-
-                let (divw_base, divw_imm) = Opcode::DIVW.base_opcode();
-                let divw_imm = divw_imm.expect("DIVW immediate opcode not found");
-                let (remw_base, remw_imm) = Opcode::REMW.base_opcode();
-                let remw_imm = remw_imm.expect("REMW immediate opcode not found");
-                let (divuw_base, divuw_imm) = Opcode::DIVUW.base_opcode();
-                let divuw_imm = divuw_imm.expect("DIVUW immediate opcode not found");
-                let (remuw_base, remuw_imm) = Opcode::REMUW.base_opcode();
-                let remuw_imm = remuw_imm.expect("REMUW immediate opcode not found");
-
-                let is_imm_c = cols.adapter.imm_c.is_one();
-
-                let divw_base_opcode =
-                    F::from_canonical_u32(if is_imm_c { divw_imm } else { divw_base });
-                let remw_base_opcode =
-                    F::from_canonical_u32(if is_imm_c { remw_imm } else { remw_base });
-                let divuw_base_opcode =
-                    F::from_canonical_u32(if is_imm_c { divuw_imm } else { divuw_base });
-                let remuw_base_opcode =
-                    F::from_canonical_u32(if is_imm_c { remuw_imm } else { remuw_base });
-
-                cols.base_op_code = match event.opcode {
-                    Opcode::DIVU => F::from_canonical_u32(Opcode::DIVU.base_opcode().0),
-                    Opcode::REMU => F::from_canonical_u32(Opcode::REMU.base_opcode().0),
-                    Opcode::DIV => F::from_canonical_u32(Opcode::DIV.base_opcode().0),
-                    Opcode::REM => F::from_canonical_u32(Opcode::REM.base_opcode().0),
-                    Opcode::DIVW => divw_base_opcode,
-                    Opcode::REMW => remw_base_opcode,
-                    Opcode::DIVUW => divuw_base_opcode,
-                    Opcode::REMUW => remuw_base_opcode,
-                    _ => unreachable!(),
-                };
 
                 let not_word_operation =
                     F::one() - cols.is_divw - cols.is_remw - cols.is_divuw - cols.is_remuw;
@@ -1199,20 +1164,14 @@ where
                 + local.is_divuw * AB::Expr::from_canonical_u8(Opcode::DIVUW.funct7().unwrap())
                 + local.is_remuw * AB::Expr::from_canonical_u8(Opcode::REMUW.funct7().unwrap());
 
-            let base_opcode = local.base_op_code.into();
-
             let divu_base = Opcode::DIVU.base_opcode().0;
             let remu_base = Opcode::REMU.base_opcode().0;
             let div_base = Opcode::DIV.base_opcode().0;
             let rem_base = Opcode::REM.base_opcode().0;
-            let (divw_base, divw_imm) = Opcode::DIVW.base_opcode();
-            let divw_imm = divw_imm.expect("DIVW immediate opcode not found");
-            let (remw_base, remw_imm) = Opcode::REMW.base_opcode();
-            let remw_imm = remw_imm.expect("REMW immediate opcode not found");
-            let (divuw_base, divuw_imm) = Opcode::DIVUW.base_opcode();
-            let divuw_imm = divuw_imm.expect("DIVUW immediate opcode not found");
-            let (remuw_base, remuw_imm) = Opcode::REMUW.base_opcode();
-            let remuw_imm = remuw_imm.expect("REMUW immediate opcode not found");
+            let divw_base = Opcode::DIVW.base_opcode().0;
+            let remw_base = Opcode::REMW.base_opcode().0;
+            let divuw_base = Opcode::DIVUW.base_opcode().0;
+            let remuw_base = Opcode::REMUW.base_opcode().0;
 
             let divu_base_expr = AB::Expr::from_canonical_u32(divu_base);
             let remu_base_expr = AB::Expr::from_canonical_u32(remu_base);
@@ -1220,19 +1179,11 @@ where
             let rem_base_expr = AB::Expr::from_canonical_u32(rem_base);
 
             let divw_base_expr = AB::Expr::from_canonical_u32(divw_base);
-            let divw_imm_expr = AB::Expr::from_canonical_u32(divw_imm);
             let remw_base_expr = AB::Expr::from_canonical_u32(remw_base);
-            let remw_imm_expr = AB::Expr::from_canonical_u32(remw_imm);
             let divuw_base_expr = AB::Expr::from_canonical_u32(divuw_base);
-            let divuw_imm_expr = AB::Expr::from_canonical_u32(divuw_imm);
             let remuw_base_expr = AB::Expr::from_canonical_u32(remuw_base);
-            let remuw_imm_expr = AB::Expr::from_canonical_u32(remuw_imm);
 
-            let correct_imm_opcode = local.is_divw * divw_imm_expr
-                + local.is_remw * remw_imm_expr
-                + local.is_divuw * divuw_imm_expr
-                + local.is_remuw * remuw_imm_expr;
-            let correct_reg_opcode = local.is_divu * divu_base_expr
+            let calculated_base_opcode = local.is_divu * divu_base_expr
                 + local.is_remu * remu_base_expr
                 + local.is_div * div_base_expr
                 + local.is_rem * rem_base_expr
@@ -1241,10 +1192,22 @@ where
                 + local.is_divuw * divuw_base_expr
                 + local.is_remuw * remuw_base_expr;
 
-            // Constrain base_op_code to be correct based on imm_c and is_* columns.
-            let correct_opcode =
-                builder.if_else(local.adapter.imm_c.into(), correct_imm_opcode, correct_reg_opcode);
-            builder.when(local.is_real.into()).assert_eq(local.base_op_code.into(), correct_opcode);
+            let divu_instr_type = Opcode::DIVU.instruction_type().0 as u32;
+            let remu_instr_type = Opcode::REMU.instruction_type().0 as u32;
+            let div_instr_type = Opcode::DIV.instruction_type().0 as u32;
+            let rem_instr_type = Opcode::REM.instruction_type().0 as u32;
+            let divw_instr_type = Opcode::DIVW.instruction_type().0 as u32;
+            let remw_instr_type = Opcode::REMW.instruction_type().0 as u32;
+            let divuw_instr_type = Opcode::DIVUW.instruction_type().0 as u32;
+
+            let calculated_instr_type = local.is_divu
+                * AB::Expr::from_canonical_u32(divu_instr_type)
+                + local.is_remu * AB::Expr::from_canonical_u32(remu_instr_type)
+                + local.is_div * AB::Expr::from_canonical_u32(div_instr_type)
+                + local.is_rem * AB::Expr::from_canonical_u32(rem_instr_type)
+                + local.is_divw * AB::Expr::from_canonical_u32(divw_instr_type)
+                + local.is_remw * AB::Expr::from_canonical_u32(remw_instr_type)
+                + local.is_divuw * AB::Expr::from_canonical_u32(divuw_instr_type);
 
             // Constrain the state of the CPU.
             // The program counter and timestamp increment by `4` and `8`.
@@ -1268,8 +1231,8 @@ where
                 local.state.clk_low::<AB>(),
                 local.state.pc,
                 opcode,
-                [base_opcode, funct3, funct7],
-                local.a.map(Into::into),
+                [calculated_instr_type, calculated_base_opcode, funct3, funct7],
+                local.a.map(|x| x.into()),
                 local.adapter,
                 local.is_real.into(),
             );

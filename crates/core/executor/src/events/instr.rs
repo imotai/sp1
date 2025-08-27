@@ -1,7 +1,7 @@
 use deepsize2::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 
-use crate::Opcode;
+use crate::{Instruction, Opcode};
 
 use super::MemoryRecordEnum;
 
@@ -189,5 +189,53 @@ impl UTypeEvent {
     #[allow(clippy::too_many_arguments)]
     pub fn new(clk: u64, pc: u64, opcode: Opcode, a: u64, b: u64, c: u64, op_a_0: bool) -> Self {
         Self { clk, pc, opcode, a, b, c, op_a_0 }
+    }
+}
+
+/// Instruction Fetch Event.
+///
+/// This object encapsulated the information needed to prove an instruction fetch from memory.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
+#[repr(C)]
+pub struct InstructionFetchEvent {
+    /// The clock cycle.
+    pub clk: u64,
+    /// The program counter.
+    pub pc: u64,
+    /// Decoded instruction.
+    pub instruction: Instruction,
+    /// Encoded instruction
+    pub encoded_instruction: u32,
+}
+
+impl InstructionFetchEvent {
+    /// Create a new [`InstructionFetchEvent`].
+    #[must_use]
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(clk: u64, pc: u64, instruction: Instruction, encoded_instruction: u32) -> Self {
+        Self { clk, pc, instruction, encoded_instruction }
+    }
+}
+
+/// Instruction Decode Event.
+///
+/// This object encapsulated the information needed to prove an instruction decode.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
+#[repr(C)]
+pub struct InstructionDecodeEvent {
+    /// Decoded instruction.
+    pub instruction: Instruction,
+    /// Encoded instruction
+    pub encoded_instruction: u32,
+    /// The multiplicity of the instruction.
+    pub multiplicity: usize,
+}
+
+impl InstructionDecodeEvent {
+    /// Create a new [`InstructionDecodeEvent`].
+    #[must_use]
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(instruction: Instruction, encoded_instruction: u32, multiplicity: usize) -> Self {
+        Self { instruction, encoded_instruction, multiplicity }
     }
 }

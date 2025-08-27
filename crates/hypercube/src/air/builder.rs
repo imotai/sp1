@@ -303,6 +303,31 @@ pub trait SepticExtensionAirBuilder: BaseAirBuilder {
 pub trait MachineAirBuilder:
     BaseAirBuilder + ExtensionAirBuilder + SepticExtensionAirBuilder + AirBuilderWithPublicValues
 {
+    /// Extract public values from the air builder and convert them to the proper type.
+    /// This is commonly used throughout the codebase to access public values in AIR
+    /// implementations.
+    #[allow(clippy::type_complexity)]
+    fn extract_public_values(
+        &self,
+    ) -> super::PublicValues<
+        [Self::PublicVar; 4],
+        [Self::PublicVar; 3],
+        [Self::PublicVar; 4],
+        Self::PublicVar,
+    > {
+        use super::{PublicValues, SP1_PROOF_NUM_PV_ELTS};
+        use std::borrow::Borrow;
+
+        let public_values_slice: [Self::PublicVar; SP1_PROOF_NUM_PV_ELTS] =
+            core::array::from_fn(|i| self.public_values()[i]);
+        let public_values: &PublicValues<
+            [Self::PublicVar; 4],
+            [Self::PublicVar; 3],
+            [Self::PublicVar; 4],
+            Self::PublicVar,
+        > = public_values_slice.as_slice().borrow();
+        *public_values
+    }
 }
 
 /// A trait which contains all helper methods for building SP1 machine AIRs.

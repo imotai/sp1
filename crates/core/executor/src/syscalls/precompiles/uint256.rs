@@ -1,10 +1,10 @@
 use num::{BigUint, One, Zero};
 
 use sp1_curves::edwards::WORDS_FIELD_ELEMENT;
-use sp1_primitives::consts::{bytes_to_words_le, words_to_bytes_le_vec, WORD_BYTE_SIZE};
+use sp1_primitives::consts::{bytes_to_words_le, words_to_bytes_le_vec};
 
 use crate::{
-    events::{PrecompileEvent, Uint256MulEvent},
+    events::{PrecompileEvent, Uint256MulEvent, Uint256MulPageProtRecords},
     syscalls::{SyscallCode, SyscallContext},
     ExecutorConfig,
 };
@@ -26,12 +26,20 @@ pub(crate) fn uint256_mul<E: ExecutorConfig>(
     // the computed result to x later.
     let x = rt.slice_unsafe(x_ptr, WORDS_FIELD_ELEMENT);
 
-    // Read the y value.
-    let (y_memory_records, y) = rt.mr_slice(y_ptr, WORDS_FIELD_ELEMENT);
+    // Read both y and modulus values in a single contiguous read (y is followed by modulus).
+    let (combined_memory_records, combined_values, read_y_modulus_page_prot_records) =
+        rt.mr_slice(y_ptr, WORDS_FIELD_ELEMENT * 2);
 
-    // The modulus is stored after the y value. We increment the pointer by the number of words.
-    let modulus_ptr = y_ptr + WORDS_FIELD_ELEMENT as u64 * WORD_BYTE_SIZE as u64;
-    let (modulus_memory_records, modulus) = rt.mr_slice(modulus_ptr, WORDS_FIELD_ELEMENT);
+    // Split the combined results into y and modulus components.
+    let (y, modulus) = combined_values.split_at(WORDS_FIELD_ELEMENT);
+    let y = y.to_vec();
+    let modulus = modulus.to_vec();
+
+    // Split the memory records - first half for y, second half for modulus.
+    let (y_memory_records, modulus_memory_records) =
+        combined_memory_records.split_at(WORDS_FIELD_ELEMENT);
+    let y_memory_records = y_memory_records.to_vec();
+    let modulus_memory_records = modulus_memory_records.to_vec();
 
     // Get the BigUint values for x, y, and the modulus.
     let uint256_x = BigUint::from_bytes_le(&words_to_bytes_le_vec(&x));
@@ -55,7 +63,12 @@ pub(crate) fn uint256_mul<E: ExecutorConfig>(
     // Increment clk so that the write is not at the same cycle as the read.
     rt.clk += 1;
     // Write the result to x and keep track of the memory records.
-    let x_memory_records = rt.mw_slice(x_ptr, &result);
+    let (x_memory_records, write_x_page_prot_records) = rt.mw_slice(x_ptr, &result, true);
+
+    let (local_mem_access, local_page_prot_access) = rt.postprocess();
+
+    let page_prot_records =
+        Uint256MulPageProtRecords { write_x_page_prot_records, read_y_modulus_page_prot_records };
 
     let event = PrecompileEvent::Uint256Mul(Uint256MulEvent {
         clk,
@@ -67,7 +80,9 @@ pub(crate) fn uint256_mul<E: ExecutorConfig>(
         x_memory_records,
         y_memory_records,
         modulus_memory_records,
-        local_mem_access: rt.postprocess(),
+        local_mem_access,
+        page_prot_records,
+        local_page_prot_access,
     });
     let syscall_event =
         rt.rt.syscall_event(clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);

@@ -1,6 +1,6 @@
-//! A program that takes a number `n` as input, and writes if `n` is prime as an output.
 use sp1_sdk::ProverClient;
 use sp1_sdk::prelude::*;
+use sp1_core_executor::SP1CoreOpts;
 
 const ELF: Elf = include_elf!("mprotect-program");
 
@@ -9,32 +9,55 @@ async fn main() {
     // Setup a tracer for logging.
     sp1_sdk::utils::setup_logger();
 
-    let mut stdin = SP1Stdin::new();
+    println!("Running simple mprotect example with proof generation");
 
-    // Set the flags to true to test the failure cases.
-    let execute_prot_should_fail = false;
-    let test_prot_none_fail = false;
+    // No stdin needed for this simple example
+    let stdin = SP1Stdin::new();
 
-    stdin.write(&execute_prot_should_fail);
-    stdin.write(&test_prot_none_fail);
+    // Configure SP1CoreOpts with page protection enabled
+    let opts = SP1CoreOpts {
+        page_protect: true,
+        ..Default::default()
+    };
+    
+    let client = ProverClient::builder().cpu().with_opts(opts).build().await;
 
-    let client = ProverClient::builder().cpu().build().await;
+    // Execute the program first
+    println!("Executing program...");
+    let (public_output, execution_report) = client.execute(ELF, stdin.clone()).await.unwrap();
 
-    // let pk = client.setup(ELF).await.expect("setup failed");
+    println!("Program executed successfully!");
+    println!("Public output: {:?}", public_output);
+    
+    // Print execution statistics
+    println!(
+        "Executed program with {} total instructions",
+        execution_report.total_instruction_count()
+    );
+    println!("Total syscalls: {}", execution_report.total_syscall_count());
+    
+    // Print syscall breakdown to see mprotect calls
+    println!("Syscall breakdown:");
+    for (syscall_code, count) in execution_report.syscall_counts.iter() {
+        if *count > 0 {
+            println!("  {:?}: {}", syscall_code, count);
+        }
+    }
 
-    // Execute the program.
-    let (_, execution_report) = client.execute(ELF, stdin.clone()).await.unwrap();
+    // Setup the proving key
+    println!("Setting up proving key...");
+    let pk = client.setup(ELF).await.expect("Failed to setup proving key");
 
-    // let proof = client.prove(&pk, stdin.clone()).await.expect("proving failed");
+    // Generate the proof
+    println!("Generating proof...");
+    let proof = client.prove(&pk, stdin.clone()).core().await.expect("Failed to generate proof");
 
-    // Verify proof.
-    // client.verify(&proof, pk.verifying_key()).expect("verification failed");
+    println!("Proof generated successfully!");
 
-    // Print the total number of cycles executed and the full execution report with a breakdown of
-    // the RISC-V opcode and syscall counts.
-    // println!(
-    //     "Executed program with {} cycles",
-    //     execution_report.total_instruction_count() + execution_report.total_syscall_count()
-    // );
-    // println!("Full execution report:\n{:?}", execution_report);    
+    // Verify the proof
+    println!("Verifying proof...");
+    client.verify(&proof, pk.verifying_key(), None).expect("Failed to verify proof");
+
+    println!("Proof verified successfully!");
+    println!("Simple mprotect example with proof generation completed!");
 }

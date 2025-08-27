@@ -5,7 +5,7 @@ use core::{
 
 use hashbrown::HashMap;
 use itertools::Itertools;
-use slop_air::{Air, AirBuilder, BaseAir};
+use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
@@ -54,9 +54,6 @@ pub struct BitwiseCols<T> {
 
     /// If the opcode is AND.
     pub is_and: T,
-
-    /// The base opcode for the bitwise instruction.
-    pub base_op_code: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for BitwiseChip {
@@ -151,26 +148,6 @@ impl BitwiseChip {
         cols.is_xor = F::from_bool(event.opcode == Opcode::XOR);
         cols.is_or = F::from_bool(event.opcode == Opcode::OR);
         cols.is_and = F::from_bool(event.opcode == Opcode::AND);
-
-        let (xor_base, xor_imm) = Opcode::XOR.base_opcode();
-        let xor_imm = xor_imm.expect("XOR immediate opcode not found");
-        let (or_base, or_imm) = Opcode::OR.base_opcode();
-        let or_imm = or_imm.expect("OR immediate opcode not found");
-        let (and_base, and_imm) = Opcode::AND.base_opcode();
-        let and_imm = and_imm.expect("AND immediate opcode not found");
-
-        let is_imm_c = cols.adapter.imm_c.is_one();
-
-        let xor_base_opcode = F::from_canonical_u32(if is_imm_c { xor_imm } else { xor_base });
-        let or_base_opcode = F::from_canonical_u32(if is_imm_c { or_imm } else { or_base });
-        let and_base_opcode = F::from_canonical_u32(if is_imm_c { and_imm } else { and_base });
-
-        cols.base_op_code = match event.opcode {
-            Opcode::XOR => xor_base_opcode,
-            Opcode::OR => or_base_opcode,
-            Opcode::AND => and_base_opcode,
-            _ => unreachable!(),
-        };
     }
 }
 
@@ -217,8 +194,6 @@ where
             + local.is_or * AB::Expr::from_canonical_u8(Opcode::OR.funct7().unwrap_or(0))
             + local.is_and * AB::Expr::from_canonical_u8(Opcode::AND.funct7().unwrap_or(0));
 
-        let base_opcode = local.base_op_code.into();
-
         let (xor_base, xor_imm) = Opcode::XOR.base_opcode();
         let xor_imm = xor_imm.expect("XOR immediate opcode not found");
         let (or_base, or_imm) = Opcode::OR.base_opcode();
@@ -227,22 +202,39 @@ where
         let and_imm = and_imm.expect("AND immediate opcode not found");
 
         let xor_base_expr = AB::Expr::from_canonical_u32(xor_base);
-        let xor_imm_expr = AB::Expr::from_canonical_u32(xor_imm);
         let or_base_expr = AB::Expr::from_canonical_u32(or_base);
-        let or_imm_expr = AB::Expr::from_canonical_u32(or_imm);
         let and_base_expr = AB::Expr::from_canonical_u32(and_base);
-        let and_imm_expr = AB::Expr::from_canonical_u32(and_imm);
 
-        let correct_imm_opcode =
-            local.is_xor * xor_imm_expr + local.is_or * or_imm_expr + local.is_and * and_imm_expr;
-        let correct_reg_opcode = local.is_xor * xor_base_expr
+        let imm_base_difference = xor_base.checked_sub(xor_imm).unwrap();
+        assert_eq!(imm_base_difference, or_base.checked_sub(or_imm).unwrap());
+        assert_eq!(imm_base_difference, and_base.checked_sub(and_imm).unwrap());
+
+        let calculated_base_opcode = local.is_xor * xor_base_expr
             + local.is_or * or_base_expr
-            + local.is_and * and_base_expr;
-        let correct_opcode =
-            builder.if_else(local.adapter.imm_c.into(), correct_imm_opcode, correct_reg_opcode);
+            + local.is_and * and_base_expr
+            - AB::Expr::from_canonical_u32(imm_base_difference) * local.adapter.imm_c;
 
-        // Constrain base_op_code to be correct based on imm_c and is_* columns.
-        builder.when(is_real.clone()).assert_eq(local.base_op_code.into(), correct_opcode);
+        let xor_instr_type = Opcode::XOR.instruction_type().0 as u32;
+        let xor_instr_type_imm =
+            Opcode::XOR.instruction_type().1.expect("XOR immediate instruction type not found")
+                as u32;
+        let or_instr_type = Opcode::OR.instruction_type().0 as u32;
+        let or_instr_type_imm =
+            Opcode::OR.instruction_type().1.expect("OR immediate instruction type not found")
+                as u32;
+        let and_instr_type = Opcode::AND.instruction_type().0 as u32;
+        let and_instr_type_imm =
+            Opcode::AND.instruction_type().1.expect("AND immediate instruction type not found")
+                as u32;
+
+        let instr_type_difference = xor_instr_type.checked_sub(xor_instr_type_imm).unwrap();
+        assert_eq!(instr_type_difference, or_instr_type.checked_sub(or_instr_type_imm).unwrap());
+        assert_eq!(instr_type_difference, and_instr_type.checked_sub(and_instr_type_imm).unwrap());
+
+        let calculated_instr_type = local.is_xor * AB::Expr::from_canonical_u32(xor_instr_type)
+            + local.is_or * AB::Expr::from_canonical_u32(or_instr_type)
+            + local.is_and * AB::Expr::from_canonical_u32(and_instr_type)
+            - AB::Expr::from_canonical_u32(instr_type_difference) * local.adapter.imm_c;
 
         // Constrain the bitwise operation over `op_b` and `op_c`.
         let bitwise_u16_input = BitwiseU16OperationInput::<AB>::new(
@@ -275,7 +267,7 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             cpu_opcode,
-            [base_opcode, funct3, funct7],
+            [calculated_instr_type, calculated_base_opcode, funct3, funct7],
             result,
             local.adapter,
             is_real,

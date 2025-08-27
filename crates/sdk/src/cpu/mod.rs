@@ -107,8 +107,20 @@ impl CpuProver {
     /// Creates a new [`CpuProver`], using the default [`LocalProverOpts`].
     #[must_use]
     pub async fn new() -> Self {
+        Self::new_with_opts(None).await
+    }
+
+    /// Creates a new [`CpuProver`] with optional custom [`SP1CoreOpts`].
+    #[must_use]
+    pub async fn new_with_opts(core_opts: Option<sp1_core_executor::SP1CoreOpts>) -> Self {
         let prover = SP1ProverBuilder::<CpuSP1ProverComponents>::new().build().await;
-        let opts = LocalProverOpts::default();
+        let mut opts = LocalProverOpts::default();
+
+        // Override core_opts if provided
+        if let Some(core_opts) = core_opts {
+            opts.core_opts = core_opts;
+        }
+
         let prover = Arc::new(LocalProver::new(prover, opts));
 
         Self { prover }

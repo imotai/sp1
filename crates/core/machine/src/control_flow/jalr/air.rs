@@ -34,6 +34,7 @@ where
         let funct3 = AB::Expr::from_canonical_u8(Opcode::JALR.funct3().unwrap());
         let funct7 = AB::Expr::from_canonical_u8(Opcode::JALR.funct7().unwrap_or(0));
         let base_opcode = AB::Expr::from_canonical_u32(Opcode::JALR.base_opcode().0);
+        let instr_type = AB::Expr::from_canonical_u32(Opcode::JALR.instruction_type().0 as u32);
 
         // We constrain `next_pc` to be the sum of `op_b` and `op_c`.
         let op_input = AddOperationInput::<AB>::new(
@@ -77,7 +78,7 @@ where
                 local.state.clk_low::<AB>(),
                 local.state.pc,
                 opcode.into(),
-                [base_opcode, funct3, funct7],
+                [instr_type, base_opcode, funct3, funct7],
                 local.op_a_operation.value.map(|x| x.into()),
                 local.adapter,
                 local.is_real.into(),

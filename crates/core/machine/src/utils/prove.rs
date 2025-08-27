@@ -169,6 +169,10 @@ pub fn generate_records<F: PrimeField32>(
                 state.last_init_addr = record.public_values.last_init_addr;
                 state.previous_finalize_addr = record.public_values.previous_finalize_addr;
                 state.last_finalize_addr = record.public_values.last_finalize_addr;
+                state.previous_init_page_idx = record.public_values.previous_init_page_idx;
+                state.last_init_page_idx = record.public_values.last_init_page_idx;
+                state.previous_finalize_page_idx = record.public_values.previous_finalize_page_idx;
+                state.last_finalize_page_idx = record.public_values.last_finalize_page_idx;
                 state.pc_start = state.next_pc;
                 state.prev_exit_code = state.exit_code;
                 state.prev_commit_syscall = state.commit_syscall;

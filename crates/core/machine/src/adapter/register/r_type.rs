@@ -35,6 +35,7 @@ pub struct RTypeReader<T> {
     pub op_b_memory: RegisterAccessCols<T>,
     pub op_c: T,
     pub op_c_memory: RegisterAccessCols<T>,
+    pub is_trusted: T,
 }
 
 impl<F: PrimeField32> RTypeReader<F> {
@@ -46,6 +47,7 @@ impl<F: PrimeField32> RTypeReader<F> {
         self.op_b_memory.populate(record.b, blu_events);
         self.op_c = F::from_canonical_u64(record.op_c);
         self.op_c_memory.populate(record.c, blu_events);
+        self.is_trusted = F::from_bool(!record.is_untrusted);
     }
 }
 
@@ -70,15 +72,23 @@ impl<F: Field> RTypeReader<F> {
         clk_high: AB::Expr,
         clk_low: AB::Expr,
         pc: [AB::Var; 3],
-        opcode: impl Into<AB::Expr>,
-        instr_field_consts: [AB::Expr; 3],
+        opcode: impl Into<AB::Expr> + Clone,
+        instr_field_consts: [AB::Expr; 4],
         op_a_write_value: Word<impl Into<AB::Expr> + Clone>,
         cols: RTypeReader<AB::Var>,
         is_real: AB::Expr,
     ) {
         builder.assert_bool(is_real.clone());
+        let is_untrusted = is_real.clone() - cols.is_trusted;
+        builder.assert_bool(is_untrusted.clone());
+        builder.assert_bool(cols.is_trusted);
+
+        // When real, either is_untrusted or is_trusted must be true, when not real, both must be
+        // false.
+        builder.assert_eq(is_untrusted.clone() + cols.is_trusted, is_real.clone());
+
         let instruction = InstructionCols {
-            opcode: opcode.into(),
+            opcode: opcode.clone().into(),
             op_a: cols.op_a.into(),
             op_b: Word::extend_expr::<AB>(cols.op_b.into()),
             op_c: Word::extend_expr::<AB>(cols.op_c.into()),
@@ -86,7 +96,15 @@ impl<F: Field> RTypeReader<F> {
             imm_b: AB::Expr::zero(),
             imm_c: AB::Expr::zero(),
         };
-        builder.send_program(pc, instruction, instr_field_consts, is_real.clone());
+
+        builder.send_program(pc, instruction.clone(), cols.is_trusted);
+        builder.send_instruction_fetch(
+            pc,
+            instruction,
+            instr_field_consts,
+            [clk_high.clone(), clk_low.clone()],
+            is_untrusted.clone(),
+        );
         // Assert that `op_a` is zero if `op_a_0` is true.
         builder.when(cols.op_a_0).assert_word_eq(op_a_write_value.clone(), Word::zero::<AB>());
         builder.eval_register_access_write(
@@ -119,8 +137,8 @@ impl<F: Field> RTypeReader<F> {
         clk_high: AB::Expr,
         clk_low: AB::Expr,
         pc: [AB::Var; 3],
-        opcode: impl Into<AB::Expr>,
-        instr_field_consts: [AB::Expr; 3],
+        opcode: impl Into<AB::Expr> + Clone,
+        instr_field_consts: [AB::Expr; 4],
         cols: RTypeReader<AB::Var>,
         is_real: AB::Expr,
     ) {
@@ -144,7 +162,7 @@ pub struct RTypeReaderInput<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> {
     pub clk_low: AB::Expr,
     pub pc: [AB::Var; 3],
     pub opcode: AB::Expr,
-    pub instr_field_consts: [AB::Expr; 3],
+    pub instr_field_consts: [AB::Expr; 4],
     pub op_a_write_value: Word<T>,
     pub cols: RTypeReader<AB::Var>,
     pub is_real: AB::Expr,
@@ -179,7 +197,7 @@ pub struct RTypeReaderImmutableInput<AB: SP1AirBuilder> {
     pub clk_low: AB::Expr,
     pub pc: [AB::Var; 3],
     pub opcode: AB::Expr,
-    pub instr_field_consts: [AB::Expr; 3],
+    pub instr_field_consts: [AB::Expr; 4],
     pub cols: RTypeReader<AB::Var>,
     pub is_real: AB::Expr,
 }

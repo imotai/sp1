@@ -2,12 +2,34 @@
 
 use core::fmt::Debug;
 use rrs_lib::instruction_formats::{
-    OPCODE_AUIPC, OPCODE_BRANCH, OPCODE_JAL, OPCODE_JALR, OPCODE_LOAD, OPCODE_OP, OPCODE_OP_IMM,
-    OPCODE_STORE, OPCODE_SYSTEM,
+    OPCODE_AUIPC, OPCODE_BRANCH, OPCODE_JAL, OPCODE_JALR, OPCODE_LOAD, OPCODE_LUI, OPCODE_OP,
+    OPCODE_OP_32, OPCODE_OP_IMM, OPCODE_OP_IMM_32, OPCODE_STORE, OPCODE_SYSTEM,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::opcode::Opcode;
+
+/// RV64 instruction types.
+pub enum InstructionType {
+    /// I-type instructions with shamt (32-bit).
+    ITypeShamt32 = 0b0_0000_0001,
+    /// I-type instructions with shamt.
+    ITypeShamt = 0b0_0000_0010,
+    /// I-type instructions.
+    IType = 0b0_0000_0100,
+    /// R-type instructions.
+    RType = 0b0_0000_1000,
+    /// J-type instructions.
+    JType = 0b0_0001_0000,
+    /// B-type instructions.
+    BType = 0b0_0010_0000,
+    /// S-type instructions.
+    SType = 0b0_0100_0000,
+    /// U-type instructions.
+    UType = 0b0_1000_0000,
+    /// ECALL instruction.
+    ECALL = 0b1_0000_0000,
+}
 
 /// Validates that a u64 is properly sign-extended for a given bit width.
 ///
@@ -242,7 +264,7 @@ impl Instruction {
             match base_opcode {
                 // R-type instructions
                 // Operands represent register indices, which must be 5 bits (0-31)
-                OPCODE_OP => {
+                OPCODE_OP | OPCODE_OP_32 => {
                     assert!(
                         self.op_a <= 31,
                         "Register index {} exceeds maximum value 31",
@@ -273,7 +295,7 @@ impl Instruction {
                 // I-type instructions
                 // Operands a and b represent register indices, which must be 5 bits (0-31)
                 // Operand c represents an immediate value, which must be 12 bits (signed)
-                OPCODE_OP_IMM | OPCODE_LOAD | OPCODE_JALR | OPCODE_SYSTEM => {
+                OPCODE_OP_IMM | OPCODE_OP_IMM_32 | OPCODE_LOAD | OPCODE_JALR | OPCODE_SYSTEM => {
                     assert!(
                         self.op_a <= 31,
                         "Register index {} exceeds maximum value 31",
@@ -299,7 +321,9 @@ impl Instruction {
                     let funct3: u32 = funct3.expect("Opcode should have funct3").into();
 
                     // Check if it should be a I-type shamt instruction.
-                    if base_opcode == OPCODE_OP_IMM && matches!(funct3, 0b001 | 0b101) {
+                    if (base_opcode == OPCODE_OP_IMM || base_opcode == OPCODE_OP_IMM_32)
+                        && matches!(funct3, 0b001 | 0b101)
+                    {
                         let funct7: u32 = funct7.expect("Opcode should have funct7").into();
                         (funct7 << 25)
                             | (imm << 20)
@@ -314,6 +338,7 @@ impl Instruction {
                         (imm << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | base_opcode
                     }
                 }
+
                 // S-type instructions
                 // Operands a and b represent register indices, which must be 5 bits (0-31)
                 // Operand c represents an immediate value, which must be 12 bits (signed) (split
@@ -398,21 +423,25 @@ impl Instruction {
                 }
                 // U-type instructions
                 // 20 bits for U-type instructions (bits [31:12])
-                OPCODE_AUIPC => {
+                OPCODE_AUIPC | OPCODE_LUI => {
                     assert!(
                         self.op_a <= 31,
                         "Register index {} exceeds maximum value 31",
                         self.op_a
                     );
+                    let mut sign_extended_imm = self.op_b >> 12;
+                    if self.op_b >= (1 << 32) {
+                        sign_extended_imm += u64::MAX - (1u64 << 52) + 1;
+                    }
                     assert!(
-                        validate_sign_extension(self.op_b, 20),
+                        validate_sign_extension(sign_extended_imm, 20),
                         "Immediate value {} is not properly sign-extended for 20 bits",
                         self.op_b
                     );
                     let (rd, imm_upper) = (
                         self.op_a as u32,
                         // Extract original 20-bit immediate from sign-extended u64
-                        (self.op_b & 0xFFFFF) as u32,
+                        self.op_b as u32,
                     );
                     imm_upper | (rd << 7) | base_opcode
                 }

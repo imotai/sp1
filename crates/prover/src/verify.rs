@@ -225,10 +225,14 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // Initialization:
         // - `previous_init_addr` should be zero.
         // - `previous_finalize_addr` should be zero.
+        // - `previous_init_page_idx` should be zero.
+        // - `previous_finalize_page_idx` should be zero.
         //
         // Transition:
         // - The `previous_init_addr` should equal `last_init_addr` of the previous shard.
         // - The `previous_finalize_addr` should equal `last_finalize_addr` of the previous shard.
+        // - The `previous_init_page_idx` should be `last_init_page_idx` of the previous shard.
+        // - The `previous_finalize_page_idx` is `last_finalize_page_idx` of the previous shard.
         //
         // Finalization:
         // - The final `last_init_addr` should be non-zero.
@@ -238,9 +242,18 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // - Inside the shard proof, it is constrained that the addresses are of valid u16 limbs.
         let mut last_init_addr_prev = [SP1Field::zero(); 3];
         let mut last_finalize_addr_prev = [SP1Field::zero(); 3];
+        let mut last_init_page_idx_prev = [SP1Field::zero(); 3];
+        let mut last_finalize_page_idx_prev = [SP1Field::zero(); 3];
+        // Init the page protect state from the first shard proof, note page protect setting is
+        // static across shards
+        let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
+            proof.0.first().unwrap().public_values.as_slice().borrow();
+        let page_protect = public_values.is_page_protect_active;
+
         for shard_proof in proof.0.iter() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
+
             if public_values.previous_init_addr != last_init_addr_prev {
                 return Err(MachineVerifierError::InvalidPublicValues(
                     "previous_init_addr != last_init_addr_prev",
@@ -249,9 +262,23 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 return Err(MachineVerifierError::InvalidPublicValues(
                     "previous_finalize_addr != last_finalize_addr_prev",
                 ));
+            } else if public_values.previous_init_page_idx != last_init_page_idx_prev {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "previous_init_page_idx != last_init_page_idx_prev",
+                ));
+            } else if public_values.previous_finalize_page_idx != last_finalize_page_idx_prev {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "previous_finalize_page_idx != last_finalize_page_idx_prev",
+                ));
+            } else if public_values.is_page_protect_active != page_protect {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "is_page_protect_active != page_protect",
+                ));
             }
             last_init_addr_prev = public_values.last_init_addr;
             last_finalize_addr_prev = public_values.last_finalize_addr;
+            last_init_page_idx_prev = public_values.last_init_page_idx;
+            last_finalize_page_idx_prev = public_values.last_finalize_page_idx;
         }
         if last_init_addr_prev == [SP1Field::zero(); 3] {
             return Err(MachineVerifierError::InvalidPublicValues(
@@ -357,6 +384,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         for shard_proof in proof.0.iter() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
+
             cumulative_sum = cumulative_sum + public_values.global_cumulative_sum;
         }
         if !cumulative_sum.is_zero() {
@@ -688,6 +716,7 @@ impl<C: SP1ProverComponents> SubproofVerifier for SP1Prover<C> {
                 .enumerate()
                 .fold(0u64, |acc, (j, &val)| acc | (val.as_canonical_u64() << (8 * j)))
         });
+
         if committed_value_digest != pv_committed_value_digest {
             return Err(MachineVerifierError::InvalidPublicValues(
                 "committed_value_digest does not match",

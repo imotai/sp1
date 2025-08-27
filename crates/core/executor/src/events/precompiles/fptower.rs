@@ -1,7 +1,9 @@
 use deepsize2::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 
-use crate::events::{MemoryLocalEvent, MemoryReadRecord, MemoryWriteRecord};
+use crate::events::{
+    MemoryLocalEvent, MemoryReadRecord, MemoryWriteRecord, PageProtLocalEvent, PageProtRecord,
+};
 
 /// This is an arithmetic operation for emulating modular arithmetic.
 #[derive(Default, PartialEq, Copy, Clone, Debug, Serialize, Deserialize, DeepSizeOf)]
@@ -15,6 +17,15 @@ pub enum FieldOperation {
     Sub,
     /// Division.
     Div,
+}
+
+/// Each fp op has one read slice and one write slice operation that require page prot checks.
+#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
+pub struct FpPageProtRecords {
+    /// The page prot records for reading the address.
+    pub read_page_prot_records: Vec<PageProtRecord>,
+    /// The page prot records for writing the address.
+    pub write_page_prot_records: Vec<PageProtRecord>,
 }
 
 /// Emulated Field Operation Events.
@@ -40,6 +51,10 @@ pub struct FpOpEvent {
     pub y_memory_records: Vec<MemoryReadRecord>,
     /// The local memory access records.
     pub local_mem_access: Vec<MemoryLocalEvent>,
+    /// The page prot records.
+    pub page_prot_records: FpPageProtRecords,
+    /// The local page prot access records.
+    pub local_page_prot_access: Vec<PageProtLocalEvent>,
 }
 
 /// Emulated Degree 2 Field Addition/Subtraction Events.
@@ -65,6 +80,10 @@ pub struct Fp2AddSubEvent {
     pub y_memory_records: Vec<MemoryReadRecord>,
     /// The local memory access records.
     pub local_mem_access: Vec<MemoryLocalEvent>,
+    /// The page prot records.
+    pub page_prot_records: FpPageProtRecords,
+    /// The local page prot access records.
+    pub local_page_prot_access: Vec<PageProtLocalEvent>,
 }
 
 /// Emulated Degree 2 Field Multiplication Events.
@@ -86,4 +105,8 @@ pub struct Fp2MulEvent {
     pub y_memory_records: Vec<MemoryReadRecord>,
     /// The local memory access records.
     pub local_mem_access: Vec<MemoryLocalEvent>,
+    /// The page prot records.
+    pub page_prot_records: FpPageProtRecords,
+    /// The local page prot access records.
+    pub local_page_prot_access: Vec<PageProtLocalEvent>,
 }

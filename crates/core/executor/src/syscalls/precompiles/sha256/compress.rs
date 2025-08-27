@@ -1,5 +1,5 @@
 use crate::{
-    events::{PrecompileEvent, ShaCompressEvent},
+    events::{PrecompileEvent, ShaCompressEvent, ShaCompressPageProtAccess},
     syscalls::{SyscallCode, SyscallContext},
     ExecutorConfig,
 };
@@ -35,13 +35,23 @@ pub(crate) fn sha256_compress_syscall<E: ExecutorConfig>(
 
     // Execute the "initialize" phase where we read in the h values.
     let mut hx = [0u32; 8];
+    let (records, values, h_read_page_prot_records) = rt.mr_slice(h_ptr, 8);
+    h_read_records.extend(records);
     for i in 0..8 {
-        let (record, value) = rt.mr(h_ptr + i as u64 * 8);
-        h_read_records.push(record);
-        hx[i] = value as u32;
+        hx[i] = values[i] as u32;
     }
 
+    // Need to increment the clk because h and w could be on the same page
+    rt.clk += 1;
+
     let mut original_w = Vec::new();
+    // Read all w values at once
+    let (w_records, w_values, w_read_page_prot_records) = rt.mr_slice(w_ptr, 64);
+    w_i_read_records.extend(w_records);
+    for i in 0..64 {
+        original_w.push(w_values[i] as u32);
+    }
+
     // Execute the "compress" phase.
     let mut a = hx[0];
     let mut b = hx[1];
@@ -54,14 +64,9 @@ pub(crate) fn sha256_compress_syscall<E: ExecutorConfig>(
     for i in 0..64 {
         let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
         let ch = (e & f) ^ (!e & g);
-        let (record, w_i) = rt.mr(w_ptr + i as u64 * 8);
-        original_w.push(w_i as u32);
-        w_i_read_records.push(record);
-        let temp1 = h
-            .wrapping_add(s1)
-            .wrapping_add(ch)
-            .wrapping_add(SHA_COMPRESS_K[i as usize])
-            .wrapping_add(w_i as u32);
+        let w_i = original_w[i];
+        let temp1 =
+            h.wrapping_add(s1).wrapping_add(ch).wrapping_add(SHA_COMPRESS_K[i]).wrapping_add(w_i);
         let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
         let maj = (a & b) ^ (a & c) ^ (b & c);
         let temp2 = s0.wrapping_add(maj);
@@ -75,18 +80,17 @@ pub(crate) fn sha256_compress_syscall<E: ExecutorConfig>(
         b = a;
         a = temp1.wrapping_add(temp2);
     }
-    // Increment the clk by 1 before writing to h, since we've already read h at the start_clk
-    // during the initialization phase.
-    rt.clk += 1;
 
     // Execute the "finalize" phase.
+    rt.clk += 1;
     let v = [a, b, c, d, e, f, g, h];
-    for i in 0..8 {
-        let record = rt.mw(h_ptr + i as u64 * 8, hx[i].wrapping_add(v[i]) as u64);
-        h_write_records.push(record);
-    }
+    let final_values: Vec<u64> = (0..8).map(|i| hx[i].wrapping_add(v[i]) as u64).collect();
+    let (records, h_write_page_prot_records) = rt.mw_slice(h_ptr, &final_values, true);
+    h_write_records.extend(records);
 
     // Push the SHA extend event.
+    let (local_mem_access, local_page_prot_access) = rt.postprocess();
+
     let event = PrecompileEvent::ShaCompress(ShaCompressEvent {
         clk: start_clk,
         w_ptr,
@@ -96,7 +100,13 @@ pub(crate) fn sha256_compress_syscall<E: ExecutorConfig>(
         h_read_records: h_read_records.try_into().unwrap(),
         w_i_read_records,
         h_write_records: h_write_records.try_into().unwrap(),
-        local_mem_access: rt.postprocess(),
+        local_mem_access,
+        page_prot_access: ShaCompressPageProtAccess {
+            h_read_page_prot_records,
+            w_read_page_prot_records,
+            h_write_page_prot_records,
+        },
+        local_page_prot_access,
     });
     let syscall_event =
         rt.rt.syscall_event(start_clk, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);

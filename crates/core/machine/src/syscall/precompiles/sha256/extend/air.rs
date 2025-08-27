@@ -101,7 +101,7 @@ where
 
         // Read `w[i - 15]`.
         builder.eval_memory_access_read(
-            local.clk_high + local.next_clk.is_overflow,
+            local.next_clk.next_clk_high::<AB>(local.clk_high),
             local.next_clk.next_clk_low::<AB>(),
             &local.w_i_minus_15_ptr.value.map(Into::into),
             local.w_i_minus_15,
@@ -127,7 +127,7 @@ where
 
         // Read `w[i - 2]`.
         builder.eval_memory_access_read(
-            local.clk_high + local.next_clk.is_overflow,
+            local.next_clk.next_clk_high::<AB>(local.clk_high),
             local.next_clk.next_clk_low::<AB>(),
             &local.w_i_minus_2_ptr.value.map(Into::into),
             local.w_i_minus_2,
@@ -153,7 +153,7 @@ where
 
         // Read `w[i - 16]`.
         builder.eval_memory_access_read(
-            local.clk_high + local.next_clk.is_overflow,
+            local.next_clk.next_clk_high::<AB>(local.clk_high),
             local.next_clk.next_clk_low::<AB>(),
             &local.w_i_minus_16_ptr.value.map(Into::into),
             local.w_i_minus_16,
@@ -179,7 +179,7 @@ where
 
         // Read `w[i - 7]`.
         builder.eval_memory_access_read(
-            local.clk_high + local.next_clk.is_overflow,
+            local.next_clk.next_clk_high::<AB>(local.clk_high),
             local.next_clk.next_clk_low::<AB>(),
             &local.w_i_minus_7_ptr.value.map(Into::into),
             local.w_i_minus_7,
@@ -306,7 +306,7 @@ where
 
         // Write `s2_value_word` into `w[i]`.
         builder.eval_memory_access_write(
-            local.clk_high + local.next_clk.is_overflow,
+            local.next_clk.next_clk_high::<AB>(local.clk_high),
             local.next_clk.next_clk_low::<AB>(),
             &local.w_i_ptr.value.map(Into::into),
             local.w_i,

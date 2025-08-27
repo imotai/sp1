@@ -185,7 +185,9 @@ impl ShaCompressChip {
         // The `clk` only increments at finalize.
         builder.eval_memory_access_write(
             local.clk_high,
-            local.clk_low + local.is_finalize,
+            local.clk_low
+                + local.is_compression
+                + local.is_finalize * AB::Expr::from_canonical_u32(2),
             &local.mem_addr.map(Into::into),
             local.mem,
             mem_value_word.clone(),

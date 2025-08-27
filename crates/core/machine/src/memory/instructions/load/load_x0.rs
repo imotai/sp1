@@ -15,11 +15,12 @@ use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
-    events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
+    events::{ByteLookupEvent, ByteRecord, MemInstrEvent, MemoryAccessPosition},
     ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::air::MachineAir;
+use sp1_primitives::consts::PROT_READ;
 use std::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
@@ -69,6 +70,9 @@ pub struct LoadX0Columns<T> {
 
     /// Whether this is a load double word instruction.
     pub is_ld: T,
+
+    /// Whether the page protection is active.
+    pub is_page_protect_active: T,
 }
 
 impl<F> BaseAir<F> for LoadX0Chip {
@@ -116,6 +120,8 @@ impl<F: PrimeField32> MachineAir<F> for LoadX0Chip {
                     if idx < input.memory_load_x0_events.len() {
                         let event = &input.memory_load_x0_events[idx];
                         self.event_to_row(&event.0, cols, &mut blu);
+                        cols.is_page_protect_active =
+                            F::from_canonical_u32(input.public_values.is_page_protect_active);
                         cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                         cols.adapter.populate(&mut blu, event.1);
                     }
@@ -215,6 +221,14 @@ where
             + local.is_lw * AB::Expr::from_canonical_u32(Opcode::LW.base_opcode().0)
             + local.is_lwu * AB::Expr::from_canonical_u32(Opcode::LWU.base_opcode().0)
             + local.is_ld * AB::Expr::from_canonical_u32(Opcode::LD.base_opcode().0);
+        let instr_type = local.is_lb
+            * AB::Expr::from_canonical_u32(Opcode::LB.instruction_type().0 as u32)
+            + local.is_lbu * AB::Expr::from_canonical_u32(Opcode::LBU.instruction_type().0 as u32)
+            + local.is_lh * AB::Expr::from_canonical_u32(Opcode::LH.instruction_type().0 as u32)
+            + local.is_lhu * AB::Expr::from_canonical_u32(Opcode::LHU.instruction_type().0 as u32)
+            + local.is_lw * AB::Expr::from_canonical_u32(Opcode::LW.instruction_type().0 as u32)
+            + local.is_lwu * AB::Expr::from_canonical_u32(Opcode::LWU.instruction_type().0 as u32)
+            + local.is_ld * AB::Expr::from_canonical_u32(Opcode::LD.instruction_type().0 as u32);
         let is_real = local.is_lb
             + local.is_lbu
             + local.is_lh
@@ -252,13 +266,27 @@ where
             .when(local.is_lh + local.is_lhu + local.is_lw + local.is_lwu + local.is_ld)
             .assert_zero(local.offset_bit[0]);
 
-        // Step 2. Read the memory address.
+        // Step 2. Read the memory address and check page prot access.
         builder.eval_memory_access_read(
             clk_high.clone(),
-            clk_low.clone(),
-            &aligned_addr.map(Into::into),
+            clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::Memory as u32),
+            &aligned_addr.clone().map(Into::into),
             local.memory_access,
             is_real.clone(),
+        );
+
+        // Check page protect active is set correctly based on public value and is_real
+        let public_values = builder.extract_public_values();
+        let expected_page_protect_active =
+            public_values.is_page_protect_active.into() * is_real.clone();
+        builder.assert_eq(local.is_page_protect_active, expected_page_protect_active);
+
+        builder.send_page_prot(
+            clk_high.clone(),
+            clk_low.clone() + AB::Expr::from_canonical_u32(MemoryAccessPosition::Memory as u32),
+            &aligned_addr.map(Into::into),
+            AB::Expr::from_canonical_u8(PROT_READ),
+            local.is_page_protect_active.into(),
         );
 
         // This chip is specifically for load operations with `op_a = x0`.
@@ -288,7 +316,7 @@ where
                 clk_low,
                 local.state.pc,
                 opcode,
-                [base_opcode, funct3, funct7],
+                [instr_type, base_opcode, funct3, funct7],
                 local.adapter,
                 is_real.clone(),
             ),

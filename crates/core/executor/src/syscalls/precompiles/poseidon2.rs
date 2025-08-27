@@ -34,14 +34,17 @@ pub(crate) fn poseidon2_syscall<E: ExecutorConfig>(
 
     assert!(u64_result.len() == 8);
 
-    let output_memory_records = rt.mw_slice(ptr, &u64_result);
+    let (output_memory_records, page_prot_records) = rt.mw_slice(ptr, &u64_result, true);
 
     // Push the Poseidon2 event.
+    let (local_mem_access, page_prot_local_events) = rt.postprocess();
     let event = PrecompileEvent::POSEIDON2(Poseidon2PrecompileEvent {
         clk: clk_init,
         ptr,
         memory_records: output_memory_records,
-        local_mem_access: rt.postprocess(),
+        local_mem_access,
+        page_prot_records,
+        local_page_prot_access: page_prot_local_events,
     });
     let syscall_event =
         rt.rt.syscall_event(clk_init, syscall_code, arg1, arg2, false, rt.next_pc, rt.exit_code);

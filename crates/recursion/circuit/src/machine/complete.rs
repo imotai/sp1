@@ -31,6 +31,8 @@ pub(crate) fn assert_complete<C: Config<F = SP1Field>>(
         last_init_addr,
         previous_finalize_addr,
         last_finalize_addr,
+        previous_init_page_idx,
+        previous_finalize_page_idx,
         prev_commit_syscall,
         commit_syscall,
         prev_commit_deferred_syscall,
@@ -95,6 +97,16 @@ pub(crate) fn assert_complete<C: Config<F = SP1Field>>(
         last_finalize_addr[0] + last_finalize_addr[1] + last_finalize_addr[2],
         is_complete - C::F::one(),
     );
+
+    // Assert that the `previous_init_page_idx` is 0.
+    for limb in previous_init_page_idx.iter() {
+        builder.assert_felt_eq(is_complete * *limb, C::F::zero());
+    }
+
+    // Assert that the `previous_finalize_page_idx` is 0.
+    for limb in previous_finalize_page_idx.iter() {
+        builder.assert_felt_eq(is_complete * *limb, C::F::zero());
+    }
 
     // The start reconstruct deferred digest should be zero.
     for start_digest in start_reconstruct_deferred_digest {

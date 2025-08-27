@@ -6,7 +6,10 @@ use sp1_curves::{
 use sp1_primitives::consts::{bytes_to_words_le, words_to_bytes_le};
 
 use crate::{
-    events::{EdDecompressEvent, MemoryReadRecord, MemoryWriteRecord, PrecompileEvent},
+    events::{
+        EdDecompressEvent, EdwardsPageProtRecords, MemoryReadRecord, MemoryWriteRecord,
+        PrecompileEvent,
+    },
     syscalls::{SyscallCode, SyscallContext},
     ExecutorConfig,
 };
@@ -22,7 +25,7 @@ pub fn edwards_decompress_syscall<Ex: ExecutorConfig>(
     assert!(slice_ptr.is_multiple_of(8), "slice_ptr must be 8-byte aligned.");
     assert!(sign <= 1, "Sign bit must be 0 or 1.");
 
-    let (y_memory_records_vec, y_vec) =
+    let (y_memory_records_vec, y_vec, read_page_prot_records) =
         rt.mr_slice(slice_ptr + (COMPRESSED_POINT_BYTES as u64), WORDS_FIELD_ELEMENT);
     let y_memory_records: [MemoryReadRecord; WORDS_FIELD_ELEMENT] =
         y_memory_records_vec.try_into().unwrap();
@@ -46,10 +49,15 @@ pub fn edwards_decompress_syscall<Ex: ExecutorConfig>(
     decompressed_x_bytes.resize(32, 0u8);
     let decompressed_x_words: [u64; WORDS_FIELD_ELEMENT] = bytes_to_words_le(&decompressed_x_bytes);
 
+    rt.clk += 1;
+
     // Write decompressed X into slice
-    let x_memory_records_vec = rt.mw_slice(slice_ptr, &decompressed_x_words);
+    let (x_memory_records_vec, write_page_prot_records) =
+        rt.mw_slice(slice_ptr, &decompressed_x_words, false);
     let x_memory_records: [MemoryWriteRecord; WORDS_FIELD_ELEMENT] =
         x_memory_records_vec.try_into().unwrap();
+
+    let (local_mem_access, page_prot_local_events) = rt.postprocess();
 
     let event = EdDecompressEvent {
         clk: start_clk,
@@ -59,7 +67,12 @@ pub fn edwards_decompress_syscall<Ex: ExecutorConfig>(
         decompressed_x_bytes: decompressed_x_bytes.try_into().unwrap(),
         x_memory_records,
         y_memory_records,
-        local_mem_access: rt.postprocess(),
+        local_mem_access,
+        page_prot_records: EdwardsPageProtRecords {
+            read_page_prot_records,
+            write_page_prot_records,
+        },
+        local_page_prot_access: page_prot_local_events,
     };
     let syscall_event =
         rt.rt.syscall_event(start_clk, syscall_code, arg1, sign, false, rt.next_pc, rt.exit_code);

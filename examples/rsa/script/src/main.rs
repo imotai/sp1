@@ -272,7 +272,7 @@ async fn main() {
     let proof = client.prove(&pk, stdin).await.expect("proving failed");
 
     // Verify proof.
-    client.verify(&proof, pk.verifying_key()).expect("verification failed");
+    client.verify(&proof, pk.verifying_key(), None).expect("verification failed");
 
     println!("successfully generated and verified proof for the program!")
 }

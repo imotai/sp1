@@ -8,7 +8,12 @@ use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use sp1_hypercube::{MachineVerifyingKey, SP1CoreJaggedConfig};
 
-use crate::{events::MemoryEntry, memory::Memory, syscalls::SyscallCode, SP1RecursionProof};
+use crate::{
+    events::{MemoryEntry, PageProtRecord},
+    memory::Memory,
+    syscalls::SyscallCode,
+    SP1RecursionProof,
+};
 
 /// Holds data describing the current state of a program's execution.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -29,7 +34,7 @@ pub struct ExecutionState {
 
     /// The page protection flags for each page in the memory.  The default values should be
     /// `PROT_READ` | `PROT_WRITE`.
-    pub page_prots: HashMap<u64, u8>,
+    pub page_prots: HashMap<u64, PageProtRecord>,
 
     /// The global clock keeps track of how many instructions have been executed through all
     /// shards.
@@ -99,6 +104,8 @@ pub struct ForkState {
     pub pc: u64,
     /// All memory changes since the fork point.
     pub memory_diff: Memory<Option<MemoryEntry>>,
+    /// All page protection changes since the fork point.
+    pub page_prots_diff: HashMap<u64, PageProtRecord>,
 }
 
 impl ExecutionState {

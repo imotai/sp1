@@ -11,7 +11,7 @@ use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ByteOpcode, ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
+    ALUTypeRecord, ByteOpcode, ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::{air::MachineAir, Word};
@@ -83,8 +83,8 @@ pub struct ShiftLeftCols<T> {
     /// If the opcode is SLLW.
     pub is_sllw: T,
 
-    /// The base opcode for the SLL instruction.
-    pub base_op_code: T,
+    /// If the opcode is SLLW and immediate.
+    pub is_sllw_imm: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
@@ -115,7 +115,7 @@ impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
             let cols: &mut ShiftLeftCols<F> = row.as_mut_slice().borrow_mut();
             let mut blu = Vec::new();
             cols.adapter.populate(&mut blu, event.1);
-            self.event_to_row(&event.0, cols, &mut blu);
+            self.event_to_row(&event.0, &event.1, cols, &mut blu);
             cols.state.populate(&mut blu, event.0.clk, event.0.pc);
             rows.push(row);
         }
@@ -165,7 +165,7 @@ impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
                     let mut row = [F::zero(); NUM_SHIFT_LEFT_COLS];
                     let cols: &mut ShiftLeftCols<F> = row.as_mut_slice().borrow_mut();
                     cols.adapter.populate(&mut blu, event.1);
-                    self.event_to_row(&event.0, cols, &mut blu);
+                    self.event_to_row(&event.0, &event.1, cols, &mut blu);
                     cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                 });
                 blu
@@ -189,6 +189,7 @@ impl ShiftLeft {
     fn event_to_row<F: PrimeField>(
         &self,
         event: &AluEvent,
+        record: &ALUTypeRecord,
         cols: &mut ShiftLeftCols<F>,
         blu: &mut impl ByteRecord,
     ) {
@@ -205,20 +206,7 @@ impl ShiftLeft {
         cols.is_sll = F::from_bool(is_sll);
 
         cols.is_sllw = F::from_bool(event.opcode == Opcode::SLLW);
-
-        let (sll_base, sll_imm) = Opcode::SLL.base_opcode();
-        let sll_imm = sll_imm.expect("SLL immediate opcode not found");
-        let (sllw_base, sllw_imm) = Opcode::SLLW.base_opcode();
-        let sllw_imm = sllw_imm.expect("SLLW immediate opcode not found");
-
-        let is_imm_c = cols.adapter.imm_c.is_one();
-        let sll_base_opcode = F::from_canonical_u32(if is_imm_c { sll_imm } else { sll_base });
-        let sllw_base_opcode = F::from_canonical_u32(if is_imm_c { sllw_imm } else { sllw_base });
-        cols.base_op_code = match event.opcode {
-            Opcode::SLL => sll_base_opcode,
-            Opcode::SLLW => sllw_base_opcode,
-            _ => unreachable!(),
-        };
+        cols.is_sllw_imm = F::from_bool(event.opcode == Opcode::SLLW && record.is_imm);
 
         for i in 0..6 {
             cols.c_bits[i] = F::from_canonical_u16((c >> i) & 1);
@@ -410,26 +398,43 @@ where
         let funct7 = local.is_sll * AB::Expr::from_canonical_u8(Opcode::SLL.funct7().unwrap_or(0))
             + local.is_sllw * AB::Expr::from_canonical_u8(Opcode::SLLW.funct7().unwrap_or(0));
 
-        // Combine the opcodes based on which instruction is active
-        let base_opcode = local.base_op_code.into();
-
         let (sll_base, sll_imm) = Opcode::SLL.base_opcode();
         let sll_imm = sll_imm.expect("SLL immediate opcode not found");
         let (sllw_base, sllw_imm) = Opcode::SLLW.base_opcode();
         let sllw_imm = sllw_imm.expect("SLLW immediate opcode not found");
 
+        let imm_base_difference = sll_base.checked_sub(sll_imm).unwrap();
+        assert!(imm_base_difference == sllw_base.checked_sub(sllw_imm).unwrap());
+
         let sll_base_expr = AB::Expr::from_canonical_u32(sll_base);
         let sllw_base_expr = AB::Expr::from_canonical_u32(sllw_base);
-        let sll_imm_expr = AB::Expr::from_canonical_u32(sll_imm);
-        let sllw_imm_expr = AB::Expr::from_canonical_u32(sllw_imm);
 
-        let correct_imm_opcode = local.is_sll * sll_imm_expr + local.is_sllw * sllw_imm_expr;
-        let correct_reg_opcode = local.is_sll * sll_base_expr + local.is_sllw * sllw_base_expr;
+        // Start with register opcode, if it's immediate, subtract the difference
+        let calculated_base_opcode = local.is_sll * sll_base_expr + local.is_sllw * sllw_base_expr
+            - AB::Expr::from_canonical_u32(imm_base_difference) * local.adapter.imm_c;
 
-        // Constrain base_op_code to be correct based on imm_c and is_* columns.
-        let correct_opcode =
-            builder.if_else(local.adapter.imm_c.into(), correct_imm_opcode, correct_reg_opcode);
-        builder.when(is_real.clone()).assert_eq(local.base_op_code.into(), correct_opcode);
+        let sll_instr_type = Opcode::SLL.instruction_type().0 as u32;
+        let sll_instr_type_imm =
+            Opcode::SLL.instruction_type().1.expect("SLL immediate instruction type not found")
+                as u32;
+        let sllw_instr_type = Opcode::SLLW.instruction_type().0 as u32;
+        let sllw_instr_type_imm =
+            Opcode::SLLW.instruction_type().1.expect("SLLW immediate instruction type not found")
+                as u32;
+
+        let instr_type_difference = sll_instr_type.checked_sub(sll_instr_type_imm).unwrap();
+        let w_instr_imm_adjustment = sll_instr_type_imm.checked_sub(sllw_instr_type_imm).unwrap();
+        assert_eq!(
+            sllw_instr_type.checked_sub(sllw_instr_type_imm).unwrap(),
+            instr_type_difference + w_instr_imm_adjustment,
+        );
+
+        builder.assert_eq(local.is_sllw_imm, local.is_sllw * local.adapter.imm_c);
+
+        let calculated_instr_type = local.is_sll * AB::Expr::from_canonical_u32(sll_instr_type)
+            + local.is_sllw * AB::Expr::from_canonical_u32(sllw_instr_type)
+            - (AB::Expr::from_canonical_u32(instr_type_difference) * local.adapter.imm_c
+                + AB::Expr::from_canonical_u32(w_instr_imm_adjustment) * local.is_sllw_imm);
 
         // Constrain the CPU state.
         // The program counter and timestamp increment by `4` and `8`.
@@ -453,7 +458,7 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
-            [base_opcode, funct3, funct7],
+            [calculated_instr_type, calculated_base_opcode, funct3, funct7],
             local.a.map(|x| x.into()),
             local.adapter,
             is_real.clone(),

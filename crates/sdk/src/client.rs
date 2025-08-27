@@ -64,7 +64,7 @@ impl ProverClientBuilder {
     /// ```
     #[must_use]
     pub fn cpu(&self) -> CpuProverBuilder {
-        CpuProverBuilder
+        CpuProverBuilder::new()
     }
 
     /// Builds a [`CudaProver`] specifically for local proving on NVIDIA GPUs.

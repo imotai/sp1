@@ -1,7 +1,7 @@
 use crate::{
     air::SP1CoreAirBuilder,
     memory::{MemoryAccessCols, MemoryAccessColsU8},
-    operations::{AddrAddOperation, SyscallAddrOperation},
+    operations::{AddrAddOperation, AddressSlicePageProtOperation, SyscallAddrOperation},
     utils::{limbs_to_words, next_multiple_of_32},
 };
 use core::{
@@ -34,6 +34,7 @@ use sp1_hypercube::{
     air::{BaseAirBuilder, InteractionScope, MachineAir},
     Word,
 };
+use sp1_primitives::consts::{PROT_READ, PROT_WRITE};
 use std::marker::PhantomData;
 use typenum::U32;
 
@@ -62,6 +63,8 @@ pub struct EdDecompressCols<T> {
     pub x_access: GenericArray<MemoryAccessCols<T>, WordsFieldElement>,
     pub x_value: GenericArray<Word<T>, WordsFieldElement>,
     pub y_access: GenericArray<MemoryAccessColsU8<T>, WordsFieldElement>,
+    pub read_slice_page_prot_access: AddressSlicePageProtOperation<T>,
+    pub write_slice_page_prot_access: AddressSlicePageProtOperation<T>,
     pub(crate) neg_x_range: FieldLtCols<T, Ed25519BaseField>,
     pub(crate) y_range: FieldLtCols<T, Ed25519BaseField>,
     pub(crate) yy: FieldOpCols<T, Ed25519BaseField>,
@@ -98,6 +101,29 @@ impl<F: PrimeField32> EdDecompressCols<F> {
             self.y_access[i].populate(y_record, &mut new_byte_lookup_events);
             self.addrs[i].populate(record, event.ptr, i as u64 * 8);
             self.read_ptrs[i].populate(record, read_ptr, i as u64 * 8);
+        }
+        if record.public_values.is_page_protect_active == 1 {
+            self.read_slice_page_prot_access.populate(
+                &mut new_byte_lookup_events,
+                read_ptr,
+                read_ptr + 8 * (WORDS_FIELD_ELEMENT - 1) as u64,
+                event.clk,
+                PROT_READ,
+                &event.page_prot_records.read_page_prot_records[0],
+                &event.page_prot_records.read_page_prot_records.get(1).copied(),
+                record.public_values.is_page_protect_active,
+            );
+
+            self.write_slice_page_prot_access.populate(
+                &mut new_byte_lookup_events,
+                event.ptr,
+                event.ptr + 8 * (WORDS_FIELD_ELEMENT - 1) as u64,
+                event.clk + 1,
+                PROT_WRITE,
+                &event.page_prot_records.write_page_prot_records[0],
+                &event.page_prot_records.write_page_prot_records.get(1).copied(),
+                record.public_values.is_page_protect_active,
+            );
         }
 
         let y = &BigUint::from_bytes_le(&event.y_bytes);
@@ -205,20 +231,20 @@ impl<V: Copy> EdDecompressCols<V> {
             );
         }
 
-        builder.eval_memory_access_slice_write(
-            self.clk_high,
-            self.clk_low,
-            &self.addrs.map(|addr| addr.value.map(Into::into)),
-            &self.x_access,
-            self.x_value.to_vec(),
-            self.is_real,
-        );
-
         builder.eval_memory_access_slice_read(
             self.clk_high,
             self.clk_low,
             &self.read_ptrs.map(|ptr| ptr.value.map(Into::into)),
             &self.y_access.iter().map(|access| access.memory_access).collect_vec(),
+            self.is_real,
+        );
+
+        builder.eval_memory_access_slice_write(
+            self.clk_high,
+            self.clk_low.into() + AB::Expr::one(),
+            &self.addrs.map(|addr| addr.value.map(Into::into)),
+            &self.x_access,
+            self.x_value.to_vec(),
             self.is_real,
         );
 
@@ -240,6 +266,28 @@ impl<V: Copy> EdDecompressCols<V> {
                 .when_not(self.sign)
                 .assert_all_eq(mul_x_word.clone(), x_value_word.clone());
         }
+
+        AddressSlicePageProtOperation::<AB::F>::eval(
+            builder,
+            self.clk_high.into(),
+            self.clk_low.into(),
+            &self.read_ptrs[0].value.map(Into::into),
+            &self.read_ptrs[WORDS_FIELD_ELEMENT - 1].value.map(Into::into),
+            AB::Expr::from_canonical_u8(PROT_READ),
+            &self.read_slice_page_prot_access,
+            self.is_real.into(),
+        );
+
+        AddressSlicePageProtOperation::<AB::F>::eval(
+            builder,
+            self.clk_high.into(),
+            self.clk_low.into() + AB::Expr::one(),
+            &self.addrs[0].value.map(Into::into),
+            &self.addrs[WORDS_FIELD_ELEMENT - 1].value.map(Into::into),
+            AB::Expr::from_canonical_u8(PROT_WRITE),
+            &self.write_slice_page_prot_access,
+            self.is_real.into(),
+        );
 
         builder.receive_syscall(
             self.clk_high,

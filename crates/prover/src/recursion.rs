@@ -605,6 +605,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
             let pv: &RecursionPublicValues<<CoreSC as JaggedConfig>::F> =
                 proof.proof.public_values.as_slice().borrow();
             let committed_values_digest = words_to_bytes(&pv.committed_value_digest);
+
             digest = hash_deferred_proof(
                 &digest,
                 &pv.sp1_vk_digest,
@@ -847,6 +848,7 @@ pub(crate) fn dummy_deferred_input<C: RecursionProverComponents>(
         start_reconstruct_deferred_digest: [SP1Field::zero(); POSEIDON_NUM_WORDS],
         sp1_vk_digest: [SP1Field::zero(); DIGEST_SIZE],
         end_pc: [SP1Field::zero(); 3],
+        is_page_protect_active: SP1Field::zero(),
     }
 }
 

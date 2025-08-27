@@ -32,6 +32,8 @@ pub struct SP1CoreOpts {
     pub sharding_threshold: ShardingThreshold,
     /// Preset collections of events to retain in a shard instead of deferring.
     pub retained_events_presets: HashSet<RetainedEventsPreset>,
+    /// Whether to enable page protection checking.
+    pub page_protect: bool,
 }
 
 impl Default for SP1CoreOpts {
@@ -59,11 +61,16 @@ impl Default for SP1CoreOpts {
         retained_events_presets.insert(RetainedEventsPreset::Poseidon2);
         retained_events_presets.insert(RetainedEventsPreset::U256Ops);
 
+        // We disable page_protect by default, to turn it on chain `with_opts` using a SP1CoreOpts
+        // that has page_protect set to true
+        let page_protect = false;
+
         Self {
             shard_size,
             split_opts: SplitOpts::new(split_threshold),
             sharding_threshold,
             retained_events_presets,
+            page_protect,
         }
     }
 }
@@ -74,6 +81,9 @@ pub struct SplitOpts {
     /// The threshold for combining the memory init/finalize events in to the current shard in
     /// terms of total trace area in the shard, and the number of memory init/finalize events.
     pub combine_memory_threshold: (u64, usize),
+    /// The threshold for combining the page prot init/finalize events in to the current shard in
+    /// terms of total trace area in the shard, and the number of page prot init/finalize events.
+    pub combine_page_prot_threshold: (u64, usize),
     /// The threshold for default events.
     pub deferred: usize,
     /// The threshold for keccak events.
@@ -84,6 +94,8 @@ pub struct SplitOpts {
     pub sha_compress: usize,
     /// The threshold for memory events.
     pub memory: usize,
+    /// The threshold for page prot events.
+    pub page_prot: usize,
     /// The threshold for ec add 256bit events.
     pub ec_add_256bit: usize,
     /// The threshold for ec double 256bit events.
@@ -100,6 +112,8 @@ pub struct SplitOpts {
     pub fp_operation_384bit: usize,
     /// The threshold for fp2 operation 384bit events.
     pub fp2_operation_384bit: usize,
+    /// The threshold for mprotect events.
+    pub mprotect: usize,
     /// The threshold for poseidon2 events.
     pub poseidon2: usize,
 }
@@ -113,6 +127,7 @@ impl SplitOpts {
     pub fn new(deferred_split_threshold: usize) -> Self {
         Self {
             combine_memory_threshold: (1 << 28, 1 << 17),
+            combine_page_prot_threshold: (1 << 28, 1 << 17),
             deferred: deferred_split_threshold,
             fp_operation_256bit: deferred_split_threshold * 23 / 5,
             ec_add_256bit: deferred_split_threshold * 51 / 25,
@@ -123,9 +138,11 @@ impl SplitOpts {
             sha_extend: 7 * deferred_split_threshold / 13,
             sha_compress: 4 * deferred_split_threshold / 10,
             memory: 37 * deferred_split_threshold,
+            page_prot: 33 * deferred_split_threshold,
             fp2_operation_256bit: deferred_split_threshold * 9 / 4,
             fp_operation_384bit: deferred_split_threshold * 61 / 20,
             fp2_operation_384bit: deferred_split_threshold * 3 / 2,
+            mprotect: deferred_split_threshold * 24,
             poseidon2: deferred_split_threshold * 9 / 2,
         }
     }

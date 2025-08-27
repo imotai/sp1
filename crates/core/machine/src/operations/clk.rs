@@ -11,12 +11,20 @@ use crate::air::WordAirBuilder;
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct ClkOperation<T> {
-    pub next_clk_16_24: T,
-    pub next_clk_0_16: T,
-    pub is_overflow: T,
+    next_clk_16_24: T,
+    next_clk_0_16: T,
+    is_overflow: T,
 }
 
 impl<T: Copy> ClkOperation<T> {
+    pub fn next_clk_high<AB>(&self, clk_high: AB::Var) -> AB::Expr
+    where
+        AB: SP1AirBuilder<Var = T>,
+        T: Into<AB::Expr>,
+    {
+        clk_high.into() + self.is_overflow
+    }
+
     pub fn next_clk_low<AB>(&self) -> AB::Expr
     where
         AB: SP1AirBuilder<Var = T>,

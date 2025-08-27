@@ -38,6 +38,11 @@ impl<F: PrimeField32> MachineExecutor<F> {
         Self { num_record_workers, opts, machine, memory, _marker: PhantomData }
     }
 
+    /// Get a reference to the core options.
+    pub fn opts(&self) -> &SP1CoreOpts {
+        &self.opts
+    }
+
     pub async fn execute(
         &self,
         program: Arc<Program>,
@@ -109,6 +114,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
                         let mut state = state.lock().unwrap();
 
                         state.is_execution_shard = 1;
+                        state.is_page_protect_active = record.public_values.is_page_protect_active;
                         state.pc_start = record.public_values.pc_start;
                         state.next_pc = record.public_values.next_pc;
                         state.initial_timestamp = record.public_values.initial_timestamp;
@@ -191,7 +197,18 @@ impl<F: PrimeField32> MachineExecutor<F> {
                             && deferred.global_memory_initialize_events.len()
                                 < opts.split_opts.combine_memory_threshold.1
                             && deferred.global_memory_finalize_events.len()
-                                < opts.split_opts.combine_memory_threshold.1;
+                                < opts.split_opts.combine_memory_threshold.1
+                            && record.estimated_trace_area
+                                < opts.split_opts.combine_page_prot_threshold.0
+                            && deferred.global_page_prot_initialize_events.len()
+                                < opts.split_opts.combine_page_prot_threshold.1
+                            && deferred.global_page_prot_finalize_events.len()
+                                < opts.split_opts.combine_page_prot_threshold.1;
+
+                        // Need to see if we can pack both global memory and page prot events into
+                        // last record Else, can we pack either into last
+                        // record? Else can we pack them together into the
+                        // same shard? Else we need two separate shards.
 
                         // See if any deferred shards are ready to be committed to.
                         let mut deferred_records = deferred.split(
@@ -209,6 +226,13 @@ impl<F: PrimeField32> MachineExecutor<F> {
                             state.previous_finalize_addr =
                                 record.public_values.previous_finalize_addr;
                             state.last_finalize_addr = record.public_values.last_finalize_addr;
+                            state.previous_init_page_idx =
+                                record.public_values.previous_init_page_idx;
+                            state.last_init_page_idx = record.public_values.last_init_page_idx;
+                            state.previous_finalize_page_idx =
+                                record.public_values.previous_finalize_page_idx;
+                            state.last_finalize_page_idx =
+                                record.public_values.last_finalize_page_idx;
                             state.pc_start = state.next_pc;
                             state.prev_exit_code = state.exit_code;
                             state.prev_commit_syscall = state.commit_syscall;

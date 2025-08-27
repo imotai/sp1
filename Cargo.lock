@@ -4353,6 +4353,7 @@ dependencies = [
  "rand 0.8.5",
  "rayon",
  "rayon-scan",
+ "rrs-lib",
  "serde",
  "serde_json",
  "slop-air",

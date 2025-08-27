@@ -4,7 +4,7 @@ use core::{
 };
 
 use hashbrown::HashMap;
-use slop_air::{Air, AirBuilder, BaseAir};
+use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
@@ -62,9 +62,6 @@ pub struct MulCols<T> {
 
     /// Whether the operation is MULW.
     pub is_mulw: T,
-
-    /// The base opcode for the mul instruction.
-    pub base_op_code: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for MulChip {
@@ -168,23 +165,6 @@ impl MulChip {
         cols.is_mulhsu = F::from_bool(event.opcode == Opcode::MULHSU);
         cols.is_mulw = F::from_bool(event.opcode == Opcode::MULW);
         cols.a = Word::from(event.a);
-
-        let (mulw_base, mulw_imm) = Opcode::MULW.base_opcode();
-        let mulw_imm = mulw_imm.expect("MULW immediate opcode not found");
-
-        let is_imm_c = cols.adapter.imm_c.is_one();
-        let mulw_base_opcode = F::from_canonical_u32(if is_imm_c { mulw_imm } else { mulw_base });
-
-        let base_opcode = match event.opcode {
-            Opcode::MUL => F::from_canonical_u32(Opcode::MUL.base_opcode().0),
-            Opcode::MULH => F::from_canonical_u32(Opcode::MULH.base_opcode().0),
-            Opcode::MULHU => F::from_canonical_u32(Opcode::MULHU.base_opcode().0),
-            Opcode::MULHSU => F::from_canonical_u32(Opcode::MULHSU.base_opcode().0),
-            Opcode::MULW => mulw_base_opcode,
-            _ => unreachable!(),
-        };
-
-        cols.base_op_code = base_opcode;
     }
 }
 
@@ -256,34 +236,35 @@ where
             + local.is_mulhsu * AB::Expr::from_canonical_u8(Opcode::MULHSU.funct7().unwrap())
             + local.is_mulw * AB::Expr::from_canonical_u8(Opcode::MULW.funct7().unwrap());
 
-        let base_opcode = local.base_op_code.into();
-
         let mul_base = Opcode::MUL.base_opcode().0;
         let mulh_base = Opcode::MULH.base_opcode().0;
         let mulhu_base = Opcode::MULHU.base_opcode().0;
         let mulhsu_base = Opcode::MULHSU.base_opcode().0;
-
-        let (mulw_base, mulw_imm) = Opcode::MULW.base_opcode();
-        let mulw_imm = mulw_imm.expect("MULW immediate opcode not found");
+        let mulw_base = Opcode::MULW.base_opcode().0;
 
         let mul_base_expr = AB::Expr::from_canonical_u32(mul_base);
         let mulh_base_expr = AB::Expr::from_canonical_u32(mulh_base);
         let mulhu_base_expr = AB::Expr::from_canonical_u32(mulhu_base);
         let mulhsu_base_expr = AB::Expr::from_canonical_u32(mulhsu_base);
         let mulw_base_expr = AB::Expr::from_canonical_u32(mulw_base);
-        let mulw_imm_expr = AB::Expr::from_canonical_u32(mulw_imm);
 
-        let correct_imm_opcode = local.is_mulw * mulw_imm_expr;
-        let correct_reg_opcode = local.is_mul * mul_base_expr
+        let calculated_base_opcode = local.is_mul * mul_base_expr
             + local.is_mulh * mulh_base_expr
             + local.is_mulhu * mulhu_base_expr
             + local.is_mulhsu * mulhsu_base_expr
             + local.is_mulw * mulw_base_expr;
 
-        // Constrain base_op_code to be correct based on imm_c and is_* columns.
-        let correct_opcode =
-            builder.if_else(local.adapter.imm_c.into(), correct_imm_opcode, correct_reg_opcode);
-        builder.when(is_real.clone()).assert_eq(local.base_op_code.into(), correct_opcode);
+        let mul_instr_type = Opcode::MUL.instruction_type().0 as u32;
+        let mulh_instr_type = Opcode::MULH.instruction_type().0 as u32;
+        let mulhu_instr_type = Opcode::MULHU.instruction_type().0 as u32;
+        let mulhsu_instr_type = Opcode::MULHSU.instruction_type().0 as u32;
+        let mulw_instr_type = Opcode::MULW.instruction_type().0 as u32;
+
+        let calculated_instr_type = local.is_mul * AB::Expr::from_canonical_u32(mul_instr_type)
+            + local.is_mulh * AB::Expr::from_canonical_u32(mulh_instr_type)
+            + local.is_mulhu * AB::Expr::from_canonical_u32(mulhu_instr_type)
+            + local.is_mulhsu * AB::Expr::from_canonical_u32(mulhsu_instr_type)
+            + local.is_mulw * AB::Expr::from_canonical_u32(mulw_instr_type);
 
         // Constrain the state of the CPU.
         // The program counter and timestamp increment by `4` and `8`.
@@ -308,7 +289,7 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
-            [base_opcode, funct3, funct7],
+            [calculated_instr_type, calculated_base_opcode, funct3, funct7],
             a_expr,
             local.adapter,
             is_real.clone(),

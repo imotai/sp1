@@ -5,7 +5,7 @@ use core::{
 
 use hashbrown::HashMap;
 use itertools::Itertools;
-use slop_air::{Air, AirBuilder, BaseAir};
+use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::*;
@@ -48,9 +48,6 @@ pub struct LtCols<T> {
 
     /// If the opcode is SLTU.
     pub is_sltu: T,
-
-    /// The base opcode for the LT instruction.
-    pub base_op_code: T,
 
     /// Instance of `LtOperationSigned` to handle comparison logic in `LtChip`'s ALU operations.
     pub lt_operation: LtOperationSigned<T>,
@@ -161,22 +158,6 @@ impl LtChip {
 
         cols.is_slt = F::from_bool(event.opcode == Opcode::SLT);
         cols.is_sltu = F::from_bool(event.opcode == Opcode::SLTU);
-
-        let (slt_base, slt_imm) = Opcode::SLT.base_opcode();
-        let slt_imm = slt_imm.expect("SLT immediate opcode not found");
-        let (sltu_base, sltu_imm) = Opcode::SLTU.base_opcode();
-        let sltu_imm = sltu_imm.expect("SLTU immediate opcode not found");
-
-        let is_imm_c = cols.adapter.imm_c.is_one();
-
-        let slt_base_opcode = F::from_canonical_u32(if is_imm_c { slt_imm } else { slt_base });
-        let sltu_base_opcode = F::from_canonical_u32(if is_imm_c { sltu_imm } else { sltu_base });
-
-        cols.base_op_code = match event.opcode {
-            Opcode::SLT => slt_base_opcode,
-            Opcode::SLTU => sltu_base_opcode,
-            _ => unreachable!(),
-        };
     }
 }
 
@@ -240,25 +221,39 @@ where
             + local.is_sltu * AB::Expr::from_canonical_u8(Opcode::SLTU.funct3().unwrap());
         let funct7 = local.is_slt * AB::Expr::from_canonical_u8(Opcode::SLT.funct7().unwrap_or(0))
             + local.is_sltu * AB::Expr::from_canonical_u8(Opcode::SLTU.funct7().unwrap_or(0));
-        let base_opcode = local.base_op_code.into();
 
         let (slt_base, slt_imm) = Opcode::SLT.base_opcode();
         let slt_imm = slt_imm.expect("SLT immediate opcode not found");
         let (sltu_base, sltu_imm) = Opcode::SLTU.base_opcode();
         let sltu_imm = sltu_imm.expect("SLTU immediate opcode not found");
 
+        let imm_base_difference = slt_base.checked_sub(slt_imm).unwrap();
+        assert_eq!(imm_base_difference, sltu_base.checked_sub(sltu_imm).unwrap());
+
         let slt_base_expr = AB::Expr::from_canonical_u32(slt_base);
         let sltu_base_expr = AB::Expr::from_canonical_u32(sltu_base);
-        let slt_imm_expr = AB::Expr::from_canonical_u32(slt_imm);
-        let sltu_imm_expr = AB::Expr::from_canonical_u32(sltu_imm);
 
-        let correct_imm_opcode = local.is_slt * slt_imm_expr + local.is_sltu * sltu_imm_expr;
-        let correct_reg_opcode = local.is_slt * slt_base_expr + local.is_sltu * sltu_base_expr;
+        let calculated_base_opcode = local.is_slt * slt_base_expr + local.is_sltu * sltu_base_expr
+            - AB::Expr::from_canonical_u32(imm_base_difference) * local.adapter.imm_c;
 
-        // Constrain base_op_code to be correct based on imm_c and is_* columns.
-        let correct_opcode =
-            builder.if_else(local.adapter.imm_c.into(), correct_imm_opcode, correct_reg_opcode);
-        builder.when(is_real.clone()).assert_eq(local.base_op_code.into(), correct_opcode);
+        let slt_instr_type = Opcode::SLT.instruction_type().0 as u32;
+        let slt_instr_type_imm =
+            Opcode::SLT.instruction_type().1.expect("SLT immediate instruction type not found")
+                as u32;
+        let sltu_instr_type = Opcode::SLTU.instruction_type().0 as u32;
+        let sltu_instr_type_imm =
+            Opcode::SLTU.instruction_type().1.expect("SLTU immediate instruction type not found")
+                as u32;
+
+        let instr_type_difference = slt_instr_type.checked_sub(slt_instr_type_imm).unwrap();
+        assert_eq!(
+            instr_type_difference,
+            sltu_instr_type.checked_sub(sltu_instr_type_imm).unwrap()
+        );
+
+        let calculated_instr_type = local.is_slt * AB::Expr::from_canonical_u32(slt_instr_type)
+            + local.is_sltu * AB::Expr::from_canonical_u32(sltu_instr_type)
+            - AB::Expr::from_canonical_u32(instr_type_difference) * local.adapter.imm_c;
 
         // Constrain the program and register reads.
         let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
@@ -266,7 +261,7 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             opcode,
-            [base_opcode, funct3, funct7],
+            [calculated_instr_type, calculated_base_opcode, funct3, funct7],
             Word::extend_var::<AB>(local.lt_operation.result.u16_compare_operation.bit),
             local.adapter,
             is_real,

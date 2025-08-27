@@ -1,5 +1,5 @@
 use crate::{
-    events::{FieldOperation, FpOpEvent, PrecompileEvent},
+    events::{FieldOperation, FpOpEvent, FpPageProtRecords, PrecompileEvent},
     syscalls::{SyscallCode, SyscallContext},
     ExecutorConfig,
 };
@@ -28,7 +28,7 @@ pub(crate) fn fp_op_syscall<P: FpOpField, E: ExecutorConfig>(
     let num_words = <P as NumWords>::WordsFieldElement::USIZE;
 
     let x = rt.slice_unsafe(x_ptr, num_words);
-    let (y_memory_records, y) = rt.mr_slice(y_ptr, num_words);
+    let (y_memory_records, y, read_page_prot_records) = rt.mr_slice(y_ptr, num_words);
 
     let x_32 = u64_to_u32(&x);
     let y_32 = u64_to_u32(&y);
@@ -47,7 +47,9 @@ pub(crate) fn fp_op_syscall<P: FpOpField, E: ExecutorConfig>(
     result.resize(num_words, 0);
 
     rt.clk += 1;
-    let x_memory_records = rt.mw_slice(x_ptr, &result);
+    let (x_memory_records, write_page_prot_records) = rt.mw_slice(x_ptr, &result, true);
+
+    let (local_mem_access, local_page_prot_access) = rt.postprocess();
 
     let event = FpOpEvent {
         clk,
@@ -58,7 +60,9 @@ pub(crate) fn fp_op_syscall<P: FpOpField, E: ExecutorConfig>(
         op,
         x_memory_records,
         y_memory_records,
-        local_mem_access: rt.postprocess(),
+        local_mem_access,
+        page_prot_records: FpPageProtRecords { read_page_prot_records, write_page_prot_records },
+        local_page_prot_access,
     };
 
     // Since all the Fp events are on the same table, we need to preserve the ordering of the

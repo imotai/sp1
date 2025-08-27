@@ -23,9 +23,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     events::{
-        AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, GlobalInteractionEvent, JumpEvent,
-        MemInstrEvent, MemoryInitializeFinalizeEvent, MemoryLocalEvent, MemoryRecordEnum,
-        PrecompileEvent, PrecompileEvents, SyscallEvent, UTypeEvent,
+        AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, GlobalInteractionEvent,
+        InstructionDecodeEvent, InstructionFetchEvent, JumpEvent, MemInstrEvent,
+        MemoryInitializeFinalizeEvent, MemoryLocalEvent, MemoryRecordEnum,
+        PageProtInitializeFinalizeEvent, PageProtLocalEvent, PrecompileEvent, PrecompileEvents,
+        SyscallEvent, UTypeEvent,
     },
     program::Program,
     syscalls::SyscallCode,
@@ -97,12 +99,22 @@ pub struct ExecutionRecord {
     pub global_memory_initialize_events: Vec<MemoryInitializeFinalizeEvent>,
     /// A trace of the global memory finalize events.
     pub global_memory_finalize_events: Vec<MemoryInitializeFinalizeEvent>,
+    /// A trace of the global page prot initialize events.
+    pub global_page_prot_initialize_events: Vec<PageProtInitializeFinalizeEvent>,
+    /// A trace of the global page prot finalize events.
+    pub global_page_prot_finalize_events: Vec<PageProtInitializeFinalizeEvent>,
     /// A trace of all the shard's local memory events.
     pub cpu_local_memory_access: Vec<MemoryLocalEvent>,
+    /// A trace of all the local page prot events.
+    pub cpu_local_page_prot_access: Vec<PageProtLocalEvent>,
     /// A trace of all the syscall events.
     pub syscall_events: Vec<(SyscallEvent, RTypeRecord)>,
     /// A trace of all the global interaction events.
     pub global_interaction_events: Vec<GlobalInteractionEvent>,
+    /// A trace of all instruction fetch events.
+    pub instruction_fetch_events: Vec<(InstructionFetchEvent, MemoryAccessRecord)>,
+    /// A trace of all instruction decode events.
+    pub instruction_decode_events: Vec<InstructionDecodeEvent>,
     /// The global culmulative sum.
     pub global_cumulative_sum: Arc<Mutex<SepticDigest<u32>>>,
     /// The global interaction event count.
@@ -161,6 +173,10 @@ impl ExecutionRecord {
             std::mem::take(&mut self.global_memory_initialize_events);
         execution_record.global_memory_finalize_events =
             std::mem::take(&mut self.global_memory_finalize_events);
+        execution_record.global_page_prot_initialize_events =
+            std::mem::take(&mut self.global_page_prot_initialize_events);
+        execution_record.global_page_prot_finalize_events =
+            std::mem::take(&mut self.global_page_prot_finalize_events);
         execution_record
     }
 
@@ -169,6 +185,7 @@ impl ExecutionRecord {
     ///
     /// The optional `last_record` will be provided if there are few enough deferred events that
     /// they can all be packed into the already existing last record.
+    #[allow(clippy::too_many_lines)]
     pub fn split(
         &mut self,
         done: bool,
@@ -208,6 +225,7 @@ impl ExecutionRecord {
                 SyscallCode::BLS12381_FP2_ADD
                 | SyscallCode::BLS12381_FP2_SUB
                 | SyscallCode::BLS12381_FP2_MUL => opts.fp2_operation_384bit,
+                SyscallCode::MPROTECT => opts.mprotect,
                 SyscallCode::POSEIDON2 => opts.poseidon2,
                 _ => opts.deferred,
             };
@@ -234,9 +252,6 @@ impl ExecutionRecord {
         }
 
         if done {
-            self.global_memory_initialize_events.sort_by_key(|event| event.addr);
-            self.global_memory_finalize_events.sort_by_key(|event| event.addr);
-
             // If there are no precompile shards, and `last_record` is Some, pack the memory events
             // into the last record.
             let pack_memory_events_into_last_record = last_record.is_some() && shards.is_empty();
@@ -248,6 +263,71 @@ impl ExecutionRecord {
             } else {
                 &mut blank_record
             };
+
+            let mut init_page_idx = 0;
+            let mut finalize_page_idx = 0;
+
+            // Put all of the page prot init and finalize events into the last record.
+            if !self.global_page_prot_initialize_events.is_empty()
+                || !self.global_page_prot_finalize_events.is_empty()
+            {
+                self.global_page_prot_initialize_events.sort_by_key(|event| event.page_idx);
+                self.global_page_prot_finalize_events.sort_by_key(|event| event.page_idx);
+
+                for page_prot_chunk in self
+                    .global_page_prot_initialize_events
+                    .chunks(opts.page_prot)
+                    .zip_longest(self.global_page_prot_finalize_events.chunks(opts.page_prot))
+                {
+                    let (page_prot_init_chunk, page_prot_finalize_chunk) = match page_prot_chunk {
+                        EitherOrBoth::Both(page_prot_init_chunk, page_prot_finalize_chunk) => {
+                            (page_prot_init_chunk, page_prot_finalize_chunk)
+                        }
+                        EitherOrBoth::Left(page_prot_init_chunk) => {
+                            (page_prot_init_chunk, [].as_slice())
+                        }
+                        EitherOrBoth::Right(page_prot_finalize_chunk) => {
+                            ([].as_slice(), page_prot_finalize_chunk)
+                        }
+                    };
+
+                    last_record_ref
+                        .global_page_prot_initialize_events
+                        .extend_from_slice(page_prot_init_chunk);
+                    last_record_ref.public_values.previous_init_page_idx = init_page_idx;
+                    if let Some(last_event) = page_prot_init_chunk.last() {
+                        init_page_idx = last_event.page_idx;
+                    }
+                    last_record_ref.public_values.last_init_page_idx = init_page_idx;
+
+                    last_record_ref
+                        .global_page_prot_finalize_events
+                        .extend_from_slice(page_prot_finalize_chunk);
+                    last_record_ref.public_values.previous_finalize_page_idx = finalize_page_idx;
+                    if let Some(last_event) = page_prot_finalize_chunk.last() {
+                        finalize_page_idx = last_event.page_idx;
+                    }
+                    last_record_ref.public_values.last_finalize_page_idx = finalize_page_idx;
+
+                    // Because page prot events are non empty, we set the page protect active flag
+                    last_record_ref.public_values.is_page_protect_active = true as u32;
+
+                    if !pack_memory_events_into_last_record {
+                        // If not packing memory events into the last record, add 'last_record_ref'
+                        // to the returned records. `take` replaces `blank_program` with the
+                        // default.
+                        shards.push(take(last_record_ref));
+
+                        // Reset the last record so its program is the correct one. (The default
+                        // program provided by `take` contains no
+                        // instructions.)
+                        last_record_ref.program = self.program.clone();
+                    }
+                }
+            }
+
+            self.global_memory_initialize_events.sort_by_key(|event| event.addr);
+            self.global_memory_finalize_events.sort_by_key(|event| event.addr);
 
             let mut init_addr = 0;
             let mut finalize_addr = 0;
@@ -278,6 +358,11 @@ impl ExecutionRecord {
                 last_record_ref.public_values.last_finalize_addr = finalize_addr;
 
                 if !pack_memory_events_into_last_record {
+                    last_record_ref.public_values.previous_init_page_idx = init_page_idx;
+                    last_record_ref.public_values.last_init_page_idx = init_page_idx;
+                    last_record_ref.public_values.previous_finalize_page_idx = finalize_page_idx;
+                    last_record_ref.public_values.last_finalize_page_idx = finalize_page_idx;
+
                     // If not packing memory events into the last record, add 'last_record_ref'
                     // to the returned records. `take` replaces `blank_program` with the default.
                     shards.push(take(last_record_ref));
@@ -288,6 +373,7 @@ impl ExecutionRecord {
                 }
             }
         }
+
         shards
     }
 
@@ -332,10 +418,17 @@ impl ExecutionRecord {
         let precompile_local_mem_events = self.precompile_events.get_local_mem_events();
         precompile_local_mem_events.chain(self.cpu_local_memory_access.iter())
     }
+
+    /// Get all the local page prot events.
+    #[inline]
+    pub fn get_local_page_prot_events(&self) -> impl Iterator<Item = &PageProtLocalEvent> {
+        let precompile_local_page_prot_events = self.precompile_events.get_local_page_prot_events();
+        precompile_local_page_prot_events.chain(self.cpu_local_page_prot_access.iter())
+    }
 }
 
 /// A memory access record.
-#[derive(Debug, Copy, Clone, Default, DeepSizeOf)]
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, DeepSizeOf)]
 pub struct MemoryAccessRecord {
     /// The memory access of the `a` register.
     pub a: Option<MemoryRecordEnum>,
@@ -345,6 +438,10 @@ pub struct MemoryAccessRecord {
     pub c: Option<MemoryRecordEnum>,
     /// The memory access of the `memory` register.
     pub memory: Option<MemoryRecordEnum>,
+    /// The memory access of the untrusted instruction.
+    /// If memory access for `untrusted_instruction` occurs, we also pass along the selected 32
+    /// bits that is the encoded 32 bit instruction alongside the raw 64bit read
+    pub untrusted_instruction: Option<(MemoryRecordEnum, u32)>,
 }
 
 /// Memory record where all three operands are registers.
@@ -362,10 +459,12 @@ pub struct RTypeRecord {
     pub op_c: u64,
     /// The register `op_c` record.
     pub c: MemoryRecordEnum,
+    /// Whether the instruction is untrusted.
+    pub is_untrusted: bool,
 }
 
 impl RTypeRecord {
-    pub(crate) fn new(value: MemoryAccessRecord, instruction: &Instruction) -> Self {
+    pub(crate) fn new(value: &MemoryAccessRecord, instruction: &Instruction) -> Self {
         Self {
             op_a: instruction.op_a,
             a: value.a.expect("expected MemoryRecord for op_a in RTypeRecord"),
@@ -373,6 +472,7 @@ impl RTypeRecord {
             b: value.b.expect("expected MemoryRecord for op_b in RTypeRecord"),
             op_c: instruction.op_c,
             c: value.c.expect("expected MemoryRecord for op_c in RTypeRecord"),
+            is_untrusted: value.untrusted_instruction.is_some(),
         }
     }
 }
@@ -389,10 +489,12 @@ pub struct ITypeRecord {
     pub b: MemoryRecordEnum,
     /// The c operand.
     pub op_c: u64,
+    /// Whether the instruction is untrusted.
+    pub is_untrusted: bool,
 }
 
 impl ITypeRecord {
-    pub(crate) fn new(value: MemoryAccessRecord, instruction: &Instruction) -> Self {
+    pub(crate) fn new(value: &MemoryAccessRecord, instruction: &Instruction) -> Self {
         debug_assert!(value.c.is_none());
         Self {
             op_a: instruction.op_a,
@@ -400,6 +502,7 @@ impl ITypeRecord {
             op_b: instruction.op_b,
             b: value.b.expect("expected MemoryRecord for op_b in ITypeRecord"),
             op_c: instruction.op_c,
+            is_untrusted: value.untrusted_instruction.is_some(),
         }
     }
 }
@@ -415,10 +518,12 @@ pub struct JTypeRecord {
     pub op_b: u64,
     /// The c operand.
     pub op_c: u64,
+    /// Whether the instruction is untrusted.
+    pub is_untrusted: bool,
 }
 
 impl JTypeRecord {
-    pub(crate) fn new(value: MemoryAccessRecord, instruction: &Instruction) -> Self {
+    pub(crate) fn new(value: &MemoryAccessRecord, instruction: &Instruction) -> Self {
         debug_assert!(value.b.is_none());
         debug_assert!(value.c.is_none());
         Self {
@@ -426,6 +531,7 @@ impl JTypeRecord {
             a: value.a.expect("expected MemoryRecord for op_a in JTypeRecord"),
             op_b: instruction.op_b,
             op_c: instruction.op_c,
+            is_untrusted: value.untrusted_instruction.is_some(),
         }
     }
 }
@@ -445,10 +551,14 @@ pub struct ALUTypeRecord {
     pub op_c: u64,
     /// The register `op_c` record.
     pub c: Option<MemoryRecordEnum>,
+    /// Whether the instruction has an immediate.
+    pub is_imm: bool,
+    /// Whether the instruction is untrusted.
+    pub is_untrusted: bool,
 }
 
 impl ALUTypeRecord {
-    pub(crate) fn new(value: MemoryAccessRecord, instruction: &Instruction) -> Self {
+    pub(crate) fn new(value: &MemoryAccessRecord, instruction: &Instruction) -> Self {
         Self {
             op_a: instruction.op_a,
             a: value.a.expect("expected MemoryRecord for op_a in ALUTypeRecord"),
@@ -456,8 +566,21 @@ impl ALUTypeRecord {
             b: value.b.expect("expected MemoryRecord for op_b in ALUTypeRecord"),
             op_c: instruction.op_c,
             c: value.c,
+            is_imm: instruction.imm_c,
+            is_untrusted: value.untrusted_instruction.is_some(),
         }
     }
+}
+
+/// Memory record for an untrusted program instruction fetch.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct UntrustedProgramInstructionRecord {
+    /// The a operand.
+    pub memory_access_record: MemoryAccessRecord,
+    /// The instruction.
+    pub instruction: Instruction,
+    /// The encoded instruction.
+    pub encoded_instruction: u32,
 }
 
 impl MachineRecord for ExecutionRecord {
@@ -483,6 +606,8 @@ impl MachineRecord for ExecutionRecord {
         stats.insert("jal_events".to_string(), self.jal_events.len());
         stats.insert("jalr_events".to_string(), self.jalr_events.len());
         stats.insert("utype_events".to_string(), self.utype_events.len());
+        stats.insert("instruction_decode_events".to_string(), self.instruction_decode_events.len());
+        stats.insert("instruction_fetch_events".to_string(), self.instruction_fetch_events.len());
 
         for (syscall_code, events) in self.precompile_events.iter() {
             stats.insert(format!("syscall {syscall_code:?}"), events.len());
@@ -497,6 +622,10 @@ impl MachineRecord for ExecutionRecord {
             self.global_memory_finalize_events.len(),
         );
         stats.insert("local_memory_access_events".to_string(), self.cpu_local_memory_access.len());
+        stats.insert(
+            "local_page_prot_access_events".to_string(),
+            self.cpu_local_page_prot_access.len(),
+        );
         if self.contains_cpu() {
             stats.insert("byte_lookups".to_string(), self.byte_lookups.len());
         }
@@ -514,6 +643,12 @@ impl MachineRecord for ExecutionRecord {
         other.public_values.global_init_count = 0;
         self.public_values.global_finalize_count += other.public_values.global_finalize_count;
         other.public_values.global_finalize_count = 0;
+        self.public_values.global_page_prot_init_count +=
+            other.public_values.global_page_prot_init_count;
+        other.public_values.global_page_prot_init_count = 0;
+        self.public_values.global_page_prot_finalize_count +=
+            other.public_values.global_page_prot_finalize_count;
+        other.public_values.global_page_prot_finalize_count = 0;
         self.estimated_trace_area += other.estimated_trace_area;
         other.estimated_trace_area = 0;
         self.add_events.append(&mut other.add_events);
@@ -539,6 +674,8 @@ impl MachineRecord for ExecutionRecord {
         self.bump_memory_events.append(&mut other.bump_memory_events);
         self.bump_state_events.append(&mut other.bump_state_events);
         self.precompile_events.append(&mut other.precompile_events);
+        self.instruction_fetch_events.append(&mut other.instruction_fetch_events);
+        self.instruction_decode_events.append(&mut other.instruction_decode_events);
 
         if self.byte_lookups.is_empty() {
             self.byte_lookups = std::mem::take(&mut other.byte_lookups);
@@ -548,7 +685,11 @@ impl MachineRecord for ExecutionRecord {
 
         self.global_memory_initialize_events.append(&mut other.global_memory_initialize_events);
         self.global_memory_finalize_events.append(&mut other.global_memory_finalize_events);
+        self.global_page_prot_initialize_events
+            .append(&mut other.global_page_prot_initialize_events);
+        self.global_page_prot_finalize_events.append(&mut other.global_page_prot_finalize_events);
         self.cpu_local_memory_access.append(&mut other.cpu_local_memory_access);
+        self.cpu_local_page_prot_access.append(&mut other.cpu_local_page_prot_access);
         self.global_interaction_events.append(&mut other.global_interaction_events);
     }
 
@@ -583,6 +724,8 @@ impl MachineRecord for ExecutionRecord {
         Self::eval_global_sum(public_values, builder);
         Self::eval_global_memory_init(public_values, builder);
         Self::eval_global_memory_finalize(public_values, builder);
+        Self::eval_global_page_prot_init(public_values, builder);
+        Self::eval_global_page_prot_finalize(public_values, builder);
     }
 }
 
@@ -826,6 +969,16 @@ impl ExecutionRecord {
         builder
             .when(public_values.is_first_shard.into())
             .assert_all_zero(public_values.previous_finalize_addr);
+
+        // Check `previous_init_page_idx == 0`
+        builder
+            .when(public_values.is_first_shard.into())
+            .assert_all_zero(public_values.previous_init_page_idx);
+
+        // Check `previous_finalize_page_idx == 0`
+        builder
+            .when(public_values.is_first_shard.into())
+            .assert_all_zero(public_values.previous_finalize_page_idx);
 
         // Check `prev_commit_syscall == 0`.
         builder
@@ -1131,6 +1284,76 @@ impl ExecutionRecord {
                     .collect(),
                 AB::Expr::one(),
                 InteractionKind::MemoryGlobalFinalizeControl,
+            ),
+            InteractionScope::Local,
+        );
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn eval_global_page_prot_init<AB: SP1AirBuilder>(
+        public_values: &PublicValues<
+            [AB::PublicVar; 4],
+            [AB::PublicVar; 3],
+            [AB::PublicVar; 4],
+            AB::PublicVar,
+        >,
+        builder: &mut AB,
+    ) {
+        builder.assert_bool(public_values.is_page_protect_active.into());
+        builder.send(
+            AirInteraction::new(
+                once(AB::Expr::zero())
+                    .chain(public_values.previous_init_page_idx.into_iter().map(Into::into))
+                    .chain(once(AB::Expr::one()))
+                    .collect(),
+                public_values.is_page_protect_active.into(),
+                InteractionKind::PageProtGlobalInitControl,
+            ),
+            InteractionScope::Local,
+        );
+        builder.receive(
+            AirInteraction::new(
+                once(public_values.global_page_prot_init_count.into())
+                    .chain(public_values.last_init_page_idx.into_iter().map(Into::into))
+                    .chain(once(AB::Expr::one()))
+                    .collect(),
+                public_values.is_page_protect_active.into(),
+                InteractionKind::PageProtGlobalInitControl,
+            ),
+            InteractionScope::Local,
+        );
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn eval_global_page_prot_finalize<AB: SP1AirBuilder>(
+        public_values: &PublicValues<
+            [AB::PublicVar; 4],
+            [AB::PublicVar; 3],
+            [AB::PublicVar; 4],
+            AB::PublicVar,
+        >,
+        builder: &mut AB,
+    ) {
+        builder.assert_bool(public_values.is_page_protect_active.into());
+        builder.send(
+            AirInteraction::new(
+                once(AB::Expr::zero())
+                    .chain(public_values.previous_finalize_page_idx.into_iter().map(Into::into))
+                    .chain(once(AB::Expr::one()))
+                    .collect(),
+                public_values.is_page_protect_active.into(),
+                InteractionKind::PageProtGlobalFinalizeControl,
+            ),
+            InteractionScope::Local,
+        );
+        builder.receive(
+            AirInteraction::new(
+                once(public_values.global_page_prot_finalize_count.into())
+                    .chain(public_values.last_finalize_page_idx.into_iter().map(Into::into))
+                    .chain(once(AB::Expr::one()))
+                    .collect(),
+                public_values.is_page_protect_active.into(),
+                InteractionKind::PageProtGlobalFinalizeControl,
             ),
             InteractionScope::Local,
         );

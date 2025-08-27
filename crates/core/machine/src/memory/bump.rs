@@ -69,6 +69,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
                         value: event.prev_value(),
                         prev_timestamp: event.previous_record().timestamp,
                         timestamp: (event.current_record().timestamp >> 24) << 24,
+                        prev_page_prot_record: None,
                     });
                     cols.access.populate(bump_event, &mut blu);
                     blu.add_u16_range_checks(&[
@@ -111,6 +112,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
                         value: event.prev_value(),
                         prev_timestamp: event.previous_record().timestamp,
                         timestamp: (event.current_record().timestamp >> 24) << 24,
+                        prev_page_prot_record: None,
                     });
                     cols.access.populate(bump_event, &mut byte_lookup_events);
                     cols.clk_high =

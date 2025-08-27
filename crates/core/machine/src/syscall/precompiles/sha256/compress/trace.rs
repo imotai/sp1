@@ -166,6 +166,7 @@ impl ShaCompressChip {
             cols.f = u32_to_half_word(event.h_read_records[5].value as u32);
             cols.g = u32_to_half_word(event.h_read_records[6].value as u32);
             cols.h = u32_to_half_word(event.h_read_records[7].value as u32);
+
             cols.index = F::from_canonical_u32(j as u32);
 
             cols.is_real = F::one();

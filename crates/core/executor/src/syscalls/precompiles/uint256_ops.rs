@@ -1,7 +1,7 @@
 use num::BigUint;
 
 use crate::{
-    events::{PrecompileEvent, Uint256Operation, Uint256OpsEvent},
+    events::{PrecompileEvent, Uint256Operation, Uint256OpsEvent, Uint256OpsPageProtRecords},
     syscalls::{SyscallCode, SyscallContext},
     ExecutorConfig,
     Register::{X12, X13, X14},
@@ -37,11 +37,11 @@ pub(crate) fn uint256_ops<E: ExecutorConfig>(
     let (e_ptr_memory, e_ptr) = rt.rr_traced(X14);
 
     // Read input values (8 words = 32 bytes each for uint256)
-    let (a_memory_records, a) = rt.mr_slice(a_ptr, U256_NUM_WORDS);
+    let (a_memory_records, a, read_a_page_prot_records) = rt.mr_slice(a_ptr, U256_NUM_WORDS);
     rt.clk += 1;
-    let (b_memory_records, b) = rt.mr_slice(b_ptr, U256_NUM_WORDS);
+    let (b_memory_records, b, read_b_page_prot_records) = rt.mr_slice(b_ptr, U256_NUM_WORDS);
     rt.clk += 1;
-    let (c_memory_records, c) = rt.mr_slice(c_ptr, U256_NUM_WORDS);
+    let (c_memory_records, c, read_c_page_prot_records) = rt.mr_slice(c_ptr, U256_NUM_WORDS);
 
     // Convert to BigUint
     let uint256_a = BigUint::from_slice(
@@ -65,9 +65,13 @@ pub(crate) fn uint256_ops<E: ExecutorConfig>(
 
     // Write results
     rt.clk += 1;
-    let d_memory_records = rt.mw_slice(d_ptr, &u64_result[0..4]);
+    let (d_memory_records, write_d_page_prot_records) =
+        rt.mw_slice(d_ptr, &u64_result[0..4], false);
     rt.clk += 1;
-    let e_memory_records = rt.mw_slice(e_ptr, &u64_result[4..8]);
+    let (e_memory_records, write_e_page_prot_records) =
+        rt.mw_slice(e_ptr, &u64_result[4..8], false);
+
+    let (local_mem_access, local_page_prot_access) = rt.postprocess();
 
     let event = PrecompileEvent::Uint256Ops(Uint256OpsEvent {
         clk,
@@ -90,7 +94,15 @@ pub(crate) fn uint256_ops<E: ExecutorConfig>(
         c_memory_records,
         d_memory_records,
         e_memory_records,
-        local_mem_access: rt.postprocess(),
+        local_mem_access,
+        page_prot_records: Uint256OpsPageProtRecords {
+            read_a_page_prot_records,
+            read_b_page_prot_records,
+            read_c_page_prot_records,
+            write_d_page_prot_records,
+            write_e_page_prot_records,
+        },
+        local_page_prot_access,
     });
 
     let syscall_event =

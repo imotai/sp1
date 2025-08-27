@@ -10,7 +10,8 @@ use sp1_hypercube::{
 };
 
 use crate::memory::{
-    MemoryAccessCols, MemoryAccessTimestamp, RegisterAccessCols, RegisterAccessTimestamp,
+    MemoryAccessCols, MemoryAccessTimestamp, PageProtAccessCols, RegisterAccessCols,
+    RegisterAccessTimestamp,
 };
 
 pub trait MemoryAirBuilder: BaseAirBuilder {
@@ -92,12 +93,12 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         let prev_high = mem_access.access_timestamp.prev_high.clone().into();
         let prev_low = mem_access.access_timestamp.prev_low.clone().into();
         let prev_values = once(prev_high)
-            .chain(once(prev_low))
+            .chain(once(prev_low.clone()))
             .chain(addr.clone())
             .chain(mem_access.prev_value.clone().map(Into::into))
             .collect();
-        let current_values = once(clk_high)
-            .chain(once(clk_low))
+        let current_values = once(clk_high.clone())
+            .chain(once(clk_low.clone()))
             .chain(addr.clone())
             .chain(write_value.map(Into::into))
             .collect();
@@ -191,12 +192,12 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         // Add to the memory argument.
         let prev_low = reg_access.access_timestamp.prev_low.clone().into();
         let prev_values = once(clk_high.clone())
-            .chain(once(prev_low))
+            .chain(once(prev_low.clone()))
             .chain(addr.clone())
             .chain(reg_access.prev_value.clone().map(Into::into))
             .collect();
-        let current_values = once(clk_high)
-            .chain(once(clk_low))
+        let current_values = once(clk_high.clone())
+            .chain(once(clk_low.clone()))
             .chain(addr.clone())
             .chain(write_value.map(Into::into))
             .collect();
@@ -356,5 +357,154 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
             Self::Expr::zero(),
             do_check,
         )
+    }
+
+    /// This function is used to send to the a request to check an address's permissions.
+    #[allow(clippy::too_many_arguments)]
+    fn send_page_prot(
+        &mut self,
+        clk_high: impl Into<Self::Expr>,
+        clk_low: impl Into<Self::Expr>,
+        addr: &[Self::Expr; 3],
+        permissions: impl Into<Self::Expr>,
+        multiplicity: impl Into<Self::Expr>,
+    ) {
+        let values = once(clk_high.into())
+            .chain(once(clk_low.into()))
+            .chain(addr.clone())
+            .chain(once(permissions.into()))
+            .collect();
+
+        self.send(
+            AirInteraction::new(values, multiplicity.into(), InteractionKind::PageProt),
+            InteractionScope::Local,
+        );
+    }
+
+    /// This function is used to receive a response to a request to check an address's permissions.
+    #[allow(clippy::too_many_arguments)]
+    fn receive_page_prot(
+        &mut self,
+        clk_high: impl Into<Self::Expr>,
+        clk_low: impl Into<Self::Expr>,
+        addr: &[Self::Expr; 3],
+        permissions: impl Into<Self::Expr>,
+        multiplicity: impl Into<Self::Expr>,
+    ) {
+        let values = once(clk_high.into())
+            .chain(once(clk_low.into()))
+            .chain(addr.clone())
+            .chain(once(permissions.into()))
+            .collect();
+
+        self.receive(
+            AirInteraction::new(values, multiplicity.into(), InteractionKind::PageProt),
+            InteractionScope::Local,
+        );
+    }
+
+    /// Constrain a page prot read, by using the read value as the write value.
+    /// The constraints enforce that the new clk is greater than the previous one.
+    fn eval_page_prot_access_read<E: Into<Self::Expr> + Clone>(
+        &mut self,
+        clk_high: impl Into<Self::Expr>,
+        clk_low: impl Into<Self::Expr>,
+        prot_page_idx: &[impl Into<Self::Expr> + Clone; 3],
+        page_prot_access: PageProtAccessCols<E>,
+        do_check: impl Into<Self::Expr>,
+    ) {
+        let do_check: Self::Expr = do_check.into();
+        let clk_high: Self::Expr = clk_high.into();
+        let clk_low: Self::Expr = clk_low.into();
+
+        self.assert_bool(do_check.clone());
+        // Verify that the current memory access time is greater than the previous's.
+        self.eval_memory_access_timestamp(
+            &page_prot_access.access_timestamp,
+            do_check.clone(),
+            clk_high.clone(),
+            clk_low.clone(),
+        );
+
+        // Add to the memory argument.
+        let prev_high = page_prot_access.access_timestamp.prev_high.clone().into();
+        let prev_low = page_prot_access.access_timestamp.prev_low.clone().into();
+        let prev_values = once(prev_high)
+            .chain(once(prev_low))
+            .chain(prot_page_idx.clone().map(Into::into))
+            .chain(once(page_prot_access.prev_prot_bitmap.clone().into()))
+            .collect();
+        let current_values = once(clk_high)
+            .chain(once(clk_low))
+            .chain(prot_page_idx.clone().map(Into::into))
+            .chain(once(page_prot_access.prev_prot_bitmap.into()))
+            .collect();
+
+        // The previous values get sent with multiplicity = 1, for "read".
+        self.send(
+            AirInteraction::new(prev_values, do_check.clone(), InteractionKind::PageProtAccess),
+            InteractionScope::Local,
+        );
+
+        // The current values get "received", i.e. multiplicity = -1
+        self.receive(
+            AirInteraction::new(current_values, do_check.clone(), InteractionKind::PageProtAccess),
+            InteractionScope::Local,
+        );
+    }
+
+    /// Constrain a page prot write, updating the protection bitmap.
+    /// The constraints enforce that the new clk is greater than the previous one.
+    fn eval_page_prot_access_write<E: Into<Self::Expr> + Clone>(
+        &mut self,
+        clk_high: impl Into<Self::Expr>,
+        clk_low: impl Into<Self::Expr>,
+        prot_page_idx: &[impl Into<Self::Expr> + Clone; 3],
+        page_prot_access: PageProtAccessCols<E>,
+        new_prot_bitmap: impl Into<Self::Expr>,
+        do_check: impl Into<Self::Expr>,
+    ) {
+        let do_check: Self::Expr = do_check.into();
+        let clk_high: Self::Expr = clk_high.into();
+        let clk_low: Self::Expr = clk_low.into();
+        let new_prot_bitmap: Self::Expr = new_prot_bitmap.into();
+
+        self.assert_bool(do_check.clone());
+
+        // Verify that the current memory access time is greater than the previous's.
+        self.eval_memory_access_timestamp(
+            &page_prot_access.access_timestamp,
+            do_check.clone(),
+            clk_high.clone(),
+            clk_low.clone(),
+        );
+
+        // Read the previous state
+        let prev_high = page_prot_access.access_timestamp.prev_high.clone().into();
+        let prev_low = page_prot_access.access_timestamp.prev_low.clone().into();
+        let prev_values = once(prev_high)
+            .chain(once(prev_low))
+            .chain(prot_page_idx.clone().map(Into::into))
+            .chain(once(page_prot_access.prev_prot_bitmap.clone().into()))
+            .collect();
+
+        // Write the new state with updated protection bitmap
+        let current_values = once(clk_high)
+            .chain(once(clk_low))
+            .chain(prot_page_idx.clone().map(Into::into))
+            .chain(once(new_prot_bitmap))
+            .collect();
+
+        // The previous values get sent with multiplicity = 1, for "read".
+        self.send(
+            AirInteraction::new(prev_values, do_check.clone(), InteractionKind::PageProtAccess),
+            InteractionScope::Local,
+        );
+
+        // The current values get "received", i.e. multiplicity = -1
+        self.receive(
+            AirInteraction::new(current_values, do_check.clone(), InteractionKind::PageProtAccess),
+            InteractionScope::Local,
+        );
     }
 }

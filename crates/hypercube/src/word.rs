@@ -7,7 +7,6 @@ use crate::air::SP1AirBuilder;
 use arrayref::array_ref;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, Field};
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::WORD_SIZE;
@@ -51,7 +50,7 @@ impl<T> Word<T> {
     }
 }
 
-impl<T: AbstractField> Word<T> {
+impl<T: AbstractField + Clone> Word<T> {
     /// Extends a variable to a word.
     pub fn extend_expr<AB: SP1AirBuilder<Expr = T>>(expr: T) -> Word<AB::Expr> {
         Word([AB::Expr::zero() + expr, AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()])
@@ -61,6 +60,53 @@ impl<T: AbstractField> Word<T> {
     #[must_use]
     pub fn zero<AB: SP1AirBuilder<Expr = T>>() -> Word<T> {
         Word([AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero()])
+    }
+
+    /// Reduces a word to a single expression.
+    pub fn reduce<AB: SP1AirBuilder<Expr = T>>(&self) -> AB::Expr {
+        let base = [1, 1 << 16, 1 << 32, 1 << 48].map(AB::Expr::from_wrapped_u64);
+        self.0.iter().enumerate().map(|(i, x)| base[i].clone() * x.clone()).sum()
+    }
+
+    /// Creates a word from `le_bits`.
+    /// Safety: This assumes that the `le_bits` are already checked to be boolean.
+    pub fn from_le_bits<AB: SP1AirBuilder<Expr = T>>(
+        le_bits: &[impl Into<T> + Clone],
+        sign_extend: bool,
+    ) -> Word<AB::Expr> {
+        assert!(le_bits.len() <= WORD_SIZE * 16);
+
+        let mut limbs = le_bits
+            .chunks(16)
+            .map(|chunk| {
+                chunk.iter().enumerate().fold(AB::Expr::zero(), |a, (i, b)| {
+                    a + AB::Expr::from_canonical_u16(1 << i) * (*b).clone().into()
+                })
+            })
+            .collect_vec();
+
+        let sign_bit = (*le_bits.last().unwrap()).clone().into();
+
+        if sign_extend {
+            // Sign extend the most significant limb.
+            let most_sig_limb = limbs.last_mut().unwrap();
+            let most_sig_num_bits = le_bits.len() % 16;
+            if most_sig_num_bits > 0 {
+                *most_sig_limb = (*most_sig_limb).clone()
+                    + (AB::Expr::from_canonical_u32((1 << 16) - (1 << most_sig_num_bits)))
+                        * sign_bit.clone();
+            }
+        }
+
+        let extend_limb = if sign_extend {
+            AB::Expr::from_canonical_u16(u16::MAX) * sign_bit.clone()
+        } else {
+            AB::Expr::zero()
+        };
+
+        limbs.resize(WORD_SIZE, extend_limb);
+
+        Word::from_iter(limbs)
     }
 }
 
@@ -79,14 +125,6 @@ impl<F: Field> Word<F> {
         let mid_high = self.0[2].to_string().parse::<u16>().unwrap();
         let high = self.0[3].to_string().parse::<u16>().unwrap();
         ((high as u64) << 48) | ((mid_high as u64) << 32) | ((mid_low as u64) << 16) | (low as u64)
-    }
-}
-
-impl<V: Copy> Word<V> {
-    /// Reduces a word to a single variable.
-    pub fn reduce<AB: AirBuilder<Var = V>>(&self) -> AB::Expr {
-        let base = [1, 1 << 16, 1 << 32, 1 << 48].map(AB::Expr::from_wrapped_u64);
-        self.0.iter().enumerate().map(|(i, x)| base[i].clone() * *x).sum()
     }
 }
 

@@ -68,6 +68,24 @@ pub enum InteractionKind {
 
     /// Interaction with the `MemoryGlobalFinalize` chip.
     MemoryGlobalFinalizeControl = 15,
+
+    /// Interaction with the instruction fetch table.
+    InstructionFetch = 16,
+
+    /// Interaction with the instruction decode table.
+    InstructionDecode = 17,
+
+    /// Interaction with the page prot chip.
+    PageProt = 18,
+
+    /// Interaction with the page prot chip.
+    PageProtAccess = 19,
+
+    /// Interaction with the `PageProtGlobalInit` chip.
+    PageProtGlobalInitControl = 20,
+
+    /// Interaction with the `PageProtGlobalFinalize` chip.
+    PageProtGlobalFinalizeControl = 21,
 }
 
 impl InteractionKind {
@@ -90,6 +108,12 @@ impl InteractionKind {
             InteractionKind::GlobalAccumulation,
             InteractionKind::MemoryGlobalInitControl,
             InteractionKind::MemoryGlobalFinalizeControl,
+            InteractionKind::InstructionFetch,
+            InteractionKind::InstructionDecode,
+            InteractionKind::PageProtAccess,
+            InteractionKind::PageProtGlobalInitControl,
+            InteractionKind::PageProtGlobalFinalizeControl,
+            InteractionKind::PageProt,
         ]
     }
 }
@@ -178,6 +202,14 @@ impl Display for InteractionKind {
             InteractionKind::MemoryGlobalInitControl => write!(f, "MemoryGlobalInitControl"),
             InteractionKind::MemoryGlobalFinalizeControl => {
                 write!(f, "MemoryGlobalFinalizeControl")
+            }
+            InteractionKind::InstructionFetch => write!(f, "InstructionFetch"),
+            InteractionKind::InstructionDecode => write!(f, "InstructionDecode"),
+            InteractionKind::PageProt => write!(f, "PageProt"),
+            InteractionKind::PageProtAccess => write!(f, "PageProtAccess"),
+            InteractionKind::PageProtGlobalInitControl => write!(f, "PageProtGlobalInitControl"),
+            InteractionKind::PageProtGlobalFinalizeControl => {
+                write!(f, "PageProtGlobalFinalizeControl")
             }
         }
     }

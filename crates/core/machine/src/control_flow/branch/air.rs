@@ -77,6 +77,15 @@ where
             + local.is_bge * AB::Expr::from_canonical_u32(Opcode::BGE.base_opcode().0)
             + local.is_bltu * AB::Expr::from_canonical_u32(Opcode::BLTU.base_opcode().0)
             + local.is_bgeu * AB::Expr::from_canonical_u32(Opcode::BGEU.base_opcode().0);
+        let instr_type = local.is_beq
+            * AB::Expr::from_canonical_u32(Opcode::BEQ.instruction_type().0 as u32)
+            + local.is_bne * AB::Expr::from_canonical_u32(Opcode::BNE.instruction_type().0 as u32)
+            + local.is_blt * AB::Expr::from_canonical_u32(Opcode::BLT.instruction_type().0 as u32)
+            + local.is_bge * AB::Expr::from_canonical_u32(Opcode::BGE.instruction_type().0 as u32)
+            + local.is_bltu
+                * AB::Expr::from_canonical_u32(Opcode::BLTU.instruction_type().0 as u32)
+            + local.is_bgeu
+                * AB::Expr::from_canonical_u32(Opcode::BGEU.instruction_type().0 as u32);
 
         // Constrain the state of the CPU.
         // The `next_pc` is constrained by the AIR.
@@ -99,13 +108,13 @@ where
                 local.state.clk_low::<AB>(),
                 local.state.pc,
                 opcode,
-                [base_opcode, funct3, funct7],
+                [instr_type, base_opcode, funct3, funct7],
                 local.adapter,
                 is_real.clone(),
             ),
         );
 
-        // // SAFETY: `use_signed_comparison` is boolean, since at most one selector is turned on.
+        // SAFETY: `use_signed_comparison` is boolean, since at most one selector is turned on.
         let use_signed_comparison = local.is_blt + local.is_bge;
         <LtOperationSigned<AB::F> as SP1Operation<AB>>::eval(
             builder,

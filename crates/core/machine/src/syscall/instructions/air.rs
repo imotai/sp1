@@ -44,6 +44,9 @@ where
             AB::PublicVar,
         > = public_values_slice.as_slice().borrow();
 
+        // Assert that only the trusted program can call ecall.
+        builder.when(local.is_real).assert_one(local.adapter.is_trusted);
+
         // Convert the syscall code to 8 bytes using the safe API.
         let a_input = U16toU8OperationSafeInput::new(
             local.adapter.prev_a().0.map(Into::into),
@@ -74,6 +77,7 @@ where
         let funct3 = AB::Expr::from_canonical_u8(Opcode::ECALL.funct3().unwrap_or(0));
         let funct7 = AB::Expr::from_canonical_u8(Opcode::ECALL.funct7().unwrap_or(0));
         let base_opcode = AB::Expr::from_canonical_u32(Opcode::ECALL.base_opcode().0);
+        let instr_type = AB::Expr::from_canonical_u32(Opcode::ECALL.instruction_type().0 as u32);
 
         RTypeReader::<AB::F>::eval(
             builder,
@@ -81,7 +85,7 @@ where
             local.state.clk_low::<AB>(),
             local.state.pc,
             AB::Expr::from_canonical_u32(Opcode::ECALL as u32),
-            [base_opcode, funct3, funct7],
+            [instr_type, base_opcode, funct3, funct7],
             local.op_a_value,
             local.adapter,
             local.is_real.into(),
@@ -119,6 +123,9 @@ where
 
         // HALT ecall and UNIMPL instruction.
         self.eval_halt_unimpl(builder, local, public_values);
+
+        // PAGE_PROTECT ecall instruction.
+        self.eval_page_protect(builder, local, &a, public_values.is_page_protect_active);
     }
 }
 
@@ -317,13 +324,13 @@ impl SyscallInstrsChip {
         }
         builder.slice_range_check_u8(&local.expected_public_values_digest, is_commit.clone());
 
-        let digest_word = local.adapter.c();
+        let digest_word: Word<AB::Expr> = local.adapter.c().map(Into::into);
 
         // Verify the public_values_digest_word.
         builder
             .when(local.is_real)
             .when(is_commit.clone())
-            .assert_word_eq(expected_pv_digest_word, *digest_word);
+            .assert_word_eq(expected_pv_digest_word, digest_word.clone());
 
         let expected_deferred_proofs_digest_element =
             builder.index_array(&deferred_proofs_digest, &local.index_bitmap);
@@ -356,7 +363,34 @@ impl SyscallInstrsChip {
         // Check that the `op_b` value reduced is the `public_values.exit_code`.
         builder
             .when(local.is_halt)
-            .assert_eq(local.adapter.b().reduce::<AB>(), public_values.exit_code);
+            .assert_eq(local.adapter.b().map(Into::into).reduce::<AB>(), public_values.exit_code);
+    }
+
+    pub(crate) fn eval_page_protect<AB: SP1CoreAirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &SyscallInstrColumns<AB::Var>,
+        prev_a_byte: &[AB::Expr; 8],
+        commit_syscall: AB::PublicVar,
+    ) {
+        // `is_page_protect` is checked to be correct in `eval_is_halt_syscall`.
+        let syscall_id = prev_a_byte[0].clone();
+
+        // Compute whether this ecall is mprotect.
+        let is_mprotect = {
+            IsZeroOperation::<AB::F>::eval(
+                builder,
+                IsZeroOperationInput::new(
+                    syscall_id.clone()
+                        - AB::Expr::from_canonical_u32(SyscallCode::MPROTECT.syscall_id()),
+                    local.is_page_protect,
+                    local.is_real.into(),
+                ),
+            );
+            local.is_page_protect.result
+        };
+
+        builder.when(is_mprotect).assert_one(commit_syscall);
     }
 
     /// Returns a boolean expression indicating whether the instruction is a HALT instruction.

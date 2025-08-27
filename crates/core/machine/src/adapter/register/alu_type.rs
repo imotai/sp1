@@ -38,6 +38,7 @@ pub struct ALUTypeReader<T> {
     pub op_c: Word<T>,
     pub op_c_memory: RegisterAccessCols<T>,
     pub imm_c: T,
+    pub is_trusted: T,
 }
 
 impl<T> ALUTypeReader<T> {
@@ -69,6 +70,7 @@ impl<F: PrimeField32> ALUTypeReader<F> {
         } else {
             self.op_c_memory.populate(record.c.unwrap(), blu_events);
         }
+        self.is_trusted = F::from_bool(!record.is_untrusted);
     }
 }
 
@@ -79,18 +81,25 @@ impl<F: Field> ALUTypeReader<F> {
         clk_high: AB::Expr,
         clk_low: AB::Expr,
         pc: [AB::Var; 3],
-        opcode: impl Into<AB::Expr>,
-        instr_field_consts: [AB::Expr; 3],
+        opcode: impl Into<AB::Expr> + Clone,
+        instr_field_consts: [AB::Expr; 4],
         op_a_write_value: Word<impl Into<AB::Expr> + Clone>,
         cols: ALUTypeReader<AB::Var>,
         is_real: AB::Expr,
     ) {
         builder.assert_bool(is_real.clone());
+        let is_untrusted = is_real.clone() - cols.is_trusted;
+        builder.assert_bool(is_untrusted.clone());
+        builder.assert_bool(cols.is_trusted);
+
+        builder.assert_eq(is_untrusted.clone() + cols.is_trusted, is_real.clone());
+
         // Assert that `imm_c` is zero if the operation is not real.
         // This is to ensure that the `op_c` read multiplicity is zero on padding rows.
         builder.when_not(is_real.clone()).assert_eq(cols.imm_c, AB::Expr::zero());
-        let instruction = InstructionCols {
-            opcode: opcode.into(),
+
+        let instruction: InstructionCols<AB::Expr> = InstructionCols {
+            opcode: opcode.clone().into(),
             op_a: cols.op_a.into(),
             op_b: Word::extend_expr::<AB>(cols.op_b.into()),
             op_c: cols.op_c.map(Into::into),
@@ -98,7 +107,16 @@ impl<F: Field> ALUTypeReader<F> {
             imm_b: AB::Expr::zero(),
             imm_c: cols.imm_c.into(),
         };
-        builder.send_program(pc, instruction, instr_field_consts, is_real.clone());
+
+        builder.send_program(pc, instruction.clone(), cols.is_trusted);
+        builder.send_instruction_fetch(
+            pc,
+            instruction,
+            instr_field_consts,
+            [clk_high.clone(), clk_low.clone()],
+            is_untrusted.clone(),
+        );
+
         // Assert that `op_a` is zero if `op_a_0` is true.
         builder.when(cols.op_a_0).assert_word_eq(op_a_write_value.clone(), Word::zero::<AB>());
         builder.eval_register_access_write(
@@ -135,8 +153,8 @@ impl<F: Field> ALUTypeReader<F> {
         clk_high: AB::Expr,
         clk_low: AB::Expr,
         pc: [AB::Var; 3],
-        opcode: impl Into<AB::Expr>,
-        instr_field_consts: [AB::Expr; 3],
+        opcode: impl Into<AB::Expr> + Clone,
+        instr_field_consts: [AB::Expr; 4],
         cols: ALUTypeReader<AB::Var>,
         is_real: AB::Expr,
     ) {
@@ -160,7 +178,7 @@ pub struct ALUTypeReaderInput<AB: SP1AirBuilder, T: Into<AB::Expr> + Clone> {
     pub clk_low: AB::Expr,
     pub pc: [AB::Var; 3],
     pub opcode: AB::Expr,
-    pub instr_field_consts: [AB::Expr; 3],
+    pub instr_field_consts: [AB::Expr; 4],
     pub op_a_write_value: Word<T>,
     pub cols: ALUTypeReader<AB::Var>,
     pub is_real: AB::Expr,
