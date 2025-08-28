@@ -29,7 +29,6 @@ pub use fptower::*;
 pub use halt::*;
 pub use io::*;
 pub use keccak_permute::*;
-pub use memory::*;
 pub use mprotect::*;
 pub use poseidon2::*;
 pub use secp256k1::*;
