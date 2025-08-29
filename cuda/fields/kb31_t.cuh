@@ -152,17 +152,17 @@ public:
         return from_canonical_u32((uint32_t)x);
     }
 
-    static inline kb31_t load(kb31_t *ptr, size_t i)
+    static inline kb31_t load(kb31_t *ptr, int i)
     {
         return ptr[i];
     }
 
-    static inline const kb31_t load(const kb31_t *ptr, size_t i)
+    static inline const kb31_t load(const kb31_t *ptr, int i)
     {
         return ptr[i];
     }
 
-    static inline void store(kb31_t *ptr, size_t i, kb31_t value)
+    static inline void store(kb31_t *ptr, int i, kb31_t value)
     {
         ptr[i] = value;
     }
@@ -807,12 +807,12 @@ public:
         return s;
     }
 
-    static inline kb31_t load(kb31_t *ptr, size_t i)
+    static inline kb31_t load(kb31_t *ptr, int i)
     {
         return ptr[i];
     }
 
-    static inline const kb31_t load(const kb31_t *ptr, size_t i)
+    static inline const kb31_t load(const kb31_t *ptr, int i)
     {
         return ptr[i];
     }

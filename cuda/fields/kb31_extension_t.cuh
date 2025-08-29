@@ -47,21 +47,21 @@ public:
     }
 
     // Load from a pointer using a vectorized load.
-    static __device__ __forceinline__ kb31_extension_t load(kb31_extension_t *ptr, size_t i)
+    static __device__ __forceinline__ kb31_extension_t load(kb31_extension_t *ptr, int i)
     {
         int4 b_int4 = *reinterpret_cast<int4 *>(&ptr[i]);
         return *reinterpret_cast<kb31_extension_t *>(&b_int4);
     }
 
     // Load from a pointer using a vectorized load.
-    static __device__ __forceinline__ const kb31_extension_t load(const kb31_extension_t *ptr, size_t i)
+    static __device__ __forceinline__ const kb31_extension_t load(const kb31_extension_t *ptr, int i)
     {
         int4 b_int4 = *reinterpret_cast<const int4 *>(&ptr[i]);
         return *reinterpret_cast<const kb31_extension_t *>(&b_int4);
     }
 
     // Store a kb31_extension_t into a pointer using a vectorized store.
-    static __device__ __forceinline__ void store(kb31_extension_t *ptr, size_t i, kb31_extension_t value)
+    static __device__ __forceinline__ void store(kb31_extension_t *ptr, int i, kb31_extension_t value)
     {
         *reinterpret_cast<int4 *>(&ptr[i]) = *reinterpret_cast<int4 *>(&value);
     }

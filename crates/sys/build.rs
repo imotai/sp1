@@ -21,7 +21,7 @@ fn add_src_files(build: &mut cc::Build, dir: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-fn builder() -> cc::Build {
+fn builder(cuda_version: f32) -> cc::Build {
     let mut build = cc::Build::new();
 
     // Compiler flags.
@@ -32,11 +32,30 @@ fn builder() -> cc::Build {
         .flag("-Xcompiler")
         .flag("-fopenmp")
         .flag("-lnvToolsExt")
-        .flag("-arch=sm_89")
         .flag("-lineinfo")
         .flag("-ldl")
         .flag("-lnvToolsExt")
         .flag("--expt-relaxed-constexpr");
+
+    // Producr a fat binary for all supported architectures, Override with CUDA_ARCHS env.
+    let archs = env::var("CUDA_ARCHS").unwrap_or_else(|_| {
+        if cuda_version < 12.8 {
+            "80,86,89".to_string()
+        } else {
+            "80,86,89,90,100,120".to_string()
+        }
+    });
+
+    let mut max_cc = 0u32;
+    for part in archs.split(',') {
+        let cc: u32 = part.trim().parse().expect("bad CUDA_ARCHS item");
+        if cc > max_cc {
+            max_cc = cc;
+        }
+        build.flag(format!("-gencode=arch=compute_{cc},code=sm_{cc}"));
+    }
+    // Single PTX fallback at the highest arch we compiled
+    build.flag(format!("-gencode=arch=compute_{max_cc},code=compute_{max_cc}"));
 
     // Set the "-G" flag if the PROFILE_DEBUG_DATA environment variable is set to "true". This can
     // be set during kernel profilining.
@@ -175,7 +194,7 @@ fn main() {
     let crate_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let src_dir = crate_dir.join("../../cuda/");
     // Get a new builder with the correct flags.
-    let mut build = builder();
+    let mut build = builder(v);
 
     env::set_var("DEP_SPPARK_ROOT", "../../sppark/");
     if let Some(include) = env::var_os("DEP_SPPARK_ROOT") {

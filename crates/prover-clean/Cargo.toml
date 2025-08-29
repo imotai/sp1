@@ -44,5 +44,10 @@ path = "bin/hadamard_sumcheck_bench.rs"
 name = "zerocheck_bench"
 path = "bin/zerocheck_bench.rs"
 
+[[bin]]
+name = "look_ahead_bench"
+path = "bin/look_ahead_bench.rs"
+
+
 [lints]
 workspace = true

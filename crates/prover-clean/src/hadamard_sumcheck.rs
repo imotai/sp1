@@ -86,7 +86,7 @@ where
     )
 }
 
-async fn fix_last_variable<F>(
+pub async fn fix_last_variable<F>(
     base: Mle<F, TaskScope>,
     ext: Mle<Ext, TaskScope>,
     alpha: Ext,

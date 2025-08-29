@@ -1,5 +1,5 @@
 use csl_cuda::run_in_place;
-use csl_prover_clean::config::{Ext, Felt};
+use csl_prover_clean::config::Ext;
 use csl_prover_clean::hadamard_sumcheck::simple_hadamard_sumcheck;
 use itertools::Itertools;
 
@@ -14,7 +14,12 @@ const NUM_ITERATIONS: usize = 2;
 /// Compares our simple hadamard sumcheck implementation with the slop implementation, which is more complicated and supports batching.
 #[tokio::main]
 async fn main() {
-    // Simple base-ext bench.
+    // Easily choose betwen Felt and Ext
+    type F = Ext;
+    // Decide whether to run the GKR-style bench.
+    const GKR_STYLE: bool = false;
+
+    // Simple ext-ext bench.
     for num_variables in [27] {
         // Run hadamard sumcheck
 
@@ -26,7 +31,7 @@ async fn main() {
             let mut challenger = verifier.challenger();
 
             let _yuwen_lambda: Ext = challenger.sample();
-            let base = Mle::<Felt>::rand(&mut rng, 1, num_variables);
+            let base = Mle::<F>::rand(&mut rng, 1, num_variables);
             let ext = Mle::<Ext>::rand(&mut rng, 1, num_variables);
 
             let claim = ext
@@ -84,65 +89,67 @@ async fn main() {
         .await;
     }
 
-    // Gkr-style bench.
-    let sizes = (4u32..29).rev().collect_vec();
-    run_in_place(|t| async move {
-        println!("\n🚀 Gkr-style bench");
-        let mut rng = rand::rngs::StdRng::seed_from_u64(0);
-        // Allocate ext1 and ext2 MLE's
-        let mut all_ext1 = Vec::with_capacity(sizes.len());
-        let mut all_ext2 = Vec::with_capacity(sizes.len());
-        let mut all_claims = Vec::with_capacity(sizes.len());
-        for size in sizes.iter() {
-            let ext1 = Mle::<Ext>::rand(&mut rng, 1, *size);
-            let ext2 = Mle::<Ext>::rand(&mut rng, 1, *size);
-            let claim = ext1
-                .guts()
-                .as_slice()
-                .iter()
-                .zip_eq(ext2.guts().as_slice().iter())
-                .map(|(e_i, b_i)| *e_i * *b_i)
-                .sum::<Ext>();
-            let ext1_device = t.into_device(ext1).await.unwrap();
-            let ext2_device = t.into_device(ext2).await.unwrap();
-            all_ext1.push(ext1_device);
-            all_ext2.push(ext2_device);
-            all_claims.push(claim);
-        }
+    if GKR_STYLE {
+        // Gkr-style bench.
+        let sizes = (4u32..29).rev().collect_vec();
+        run_in_place(|t| async move {
+            println!("\n🚀 Gkr-style bench");
+            let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+            // Allocate ext1 and ext2 MLE's
+            let mut all_ext1 = Vec::with_capacity(sizes.len());
+            let mut all_ext2 = Vec::with_capacity(sizes.len());
+            let mut all_claims = Vec::with_capacity(sizes.len());
+            for size in sizes.iter() {
+                let ext1 = Mle::<Ext>::rand(&mut rng, 1, *size);
+                let ext2 = Mle::<Ext>::rand(&mut rng, 1, *size);
+                let claim = ext1
+                    .guts()
+                    .as_slice()
+                    .iter()
+                    .zip_eq(ext2.guts().as_slice().iter())
+                    .map(|(e_i, b_i)| *e_i * *b_i)
+                    .sum::<Ext>();
+                let ext1_device = t.into_device(ext1).await.unwrap();
+                let ext2_device = t.into_device(ext2).await.unwrap();
+                all_ext1.push(ext1_device);
+                all_ext2.push(ext2_device);
+                all_claims.push(claim);
+            }
 
-        t.synchronize().await.unwrap();
-        let verifier = BasefoldVerifier::<Poseidon2KoalaBear16BasefoldConfig>::new(1);
-        let mut challenger = verifier.challenger();
+            t.synchronize().await.unwrap();
+            let verifier = BasefoldVerifier::<Poseidon2KoalaBear16BasefoldConfig>::new(1);
+            let mut challenger = verifier.challenger();
 
-        // Warm up on the first element of all_ext1 and all_ext2
-        let _yuwen_lambda: Ext = challenger.sample();
-        let base = all_ext1[0].clone();
-        let ext = all_ext2[0].clone();
-        let claim = all_claims[0];
-        t.synchronize().await.unwrap();
-        let now = std::time::Instant::now();
-        let (_proof, _claims) =
-            simple_hadamard_sumcheck(base, ext, challenger.clone(), claim).await;
-        t.synchronize().await.unwrap();
-        let warmup_duration = now.elapsed();
-
-        println!("warmup duration: {warmup_duration:?}");
-
-        let now = std::time::Instant::now();
-        let mut durations = Vec::with_capacity(sizes.len());
-        for ((ext1, ext2), claim) in
-            all_ext1.into_iter().zip(all_ext2.into_iter()).zip(all_claims.into_iter())
-        {
+            // Warm up on the first element of all_ext1 and all_ext2
+            let _yuwen_lambda: Ext = challenger.sample();
+            let base = all_ext1[0].clone();
+            let ext = all_ext2[0].clone();
+            let claim = all_claims[0];
+            t.synchronize().await.unwrap();
+            let now = std::time::Instant::now();
             let (_proof, _claims) =
-                simple_hadamard_sumcheck(ext1, ext2, challenger.clone(), claim).await;
-            // t.synchronize().await.unwrap();
-            durations.push(now.elapsed());
-        }
-        t.synchronize().await.unwrap();
-        let total_duration = now.elapsed();
-        println!("total duration: {total_duration:?}");
+                simple_hadamard_sumcheck(base, ext, challenger.clone(), claim).await;
+            t.synchronize().await.unwrap();
+            let warmup_duration = now.elapsed();
 
-        println!("first duration: {:?}", durations[0]);
-    })
-    .await;
+            println!("warmup duration: {warmup_duration:?}");
+
+            let now = std::time::Instant::now();
+            let mut durations = Vec::with_capacity(sizes.len());
+            for ((ext1, ext2), claim) in
+                all_ext1.into_iter().zip(all_ext2.into_iter()).zip(all_claims.into_iter())
+            {
+                let (_proof, _claims) =
+                    simple_hadamard_sumcheck(ext1, ext2, challenger.clone(), claim).await;
+                // t.synchronize().await.unwrap();
+                durations.push(now.elapsed());
+            }
+            t.synchronize().await.unwrap();
+            let total_duration = now.elapsed();
+            println!("total duration: {total_duration:?}");
+
+            println!("first duration: {:?}", durations[0]);
+        })
+        .await;
+    }
 }
