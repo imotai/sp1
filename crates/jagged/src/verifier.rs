@@ -202,7 +202,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
             // We bound the prefix sums to be < 2^30. While this function is implemented with
             // `C::F` being any field, this function is intended for use with primes larger than
             // `2^30`. We recommend using this function for Mersenne31, BabyBear, KoalaBear.
-            if t_col.len() != next_t_col.len() || t_col.len() >= 31 {
+            if t_col.len() != next_t_col.len() || t_col.len() >= 31 || t_col.is_empty() {
                 return Err(JaggedPcsVerifierError::IncorrectShape);
             }
             // Check monotonicity of the column prefix sums.

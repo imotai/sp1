@@ -41,6 +41,10 @@ pub fn partially_verify_sumcheck_proof<
         return Err(SumcheckError::InvalidProofShape);
     }
 
+    if expected_num_variable == 0 {
+        return Err(SumcheckError::InvalidProofShape);
+    }
+
     // There is a way to structure a sumcheck proof so that this check is not needed, but it doesn't
     // actually save the verifier work.
     let first_poly = &proof.univariate_polys[0];
