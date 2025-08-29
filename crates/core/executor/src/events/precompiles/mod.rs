@@ -218,11 +218,14 @@ impl PrecompileLocalMemory for Vec<(SyscallEvent, PrecompileEvent)> {
                 | PrecompileEvent::Bls12381Double(e) => {
                     iterators.push(e.local_page_prot_access.iter());
                 }
-                PrecompileEvent::EdDecompress(e) => {
+                PrecompileEvent::Secp256k1Decompress(e)
+                | PrecompileEvent::Secp256r1Decompress(e)
+                | PrecompileEvent::K256Decompress(e)
+                | PrecompileEvent::Bls12381Decompress(e) => {
                     iterators.push(e.local_page_prot_access.iter());
                 }
-                _ => {
-                    unreachable!()
+                PrecompileEvent::EdDecompress(e) => {
+                    iterators.push(e.local_page_prot_access.iter());
                 }
             }
         }

@@ -21,7 +21,10 @@ async fn main() {
 
     let stdin = SP1Stdin::from(&compressed);
     
-    let client = ProverClient::from_env().await;
+    let mut opts = SP1CoreOpts::default();
+    // Uncomment to test page protect.
+    // opts.page_protect = true;
+    let client = ProverClient::builder().cpu().core_opts(opts).build().await;
     let pk = client.setup(ELF).await.expect("setup failed");
     let proof = client.prove(&pk, stdin).core().await.expect("proving failed");
 

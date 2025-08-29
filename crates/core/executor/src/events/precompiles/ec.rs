@@ -99,6 +99,10 @@ pub struct EllipticCurveDecompressEvent {
     pub y_memory_records: Vec<MemoryWriteRecord>,
     /// The local memory access records.
     pub local_mem_access: Vec<MemoryLocalEvent>,
+    /// The page prot records.
+    pub page_prot_records: EllipticCurvePageProtRecords,
+    /// The local page prot access records.
+    pub local_page_prot_access: Vec<PageProtLocalEvent>,
 }
 
 /// Create an elliptic curve add event. It takes two pointers to memory locations, reads the points
@@ -207,7 +211,7 @@ pub fn create_ec_decompress_event<E: EllipticCurve, Ex: ExecutorConfig>(
     let num_limbs = <E::BaseField as NumLimbs>::Limbs::USIZE;
     let num_words_field_element = num_limbs / 8;
 
-    let (x_memory_records, x_vec, _) =
+    let (x_memory_records, x_vec, read_page_prot_records) =
         rt.mr_slice(slice_ptr + (num_limbs as u64), num_words_field_element);
 
     let x_bytes = words_to_bytes_le_vec(&x_vec);
@@ -227,10 +231,11 @@ pub fn create_ec_decompress_event<E: EllipticCurve, Ex: ExecutorConfig>(
     decompressed_y_bytes.resize(num_limbs, 0u8);
     let y_words = bytes_to_words_le_vec(&decompressed_y_bytes);
 
-    // TODO: Should this be false?
-    let (y_memory_records, _) = rt.mw_slice(slice_ptr, &y_words, false);
+    // Increment clk because read and write could be on same page prot page
+    rt.clk += 1;
+    let (y_memory_records, write_page_prot_records) = rt.mw_slice(slice_ptr, &y_words, false);
 
-    let (local_mem_access, _) = rt.postprocess();
+    let (local_mem_access, local_page_prot_access) = rt.postprocess();
 
     EllipticCurveDecompressEvent {
         clk: start_clk,
@@ -241,5 +246,10 @@ pub fn create_ec_decompress_event<E: EllipticCurve, Ex: ExecutorConfig>(
         x_memory_records,
         y_memory_records,
         local_mem_access,
+        page_prot_records: EllipticCurvePageProtRecords {
+            read_page_prot_records,
+            write_page_prot_records,
+        },
+        local_page_prot_access,
     }
 }
