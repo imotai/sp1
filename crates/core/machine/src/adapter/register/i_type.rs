@@ -76,9 +76,12 @@ impl<F: Field> ITypeReader<F> {
         builder.assert_bool(is_untrusted.clone());
         builder.assert_bool(cols.is_trusted);
 
-        // When real, either is_untrusted or is_trusted must be true, when not real, both must be
-        // false.
+        // A real row must be executing either a trusted program or untrusted program.
         builder.assert_eq(is_untrusted.clone() + cols.is_trusted, is_real.clone());
+
+        // If the row is running an untrusted program, the page protection checks must be on.
+        let public_values = builder.extract_public_values();
+        builder.when(is_untrusted.clone()).assert_one(public_values.is_page_protect_active);
 
         let instruction = InstructionCols {
             opcode: opcode.clone().into(),

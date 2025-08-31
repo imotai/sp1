@@ -371,7 +371,7 @@ impl SyscallInstrsChip {
         builder: &mut AB,
         local: &SyscallInstrColumns<AB::Var>,
         prev_a_byte: &[AB::Expr; 8],
-        commit_syscall: AB::PublicVar,
+        is_page_protect_active: AB::PublicVar,
     ) {
         // `is_page_protect` is checked to be correct in `eval_is_halt_syscall`.
         let syscall_id = prev_a_byte[0].clone();
@@ -390,7 +390,7 @@ impl SyscallInstrsChip {
             local.is_page_protect.result
         };
 
-        builder.when(is_mprotect).assert_one(commit_syscall);
+        builder.when(is_mprotect).assert_one(is_page_protect_active);
     }
 
     /// Returns a boolean expression indicating whether the instruction is a HALT instruction.
