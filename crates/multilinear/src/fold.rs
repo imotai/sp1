@@ -19,6 +19,7 @@ impl<F: Field> MleFoldBackend<F> for CpuBackend {
     async fn fold_mle(guts: &Tensor<F, Self>, beta: F) -> Tensor<F, Self> {
         let guts = unsafe { guts.owned_unchecked() };
         assert_eq!(guts.sizes()[1], 1, "this is only supported for a single polynomial");
+        assert_eq!(guts.total_len() % 2, 0, "this is only supported for tensor of even length");
         let (tx, rx) = oneshot::channel();
         slop_futures::rayon::spawn(move || {
             // Compute the random linear combination of the even and odd coefficients of `vals`. This is
