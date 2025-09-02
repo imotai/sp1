@@ -88,16 +88,16 @@ runs:
         . "$HOME/.cargo/env" 
         echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-    # install pkg-config and openssl
-    - name: Install pkg-config and openssl
+    # install pkg-config, openssl, and cmake
+    - name: Install pkg-config, openssl, and cmake
       shell: bash
       run: |
-        if ! dpkg -s pkg-config libssl-dev &> /dev/null; then
-          echo "pkg-config and/or libssl-dev not found. Installing..."
+        if ! dpkg -s pkg-config libssl-dev cmake &> /dev/null; then
+          echo "pkg-config, libssl-dev, and/or cmake not found. Installing..."
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev
+          sudo apt-get install -y pkg-config libssl-dev cmake
         else
-          echo "pkg-config and libssl-dev are already installed."
+          echo "pkg-config, libssl-dev, and cmake are already installed."
         fi
 
     - name: Echo docker buildx version

@@ -8,7 +8,7 @@ __global__ void sumKernel(F *A, F *B, F *C, size_t N)
     // The size bounds are being checked using a "grid stride loop" instead of a simple "if"
     // statement in order to facilitate the freedom to support different workloads per thread.
     // making a non-zero stride causes less blocks to be launched, which could result in a faster
-    // total execution time. See
+    // total execution time. For more information, see:
     // https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
     for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < N; i += blockDim.x * gridDim.x)
     {

@@ -15,7 +15,7 @@ sp1-core-executor = { workspace = true }
 sp1-core-machine = { workspace = true }
 sp1-recursion-executor = { workspace = true }
 sp1-recursion-machine = { workspace = true }
-cc = { workspace = true }
+cmake = { version = "0.1" }
 which = { workspace = true }
 cbindgen = { workspace = true }
 pathdiff = { workspace = true }

@@ -1,72 +1,5 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::{env, fs};
-
-fn add_src_files(build: &mut cc::Build, dir: &Path) -> std::io::Result<()> {
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-
-        if path.is_dir() {
-            // Recurse into subdirectories
-            add_src_files(build, &path)?;
-
-            // Add only .c, .cpp, or .cu files.
-        } else if path.extension().and_then(|ext| ext.to_str()) == Some("c")
-            || path.extension().and_then(|ext| ext.to_str()) == Some("cpp")
-            || path.extension().and_then(|ext| ext.to_str()) == Some("cu")
-        {
-            build.file(path);
-        }
-    }
-    Ok(())
-}
-
-fn builder(cuda_version: f32) -> cc::Build {
-    let mut build = cc::Build::new();
-
-    // Compiler flags.
-    build
-        .cuda(true)
-        .flag("-std=c++20")
-        .flag("-default-stream=per-thread")
-        .flag("-Xcompiler")
-        .flag("-fopenmp")
-        .flag("-lnvToolsExt")
-        .flag("-lineinfo")
-        .flag("-ldl")
-        .flag("-lnvToolsExt")
-        .flag("--expt-relaxed-constexpr");
-
-    // Producr a fat binary for all supported architectures, Override with CUDA_ARCHS env.
-    let archs = env::var("CUDA_ARCHS").unwrap_or_else(|_| {
-        if cuda_version < 12.8 {
-            "80,86,89".to_string()
-        } else {
-            "80,86,89,90,100,120".to_string()
-        }
-    });
-
-    let mut max_cc = 0u32;
-    for part in archs.split(',') {
-        let cc: u32 = part.trim().parse().expect("bad CUDA_ARCHS item");
-        if cc > max_cc {
-            max_cc = cc;
-        }
-        build.flag(format!("-gencode=arch=compute_{cc},code=sm_{cc}"));
-    }
-    // Single PTX fallback at the highest arch we compiled
-    build.flag(format!("-gencode=arch=compute_{max_cc},code=compute_{max_cc}"));
-
-    // Set the "-G" flag if the PROFILE_DEBUG_DATA environment variable is set to "true". This can
-    // be set during kernel profilining.
-    if let Some(profile_debug_data) = env::var_os("PROFILE_DEBUG_DATA") {
-        if profile_debug_data == "true" {
-            build.flag("-G");
-        }
-    }
-
-    build
-}
 
 fn cbindgen_builder() -> cbindgen::Builder {
     /// The warning placed in the cbindgen header.
@@ -155,8 +88,8 @@ fn cbindgen_builder() -> cbindgen::Builder {
 /// Place a relative symlink pointing to `original` at `link`.
 fn rel_symlink_file<P, Q>(original: P, link: Q)
 where
-    P: AsRef<Path>,
-    Q: AsRef<Path>,
+    P: AsRef<std::path::Path>,
+    Q: AsRef<std::path::Path>,
 {
     #[cfg(unix)]
     use std::os::unix::fs::symlink;
@@ -171,11 +104,20 @@ where
 }
 
 fn main() {
+    // Directives for tracking changes in folders
     println!("cargo:rerun-if-changed=../../cuda/");
     println!("cargo:rerun-if-changed=../../sppark/");
+    println!("cargo:rerun-if-changed=../../Makefile");
+    println!("cargo:rerun-if-changed=CMakeLists.txt");
+    // Directives for tracking changes in compilation profiles
+    println!("cargo:rerun-if-env-changed=PROFILE");
+    println!("cargo:rerun-if-env-changed=OPT_LEVEL");
+    println!("cargo:rerun-if-env-changed=DEBUG");
 
+    // Check for nvcc
     let nvcc = which::which("nvcc").expect("nvcc not found");
 
+    // Get CUDA version
     let cuda_version =
         std::process::Command::new(nvcc).arg("--version").output().expect("failed to get version");
     if !cuda_version.status.success() {
@@ -192,43 +134,20 @@ fn main() {
 
     // The crate directory.
     let crate_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let src_dir = crate_dir.join("../../cuda/");
-    // Get a new builder with the correct flags.
-    let mut build = builder(v);
 
-    env::set_var("DEP_SPPARK_ROOT", "../../sppark/");
-    if let Some(include) = env::var_os("DEP_SPPARK_ROOT") {
-        let include = crate_dir.join(include);
-        build.include(include);
-        build.define("SPPARK", None);
-        build.define("FEATURE_KOALA_BEAR", None);
-        build.file("../../sppark/rust/src/lib.cpp").file("../../sppark/util/all_gpus.cpp");
-    }
-
-    // let sppark_dir = crate_dir.join("../../sppark/");
-    // // Add all the source files.
-    // add_src_files(&mut build, &sppark_dir).expect("Failed to find c, cpp, or cu files");
-    // // Add all header files.
-    // add_include_directories(&mut build, &sppark_dir).expect("Failed to find h, hpp, or cuh files");
-    // build.define("SPPARK", None);
-    // build.define("FEATURE_KOALA_BEAR", None);
-
-    // Add all the source files.
-    add_src_files(&mut build, &src_dir).expect("Failed to find c, cpp, or cu files");
-    // Add all header files.
-    build.include(&src_dir);
-
-    // TODO(tqn) comments
-    // The name of all include directories involved, used to find and output header files.
-    const INCLUDE_DIRNAME: &str = "include";
     // The output directory, where built artifacts should be placed.
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+
     // The directory to place headers into.
-    let out_include_dir = out_dir.join(INCLUDE_DIRNAME);
+    let out_include_dir = out_dir.join("include");
+    const INCLUDE_DIRNAME: &str = "include";
+
+    // Generate cbindgen headers BEFORE building with CMake
     let cbindgen_hpp = "csl-cbindgen.hpp";
+    let header_path = out_include_dir.join(cbindgen_hpp);
+
     match cbindgen_builder().generate() {
         Ok(bindings) => {
-            let header_path = out_include_dir.join(cbindgen_hpp);
             // Write the bindings to the target include directory.
             fs::create_dir_all(&out_include_dir).unwrap();
             if bindings.write_to_file(&header_path) {
@@ -241,7 +160,7 @@ fn main() {
                         if dir.ends_with("target") {
                             // Symlink the header to the fixed include directory.
                             rel_symlink_file(
-                                header_path,
+                                &header_path,
                                 dir.join(INCLUDE_DIRNAME).join(cbindgen_hpp),
                             );
                             break;
@@ -260,16 +179,78 @@ fn main() {
         }
         Err(e) => panic!("{e:?}"),
     }
-    build.include(out_include_dir);
 
-    // let sppark_dir = crate_dir.join("../../sppark/");
-    // // Add all the source files.
-    // add_src_files(&mut build, &sppark_dir).expect("Failed to find c, cpp, or cu files");
-    // // Add all header files.
-    // add_include_directories(&mut build, &sppark_dir).expect("Failed to find h, hpp, or cuh files");
-    // build.define("SPPARK", None);
-    // build.define("FEATURE_KOALA_BEAR", None);
+    // Determine architectures
+    let cuda_archs = env::var("CUDA_ARCHS").unwrap_or_else(|_| {
+        if v < 12.8 {
+            "80,86,89".to_string()
+        } else {
+            "80,86,89,90,100,120".to_string()
+        }
+    });
 
-    // Compile the library.
-    build.compile("sys-cuda");
+    // Set up sppark environment
+    env::set_var("DEP_SPPARK_ROOT", "../../sppark/");
+
+    // Build using CMake
+    let mut cmake_config = cmake::Config::new(".");
+
+    // Pass CUDA configuration to CMake
+    cmake_config
+        .define("CUDA_ARCHS", &cuda_archs)
+        .define("CUDA_VERSION", format!("{v}"))
+        .define("CBINDGEN_INCLUDE_DIR", out_include_dir.display().to_string());
+
+    // Pass profile debug flag if set
+    if let Some(profile_debug_data) = env::var_os("PROFILE_DEBUG_DATA") {
+        if profile_debug_data == "true" {
+            cmake_config.define("PROFILE_DEBUG_DATA", "true");
+        }
+    }
+
+    // Determine build type based on profile
+    let profile = env::var("PROFILE").unwrap_or_else(|_| "release".to_string());
+    if profile == "debug" {
+        cmake_config.profile("Debug");
+    } else {
+        cmake_config.profile("Release");
+    }
+
+    // Build via CMake
+    let _dst = cmake_config.build();
+
+    // Link the library
+    println!("cargo:rustc-link-search=native={}/../../target/cuda-build/lib", crate_dir.display());
+    println!("cargo:rustc-link-lib=static=sys-cuda");
+
+    // Add CUDA library search paths
+    if let Ok(cuda_path) = env::var("CUDA_PATH") {
+        println!("cargo:rustc-link-search=native={cuda_path}/lib64");
+        println!("cargo:rustc-link-search=native={cuda_path}/lib");
+    } else {
+        // Try common CUDA installation paths
+        for cuda_version in
+            &["12.9", "12.8", "12.7", "12.6", "12.5", "12.4", "12.3", "12.2", "12.1", "12.0"]
+        {
+            let cuda_lib = format!("/usr/local/cuda-{cuda_version}/targets/x86_64-linux/lib");
+            if std::path::Path::new(&cuda_lib).exists() {
+                println!("cargo:rustc-link-search=native={cuda_lib}");
+                break;
+            }
+        }
+        // Also try the generic path
+        println!("cargo:rustc-link-search=native=/usr/local/cuda/lib64");
+    }
+
+    // Link CUDA runtime libraries
+    println!("cargo:rustc-link-lib=cudart");
+    println!("cargo:rustc-link-lib=cudadevrt");
+
+    // Link system libraries
+    println!("cargo:rustc-link-lib=stdc++");
+    println!("cargo:rustc-link-lib=gomp");
+    println!("cargo:rustc-link-lib=dl");
+
+    // Add include directories for compilation if needed
+    println!("cargo:include={}", out_include_dir.display());
 }

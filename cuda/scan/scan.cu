@@ -1,7 +1,5 @@
 #include "csl-cbindgen.hpp"
-
 #include "scan.cuh"
-
 #include "fields/kb31_septic_extension_t.cuh"
 
 namespace csl_sys

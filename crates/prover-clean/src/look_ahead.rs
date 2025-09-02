@@ -409,7 +409,7 @@ mod tests {
         let mut rng = rand::thread_rng();
 
         for num_variables in [10, 16, 20, 24, 26, 26, 27, 27, 27] {
-            println!("Num variables: {}", num_variables);
+            println!("Num variables: {num_variables}");
             for (fix_tile, fix_group, sum_group, num_points, store_restricted) in [
                 (64, 1, 2, 2, false),
                 (128, 1, 4, 8, false),
@@ -445,8 +445,7 @@ mod tests {
                         fix_tile={fix_tile}, 
                         fix_group={fix_group}, 
                         sum_group={sum_group}, 
-                        num_points={num_points}: {:?}",
-                        duration
+                        num_points={num_points}: {duration:?}"
                     );
 
                     drop(result);

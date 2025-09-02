@@ -74,4 +74,5 @@
         "thread": "cpp",
         "unordered_map": "cpp"
     },
+    "cmake.sourceDirectory": "/home/tamir/cuslop/crates/sys",
 }

@@ -41,7 +41,7 @@ extern "C" rustCudaError_t populate_restrict_eq_device(const void* src, size_t l
 }
 
 template<size_t POINTS, size_t WIDTH>
-__constant__ felt_t evalEq[POINTS][WIDTH];
+static __constant__ felt_t evalEq[POINTS][WIDTH];
 
 template<>
 __constant__ felt_t evalEq<1, 1>[1][1] = {
