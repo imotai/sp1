@@ -31,6 +31,7 @@ blake3 = { workspace = true, optional = true }
 default = ["libm", "lib"]
 libm = ["dep:libm"]
 lib = ["dep:sp1-lib"]
+bump = []
 verify = ["dep:slop-koala-bear", "dep:slop-algebra", "sp1-lib/verify"]
 blake3 = ["dep:blake3"]
 

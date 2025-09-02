@@ -29,6 +29,10 @@ pub use fptower::*;
 pub use halt::*;
 pub use io::*;
 pub use keccak_permute::*;
+
+#[cfg(target_os = "zkvm")]
+pub use memory::*;
+
 pub use mprotect::*;
 pub use poseidon2::*;
 pub use secp256k1::*;
