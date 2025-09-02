@@ -12,12 +12,18 @@ use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend, GLOBAL_CPU_BACKEND};
 use slop_tensor::Tensor;
 
 use crate::{
-    eval_mle_at_point_blocking, partial_lagrange_blocking, MleBaseBackend, MleEvaluationBackend,
-    MleFixLastVariableBackend, MleFixLastVariableInPlaceBackend, MleFixedAtZeroBackend,
-    MleFoldBackend, PartialLagrangeBackend, Point, ZeroEvalBackend,
+    eval_mle_at_point_blocking, eval_monomial_basis_mle_at_point_blocking,
+    partial_lagrange_blocking, MleBaseBackend, MleEvaluationBackend, MleFixLastVariableBackend,
+    MleFixLastVariableInPlaceBackend, MleFixedAtZeroBackend, MleFoldBackend,
+    PartialLagrangeBackend, Point, ZeroEvalBackend,
 };
 
-/// A bacth of multi-linear polynomials.
+pub enum Basis {
+    Monomial,
+    Evaluation,
+}
+
+/// A batch of multi-linear polynomials.
 #[derive(Debug, Clone)]
 #[derive_where(PartialEq, Eq, Serialize, Deserialize; Tensor<T, A>)]
 pub struct Mle<T, A: Backend = CpuBackend> {
@@ -287,12 +293,25 @@ impl<T> Mle<T, CpuBackend> {
         Self::new(Tensor::from(buffer).reshape([len, num_polynomials]))
     }
 
+    /// Evaluate the `Mle` at `point` assuming that the guts of the `Mle` is the set of evaluations
+    /// of the `Mle` on the Boolean hypercube.
     pub fn blocking_eval_at<E>(&self, point: &Point<E>) -> MleEval<E>
     where
         T: AbstractField + 'static + Send + Sync,
         E: AbstractExtensionField<T> + 'static + Send + Sync,
     {
         MleEval::new(eval_mle_at_point_blocking(self.guts(), point))
+    }
+
+    /// Evaluate the `Mle` at `point` assuming that the entry at index `i = (i_0,...,i_{n-1})` is the
+    /// coefficient of the monomial `X_0^{i_0} ... X_{n-1}^{i_{n-1}}`, where `i_0` is the most
+    /// significant bit of `i` and `i_{n-1}` is the least-significant one.
+    pub fn blocking_monomial_basis_eval_at<E>(&self, point: &Point<E>) -> MleEval<E>
+    where
+        T: AbstractField + 'static + Send + Sync,
+        E: AbstractExtensionField<T> + 'static + Send + Sync,
+    {
+        MleEval::new(eval_monomial_basis_mle_at_point_blocking(self.guts(), point))
     }
 
     pub fn blocking_partial_lagrange(point: &Point<T>) -> Mle<T, CpuBackend>
@@ -328,6 +347,26 @@ impl<T> Mle<T, CpuBackend> {
                 // Multiply by (x_i * y_i + (1-x_i) * (1-y_i)).
                 let prod = y.clone() * x.clone();
                 prod.clone() + prod + EF::one() - x.clone() - y.clone()
+            })
+            .product()
+    }
+
+    /// The analogue of `full_lagrange_eval` for the monomial basis.
+    pub fn full_monomial_basis_eq<EF>(point_1: &Point<T>, point_2: &Point<EF>) -> EF
+    where
+        T: AbstractField,
+        EF: AbstractExtensionField<T>,
+    {
+        assert_eq!(point_1.dimension(), point_2.dimension());
+
+        // Iterate over all values in the n-variates X and Y.
+        point_1
+            .iter()
+            .zip(point_2.iter())
+            .map(|(x, y)| {
+                // Multiply by (x_i * y_i + (1-y_i)).
+                let prod = y.clone() * x.clone();
+                prod + EF::one() - y.clone()
             })
             .product()
     }

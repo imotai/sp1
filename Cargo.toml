@@ -14,6 +14,7 @@ members = [
     "crates/air",
     "crates/bn254",
     "crates/basefold",
+    "crates/whir",
     "crates/algebra",
     "crates/basefold-prover",
     "crates/sumcheck",
@@ -81,6 +82,7 @@ p3-koala-bear = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6"
 
 # slop
 slop-basefold = { path = "crates/basefold" }
+slop-whir = { path = "crates/whir" }
 slop-bn254 = { path = "crates/bn254" }
 slop-algebra = { path = "crates/algebra" }
 slop-sumcheck = { path = "crates/sumcheck" }

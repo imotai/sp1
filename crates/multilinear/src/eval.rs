@@ -5,7 +5,9 @@ use slop_algebra::{AbstractExtensionField, AbstractField};
 use slop_alloc::{buffer, Backend, Buffer, CanCopyFromRef, CanCopyIntoRef, CpuBackend};
 use slop_tensor::{Dimensions, Tensor};
 
-use crate::{partial_lagrange_blocking, MleBaseBackend, MleEval, PartialLagrangeBackend, Point};
+use crate::{
+    partial_eq_blocking_with_basis, Basis, MleBaseBackend, MleEval, PartialLagrangeBackend, Point,
+};
 
 pub trait MleEvaluationBackend<F: AbstractField, EF: AbstractExtensionField<F>>:
     MleBaseBackend<F> + HostEvaluationBackend<F, EF> + ZeroEvalBackend<F> + ZeroEvalBackend<EF>
@@ -61,14 +63,15 @@ where
     }
 }
 
-pub(crate) fn eval_mle_at_point_blocking<
+pub(crate) fn eval_mle_at_point_blocking_with_basis<
     F: AbstractField + Sync,
     EF: AbstractExtensionField<F> + Send + Sync,
 >(
     mle: &Tensor<F, CpuBackend>,
     point: &Point<EF, CpuBackend>,
+    basis: Basis,
 ) -> Tensor<EF, CpuBackend> {
-    let partial_lagrange = partial_lagrange_blocking(point);
+    let partial_lagrange = partial_eq_blocking_with_basis(point, basis);
     let mut sizes = mle.sizes().to_vec();
     sizes.remove(0);
     let dimensions = Dimensions::try_from(sizes).unwrap();
@@ -90,4 +93,26 @@ pub(crate) fn eval_mle_at_point_blocking<
     let dot_products = Buffer::from(dot_products);
     dst.storage = dot_products;
     dst
+}
+
+pub(crate) fn eval_mle_at_point_blocking<
+    F: AbstractField + Sync,
+    EF: AbstractExtensionField<F> + Send + Sync,
+>(
+    mle: &Tensor<F, CpuBackend>,
+    point: &Point<EF, CpuBackend>,
+) -> Tensor<EF, CpuBackend> {
+    eval_mle_at_point_blocking_with_basis(mle, point, Basis::Evaluation)
+}
+
+/// Interpreting the internal vector of `mle` as the monomial-basis coefficients of a multilinear
+/// polynomial, evaluate that multilinear at `point`.
+pub(crate) fn eval_monomial_basis_mle_at_point_blocking<
+    F: AbstractField + Sync,
+    EF: AbstractExtensionField<F> + Send + Sync,
+>(
+    mle: &Tensor<F, CpuBackend>,
+    point: &Point<EF, CpuBackend>,
+) -> Tensor<EF, CpuBackend> {
+    eval_mle_at_point_blocking_with_basis(mle, point, Basis::Monomial)
 }

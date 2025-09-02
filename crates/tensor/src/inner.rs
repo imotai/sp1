@@ -7,6 +7,7 @@ use std::{
 use derive_where::derive_where;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
+use slop_algebra::{ExtensionField, Field};
 use slop_alloc::{
     Backend, Buffer, CpuBackend, HasBackend, Init, TryReserveError, GLOBAL_CPU_BACKEND,
 };
@@ -221,6 +222,26 @@ impl<T, A: Backend> Tensor<T, A> {
     #[inline]
     pub unsafe fn assume_init(&mut self) {
         self.storage.set_len(self.storage.capacity());
+    }
+
+    pub fn flatten_to_base<F: Field>(self) -> Tensor<F, A>
+    where
+        T: ExtensionField<F>,
+    {
+        let [height, width]: [usize; 2] = self.sizes().try_into().unwrap();
+        let dimensions = Dimensions::try_from([height, T::D * width]).unwrap();
+        let data_storage = self.into_buffer().flatten_to_base();
+        Tensor { storage: data_storage, dimensions }
+    }
+
+    pub fn into_extension<ET: ExtensionField<T>>(self) -> Tensor<ET, A>
+    where
+        T: Field,
+    {
+        let [height, width]: [usize; 2] = self.sizes().try_into().unwrap();
+        let dimensions = Dimensions::try_from([height, width / ET::D]).unwrap();
+        let extension_storage = self.into_buffer().into_extension();
+        Tensor { storage: extension_storage, dimensions }
     }
 }
 

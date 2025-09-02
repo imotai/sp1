@@ -6,7 +6,7 @@ use std::{
 
 use derive_where::derive_where;
 use rand::{distributions::Standard, prelude::Distribution};
-use slop_algebra::AbstractField;
+use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_alloc::{
     buffer, Backend, Buffer, CanCopyFromRef, CanCopyIntoRef, CpuBackend, HasBackend, Init, Slice,
 };
@@ -222,6 +222,14 @@ impl<T> Point<T, CpuBackend> {
     #[inline]
     pub fn extend(&mut self, other: &Self) {
         self.values.extend_from_slice(&other.values);
+    }
+
+    #[inline]
+    pub fn to_extension<ET: ExtensionField<T>>(&self) -> Point<ET, CpuBackend>
+    where
+        T: Field,
+    {
+        Point::from(self.values.iter().map(|x| ET::from_base(*x)).collect::<Vec<_>>())
     }
 }
 

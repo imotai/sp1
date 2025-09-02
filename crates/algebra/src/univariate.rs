@@ -9,10 +9,6 @@ pub struct UnivariatePolynomial<K> {
 }
 
 impl<K: Field> UnivariatePolynomial<K> {
-    pub fn new(coefficients: Vec<K>) -> Self {
-        Self { coefficients }
-    }
-
     pub fn mul_by_x(&self) -> Self {
         let mut result = Vec::with_capacity(self.coefficients.len() + 1);
         result.push(K::zero());
@@ -23,6 +19,9 @@ impl<K: Field> UnivariatePolynomial<K> {
 
 /// Basic univariate polynomial operations.
 impl<K: AbstractField> UnivariatePolynomial<K> {
+    pub fn new(coefficients: Vec<K>) -> Self {
+        Self { coefficients }
+    }
     pub fn zero(degree: usize) -> Self {
         Self { coefficients: vec![K::zero(); degree + 1] }
     }
