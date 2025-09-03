@@ -16,7 +16,7 @@ use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemoryReadRecord, MemoryRecordEnum},
-    ExecutionRecord, Program,
+    ByteOpcode, ExecutionRecord, Program,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::air::MachineAir;
@@ -27,8 +27,11 @@ pub(crate) const NUM_MEMORY_BUMP_COLS: usize = size_of::<MemoryBumpCols<u8>>();
 #[repr(C)]
 pub struct MemoryBumpCols<T: Copy> {
     pub access: MemoryAccessCols<T>,
-    pub clk_high: T,
-    pub addr: [T; 3],
+    pub clk_32_48: T,
+    pub clk_24_32: T,
+    pub clk_16_24: T,
+    pub clk_0_16: T,
+    pub addr: T,
     pub is_real: T,
 }
 
@@ -62,21 +65,37 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
         let blu_batches = event_iter
             .map(|events| {
                 let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
-                events.iter().for_each(|(event, addr)| {
+                events.iter().for_each(|(event, addr, is_refresh)| {
                     let mut row = [F::zero(); NUM_MEMORY_BUMP_COLS];
                     let cols: &mut MemoryBumpCols<F> = row.as_mut_slice().borrow_mut();
+                    let value = event.prev_value();
+                    let prev_timestamp = event.previous_record().timestamp;
+                    let mut timestamp = event.current_record().timestamp;
+                    if !is_refresh {
+                        timestamp = (timestamp >> 24) << 24;
+                    }
                     let bump_event = MemoryRecordEnum::Read(MemoryReadRecord {
-                        value: event.prev_value(),
-                        prev_timestamp: event.previous_record().timestamp,
-                        timestamp: (event.current_record().timestamp >> 24) << 24,
+                        value,
+                        prev_timestamp,
+                        timestamp,
                         prev_page_prot_record: None,
                     });
                     cols.access.populate(bump_event, &mut blu);
                     blu.add_u16_range_checks(&[
-                        (addr & 0xFFFF) as u16,
-                        (addr >> 16) as u16,
-                        (addr >> 32) as u16,
+                        (timestamp & 0xFFFF) as u16,
+                        ((timestamp >> 32) & 0xFFFF) as u16,
                     ]);
+                    blu.add_u8_range_checks(&[
+                        ((timestamp >> 16) & 0xFF) as u8,
+                        ((timestamp >> 24) & 0xFF) as u8,
+                    ]);
+                    blu.add_byte_lookup_event(ByteLookupEvent {
+                        opcode: ByteOpcode::LTU,
+                        a: 1,
+                        b: *addr as u8,
+                        c: 32,
+                    });
+                    cols.is_real = F::one();
                 });
                 blu
             })
@@ -107,21 +126,25 @@ impl<F: PrimeField32> MachineAir<F> for MemoryBumpChip {
 
                 if idx < input.bump_memory_events.len() {
                     let mut byte_lookup_events = Vec::new();
-                    let (event, addr) = input.bump_memory_events[idx];
+                    let (event, addr, is_refresh) = input.bump_memory_events[idx];
+                    let value = event.prev_value();
+                    let prev_timestamp = event.previous_record().timestamp;
+                    let mut timestamp = event.current_record().timestamp;
+                    if !is_refresh {
+                        timestamp = (timestamp >> 24) << 24;
+                    }
                     let bump_event = MemoryRecordEnum::Read(MemoryReadRecord {
-                        value: event.prev_value(),
-                        prev_timestamp: event.previous_record().timestamp,
-                        timestamp: (event.current_record().timestamp >> 24) << 24,
+                        value,
+                        prev_timestamp,
+                        timestamp,
                         prev_page_prot_record: None,
                     });
                     cols.access.populate(bump_event, &mut byte_lookup_events);
-                    cols.clk_high =
-                        F::from_canonical_u32((event.current_record().timestamp >> 24) as u32);
-                    cols.addr = [
-                        F::from_canonical_u16((addr & 0xFFFF) as u16),
-                        F::from_canonical_u16((addr >> 16) as u16),
-                        F::from_canonical_u16((addr >> 32) as u16),
-                    ];
+                    cols.clk_0_16 = F::from_canonical_u16((timestamp & 0xFFFF) as u16);
+                    cols.clk_16_24 = F::from_canonical_u8(((timestamp >> 16) & 0xFF) as u8);
+                    cols.clk_24_32 = F::from_canonical_u8(((timestamp >> 24) & 0xFF) as u8);
+                    cols.clk_32_48 = F::from_canonical_u16(((timestamp >> 32) & 0xFFFF) as u16);
+                    cols.addr = F::from_canonical_u64(addr);
                     cols.is_real = F::one();
                 }
             });
@@ -148,14 +171,24 @@ where
         // Check that `is_real` is a boolean value.
         builder.assert_bool(local.is_real);
 
-        // Check that the address is a valid u48 address.
-        builder.slice_range_check_u16(&local.addr.map(Into::into), local.is_real);
+        // Check that the timestamp limbs are within range.
+        builder.slice_range_check_u16(&[local.clk_0_16, local.clk_32_48], local.is_real);
+        builder.slice_range_check_u8(&[local.clk_16_24, local.clk_24_32], local.is_real);
+
+        // Check that the address is a valid register.
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::LTU as u32),
+            AB::Expr::one(),
+            local.addr,
+            AB::Expr::from_canonical_u8(32),
+            local.is_real,
+        );
 
         // Bump the memory timestamp to a multiple of 2^24, by doing an additional read.
         builder.eval_memory_access_read(
-            local.clk_high,
-            AB::Expr::zero(),
-            &local.addr.map(Into::into),
+            local.clk_24_32 + local.clk_32_48 * AB::Expr::from_canonical_u32(1 << 8),
+            local.clk_0_16 + local.clk_16_24 * AB::Expr::from_canonical_u32(1 << 16),
+            &[local.addr.into(), AB::Expr::zero(), AB::Expr::zero()],
             local.access,
             local.is_real,
         );

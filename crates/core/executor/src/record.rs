@@ -118,8 +118,8 @@ pub struct ExecutionRecord {
     pub global_cumulative_sum: Arc<Mutex<SepticDigest<u32>>>,
     /// The global interaction event count.
     pub global_interaction_event_count: u32,
-    /// Memory records with `prev_clk >> 24` different from `clk >> 24`.
-    pub bump_memory_events: Vec<(MemoryRecordEnum, u64)>,
+    /// Memory records used to bump the timestamp of the register memory access.
+    pub bump_memory_events: Vec<(MemoryRecordEnum, u64, bool)>,
     /// Record where the `clk >> 24` or `pc >> 16` has incremented.
     pub bump_state_events: Vec<(u64, u64, bool, u64)>,
     /// The public values.

@@ -29,7 +29,7 @@
   "Bn254DoubleAssign": 1610,
   "LoadByte": 49,
   "LoadHalf": 46,
-  "MemoryBump": 14,
+  "MemoryBump": 15,
   "EdAddAssign": 1385,
   "Bls12381Decompress": 1584,
   "Addw": 37,

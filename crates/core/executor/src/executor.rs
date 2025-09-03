@@ -7,9 +7,9 @@ use crate::profiler::Profiler;
 use crate::{
     estimator::RecordEstimator,
     events::{
-        InstructionDecodeEvent, InstructionFetchEvent, PageProtInitializeFinalizeEvent,
-        PageProtLocalEvent, PageProtRecord, NUM_LOCAL_PAGE_PROT_ENTRIES_PER_ROW_EXEC,
-        NUM_PAGE_PROT_ENTRIES_PER_ROW_EXEC,
+        InstructionDecodeEvent, InstructionFetchEvent, MemoryRecordEnum,
+        PageProtInitializeFinalizeEvent, PageProtLocalEvent, PageProtRecord,
+        NUM_LOCAL_PAGE_PROT_ENTRIES_PER_ROW_EXEC, NUM_PAGE_PROT_ENTRIES_PER_ROW_EXEC,
     },
     StatusCode, NUM_REGISTERS,
 };
@@ -1272,17 +1272,17 @@ impl<'a> Executor<'a> {
 
         if let Some(x) = self.memory_accesses.a {
             if x.current_record().timestamp >> 24 != x.previous_record().timestamp >> 24 {
-                self.record.bump_memory_events.push((x, instruction.op_a as u64));
+                self.record.bump_memory_events.push((x, instruction.op_a as u64, false));
             }
         }
         if let Some(x) = self.memory_accesses.b {
             if x.current_record().timestamp >> 24 != x.previous_record().timestamp >> 24 {
-                self.record.bump_memory_events.push((x, instruction.op_b));
+                self.record.bump_memory_events.push((x, instruction.op_b, false));
             }
         }
         if let Some(x) = self.memory_accesses.c {
             if x.current_record().timestamp >> 24 != x.previous_record().timestamp >> 24 {
-                self.record.bump_memory_events.push((x, instruction.op_c));
+                self.record.bump_memory_events.push((x, instruction.op_c, false));
             }
         }
 
@@ -2256,8 +2256,27 @@ impl<'a> Executor<'a> {
 
             if !maximal_size_reached {
                 self.state.shard_finished = true;
-                self.state.initial_timestamp = self.state.clk;
+                if E::MODE == ExecutorMode::Trace {
+                    for register in 0..NUM_REGISTERS {
+                        let record = self.rr_traced::<E>(
+                            Register::from_u8(register as u8),
+                            false,
+                            self.state.clk - 1,
+                            None,
+                        );
+                        self.record.bump_memory_events.push((
+                            MemoryRecordEnum::Read(record),
+                            register as u64,
+                            true,
+                        ));
+                    }
+                } else {
+                    for register in 0..NUM_REGISTERS {
+                        self.rr::<E>(Register::from_u8(register as u8), false, self.state.clk - 1);
+                    }
+                }
                 self.record.last_timestamp = self.state.clk;
+                self.state.initial_timestamp = self.state.clk;
                 self.bump_record::<E>();
             }
 
@@ -2300,8 +2319,8 @@ impl<'a> Executor<'a> {
         )
         .0;
         self.local_counts = LocalCounts::default();
-        // Copy all of the existing local memory accesses to the record's local_memory_access vec.
 
+        // Copy all of the existing local memory accesses to the record's local_memory_access vec.
         if E::MODE == ExecutorMode::Trace {
             for (_, event) in self.local_memory_access.drain() {
                 self.record.cpu_local_memory_access.push(event);
@@ -2738,7 +2757,8 @@ impl<'a> Executor<'a> {
 
         // Compute the maximum number of MemoryBump events.
         // `MemoryBump` chip is used when each register's memory timestamp's top 24 bits increment.
-        event_counts[RiscvAirId::MemoryBump] = (NUM_REGISTERS as u64) * bump_clk_high;
+        // Also, it's used to bump the register's timestamp at the end of the shard.
+        event_counts[RiscvAirId::MemoryBump] = (NUM_REGISTERS as u64) * (bump_clk_high + 1);
 
         // Compute the maximum number of StateBump events;
         event_counts[RiscvAirId::StateBump] = bump_clk_high + local_counts.state_bump_counts;
@@ -2844,7 +2864,7 @@ impl<'a> Executor<'a> {
 
         // Compute the number of events in the global chip.
         event_counts[RiscvAirId::Global] =
-            2 * touched_addresses + 2 * touched_page_prot + syscalls_sent;
+            2 * (touched_addresses + 32) + 2 * touched_page_prot + syscalls_sent;
 
         // Compute the number of events in the retained precompiles.
         for &air_id in internal_syscalls_air_id {
