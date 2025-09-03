@@ -1,6 +1,5 @@
 use deepsize2::DeepSizeOf;
 use hashbrown::HashMap;
-use itertools::{EitherOrBoth, Itertools};
 use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, Field, PrimeField};
 use sp1_hypercube::{
@@ -50,7 +49,7 @@ pub struct ExecutionRecord {
     /// A trace of the ADDI events.
     pub addi_events: Vec<(AluEvent, ITypeRecord)>,
     /// A trace of the MUL events.
-    pub mul_events: Vec<(AluEvent, ALUTypeRecord)>,
+    pub mul_events: Vec<(AluEvent, RTypeRecord)>,
     /// A trace of the SUB events.
     pub sub_events: Vec<(AluEvent, RTypeRecord)>,
     /// A trace of the SUBW events.
@@ -62,7 +61,7 @@ pub struct ExecutionRecord {
     /// A trace of the SRL, SRLI, SRA, and SRAI events.
     pub shift_right_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of the DIV, DIVU, REM, and REMU events.
-    pub divrem_events: Vec<(AluEvent, ALUTypeRecord)>,
+    pub divrem_events: Vec<(AluEvent, RTypeRecord)>,
     /// A trace of the SLT, SLTI, SLTU, and SLTIU events.
     pub lt_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of load byte instructions.
@@ -197,38 +196,7 @@ impl ExecutionRecord {
         let precompile_events = take(&mut self.precompile_events);
 
         for (syscall_code, events) in precompile_events.into_iter() {
-            let threshold = match syscall_code {
-                SyscallCode::KECCAK_PERMUTE => opts.keccak,
-                SyscallCode::SHA_EXTEND => opts.sha_extend,
-                SyscallCode::SHA_COMPRESS => opts.sha_compress,
-                SyscallCode::SECP256K1_ADD
-                | SyscallCode::SECP256R1_ADD
-                | SyscallCode::BN254_ADD
-                | SyscallCode::ED_ADD
-                | SyscallCode::SECP256K1_DECOMPRESS
-                | SyscallCode::SECP256R1_DECOMPRESS
-                | SyscallCode::ED_DECOMPRESS => opts.ec_add_256bit,
-                SyscallCode::SECP256K1_DOUBLE
-                | SyscallCode::SECP256R1_DOUBLE
-                | SyscallCode::BN254_DOUBLE => opts.ec_double_256bit,
-                SyscallCode::BLS12381_ADD | SyscallCode::BLS12381_DECOMPRESS => opts.ec_add_384bit,
-                SyscallCode::BLS12381_DOUBLE => opts.ec_double_384bit,
-                SyscallCode::BN254_FP_ADD
-                | SyscallCode::BN254_FP_SUB
-                | SyscallCode::BN254_FP_MUL => opts.fp_operation_256bit,
-                SyscallCode::BN254_FP2_ADD
-                | SyscallCode::BN254_FP2_SUB
-                | SyscallCode::BN254_FP2_MUL => opts.fp2_operation_256bit,
-                SyscallCode::BLS12381_FP_ADD
-                | SyscallCode::BLS12381_FP_SUB
-                | SyscallCode::BLS12381_FP_MUL => opts.fp_operation_384bit,
-                SyscallCode::BLS12381_FP2_ADD
-                | SyscallCode::BLS12381_FP2_SUB
-                | SyscallCode::BLS12381_FP2_MUL => opts.fp2_operation_384bit,
-                SyscallCode::MPROTECT => opts.mprotect,
-                SyscallCode::POSEIDON2 => opts.poseidon2,
-                _ => opts.deferred,
-            };
+            let threshold: usize = opts.syscall_threshold[syscall_code];
 
             let chunks = events.chunks_exact(threshold);
             if done {
@@ -274,22 +242,24 @@ impl ExecutionRecord {
                 self.global_page_prot_initialize_events.sort_by_key(|event| event.page_idx);
                 self.global_page_prot_finalize_events.sort_by_key(|event| event.page_idx);
 
-                for page_prot_chunk in self
-                    .global_page_prot_initialize_events
-                    .chunks(opts.page_prot)
-                    .zip_longest(self.global_page_prot_finalize_events.chunks(opts.page_prot))
-                {
-                    let (page_prot_init_chunk, page_prot_finalize_chunk) = match page_prot_chunk {
-                        EitherOrBoth::Both(page_prot_init_chunk, page_prot_finalize_chunk) => {
-                            (page_prot_init_chunk, page_prot_finalize_chunk)
-                        }
-                        EitherOrBoth::Left(page_prot_init_chunk) => {
-                            (page_prot_init_chunk, [].as_slice())
-                        }
-                        EitherOrBoth::Right(page_prot_finalize_chunk) => {
-                            ([].as_slice(), page_prot_finalize_chunk)
-                        }
+                let init_iter = self.global_page_prot_initialize_events.iter();
+                let finalize_iter = self.global_page_prot_finalize_events.iter();
+                let mut init_remaining = init_iter.as_slice();
+                let mut finalize_remaining = finalize_iter.as_slice();
+
+                while !init_remaining.is_empty() || !finalize_remaining.is_empty() {
+                    let capacity = 2 * opts.page_prot;
+                    let init_to_take = init_remaining.len().min(capacity);
+                    let finalize_to_take = finalize_remaining.len().min(capacity - init_to_take);
+
+                    let finalize_to_take = if init_to_take < capacity {
+                        finalize_to_take.max(finalize_remaining.len().min(capacity - init_to_take))
+                    } else {
+                        0
                     };
+
+                    let page_prot_init_chunk = &init_remaining[..init_to_take];
+                    let page_prot_finalize_chunk = &finalize_remaining[..finalize_to_take];
 
                     last_record_ref
                         .global_page_prot_initialize_events
@@ -312,6 +282,9 @@ impl ExecutionRecord {
                     // Because page prot events are non empty, we set the page protect active flag
                     last_record_ref.public_values.is_page_protect_active = true as u32;
 
+                    init_remaining = &init_remaining[init_to_take..];
+                    finalize_remaining = &finalize_remaining[finalize_to_take..];
+
                     if !pack_memory_events_into_last_record {
                         // If not packing memory events into the last record, add 'last_record_ref'
                         // to the returned records. `take` replaces `blank_program` with the
@@ -331,18 +304,24 @@ impl ExecutionRecord {
 
             let mut init_addr = 0;
             let mut finalize_addr = 0;
-            for mem_chunks in self
-                .global_memory_initialize_events
-                .chunks(opts.memory)
-                .zip_longest(self.global_memory_finalize_events.chunks(opts.memory))
-            {
-                let (mem_init_chunk, mem_finalize_chunk) = match mem_chunks {
-                    EitherOrBoth::Both(mem_init_chunk, mem_finalize_chunk) => {
-                        (mem_init_chunk, mem_finalize_chunk)
-                    }
-                    EitherOrBoth::Left(mem_init_chunk) => (mem_init_chunk, [].as_slice()),
-                    EitherOrBoth::Right(mem_finalize_chunk) => ([].as_slice(), mem_finalize_chunk),
+
+            let mut mem_init_remaining = self.global_memory_initialize_events.as_slice();
+            let mut mem_finalize_remaining = self.global_memory_finalize_events.as_slice();
+
+            while !mem_init_remaining.is_empty() || !mem_finalize_remaining.is_empty() {
+                let capacity = 2 * opts.memory;
+                let init_to_take = mem_init_remaining.len().min(capacity);
+                let finalize_to_take = mem_finalize_remaining.len().min(capacity - init_to_take);
+
+                let finalize_to_take = if init_to_take < capacity {
+                    finalize_to_take.max(mem_finalize_remaining.len().min(capacity - init_to_take))
+                } else {
+                    0
                 };
+
+                let mem_init_chunk = &mem_init_remaining[..init_to_take];
+                let mem_finalize_chunk = &mem_finalize_remaining[..finalize_to_take];
+
                 last_record_ref.global_memory_initialize_events.extend_from_slice(mem_init_chunk);
                 last_record_ref.public_values.previous_init_addr = init_addr;
                 if let Some(last_event) = mem_init_chunk.last() {
@@ -356,6 +335,9 @@ impl ExecutionRecord {
                     finalize_addr = last_event.addr;
                 }
                 last_record_ref.public_values.last_finalize_addr = finalize_addr;
+
+                mem_init_remaining = &mem_init_remaining[init_to_take..];
+                mem_finalize_remaining = &mem_finalize_remaining[finalize_to_take..];
 
                 if !pack_memory_events_into_last_record {
                     last_record_ref.public_values.previous_init_page_idx = init_page_idx;

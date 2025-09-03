@@ -17,7 +17,7 @@ use sp1_hypercube::{air::MachineAir, Word};
 
 use crate::{
     adapter::{
-        register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
+        register::r_type::{RTypeReader, RTypeReaderInput},
         state::{CPUState, CPUStateInput},
     },
     air::{SP1CoreAirBuilder, SP1Operation},
@@ -40,7 +40,7 @@ pub struct MulCols<T> {
     pub state: CPUState<T>,
 
     /// The adapter to read program and register information.
-    pub adapter: ALUTypeReader<T>,
+    pub adapter: RTypeReader<T>,
 
     /// The output operand.
     pub a: Word<T>,
@@ -284,7 +284,7 @@ where
 
         // Constrain the program and register reads.
         let a_expr = local.a.map(|x| x.into());
-        let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
+        let alu_reader_input = RTypeReaderInput::<AB, AB::Expr>::new(
             local.state.clk_high::<AB>(),
             local.state.clk_low::<AB>(),
             local.state.pc,
@@ -294,7 +294,7 @@ where
             local.adapter,
             is_real.clone(),
         );
-        <ALUTypeReader<AB::F> as SP1Operation<AB>>::eval(builder, alu_reader_input);
+        <RTypeReader<AB::F> as SP1Operation<AB>>::eval(builder, alu_reader_input);
     }
 }
 

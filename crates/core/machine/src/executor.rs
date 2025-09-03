@@ -9,7 +9,7 @@ use slop_algebra::PrimeField32;
 use slop_futures::queue::WorkerQueue;
 use sp1_core_executor::{
     subproof::NoOpSubproofVerifier, ExecutionError, ExecutionRecord, ExecutionReport,
-    ExecutionState, Executor, Program, SP1Context, SP1CoreOpts,
+    ExecutionState, Executor, Program, SP1Context, SP1CoreOpts, SplitOpts,
 };
 use sp1_hypercube::{
     air::PublicValues,
@@ -55,6 +55,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
         // todo: memory permit this as we know the opcode counts up front.
         let mut record_worker_channels = Vec::with_capacity(self.num_record_workers);
         let mut handles = Vec::new();
+        let split_opts = SplitOpts::new(&self.opts, program.instructions.len());
         for _ in 0..self.num_record_workers {
             let (tx, mut rx) = mpsc::unbounded_channel::<RecordTask>();
             record_worker_channels.push(tx);
@@ -192,18 +193,15 @@ impl<F: PrimeField32> MachineExecutor<F> {
                         deferred.append(&mut record.defer(&opts.retained_events_presets));
 
                         let can_pack_global_memory = done
-                            && record.estimated_trace_area
-                                < opts.split_opts.combine_memory_threshold.0
+                            && record.estimated_trace_area <= split_opts.pack_trace_threshold
                             && deferred.global_memory_initialize_events.len()
-                                < opts.split_opts.combine_memory_threshold.1
+                                <= split_opts.combine_memory_threshold
                             && deferred.global_memory_finalize_events.len()
-                                < opts.split_opts.combine_memory_threshold.1
-                            && record.estimated_trace_area
-                                < opts.split_opts.combine_page_prot_threshold.0
+                                <= split_opts.combine_memory_threshold
                             && deferred.global_page_prot_initialize_events.len()
-                                < opts.split_opts.combine_page_prot_threshold.1
+                                <= split_opts.combine_page_prot_threshold
                             && deferred.global_page_prot_finalize_events.len()
-                                < opts.split_opts.combine_page_prot_threshold.1;
+                                <= split_opts.combine_page_prot_threshold;
 
                         // Need to see if we can pack both global memory and page prot events into
                         // last record Else, can we pack either into last
@@ -214,7 +212,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
                         let mut deferred_records = deferred.split(
                             done,
                             can_pack_global_memory.then_some(&mut *record),
-                            opts.split_opts,
+                            split_opts,
                         );
                         tracing::debug!("deferred {} records", deferred_records.len());
 

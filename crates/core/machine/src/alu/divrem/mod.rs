@@ -19,7 +19,7 @@ use sp1_primitives::consts::WORD_SIZE;
 
 use crate::{
     adapter::{
-        register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
+        register::r_type::{RTypeReader, RTypeReaderInput},
         state::{CPUState, CPUStateInput},
     },
     air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
@@ -50,7 +50,7 @@ pub struct DivRemCols<T> {
     pub state: CPUState<T>,
 
     /// The adapter to read program and register information.
-    pub adapter: ALUTypeReader<T>,
+    pub adapter: RTypeReader<T>,
 
     /// The output operand.
     pub a: Word<T>,
@@ -216,7 +216,7 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
         let divrem_events = input.divrem_events.clone();
         for event_record in divrem_events.iter() {
             let event = event_record.0;
-            let alu_record = event_record.1;
+            let r_record = event_record.1;
 
             assert!(
                 event.opcode == Opcode::DIVU
@@ -235,7 +235,7 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
             {
                 let mut blu = vec![];
                 cols.state.populate(&mut blu, event.clk, event.pc);
-                cols.adapter.populate(&mut blu, alu_record);
+                cols.adapter.populate(&mut blu, r_record);
                 output.add_byte_lookup_events(blu);
             }
 
@@ -1226,7 +1226,7 @@ where
             );
 
             // Constrain the program and register reads.
-            let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
+            let r_reader_input = RTypeReaderInput::<AB, AB::Expr>::new(
                 local.state.clk_high::<AB>(),
                 local.state.clk_low::<AB>(),
                 local.state.pc,
@@ -1236,7 +1236,7 @@ where
                 local.adapter,
                 local.is_real.into(),
             );
-            ALUTypeReader::<AB::F>::eval(builder, alu_reader_input);
+            <RTypeReader<AB::F> as SP1Operation<AB>>::eval(builder, r_reader_input);
         }
     }
 }

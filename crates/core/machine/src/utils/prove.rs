@@ -21,7 +21,7 @@ use sp1_hypercube::{
 };
 
 use crate::{io::SP1Stdin, utils::concurrency::TurnBasedSync};
-use sp1_core_executor::{ExecutionState, SP1CoreOpts};
+use sp1_core_executor::{ExecutionState, SP1CoreOpts, SplitOpts};
 
 use sp1_core_executor::{
     subproof::NoOpSubproofVerifier, ExecutionError, ExecutionRecord, ExecutionReport, Executor,
@@ -73,6 +73,7 @@ pub fn generate_records<F: PrimeField32>(
     report_aggregate: Arc<Mutex<ExecutionReport>>,
     opts: SP1CoreOpts,
 ) {
+    let split_opts = SplitOpts::new(&opts, program.instructions.len());
     loop {
         let received = { checkpoints_rx.lock().unwrap().blocking_recv() };
         if let Some((index, mut checkpoint, done, _)) = received {
@@ -159,7 +160,7 @@ pub fn generate_records<F: PrimeField32>(
             deferred.append(&mut record.defer(&[]));
 
             // See if any deferred shards are ready to be committed to.
-            let mut deferred = deferred.split(done, None, opts.split_opts);
+            let mut deferred = deferred.split(done, None, split_opts);
             tracing::debug!("deferred {} records", deferred.len());
 
             // Update the public values & prover state for the shards which do not

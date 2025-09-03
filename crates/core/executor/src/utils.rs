@@ -3,7 +3,7 @@ use std::{hash::Hash, str::FromStr};
 use hashbrown::HashMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{Instruction, Opcode, Register, RiscvAirId};
+use crate::{syscalls::SyscallCode, Instruction, Opcode, Register, RiscvAirId};
 
 /// Serialize a `HashMap<u32, V>` as a `Vec<(u32, V)>`.
 pub fn serialize_hashmap_as_vec<K: Eq + Hash + Serialize, V: Serialize, S: Serializer>(
@@ -104,6 +104,49 @@ pub fn rv64im_costs() -> HashMap<RiscvAirId, usize> {
     let costs: HashMap<String, usize> =
         serde_json::from_str(include_str!("./artifacts/rv64im_costs.json")).unwrap();
     costs.into_iter().map(|(k, v)| (RiscvAirId::from_str(&k).unwrap(), v)).collect()
+}
+
+/// Calculate the largest multiple of 32 less than of equal to a given integer `n`.
+#[must_use]
+pub fn trunc_32(n: usize) -> usize {
+    (n / 32) * 32
+}
+
+/// The maximum trace area and maximum height increment for a single event of a syscall.
+#[must_use]
+pub fn cost_and_height_per_syscall(
+    syscall_code: SyscallCode,
+    costs: &HashMap<RiscvAirId, usize>,
+    page_protect: bool,
+) -> (usize, usize) {
+    let air_id = syscall_code.as_air_id().unwrap();
+    let rows_per_event = air_id.rows_per_event();
+
+    let mut cost_per_syscall = 0;
+    let mut max_height_per_syscall = rows_per_event;
+
+    cost_per_syscall += rows_per_event * costs[&air_id];
+    if rows_per_event > 1 {
+        let control_air_id = air_id.control_air_id().unwrap();
+        cost_per_syscall += costs[&control_air_id];
+    }
+
+    let touched_addresses = syscall_code.touched_addresses();
+    cost_per_syscall += touched_addresses * costs[&RiscvAirId::MemoryLocal];
+    cost_per_syscall += 2 * touched_addresses * costs[&RiscvAirId::Global];
+    cost_per_syscall += costs[&RiscvAirId::SyscallPrecompile];
+    cost_per_syscall += costs[&RiscvAirId::Global];
+    max_height_per_syscall = max_height_per_syscall.max(2 * touched_addresses + 1);
+
+    if page_protect {
+        let touched_pages = syscall_code.touched_pages();
+        cost_per_syscall += touched_pages * costs[&RiscvAirId::PageProtLocal];
+        cost_per_syscall += 2 * touched_pages * costs[&RiscvAirId::Global];
+        max_height_per_syscall =
+            max_height_per_syscall.max(2 * touched_addresses + 2 * touched_pages + 1);
+    }
+
+    (cost_per_syscall, max_height_per_syscall)
 }
 
 /// Add a halt syscall to the end of the instructions vec.

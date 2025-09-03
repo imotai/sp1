@@ -1383,7 +1383,7 @@ impl<'a> Executor<'a> {
                 self.record.lt_events.push((event, record));
             }
             Opcode::MUL | Opcode::MULHU | Opcode::MULHSU | Opcode::MULH | Opcode::MULW => {
-                let record = ALUTypeRecord::new(record, instruction);
+                let record = RTypeRecord::new(record, instruction);
                 self.record.mul_events.push((event, record));
             }
             Opcode::DIVU
@@ -1394,7 +1394,7 @@ impl<'a> Executor<'a> {
             | Opcode::DIVUW
             | Opcode::REMUW
             | Opcode::REMW => {
-                let record = ALUTypeRecord::new(record, instruction);
+                let record = RTypeRecord::new(record, instruction);
                 self.record.divrem_events.push((event, record));
             }
             _ => unreachable!(),

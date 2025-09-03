@@ -2,8 +2,11 @@ use enum_map::EnumMap;
 
 use crate::RiscvAirId;
 
-const BYTE_NUM_ROWS: u64 = 1 << 16;
-const RANGE_NUM_ROWS: u64 = 1 << 17;
+/// The number of rows in the `ByteChip`.
+pub const BYTE_NUM_ROWS: u64 = 1 << 16;
+
+/// The number of rows in the `RangeChip`.
+pub const RANGE_NUM_ROWS: u64 = 1 << 17;
 
 /// Estimates the LDE area.
 #[must_use]
@@ -185,7 +188,8 @@ pub fn pad_rv64im_event_counts(
     num_cycles: u64,
 ) -> EnumMap<RiscvAirId, u64> {
     event_counts.iter_mut().for_each(|(k, v)| match k {
-        RiscvAirId::MemoryLocal => *v += 64 * num_cycles,
+        RiscvAirId::PageProtLocal => *v += 16 * num_cycles,
+        RiscvAirId::MemoryLocal => *v += 128 * num_cycles,
         RiscvAirId::Global => *v += 512 * num_cycles,
         _ => *v += num_cycles,
     });

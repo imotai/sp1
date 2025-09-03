@@ -335,6 +335,99 @@ impl SyscallCode {
             | SyscallCode::HINT_READ => return None,
         })
     }
+
+    /// The maximum number of touched words for each syscall code.
+    #[must_use]
+    #[allow(clippy::match_same_arms)]
+    pub fn touched_addresses(&self) -> usize {
+        // To get this number, either analyze the number of touched memory in the executor of the
+        // syscall, or run a program with the syscall and analyze the ratio of heights of the
+        // `MemoryLocal` table and the corresponding syscall table in the precompile shard.
+        match self {
+            SyscallCode::SHA_EXTEND => 64,
+            SyscallCode::SHA_COMPRESS => 72,
+            SyscallCode::KECCAK_PERMUTE => 25,
+            SyscallCode::BLS12381_ADD
+            | SyscallCode::BLS12381_FP2_ADD
+            | SyscallCode::BLS12381_FP2_SUB
+            | SyscallCode::BLS12381_FP2_MUL => 24,
+            SyscallCode::BLS12381_DECOMPRESS
+            | SyscallCode::BLS12381_DOUBLE
+            | SyscallCode::BLS12381_FP_ADD
+            | SyscallCode::BLS12381_FP_SUB
+            | SyscallCode::BLS12381_FP_MUL => 12,
+            SyscallCode::ED_ADD
+            | SyscallCode::SECP256K1_ADD
+            | SyscallCode::SECP256R1_ADD
+            | SyscallCode::BN254_ADD
+            | SyscallCode::BN254_FP2_ADD
+            | SyscallCode::BN254_FP2_SUB
+            | SyscallCode::BN254_FP2_MUL => 16,
+            SyscallCode::ED_DECOMPRESS
+            | SyscallCode::SECP256K1_DECOMPRESS
+            | SyscallCode::SECP256R1_DECOMPRESS
+            | SyscallCode::SECP256K1_DOUBLE
+            | SyscallCode::SECP256R1_DOUBLE
+            | SyscallCode::BN254_DOUBLE
+            | SyscallCode::BN254_FP_ADD
+            | SyscallCode::BN254_FP_SUB
+            | SyscallCode::BN254_FP_MUL => 8,
+            SyscallCode::UINT256_MUL => 12,
+            SyscallCode::UINT256_ADD_CARRY | SyscallCode::UINT256_MUL_CARRY => 20,
+            SyscallCode::U256XU2048_MUL => 72,
+            SyscallCode::MPROTECT => 0,
+            SyscallCode::POSEIDON2 => 8,
+            _ => 0,
+        }
+    }
+
+    /// The maximum number of touched pages for each syscall code.
+    #[must_use]
+    #[allow(clippy::match_same_arms)]
+    pub fn touched_pages(&self) -> usize {
+        // To get this number, either analyze the number of touched pages in the executor of the
+        // syscall, or check the number of `AddressSlicePageProtOperation` in the corresponding AIR.
+        // This function assumes that each slice touches two pages, which is the maximum.
+        match self {
+            SyscallCode::SHA_EXTEND => 2 * 2,
+            SyscallCode::SHA_COMPRESS => 3 * 2,
+            SyscallCode::KECCAK_PERMUTE => 2 * 2,
+            SyscallCode::BLS12381_ADD
+            | SyscallCode::SECP256K1_ADD
+            | SyscallCode::SECP256R1_ADD
+            | SyscallCode::BN254_ADD
+            | SyscallCode::ED_ADD
+            | SyscallCode::BLS12381_DECOMPRESS
+            | SyscallCode::SECP256K1_DECOMPRESS
+            | SyscallCode::SECP256R1_DECOMPRESS
+            | SyscallCode::ED_DECOMPRESS => 2 * 2,
+
+            SyscallCode::BLS12381_DOUBLE
+            | SyscallCode::SECP256K1_DOUBLE
+            | SyscallCode::SECP256R1_DOUBLE
+            | SyscallCode::BN254_DOUBLE => 2,
+
+            SyscallCode::BLS12381_FP2_ADD
+            | SyscallCode::BLS12381_FP2_SUB
+            | SyscallCode::BLS12381_FP2_MUL
+            | SyscallCode::BLS12381_FP_ADD
+            | SyscallCode::BLS12381_FP_SUB
+            | SyscallCode::BLS12381_FP_MUL
+            | SyscallCode::BN254_FP2_ADD
+            | SyscallCode::BN254_FP2_SUB
+            | SyscallCode::BN254_FP2_MUL
+            | SyscallCode::BN254_FP_ADD
+            | SyscallCode::BN254_FP_SUB
+            | SyscallCode::BN254_FP_MUL => 2 * 2,
+
+            SyscallCode::UINT256_MUL => 2 * 2,
+            SyscallCode::UINT256_ADD_CARRY | SyscallCode::UINT256_MUL_CARRY => 5 * 2,
+            SyscallCode::U256XU2048_MUL => 4 * 2,
+            SyscallCode::MPROTECT => 1,
+            SyscallCode::POSEIDON2 => 2,
+            _ => 0,
+        }
+    }
 }
 
 impl std::fmt::Display for SyscallCode {
