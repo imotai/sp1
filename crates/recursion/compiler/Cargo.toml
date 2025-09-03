@@ -31,6 +31,7 @@ cfg-if = "1.0.0"
 
 [dev-dependencies]
 sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
+slop-dft = { git = "https://github.com/succinctlabs/slop", branch = "giacomo/whir" }
 slop-merkle-tree = { workspace = true }
 rand = "0.8.5"
 

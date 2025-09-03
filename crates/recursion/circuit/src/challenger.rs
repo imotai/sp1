@@ -65,6 +65,15 @@ pub trait FieldChallengerVariable<C: CircuitConfig, Bit>:
         let felts = C::ext2felt(builder, element);
         self.observe_slice(builder, felts);
     }
+
+    fn observe_ext_element_slice(&mut self, builder: &mut Builder<C>, elements: &[Ext<C::F, C::EF>])
+    where
+        C: CircuitConfig,
+    {
+        for &element in elements {
+            self.observe_ext_element(builder, element);
+        }
+    }
 }
 
 pub trait CanSampleBitsVariable<C: CircuitConfig, V> {

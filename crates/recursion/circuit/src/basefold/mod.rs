@@ -21,6 +21,7 @@ use tcs::{RecursiveMerkleTreeTcs, RecursiveTcs, RecursiveTensorCsOpening};
 pub mod merkle_tree;
 pub mod stacked;
 pub mod tcs;
+mod whir;
 pub mod witness;
 use crate::AsRecursive;
 use slop_basefold::Poseidon2Bn254FrBasefoldConfig;

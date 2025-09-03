@@ -26,6 +26,7 @@ slop-maybe-rayon = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-poseidon2 = { workspace = true }
 slop-symmetric = { workspace = true }
+slop-whir = {workspace = true }
 itertools = { workspace = true }
 strum = { workspace = true }
 strum_macros = { workspace = true }
