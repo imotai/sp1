@@ -1,6 +1,5 @@
 use std::{
     fmt::Debug,
-    mem::ManuallyDrop,
     ops::{Deref, DerefMut, Index, IndexMut},
 };
 
@@ -69,25 +68,6 @@ impl<T, A: Backend> Point<T, A> {
     pub fn as_mut_ptr(&mut self) -> *mut T {
         self.values.as_mut_ptr()
     }
-
-    /// # Safety
-    ///
-    /// This function is unsafe because it violates the lifetime rules. Users should make sure any
-    /// side effects remain in the scope of nthe original point.
-    #[inline]
-    pub unsafe fn onwed_unchecked(&self) -> ManuallyDrop<Self> {
-        let ptr = self.values.as_ptr() as *mut _;
-        let len = self.values.len();
-        let cap = self.values.capacity();
-        let allocator = self.values.allocator().clone();
-        let values = Buffer::from_raw_parts(ptr, len, cap, allocator);
-        ManuallyDrop::new(Self { values })
-    }
-
-    // #[inline]
-    // pub fn copy_into_host(&self) -> Point<T, CpuBackend> {
-    //     Point::new(unsafe { Buffer::from(self.values.copy_into_host_vec()) })
-    // }
 }
 
 impl<T, A: Backend> Index<usize> for Point<T, A> {

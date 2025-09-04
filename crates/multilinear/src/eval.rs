@@ -40,6 +40,7 @@ pub trait ZeroEvalBackend<F: AbstractField>: Backend {
 }
 
 impl<F: AbstractField> ZeroEvalBackend<F> for CpuBackend {
+    // This function assumes that `F::zero()` is represented by zeroed out memory.
     fn zero_evaluations(&self, num_polynomials: usize) -> Tensor<F, Self> {
         Tensor::zeros_in([num_polynomials], *self)
     }
