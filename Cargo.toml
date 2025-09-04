@@ -26,7 +26,7 @@ members = [
     "crates/perf",
     "crates/tracegen",
     "crates/logup-gkr",
-    "crates/cuslop", 
+    "crates/cuslop",
     "crates/prover-clean",
 ]
 resolver = "2"

@@ -33,6 +33,7 @@ LIB_NAME := libsys-cuda.a
 NVCC_FLAGS := -std=c++20 \
               -default-stream=per-thread \
               -Xcompiler -fopenmp \
+			  -Xcompiler -fPIE \
               -lnvToolsExt \
               -lineinfo \
               -ldl \
