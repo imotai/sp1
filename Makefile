@@ -90,7 +90,7 @@ BUILD_TYPE ?= Release
 # sources. In the future, we should use different profiles for each.
 ifeq ($(BUILD_TYPE),Debug)
     NVCC_FLAGS += -O3
-    BUILD_SUFFIX := debug
+    BUILD_SUFFIX := release
 else
     NVCC_FLAGS += -O3
     BUILD_SUFFIX := release
