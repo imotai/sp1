@@ -10,21 +10,20 @@ namespace cg = cooperative_groups;
 // see crates/prover-clea/src/zerocheck.rs
 template <typename F, typename EF>
 __device__ inline EF zerocheckEval(EF a, F b) {
-    EF six = EF::two() + EF::two() + EF::two();  // six = 6 using F's two() method
+    EF six = EF::two() + EF::two() + EF::two(); // six = 6 using F's two() method
     return a * a * b + a * b * b + six * b * b * b;
 }
 
 template <typename F, typename EF>
 __global__ void zerocheckFixLastVariableAndSumAsPoly(
-    const F *base_input,
-    const EF *ext_input,
-    EF *__restrict base_output,
-    EF *__restrict ext_output,
+    const F* base_input,
+    const EF* ext_input,
+    EF* __restrict base_output,
+    EF* __restrict ext_output,
     EF alpha,
-    EF *univariate_result,
+    EF* univariate_result,
     size_t numPolys,
-    size_t inputHeight)
-{
+    size_t inputHeight) {
     size_t outputHeight = (inputHeight + 1) >> 1;
     bool padding = inputHeight & 1;
     EF evalZero = EF::zero();
@@ -34,12 +33,12 @@ __global__ void zerocheckFixLastVariableAndSumAsPoly(
     auto block = cg::this_thread_block();
     auto tile = cg::tiled_partition<2>(block);
 
-    for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < numPolys; j += blockDim.y * gridDim.y)
-    {
-        for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
-        {
+    for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < numPolys;
+         j += blockDim.y * gridDim.y) {
+        for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight;
+             i += blockDim.x * gridDim.x) {
             size_t startingIdx = j * inputHeight + (i << 1);
-            
+
             F baseZeroValue = F::load(base_input, startingIdx);
             F baseOneValue;
             if (padding && i >= outputHeight - 1) {
@@ -92,38 +91,42 @@ __global__ void zerocheckFixLastVariableAndSumAsPoly(
 
     // Allocate shared memory
     extern __shared__ unsigned char memory[];
-    EF *shared = reinterpret_cast<EF *>(memory);
+    EF* shared = reinterpret_cast<EF*>(memory);
 
     auto reduce_tile = cg::tiled_partition<32>(block);
     EF evalZeroblockSum = partialBlockReduce(block, reduce_tile, evalZero, shared);
     EF evalTwoblockSum = partialBlockReduce(block, reduce_tile, evalTwo, shared);
     EF evalFourblockSum = partialBlockReduce(block, reduce_tile, evalFour, shared);
 
-    if (threadIdx.x == 0)
-    {
+    if (threadIdx.x == 0) {
         EF::store(univariate_result, gridDim.x * blockIdx.y + blockIdx.x, evalZeroblockSum);
-        EF::store(univariate_result, gridDim.x * gridDim.y + gridDim.x * blockIdx.y + blockIdx.x, evalTwoblockSum);
-        EF::store(univariate_result, 2 * gridDim.x * gridDim.y + gridDim.x * blockIdx.y + blockIdx.x, evalFourblockSum);
+        EF::store(
+            univariate_result,
+            gridDim.x * gridDim.y + gridDim.x * blockIdx.y + blockIdx.x,
+            evalTwoblockSum);
+        EF::store(
+            univariate_result,
+            2 * gridDim.x * gridDim.y + gridDim.x * blockIdx.y + blockIdx.x,
+            evalFourblockSum);
     }
 }
 
 template <typename F, typename EF>
 __global__ void zerocheckSumAsPoly(
-    EF *__restrict__ result,
-    const F *__restrict__ base_mle,
-    const EF *__restrict__ ext_mle,
+    EF* __restrict__ result,
+    const F* __restrict__ base_mle,
+    const EF* __restrict__ ext_mle,
     size_t numVariablesMinusOne,
-    size_t numPolys)
-{
+    size_t numPolys) {
     size_t height = 1 << (numVariablesMinusOne);
     size_t inputHeight = height << 1;
     EF evalZero = EF::zero();
     EF evalTwo = EF::zero();
     EF evalFour = EF::zero();
-    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < height; i += blockDim.x * gridDim.x)
-    {
-        for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < numPolys; j += blockDim.y * gridDim.y)
-        {
+    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < height;
+         i += blockDim.x * gridDim.x) {
+        for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < numPolys;
+             j += blockDim.y * gridDim.y) {
             size_t evenIdx = j * inputHeight + (i << 1);
             size_t oddIdx = evenIdx + 1;
             EF prevExtValue = EF::load(ext_mle, evenIdx);
@@ -144,7 +147,7 @@ __global__ void zerocheckSumAsPoly(
             F baseEvalAtTwo = prevBaseValue + baseSlopeTimesTwo;
             F baseEvalAtFour = prevBaseValue + baseSlopeTimesFour;
 
-            evalZero += zerocheckEval(prevExtValue, prevBaseValue); 
+            evalZero += zerocheckEval(prevExtValue, prevBaseValue);
             evalTwo += zerocheckEval(extEvalAtTwo, baseEvalAtTwo);
             evalFour += zerocheckEval(extEvalAtFour, baseEvalAtFour);
         }
@@ -152,7 +155,7 @@ __global__ void zerocheckSumAsPoly(
 
     // Allocate shared memory
     extern __shared__ unsigned char memory[];
-    EF *shared = reinterpret_cast<EF *>(memory);
+    EF* shared = reinterpret_cast<EF*>(memory);
 
     auto block = cg::this_thread_block();
     auto tile = cg::tiled_partition<32>(block);
@@ -161,30 +164,31 @@ __global__ void zerocheckSumAsPoly(
     EF evalTwoBlockSum = partialBlockReduce(block, tile, evalTwo, shared);
     EF evalFourBlockSum = partialBlockReduce(block, tile, evalFour, shared);
 
-    if (threadIdx.x == 0)
-    {
+    if (threadIdx.x == 0) {
         EF::store(result, gridDim.x * blockIdx.y + blockIdx.x, evalZeroBlockSum);
-        EF::store(result, gridDim.x * gridDim.y + gridDim.x * blockIdx.y + blockIdx.x, evalTwoBlockSum);
-        EF::store(result, 2 * gridDim.x * gridDim.y + gridDim.x * blockIdx.y + blockIdx.x, evalFourBlockSum);
+        EF::store(
+            result,
+            gridDim.x * gridDim.y + gridDim.x * blockIdx.y + blockIdx.x,
+            evalTwoBlockSum);
+        EF::store(
+            result,
+            2 * gridDim.x * gridDim.y + gridDim.x * blockIdx.y + blockIdx.x,
+            evalFourBlockSum);
     }
 }
 
-extern "C" void *zerocheck_sum_as_poly_base_ext_kernel()
-{
-    return (void *)zerocheckSumAsPoly<felt_t, ext_t>;
+extern "C" void* zerocheck_sum_as_poly_base_ext_kernel() {
+    return (void*)zerocheckSumAsPoly<felt_t, ext_t>;
 }
 
-extern "C" void *zerocheck_sum_as_poly_ext_ext_kernel()
-{
-    return (void *)zerocheckSumAsPoly<ext_t, ext_t>;
+extern "C" void* zerocheck_sum_as_poly_ext_ext_kernel() {
+    return (void*)zerocheckSumAsPoly<ext_t, ext_t>;
 }
 
-extern "C" void *zerocheck_fix_last_variable_and_sum_as_poly_base_ext_kernel()
-{
-    return (void *)zerocheckFixLastVariableAndSumAsPoly<felt_t, ext_t>;
+extern "C" void* zerocheck_fix_last_variable_and_sum_as_poly_base_ext_kernel() {
+    return (void*)zerocheckFixLastVariableAndSumAsPoly<felt_t, ext_t>;
 }
 
-extern "C" void *zerocheck_fix_last_variable_and_sum_as_poly_ext_ext_kernel()
-{
-    return (void *)zerocheckFixLastVariableAndSumAsPoly<ext_t, ext_t>;
+extern "C" void* zerocheck_fix_last_variable_and_sum_as_poly_ext_ext_kernel() {
+    return (void*)zerocheckFixLastVariableAndSumAsPoly<ext_t, ext_t>;
 }

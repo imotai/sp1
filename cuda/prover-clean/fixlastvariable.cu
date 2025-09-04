@@ -1,21 +1,19 @@
-#include "fixlastvariable.cuh" 
+#include "fixlastvariable.cuh"
 #include "config.cuh"
 
 
 template <typename F, typename EF>
 __global__ void fixLastVariable(
-    const F *input,
-    EF *__restrict__ output,
+    const F* input,
+    EF* __restrict__ output,
     EF alpha,
     size_t inputHeight,
-    size_t width)
-{
+    size_t width) {
     size_t outputHeight = (inputHeight + 1) >> 1;
     bool padding = inputHeight & 1;
-    for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
-    {
-        for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
-        {
+    for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y) {
+        for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight;
+             i += blockDim.x * gridDim.x) {
             F zeroValue = F::load(input, j * inputHeight + (i << 1));
             F oneValue;
             if (padding) {
@@ -34,12 +32,8 @@ __global__ void fixLastVariable(
     }
 }
 
-extern "C" void *fix_last_variable_felt_ext_kernel()
-{
-    return (void *)fixLastVariable<felt_t, ext_t>;
+extern "C" void* fix_last_variable_felt_ext_kernel() {
+    return (void*)fixLastVariable<felt_t, ext_t>;
 }
 
-extern "C" void *fix_last_variable_ext_ext_kernel()
-{
-    return (void *)fixLastVariable<ext_t, ext_t>;
-}
+extern "C" void* fix_last_variable_ext_ext_kernel() { return (void*)fixLastVariable<ext_t, ext_t>; }

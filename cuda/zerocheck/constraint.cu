@@ -8,47 +8,48 @@
 #include "../fields/kb31_t.cuh"
 #include "../reduce/reduction.cuh"
 
-#define DEBUG_FLAG 0  // Set this to 0 or 1
+#define DEBUG_FLAG 0 // Set this to 0 or 1
 
 #if DEBUG_FLAG == 1
-    #define DEBUG(...) printf(__VA_ARGS__)
+#define DEBUG(...) printf(__VA_ARGS__)
 #else
-    #define DEBUG(...)  // Do nothing
+#define DEBUG(...) // Do nothing
 #endif
 
-template<typename K, size_t MEMORY_SIZE>
+template <typename K, size_t MEMORY_SIZE>
 __global__ void constraintPolyEval(
     size_t numAirBlocks,
-    const uint32_t *__restrict__ constraintIndices,
+    const uint32_t* __restrict__ constraintIndices,
     const Instruction* evalProgram,
-    const uint32_t *__restrict__ evalProgramIndices,
+    const uint32_t* __restrict__ evalProgramIndices,
     size_t evalProgramLen,
-    const kb31_t *evalConstantsF,
-    const uint32_t *__restrict__ evalConstantsFIndices,
-    const kb31_extension_t *evalConstantsEF,
-    const uint32_t *__restrict__ evalConstantsEFIndices,
-    const kb31_extension_t *partialLagrange,
-    const K *preprocessedTrace,
+    const kb31_t* evalConstantsF,
+    const uint32_t* __restrict__ evalConstantsFIndices,
+    const kb31_extension_t* evalConstantsEF,
+    const uint32_t* __restrict__ evalConstantsEFIndices,
+    const kb31_extension_t* partialLagrange,
+    const K* preprocessedTrace,
     size_t preprocessedWidth,
-    const K *mainTrace,
+    const K* mainTrace,
     size_t mainWidth,
     size_t height,
-    const kb31_extension_t *powersOfAlpha,
-    const kb31_t *publicValues,
-    const kb31_extension_t *batchingPowers,
-    kb31_extension_t *__restrict__ constraintValues)
-{
+    const kb31_extension_t* powersOfAlpha,
+    const kb31_t* publicValues,
+    const kb31_extension_t* batchingPowers,
+    kb31_extension_t* __restrict__ constraintValues) {
     K expr_f[MEMORY_SIZE];
     kb31_extension_t expr_ef[10];
     ConstraintFolder<K> folder = ConstraintFolder<K>();
 
     kb31_extension_t thread_sum = kb31_extension_t::zero();
-    
+
     // This kernel assumes that a single block deals with a single `xValueIdx`.
     size_t xValueIdx = blockDim.z * blockIdx.z + threadIdx.z;
 
-    for (size_t rowIdx = blockDim.x * blockIdx.x + threadIdx.x; rowIdx < height; rowIdx += blockDim.x * gridDim.x) {
-        for (size_t airBlockIdx = blockDim.y * blockIdx.y + threadIdx.y; airBlockIdx < numAirBlocks; airBlockIdx += blockDim.y * gridDim.y) {
+    for (size_t rowIdx = blockDim.x * blockIdx.x + threadIdx.x; rowIdx < height;
+         rowIdx += blockDim.x * gridDim.x) {
+        for (size_t airBlockIdx = blockDim.y * blockIdx.y + threadIdx.y; airBlockIdx < numAirBlocks;
+             airBlockIdx += blockDim.y * gridDim.y) {
             size_t constraint_offset = constraintIndices[airBlockIdx];
             size_t program_start_idx = evalProgramIndices[airBlockIdx];
             size_t program_end_idx = evalProgramLen;
@@ -79,221 +80,172 @@ __global__ void constraintPolyEval(
             for (size_t i = program_start_idx; i < program_end_idx; i++) {
                 Instruction instr = evalProgram[i];
                 switch (instr.opcode) {
-                    case 0:
-                        DEBUG("EMPTY\n");
-                        break;
+                case 0:
+                    DEBUG("EMPTY\n");
+                    break;
 
-                    case 1:
-                        DEBUG("FAssignC: %d <- %d\n", instr.a, instr.b);
-                        expr_f[instr.a] = evalConstantsF[f_constant_offset + instr.b];
-                        break;
-                    case 2:
-                        DEBUG(
-                            "FAssignV: %d <- (%d, %d)\n",
-                            instr.a,
-                            instr.b_variant,
-                            instr.b
-                        );
-                        expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b);
-                        break;
-                    case 3:
-                        DEBUG("FAssignE: %d <- %d\n", instr.a, instr.b);
-                        expr_f[instr.a] = expr_f[instr.b];
-                        break;
-                    case 4:
-                        DEBUG(
-                            "FAddVC: %d <- %d + %d\n",
-                            instr.a,
-                            instr.b_variant,
-                            instr.b
-                        );
-                        expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b)
-                            + evalConstantsF[f_constant_offset + instr.c];
-                        break;
-                    case 5:
-                        DEBUG(
-                            "FAddVV: %d <- (%d, %d) + (%d, %d)\n",
-                            instr.a,
-                            instr.b_variant,
-                            instr.b,
-                            instr.c_variant,
-                            instr.c
-                        );
-                        expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b)
-                            + folder.var_f(instr.c_variant, instr.c);
-                        break;
-                    case 6:
-                        DEBUG(
-                            "FAddVE: %d <- (%d, %d) + %d\n",
-                            instr.a,
-                            instr.b_variant,
-                            instr.b,
-                            instr.c
-                        );
-                        expr_f[instr.a] =
-                            folder.var_f(instr.b_variant, instr.b) + expr_f[instr.c];
-                        break;
+                case 1:
+                    DEBUG("FAssignC: %d <- %d\n", instr.a, instr.b);
+                    expr_f[instr.a] = evalConstantsF[f_constant_offset + instr.b];
+                    break;
+                case 2:
+                    DEBUG("FAssignV: %d <- (%d, %d)\n", instr.a, instr.b_variant, instr.b);
+                    expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b);
+                    break;
+                case 3:
+                    DEBUG("FAssignE: %d <- %d\n", instr.a, instr.b);
+                    expr_f[instr.a] = expr_f[instr.b];
+                    break;
+                case 4:
+                    DEBUG("FAddVC: %d <- %d + %d\n", instr.a, instr.b_variant, instr.b);
+                    expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b) +
+                                      evalConstantsF[f_constant_offset + instr.c];
+                    break;
+                case 5:
+                    DEBUG(
+                        "FAddVV: %d <- (%d, %d) + (%d, %d)\n",
+                        instr.a,
+                        instr.b_variant,
+                        instr.b,
+                        instr.c_variant,
+                        instr.c);
+                    expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b) +
+                                      folder.var_f(instr.c_variant, instr.c);
+                    break;
+                case 6:
+                    DEBUG(
+                        "FAddVE: %d <- (%d, %d) + %d\n",
+                        instr.a,
+                        instr.b_variant,
+                        instr.b,
+                        instr.c);
+                    expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b) + expr_f[instr.c];
+                    break;
 
-                    case 7:
-                        DEBUG(
-                            "FAddEC: %d <- %d + %d\n",
-                            instr.a,
-                            instr.b_variant,
-                            instr.b
-                        );
-                        expr_f[instr.a] = expr_f[instr.b] + evalConstantsF[f_constant_offset + instr.c];
-                        break;
-                    case 8:
-                        DEBUG(
-                            "FAddEV: %d <- %d + (%d, %d)\n",
-                            instr.a,
-                            instr.b,
-                            instr.c_variant,
-                            instr.c
-                        );
-                        expr_f[instr.a] =
-                            expr_f[instr.b] + folder.var_f(instr.c_variant, instr.c);
-                        break;
-                    case 9:
-                        DEBUG("FAddEE: %d <- %d + %d\n", instr.a, instr.b, instr.c);
-                        expr_f[instr.a] = expr_f[instr.b] + expr_f[instr.c];
-                        break;
-                    case 10:
-                        DEBUG("FAddAssignE: %d <- %d\n", instr.a, instr.b);
-                        expr_f[instr.a] += expr_f[instr.b];
-                        break;
+                case 7:
+                    DEBUG("FAddEC: %d <- %d + %d\n", instr.a, instr.b_variant, instr.b);
+                    expr_f[instr.a] = expr_f[instr.b] + evalConstantsF[f_constant_offset + instr.c];
+                    break;
+                case 8:
+                    DEBUG(
+                        "FAddEV: %d <- %d + (%d, %d)\n",
+                        instr.a,
+                        instr.b,
+                        instr.c_variant,
+                        instr.c);
+                    expr_f[instr.a] = expr_f[instr.b] + folder.var_f(instr.c_variant, instr.c);
+                    break;
+                case 9:
+                    DEBUG("FAddEE: %d <- %d + %d\n", instr.a, instr.b, instr.c);
+                    expr_f[instr.a] = expr_f[instr.b] + expr_f[instr.c];
+                    break;
+                case 10:
+                    DEBUG("FAddAssignE: %d <- %d\n", instr.a, instr.b);
+                    expr_f[instr.a] += expr_f[instr.b];
+                    break;
 
-                    case 11:
-                        DEBUG(
-                            "FSubVC: %d <- %d - %d\n",
-                            instr.a,
-                            instr.b_variant,
-                            instr.b
-                        );
-                        expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b)
-                            - evalConstantsF[f_constant_offset + instr.c];
-                        break;
-                    case 12:
-                        DEBUG(
-                            "FSubVV: %d <- (%d, %d) - (%d, %d)\n",
-                            instr.a,
-                            instr.b_variant,
-                            instr.b,
-                            instr.c_variant,
-                            instr.c
-                        );
-                        expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b)
-                            - folder.var_f(instr.c_variant, instr.c);
-                        break;
-                    case 13:
-                        DEBUG(
-                            "FSubVE: %d <- (%d, %d) - %d\n",
-                            instr.a,
-                            instr.b_variant,
-                            instr.b,
-                            instr.c
-                        );
-                        expr_f[instr.a] =
-                            folder.var_f(instr.b_variant, instr.b) - expr_f[instr.c];
-                        break;
+                case 11:
+                    DEBUG("FSubVC: %d <- %d - %d\n", instr.a, instr.b_variant, instr.b);
+                    expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b) -
+                                      evalConstantsF[f_constant_offset + instr.c];
+                    break;
+                case 12:
+                    DEBUG(
+                        "FSubVV: %d <- (%d, %d) - (%d, %d)\n",
+                        instr.a,
+                        instr.b_variant,
+                        instr.b,
+                        instr.c_variant,
+                        instr.c);
+                    expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b) -
+                                      folder.var_f(instr.c_variant, instr.c);
+                    break;
+                case 13:
+                    DEBUG(
+                        "FSubVE: %d <- (%d, %d) - %d\n",
+                        instr.a,
+                        instr.b_variant,
+                        instr.b,
+                        instr.c);
+                    expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b) - expr_f[instr.c];
+                    break;
 
-                    case 14:
-                        DEBUG("FSubEC: %d <- %d - %d\n", instr.a, instr.b, instr.c);
-                        expr_f[instr.a] = expr_f[instr.b] - evalConstantsF[f_constant_offset + instr.c];
-                        break;
-                    case 15:
-                        DEBUG(
-                            "FSubEV: %d <- %d - (%d, %d)\n",
-                            instr.a,
-                            instr.b,
-                            instr.c_variant,
-                            instr.c
-                        );
-                        expr_f[instr.a] =
-                            expr_f[instr.b] - folder.var_f(instr.c_variant, instr.c);
-                        break;
-                    case 16:
-                        DEBUG("FSubEE: %d <- %d - %d\n", instr.a, instr.b, instr.c);
-                        expr_f[instr.a] = expr_f[instr.b] - expr_f[instr.c];
-                        break;
-                    case 17:
-                        DEBUG("FSubAssignE: %d <- %d\n", instr.a, instr.b);
-                        expr_f[instr.a] -= expr_f[instr.b];
-                        break;
+                case 14:
+                    DEBUG("FSubEC: %d <- %d - %d\n", instr.a, instr.b, instr.c);
+                    expr_f[instr.a] = expr_f[instr.b] - evalConstantsF[f_constant_offset + instr.c];
+                    break;
+                case 15:
+                    DEBUG(
+                        "FSubEV: %d <- %d - (%d, %d)\n",
+                        instr.a,
+                        instr.b,
+                        instr.c_variant,
+                        instr.c);
+                    expr_f[instr.a] = expr_f[instr.b] - folder.var_f(instr.c_variant, instr.c);
+                    break;
+                case 16:
+                    DEBUG("FSubEE: %d <- %d - %d\n", instr.a, instr.b, instr.c);
+                    expr_f[instr.a] = expr_f[instr.b] - expr_f[instr.c];
+                    break;
+                case 17:
+                    DEBUG("FSubAssignE: %d <- %d\n", instr.a, instr.b);
+                    expr_f[instr.a] -= expr_f[instr.b];
+                    break;
 
-                    case 18:
-                        DEBUG(
-                            "FMulVC: %d <- %d * %d\n",
-                            instr.a,
-                            instr.b_variant,
-                            instr.b
-                        );
-                        expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b)
-                            * evalConstantsF[f_constant_offset + instr.c];
-                        break;
-                    case 19:
-                        DEBUG(
-                            "FMulVV: %d <- (%d, %d) * (%d, %d)\n",
-                            instr.a,
-                            instr.b_variant,
-                            instr.b,
-                            instr.c_variant,
-                            instr.c
-                        );
-                        expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b)
-                            * folder.var_f(instr.c_variant, instr.c);
-                        break;
-                    case 20:
-                        DEBUG(
-                            "FMulVE: %d <- (%d, %d) * %d\n",
-                            instr.a,
-                            instr.b_variant,
-                            instr.b,
-                            instr.c
-                        );
-                        expr_f[instr.a] =
-                            folder.var_f(instr.b_variant, instr.b) * expr_f[instr.c];
-                        break;
+                case 18:
+                    DEBUG("FMulVC: %d <- %d * %d\n", instr.a, instr.b_variant, instr.b);
+                    expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b) *
+                                      evalConstantsF[f_constant_offset + instr.c];
+                    break;
+                case 19:
+                    DEBUG(
+                        "FMulVV: %d <- (%d, %d) * (%d, %d)\n",
+                        instr.a,
+                        instr.b_variant,
+                        instr.b,
+                        instr.c_variant,
+                        instr.c);
+                    expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b) *
+                                      folder.var_f(instr.c_variant, instr.c);
+                    break;
+                case 20:
+                    DEBUG(
+                        "FMulVE: %d <- (%d, %d) * %d\n",
+                        instr.a,
+                        instr.b_variant,
+                        instr.b,
+                        instr.c);
+                    expr_f[instr.a] = folder.var_f(instr.b_variant, instr.b) * expr_f[instr.c];
+                    break;
 
-                    case 21:
-                        DEBUG(
-                            "FMulEC: %d <- %d * %d\n",
-                            instr.a,
-                            instr.b_variant,
-                            instr.b
-                        );
-                        expr_f[instr.a] = expr_f[instr.b] * evalConstantsF[f_constant_offset + instr.c];
-                        break;
-                    case 22:
-                        DEBUG(
-                            "FMulEV: %d <- %d * (%d, %d)\n",
-                            instr.a,
-                            instr.b,
-                            instr.c_variant,
-                            instr.c
-                        );
-                        expr_f[instr.a] =
-                            expr_f[instr.b] * folder.var_f(instr.c_variant, instr.c);
-                        break;
-                    case 23:
-                        DEBUG("FMulEE: %d <- %d * %d\n", instr.a, instr.b, instr.c);
-                        DEBUG(
-                            "FMulEE Input: %d, %d\n",
-                            expr_f[instr.b],
-                            expr_f[instr.c]
-                        );
-                        expr_f[instr.a] = expr_f[instr.b] * expr_f[instr.c];
-                        DEBUG("FMulEE Output: %d\n", expr_f[instr.a]);
-                        break;
-                    case 24:
-                        DEBUG("FMulAssignE: %d <- %d\n", instr.a, instr.b);
-                        expr_f[instr.a] *= expr_f[instr.b];
-                        break;
+                case 21:
+                    DEBUG("FMulEC: %d <- %d * %d\n", instr.a, instr.b_variant, instr.b);
+                    expr_f[instr.a] = expr_f[instr.b] * evalConstantsF[f_constant_offset + instr.c];
+                    break;
+                case 22:
+                    DEBUG(
+                        "FMulEV: %d <- %d * (%d, %d)\n",
+                        instr.a,
+                        instr.b,
+                        instr.c_variant,
+                        instr.c);
+                    expr_f[instr.a] = expr_f[instr.b] * folder.var_f(instr.c_variant, instr.c);
+                    break;
+                case 23:
+                    DEBUG("FMulEE: %d <- %d * %d\n", instr.a, instr.b, instr.c);
+                    DEBUG("FMulEE Input: %d, %d\n", expr_f[instr.b], expr_f[instr.c]);
+                    expr_f[instr.a] = expr_f[instr.b] * expr_f[instr.c];
+                    DEBUG("FMulEE Output: %d\n", expr_f[instr.a]);
+                    break;
+                case 24:
+                    DEBUG("FMulAssignE: %d <- %d\n", instr.a, instr.b);
+                    expr_f[instr.a] *= expr_f[instr.b];
+                    break;
 
-                    case 25:
-                        DEBUG("FNegE: %d <- -%d\n", instr.a, instr.b);
-                        expr_f[instr.a] = -expr_f[instr.b];
-                        break;
+                case 25:
+                    DEBUG("FNegE: %d <- -%d\n", instr.a, instr.b);
+                    expr_f[instr.a] = -expr_f[instr.b];
+                    break;
 
                     // case 26:
                     //     DEBUG("EAssignC: %d <- %d\n", instr.a, instr.b);
@@ -354,8 +306,8 @@ __global__ void constraintPolyEval(
                     //         instr.b_variant,
                     //         instr.b
                     //     );
-                    //     expr_ef[instr.a] = expr_ef[instr.b] + evalConstantsEF[ef_constant_offset + instr.b];
-                    //     break;
+                    //     expr_ef[instr.a] = expr_ef[instr.b] + evalConstantsEF[ef_constant_offset
+                    //     + instr.b]; break;
                     // case 33:
                     //     DEBUG(
                     //         "EAddEV: %d <- %d + (%d, %d)\n",
@@ -417,8 +369,8 @@ __global__ void constraintPolyEval(
                     //         instr.b_variant,
                     //         instr.b
                     //     );
-                    //     expr_ef[instr.a] = expr_ef[instr.b] - evalConstantsEF[ef_constant_offset + instr.b];
-                    //     break;
+                    //     expr_ef[instr.a] = expr_ef[instr.b] - evalConstantsEF[ef_constant_offset
+                    //     + instr.b]; break;
                     // case 40:
                     //     DEBUG(
                     //         "ESubEV: %d <- %d - (%d, %d)\n",
@@ -480,8 +432,8 @@ __global__ void constraintPolyEval(
                     //         instr.b_variant,
                     //         instr.b
                     //     );
-                    //     expr_ef[instr.a] = expr_ef[instr.b] * evalConstantsEF[ef_constant_offset + instr.b];
-                    //     break;
+                    //     expr_ef[instr.a] = expr_ef[instr.b] * evalConstantsEF[ef_constant_offset
+                    //     + instr.b]; break;
                     // case 47:
                     //     DEBUG(
                     //         "EMulEV: %d <- %d * (%d, %d)\n",
@@ -554,27 +506,29 @@ __global__ void constraintPolyEval(
                     //     // UNSUPPORTED
                     //     break;
 
-                    case 59:
-                        DEBUG("FAssertZero: %d\n", instr.a);
-                        folder.accumulator += (folder.powersOfAlpha[constraint_offset + folder.constraintIndex] * expr_f[instr.a]);
-                        folder.constraintIndex++;
-                        break;
+                case 59:
+                    DEBUG("FAssertZero: %d\n", instr.a);
+                    folder.accumulator +=
+                        (folder.powersOfAlpha[constraint_offset + folder.constraintIndex] *
+                         expr_f[instr.a]);
+                    folder.constraintIndex++;
+                    break;
                     // case 60:
                     //     DEBUG("EAssertZero: %d\n", instr.a);
-                    //     folder.accumulator += (folder.powersOfAlpha[constraint_offset + folder.constraintIndex] * expr_ef[instr.a]);
-                    //     folder.constraintIndex++;
+                    //     folder.accumulator += (folder.powersOfAlpha[constraint_offset +
+                    //     folder.constraintIndex] * expr_ef[instr.a]); folder.constraintIndex++;
                     //     break;
                 }
             }
 
             kb31_extension_t gkr_correction = kb31_extension_t::zero();
-            
+
             if (airBlockIdx == 0) {
                 for (size_t i = 0; i < mainWidth; i++) {
-                    gkr_correction += batchingPowers[i]*folder.var_f(4, i);
+                    gkr_correction += batchingPowers[i] * folder.var_f(4, i);
                 }
                 for (size_t i = 0; i < preprocessedWidth; i++) {
-                    gkr_correction += batchingPowers[mainWidth + i]*folder.var_f(2,i);
+                    gkr_correction += batchingPowers[mainWidth + i] * folder.var_f(2, i);
                 }
             }
 
@@ -584,7 +538,7 @@ __global__ void constraintPolyEval(
     }
 
     extern __shared__ unsigned char memory[];
-    kb31_extension_t *shared = reinterpret_cast<kb31_extension_t *>(memory);
+    kb31_extension_t* shared = reinterpret_cast<kb31_extension_t*>(memory);
     AddOp<kb31_extension_t> op;
 
     auto block = cg::this_thread_block();
@@ -592,66 +546,57 @@ __global__ void constraintPolyEval(
     kb31_extension_t thread_block_sum = partialBlockReduce(block, tile, thread_sum, shared, op);
 
     if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
-        kb31_extension_t::store(constraintValues, (xValueIdx * gridDim.y + blockIdx.y) * gridDim.x + blockIdx.x, thread_block_sum);
+        kb31_extension_t::store(
+            constraintValues,
+            (xValueIdx * gridDim.y + blockIdx.y) * gridDim.x + blockIdx.x,
+            thread_block_sum);
     }
 }
 
-extern "C" void *constraint_poly_eval_32_koala_bear_kernel()
-{
-    return (void *)constraintPolyEval<kb31_t, 32>;
+extern "C" void* constraint_poly_eval_32_koala_bear_kernel() {
+    return (void*)constraintPolyEval<kb31_t, 32>;
 }
 
-extern "C" void *constraint_poly_eval_64_koala_bear_kernel()
-{
-    return (void *)constraintPolyEval<kb31_t, 64>;
+extern "C" void* constraint_poly_eval_64_koala_bear_kernel() {
+    return (void*)constraintPolyEval<kb31_t, 64>;
 }
 
-extern "C" void *constraint_poly_eval_128_koala_bear_kernel()
-{
-    return (void *)constraintPolyEval<kb31_t, 128>;
+extern "C" void* constraint_poly_eval_128_koala_bear_kernel() {
+    return (void*)constraintPolyEval<kb31_t, 128>;
 }
 
-extern "C" void *constraint_poly_eval_256_koala_bear_kernel()
-{
-    return (void *)constraintPolyEval<kb31_t, 256>;
+extern "C" void* constraint_poly_eval_256_koala_bear_kernel() {
+    return (void*)constraintPolyEval<kb31_t, 256>;
 }
 
-extern "C" void *constraint_poly_eval_512_koala_bear_kernel()
-{
-    return (void *)constraintPolyEval<kb31_t, 512>;
+extern "C" void* constraint_poly_eval_512_koala_bear_kernel() {
+    return (void*)constraintPolyEval<kb31_t, 512>;
 }
 
-extern "C" void *constraint_poly_eval_1024_koala_bear_kernel()
-{
-    return (void *)constraintPolyEval<kb31_t, 1024>;
+extern "C" void* constraint_poly_eval_1024_koala_bear_kernel() {
+    return (void*)constraintPolyEval<kb31_t, 1024>;
 }
 
-extern "C" void *constraint_poly_eval_32_koala_bear_extension_kernel()
-{
-    return (void *)constraintPolyEval<kb31_extension_t, 32>;
+extern "C" void* constraint_poly_eval_32_koala_bear_extension_kernel() {
+    return (void*)constraintPolyEval<kb31_extension_t, 32>;
 }
 
-extern "C" void *constraint_poly_eval_64_koala_bear_extension_kernel()
-{
-    return (void *)constraintPolyEval<kb31_extension_t, 64>;
+extern "C" void* constraint_poly_eval_64_koala_bear_extension_kernel() {
+    return (void*)constraintPolyEval<kb31_extension_t, 64>;
 }
 
-extern "C" void *constraint_poly_eval_128_koala_bear_extension_kernel()
-{
-    return (void *)constraintPolyEval<kb31_extension_t, 128>;
+extern "C" void* constraint_poly_eval_128_koala_bear_extension_kernel() {
+    return (void*)constraintPolyEval<kb31_extension_t, 128>;
 }
 
-extern "C" void *constraint_poly_eval_256_koala_bear_extension_kernel()
-{
-    return (void *)constraintPolyEval<kb31_extension_t, 256>;
+extern "C" void* constraint_poly_eval_256_koala_bear_extension_kernel() {
+    return (void*)constraintPolyEval<kb31_extension_t, 256>;
 }
 
-extern "C" void *constraint_poly_eval_512_koala_bear_extension_kernel()
-{
-    return (void *)constraintPolyEval<kb31_extension_t, 512>;
+extern "C" void* constraint_poly_eval_512_koala_bear_extension_kernel() {
+    return (void*)constraintPolyEval<kb31_extension_t, 512>;
 }
 
-extern "C" void *constraint_poly_eval_1024_koala_bear_extension_kernel()
-{
-    return (void *)constraintPolyEval<kb31_extension_t, 1024>;
+extern "C" void* constraint_poly_eval_1024_koala_bear_extension_kernel() {
+    return (void*)constraintPolyEval<kb31_extension_t, 1024>;
 }

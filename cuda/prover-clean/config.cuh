@@ -6,4 +6,3 @@
 
 using felt_t = kb31_t;
 using ext_t = kb31_extension_t;
-

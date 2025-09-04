@@ -30,41 +30,35 @@ pub struct DeviceInteractionsView<'a, F: Field> {
 */
 
 template <typename F>
-struct PairCol
-{
+struct PairCol {
     size_t column_idx;
     bool is_preprocessed;
     F weight;
 
-public:
-    __device__ F get(F *preprocessed, F *main, size_t RowIdx, size_t height)
-    {
-        if (is_preprocessed)
-        {
+  public:
+    __device__ F get(F* preprocessed, F* main, size_t RowIdx, size_t height) {
+        if (is_preprocessed) {
             return preprocessed[column_idx * height + RowIdx] * weight;
-        }
-        else
-        {
+        } else {
             return main[column_idx * height + RowIdx] * weight;
         }
     }
 };
 
 template <typename F>
-struct Interactions
-{
-    size_t *values_ptr;
-    size_t *multiplicities_ptr;
-    size_t *values_col_weights_ptr;
+struct Interactions {
+    size_t* values_ptr;
+    size_t* multiplicities_ptr;
+    size_t* values_col_weights_ptr;
 
-    PairCol<F> *values_col_weights;
-    F *values_constants;
+    PairCol<F>* values_col_weights;
+    F* values_constants;
 
-    PairCol<F> *mult_col_weights;
-    F *mult_constants;
+    PairCol<F>* mult_col_weights;
+    F* mult_constants;
 
-    F *arg_indices;
-    bool *is_send;
+    F* arg_indices;
+    bool* is_send;
 
     size_t num_interactions;
 };

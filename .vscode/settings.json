@@ -23,6 +23,7 @@
         "${workspaceFolder}/crates/**/include",
         "${workspaceFolder}/target/include",
     ],
+    "C_Cpp.clang_format_fallbackStyle": "Google",
     "C_Cpp.intelliSenseEngine": "Tag Parser",
     "files.associations": {
         "cassert": "cpp",
@@ -72,7 +73,9 @@
         "__hash_table": "cpp",
         "__tuple": "cpp",
         "thread": "cpp",
-        "unordered_map": "cpp"
+        "unordered_map": "cpp",
+        "*.cu": "cuda-cpp",
+        "*.cuh": "cuda-cpp"
     },
     "cmake.sourceDirectory": "/home/tamir/cuslop/crates/sys",
 }

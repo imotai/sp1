@@ -1,0 +1,24 @@
+CompileFlags:
+  Add:
+    - "-x"
+    - "cuda"
+    - "--cuda-path=/usr/local/cuda"
+  Remove:
+    - "-forward-unknown-to-host-compiler"
+    - "--expt-relaxed-constexpr"
+    - "-Xcompiler*"
+    - "--device-c"
+
+Index:
+  Background: Build
+
+Diagnostics:
+  Suppress:
+    - "*defaulted*"
+    - "*deleted*"
+    - "ovl_deleted_special_init"
+  ClangTidy:
+    Remove:
+      - "modernize-use-equals-default"
+      - "cppcoreguidelines-pro-type-member-init"
+      - "hicpp-member-init"

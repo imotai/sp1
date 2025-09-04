@@ -4,34 +4,33 @@
 #include "../fields/kb31_t.cuh"
 
 template <typename K>
-struct ConstraintFolder
-{
-public:
-    const K *preprocessed;
+struct ConstraintFolder {
+  public:
+    const K* preprocessed;
     size_t preprocessed_width;
-    const K *main;
+    const K* main;
     size_t main_width;
     size_t height;
-    const kb31_t *publicValues;
-    const kb31_extension_t *powersOfAlpha;
+    const kb31_t* publicValues;
+    const kb31_extension_t* powersOfAlpha;
     size_t constraintIndex;
     kb31_extension_t accumulator;
     size_t rowIdx;
     size_t xValueIdx;
 
-public:
+  public:
     __device__ ConstraintFolder() {}
 
-    __inline__ __device__ K var_f(unsigned char variant, unsigned int idx)
-    {
-        switch (variant)
-        {
+    __inline__ __device__ K var_f(unsigned char variant, unsigned int idx) {
+        switch (variant) {
         case 0:
             return K::zero();
         case 1:
             return K(idx);
         case 2:
-            return K::load(preprocessed, xValueIdx * (preprocessed_width * height) + (idx * height + rowIdx));
+            return K::load(
+                preprocessed,
+                xValueIdx * (preprocessed_width * height) + (idx * height + rowIdx));
         case 4:
             return K::load(main, xValueIdx * (main_width * height) + (idx * height + rowIdx));
         case 9:
@@ -48,10 +47,8 @@ public:
         }
     }
 
-    __inline__ __device__ kb31_extension_t var_ef(unsigned char variant, unsigned int idx)
-    {
-        switch (variant)
-        {
+    __inline__ __device__ kb31_extension_t var_ef(unsigned char variant, unsigned int idx) {
+        switch (variant) {
         case 0:
             return kb31_extension_t::zero();
         default:

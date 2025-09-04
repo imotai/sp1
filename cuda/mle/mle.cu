@@ -39,22 +39,19 @@ the values
 */
 template <typename F>
 __global__ void partial_lagrange_eval_step(
-    F *__restrict__ output,
-    F *__restrict__ memory,
-    F *point,
+    F* __restrict__ output,
+    F* __restrict__ memory,
+    F* point,
     size_t computed_num_variables,
-    size_t total_num_variables)
-{
+    size_t total_num_variables) {
     auto block = cg::this_thread_block();
 
     extern __shared__ unsigned char shared_memory[];
-    F *shared = reinterpret_cast<F *>(shared_memory);
+    F* shared = reinterpret_cast<F*>(shared_memory);
 
     // Load the latest computed layer to shared memory.
-    if (block.thread_rank() == 0)
-    {
-        if (computed_num_variables == 0)
-        {
+    if (block.thread_rank() == 0) {
+        if (computed_num_variables == 0) {
             memory[0] = F::one();
             block.sync();
         }
@@ -63,10 +60,8 @@ __global__ void partial_lagrange_eval_step(
     block.sync();
 
     // Perform tree-based traversal of the values.
-    for (int stride = 1; stride <= block.size(); stride *= 2)
-    {
-        if (block.thread_rank() < stride)
-        {
+    for (int stride = 1; stride <= block.size(); stride *= 2) {
+        if (block.thread_rank() < stride) {
             size_t parentIdx = block.thread_rank() + stride - 1;
             size_t leftIdx = (parentIdx << 1) + 1;
             size_t rightIdx = leftIdx + 1;
@@ -91,16 +86,13 @@ __global__ void partial_lagrange_eval_step(
     size_t lastRightChildIdx = lastLeftChildIdx + 1;
     F lastLeftChildValue = shared[lastLeftChildIdx];
     F lastRightChildValue = shared[lastRightChildIdx];
-    if (new_total_computed == total_num_variables)
-    {
+    if (new_total_computed == total_num_variables) {
         size_t parentIdx = blockIdx.x * blockDim.x + threadIdx.x;
         size_t leftChildIdx = (parentIdx << 1);
         size_t rightChildIdx = leftChildIdx + 1;
         output[leftChildIdx] = lastLeftChildValue;
         output[rightChildIdx] = lastRightChildValue;
-    }
-    else
-    {
+    } else {
         size_t parentIdx = (1 << new_total_computed) - 1 + blockIdx.x * blockDim.x + threadIdx.x;
         size_t leftChildIdx = (parentIdx << 1) + 1;
         size_t rightChildIdx = leftChildIdx + 1;
@@ -110,16 +102,12 @@ __global__ void partial_lagrange_eval_step(
 }
 
 template <typename F, typename EF>
-__global__ void partial_lagrange_naive(
-    EF *__restrict__ output,
-    EF *point,
-    size_t total_num_variables)
-{
-    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < (1 << total_num_variables); i += blockDim.x * gridDim.x)
-    {
+__global__ void
+partial_lagrange_naive(EF* __restrict__ output, EF* point, size_t total_num_variables) {
+    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < (1 << total_num_variables);
+         i += blockDim.x * gridDim.x) {
         EF value = EF::one();
-        for (size_t k = 0; k < total_num_variables; k++)
-        {
+        for (size_t k = 0; k < total_num_variables; k++) {
             bool bit = ((i >> (total_num_variables - 1 - k)) & 1) != 0;
             EF z = EF::load(point, k);
             value *= bit ? z : (EF::one() - z);
@@ -128,32 +116,24 @@ __global__ void partial_lagrange_naive(
     }
 }
 
-extern "C" void *partial_lagrange_koala_bear()
-{
-    return (void *)partial_lagrange_naive<kb31_t, kb31_t>;
+extern "C" void* partial_lagrange_koala_bear() {
+    return (void*)partial_lagrange_naive<kb31_t, kb31_t>;
 }
 
-extern "C" void *partial_lagrange_koala_bear_extension()
-{
-    return (void *)partial_lagrange_naive<kb31_t, kb31_extension_t>;
+extern "C" void* partial_lagrange_koala_bear_extension() {
+    return (void*)partial_lagrange_naive<kb31_t, kb31_extension_t>;
 }
 
 
 template <typename F>
-__global__ void partial_geq_naive(
-    F *__restrict__ output,
-    size_t threshold,
-    size_t total_num_variables)
-{
-    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < (1 << total_num_variables); i += blockDim.x * gridDim.x)
-    {
+__global__ void
+partial_geq_naive(F* __restrict__ output, size_t threshold, size_t total_num_variables) {
+    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < (1 << total_num_variables);
+         i += blockDim.x * gridDim.x) {
         F value;
-        if (i >= threshold)
-        {
+        if (i >= threshold) {
             value = F::one();
-        }
-        else
-        {
+        } else {
             value = F::zero();
         }
 
@@ -161,26 +141,21 @@ __global__ void partial_geq_naive(
     }
 }
 
-extern "C" void *partial_geq_koala_bear()
-{
-    return (void *)partial_geq_naive<kb31_t>;
-}
+extern "C" void* partial_geq_koala_bear() { return (void*)partial_geq_naive<kb31_t>; }
 
-template <typename F, typename EF >
+template <typename F, typename EF>
 __global__ void fixLastVariable(
-    const F *input,
-    EF *__restrict__ output,
-    F * paddingValues,
+    const F* input,
+    EF* __restrict__ output,
+    F* paddingValues,
     EF alpha,
     size_t inputHeight,
-    size_t width)
-{
+    size_t width) {
     size_t outputHeight = (inputHeight + 1) >> 1;
     bool padding = inputHeight & 1;
-    for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
-    {
-        for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
-        {
+    for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y) {
+        for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight;
+             i += blockDim.x * gridDim.x) {
             F zeroValue = F::load(input, j * inputHeight + (i << 1));
             F oneValue;
             if (padding) {
@@ -190,7 +165,7 @@ __global__ void fixLastVariable(
                     oneValue = paddingValues[j];
                 }
             } else {
-                oneValue =  F::load(input, j * inputHeight + (i << 1) + 1);
+                oneValue = F::load(input, j * inputHeight + (i << 1) + 1);
             }
             // Compute value = zeroValue * (1 - alpha) + oneValue * alpha
             EF value = alpha.interpolateLinear(oneValue, zeroValue);
@@ -201,19 +176,17 @@ __global__ void fixLastVariable(
 
 template <typename F, typename EF>
 __global__ void fixLastVariableConstantPadding(
-    const F *input,
-    EF *__restrict__ output,
+    const F* input,
+    EF* __restrict__ output,
     F paddingValue,
     EF alpha,
     size_t inputHeight,
-    size_t width)
-{
+    size_t width) {
     size_t outputHeight = (inputHeight + 1) >> 1;
     bool padding = inputHeight & 1;
-    for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
-    {
-        for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
-        {
+    for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y) {
+        for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight;
+             i += blockDim.x * gridDim.x) {
             F zeroValue = F::load(input, j * inputHeight + (i << 1));
             F oneValue;
             if (padding) {
@@ -232,50 +205,39 @@ __global__ void fixLastVariableConstantPadding(
     }
 }
 
-extern "C" void *mle_fix_last_variable_koala_bear_base_base_padded()
-{
-        return (void *)fixLastVariable<kb31_t, kb31_t>;
+extern "C" void* mle_fix_last_variable_koala_bear_base_base_padded() {
+    return (void*)fixLastVariable<kb31_t, kb31_t>;
 }
 
-extern "C" void *mle_fix_last_variable_koala_bear_base_extension_padded()
-{
-    return (void *)fixLastVariable<kb31_t, kb31_extension_t>;
+extern "C" void* mle_fix_last_variable_koala_bear_base_extension_padded() {
+    return (void*)fixLastVariable<kb31_t, kb31_extension_t>;
 }
 
 
-extern "C" void *mle_fix_last_variable_koala_bear_ext_ext_padded()
-{
-    return (void *)fixLastVariable<kb31_extension_t, kb31_extension_t>;
+extern "C" void* mle_fix_last_variable_koala_bear_ext_ext_padded() {
+    return (void*)fixLastVariable<kb31_extension_t, kb31_extension_t>;
 }
 
-extern "C" void *mle_fix_last_variable_koala_bear_base_base_constant_padding()
-{
-    return (void *)fixLastVariableConstantPadding<kb31_t, kb31_t>;
+extern "C" void* mle_fix_last_variable_koala_bear_base_base_constant_padding() {
+    return (void*)fixLastVariableConstantPadding<kb31_t, kb31_t>;
 }
 
-extern "C" void *mle_fix_last_variable_koala_bear_base_extension_constant_padding()
-{
-    return (void *)fixLastVariableConstantPadding<kb31_t, kb31_extension_t>;
+extern "C" void* mle_fix_last_variable_koala_bear_base_extension_constant_padding() {
+    return (void*)fixLastVariableConstantPadding<kb31_t, kb31_extension_t>;
 }
 
-extern "C" void *mle_fix_last_variable_koala_bear_ext_ext_constant_padding()
-{
-    return (void *)fixLastVariableConstantPadding<kb31_extension_t, kb31_extension_t>;
+extern "C" void* mle_fix_last_variable_koala_bear_ext_ext_constant_padding() {
+    return (void*)fixLastVariableConstantPadding<kb31_extension_t, kb31_extension_t>;
 }
 
 
 template <typename F>
-__global__ void fixLastVariableInPlace(
-    F *inout,
-    F alpha,
-    size_t outputHeight,
-    size_t width)
-{
+__global__ void fixLastVariableInPlace(F* inout, F alpha, size_t outputHeight, size_t width) {
     size_t inputHeight = outputHeight << 1;
-    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
-    {
-        for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
-        {
+    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight;
+         i += blockDim.x * gridDim.x) {
+        for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width;
+             j += blockDim.y * gridDim.y) {
             F zeroValue = F::load(inout, j * inputHeight + (i << 1));
             F oneValue = F::load(inout, j * inputHeight + (i << 1) + 1);
             // Compute value = zeroValue * (1 - alpha) + oneValue * alpha
@@ -285,29 +247,21 @@ __global__ void fixLastVariableInPlace(
     }
 }
 
-extern "C" void *mle_fix_last_variable_in_place_koala_bear_base()
-{
-    return (void *)fixLastVariableInPlace<kb31_t>;
+extern "C" void* mle_fix_last_variable_in_place_koala_bear_base() {
+    return (void*)fixLastVariableInPlace<kb31_t>;
 }
 
-extern "C" void *mle_fix_last_variable_in_place_koala_bear_extension()
-{
-    return (void *)fixLastVariableInPlace<kb31_extension_t>;
+extern "C" void* mle_fix_last_variable_in_place_koala_bear_extension() {
+    return (void*)fixLastVariableInPlace<kb31_extension_t>;
 }
 
 template <typename F, typename EF>
-__global__ void foldMle(
-    const F *input,
-    EF *__restrict__ output,
-    EF beta,
-    size_t outputHeight,
-    size_t width)
-{
+__global__ void
+foldMle(const F* input, EF* __restrict__ output, EF beta, size_t outputHeight, size_t width) {
     size_t inputHeight = outputHeight << 1;
-    for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
-    {
-        for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
-        {
+    for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y) {
+        for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight;
+             i += blockDim.x * gridDim.x) {
             F evenValue = F::load(input, j * inputHeight + (i << 1));
             F oddValue = F::load(input, j * inputHeight + (i << 1) + 1);
             EF value = beta * oddValue + evenValue;
@@ -316,17 +270,12 @@ __global__ void foldMle(
     }
 }
 
-extern "C" void *mle_fold_koala_bear_base_base()
-{
-    return (void *)foldMle<kb31_t, kb31_t>;
+extern "C" void* mle_fold_koala_bear_base_base() { return (void*)foldMle<kb31_t, kb31_t>; }
+
+extern "C" void* mle_fold_koala_bear_base_extension() {
+    return (void*)foldMle<kb31_t, kb31_extension_t>;
 }
 
-extern "C" void *mle_fold_koala_bear_base_extension()
-{
-    return (void *)foldMle<kb31_t, kb31_extension_t>;
-}
-
-extern "C" void *mle_fold_koala_bear_ext_ext()
-{
-    return (void *)foldMle<kb31_extension_t, kb31_extension_t>;
+extern "C" void* mle_fold_koala_bear_ext_ext() {
+    return (void*)foldMle<kb31_extension_t, kb31_extension_t>;
 }

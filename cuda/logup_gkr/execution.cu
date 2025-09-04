@@ -10,17 +10,16 @@
 
 template <typename EF>
 __global__ void logUpCircuitTransitionKernel(
-    const EF *__restrict__ layer,
-    const uint32_t *__restrict__ interactionData,
-    const uint32_t *__restrict__ startIndices,
-    EF *__restrict__ outputLayer,
-    uint32_t *__restrict__ outputInteractionData,
-    const uint32_t *__restrict__ nextLayerStartIndices,
+    const EF* __restrict__ layer,
+    const uint32_t* __restrict__ interactionData,
+    const uint32_t* __restrict__ startIndices,
+    EF* __restrict__ outputLayer,
+    uint32_t* __restrict__ outputInteractionData,
+    const uint32_t* __restrict__ nextLayerStartIndices,
     const size_t height,
-    const size_t outputHeight)
-{
-    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < height; i += blockDim.x * gridDim.x)
-    {
+    const size_t outputHeight) {
+    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < height;
+         i += blockDim.x * gridDim.x) {
         size_t interactionIdx = interactionData[i] & 0x00FFFFFF;
         size_t dimension = interactionData[i] >> 24;
 
@@ -29,11 +28,13 @@ __global__ void logUpCircuitTransitionKernel(
         CircuitValues<EF> values;
 
         CircuitValues<EF> valuesZero = CircuitValues<EF>::load(layer, i, 0UL, height);
-        values.numeratorZero = valuesZero.numeratorZero * valuesZero.denominatorOne + valuesZero.numeratorOne * valuesZero.denominatorZero;
+        values.numeratorZero = valuesZero.numeratorZero * valuesZero.denominatorOne +
+                               valuesZero.numeratorOne * valuesZero.denominatorZero;
         values.denominatorZero = valuesZero.denominatorZero * valuesZero.denominatorOne;
 
         CircuitValues<EF> valuesOne = CircuitValues<EF>::load(layer, i, 1UL, height);
-        values.numeratorOne = valuesOne.numeratorZero * valuesOne.denominatorOne + valuesOne.numeratorOne * valuesOne.denominatorZero;
+        values.numeratorOne = valuesOne.numeratorZero * valuesOne.denominatorOne +
+                              valuesOne.numeratorOne * valuesOne.denominatorZero;
         values.denominatorOne = valuesOne.denominatorZero * valuesOne.denominatorOne;
 
         // Store the restricted values
@@ -46,53 +47,46 @@ __global__ void logUpCircuitTransitionKernel(
         uint32_t outputDimension;
         // If the dimension is 0, we have exausted the real variables and therefore in the padding
         // region, thus we need to account for the value at 1 to be equal to the padding value.
-        if (dimension == 1)
-        {
+        if (dimension == 1) {
             outputDimension = 1;
             CircuitValues<EF> paddingValues = CircuitValues<EF>::paddingValues();
             paddingValues.store(outputLayer, restrictedIndex, 1U, outputHeight);
-        }
-        else
-        {
+        } else {
             outputDimension = dimension - 1;
         }
 
-        size_t interactionHeight = (startIndices[interactionIdx + 1] - startIndices[interactionIdx]);
+        size_t interactionHeight =
+            (startIndices[interactionIdx + 1] - startIndices[interactionIdx]);
 
         size_t isOdd = interactionHeight & 1;
 
-        bool isLast = (interactionHeight  -1) == rowIdx;
-        
+        bool isLast = (interactionHeight - 1) == rowIdx;
 
-        if ((isOdd==1) && isLast)
-        {
+
+        if ((isOdd == 1) && isLast) {
             // If the number of rows is odd, we need to set the last row to the padding value
             CircuitValues<EF> paddingValues = CircuitValues<EF>::paddingValues();
             paddingValues.store(outputLayer, restrictedIndex, 1U, outputHeight);
         }
 
         // Write the output interaction data and dimension. Do it only once per pair of points.
-        if (parity == 0)
-        {
+        if (parity == 0) {
             uint32_t outputInteractionValue = interactionIdx + (outputDimension << 24);
             outputInteractionData[restrictedIndex] = outputInteractionValue;
         }
     }
 }
 
-extern "C" void *logup_gkr_circuit_transition_koala_bear_extension()
-{
-    return (void *)logUpCircuitTransitionKernel<kb31_extension_t>;
+extern "C" void* logup_gkr_circuit_transition_koala_bear_extension() {
+    return (void*)logUpCircuitTransitionKernel<kb31_extension_t>;
 }
 
 template <typename F, typename EF>
-struct GkrInput
-{
+struct GkrInput {
     F numerator;
     EF denominator;
 
-    __device__ __forceinline__ static GkrInput<F, EF> padding()
-    {
+    __device__ __forceinline__ static GkrInput<F, EF> padding() {
         GkrInput<F, EF> values;
         values.numerator = F::zero();
         values.denominator = EF::one();
@@ -101,11 +95,15 @@ struct GkrInput
 };
 
 template <typename F, typename EF>
-__device__ __forceinline__ GkrInput<F, EF>
-InteractionValue(size_t index, size_t rowIdx, Interactions<F> const interactions,
-                 F *const preprocessed, F *const main, EF const alpha,
-                 EF *const betas, size_t height)
-{
+__device__ __forceinline__ GkrInput<F, EF> InteractionValue(
+    size_t index,
+    size_t rowIdx,
+    Interactions<F> const interactions,
+    F* const preprocessed,
+    F* const main,
+    EF const alpha,
+    EF* const betas,
+    size_t height) {
     // Initialize the denominator and beta powers.
     EF denominator = alpha;
     // EF beta_power = EF::one();
@@ -115,17 +113,14 @@ InteractionValue(size_t index, size_t rowIdx, Interactions<F> const interactions
     denominator += betas[0] * argument_index;
 
     // Add the interaction values.
-    for (size_t k = interactions.values_ptr[index];
-         k < interactions.values_ptr[index + 1]; k++)
-    {
+    for (size_t k = interactions.values_ptr[index]; k < interactions.values_ptr[index + 1]; k++) {
         EF acc = EF(interactions.values_constants[k]);
         for (size_t l = interactions.values_col_weights_ptr[k];
-             l < interactions.values_col_weights_ptr[k + 1]; l++)
-        {
-            acc += EF(interactions.values_col_weights[l].get(preprocessed, main,
-                                                             rowIdx, height));
+             l < interactions.values_col_weights_ptr[k + 1];
+             l++) {
+            acc += EF(interactions.values_col_weights[l].get(preprocessed, main, rowIdx, height));
         }
-        denominator += betas[k - interactions.values_ptr[index]+1] * acc;
+        denominator += betas[k - interactions.values_ptr[index] + 1] * acc;
     }
 
     // Calculate the multiplicity values.
@@ -133,14 +128,12 @@ InteractionValue(size_t index, size_t rowIdx, Interactions<F> const interactions
     F mult = interactions.mult_constants[index];
 
     for (size_t k = interactions.multiplicities_ptr[index];
-         k < interactions.multiplicities_ptr[index + 1]; k++)
-    {
-        mult += interactions.mult_col_weights[k].get(preprocessed, main, rowIdx,
-                                                     height);
+         k < interactions.multiplicities_ptr[index + 1];
+         k++) {
+        mult += interactions.mult_col_weights[k].get(preprocessed, main, rowIdx, height);
     }
 
-    if (!is_send)
-    {
+    if (!is_send) {
         mult = F::zero() - mult;
     }
 
@@ -154,61 +147,78 @@ InteractionValue(size_t index, size_t rowIdx, Interactions<F> const interactions
 template <typename F, typename EF>
 __global__ void populateLastCircuitLayer(
     Interactions<F> interactions,
-    const uint32_t *startIndices,
-    uint32_t *interactionData,
-    F *numeratorValues,
-    EF *denominatorValues,
-    F *const preprocessed,
-    F *const main,
+    const uint32_t* startIndices,
+    uint32_t* interactionData,
+    F* numeratorValues,
+    EF* denominatorValues,
+    F* const preprocessed,
+    F* const main,
     EF alpha,
-    EF *beta,
+    EF* beta,
     size_t interactionOffset,
     size_t traceHeight,
     size_t halfTraceHeight,
     size_t outputHeight,
     size_t dimension,
-    bool is_padding)
-{
+    bool is_padding) {
     size_t numInteractions = interactions.num_interactions;
-    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < halfTraceHeight; i += blockDim.x * gridDim.x)
-    {
+    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < halfTraceHeight;
+         i += blockDim.x * gridDim.x) {
         size_t zeroIdx = i << 1;
         size_t oneIdx = (i << 1) + 1;
         size_t parity = i & 1;
         size_t restrictedRowIdx = i >> 1;
 
-        for (size_t j = blockIdx.y * blockDim.y + threadIdx.y; j < numInteractions; j += blockDim.y * gridDim.y)
-        {
+        for (size_t j = blockIdx.y * blockDim.y + threadIdx.y; j < numInteractions;
+             j += blockDim.y * gridDim.y) {
             size_t interactionIdx = j + interactionOffset;
             size_t startIdx = startIndices[interactionIdx];
 
             size_t restrictedIndex = startIdx + restrictedRowIdx;
 
-            if (is_padding)
-            {
-                FirstLayerCircuitValues<F, EF> values = FirstLayerCircuitValues<F, EF>::paddingValues();
-                values.store(numeratorValues, denominatorValues, restrictedIndex, 0UL, outputHeight);
-                values.store(numeratorValues, denominatorValues, restrictedIndex, 1UL, outputHeight);
-            }
-            else
-            {
+            if (is_padding) {
+                FirstLayerCircuitValues<F, EF> values =
+                    FirstLayerCircuitValues<F, EF>::paddingValues();
+                values
+                    .store(numeratorValues, denominatorValues, restrictedIndex, 0UL, outputHeight);
+                values
+                    .store(numeratorValues, denominatorValues, restrictedIndex, 1UL, outputHeight);
+            } else {
                 GkrInput<F, EF> zeroValue;
                 GkrInput<F, EF> oneValue;
-                zeroValue = InteractionValue(j, zeroIdx, interactions, preprocessed,
-                                             main, alpha, beta, traceHeight);
-                oneValue = InteractionValue(j, oneIdx, interactions, preprocessed,
-                                            main, alpha, beta, traceHeight);
+                zeroValue = InteractionValue(
+                    j,
+                    zeroIdx,
+                    interactions,
+                    preprocessed,
+                    main,
+                    alpha,
+                    beta,
+                    traceHeight);
+                oneValue = InteractionValue(
+                    j,
+                    oneIdx,
+                    interactions,
+                    preprocessed,
+                    main,
+                    alpha,
+                    beta,
+                    traceHeight);
                 FirstLayerCircuitValues<F, EF> values;
                 values.numeratorZero = zeroValue.numerator;
                 values.numeratorOne = oneValue.numerator;
                 values.denominatorZero = zeroValue.denominator;
                 values.denominatorOne = oneValue.denominator;
-                values.store(numeratorValues, denominatorValues, restrictedIndex, parity, outputHeight);
+                values.store(
+                    numeratorValues,
+                    denominatorValues,
+                    restrictedIndex,
+                    parity,
+                    outputHeight);
             }
 
             // Write the output interaction data and dimension. Do it only once per pair of points.
-            if (parity == 0)
-            {
+            if (parity == 0) {
                 uint32_t outputInteractionValue = interactionIdx + (dimension << 24);
                 interactionData[restrictedIndex] = outputInteractionValue;
             }
@@ -216,38 +226,35 @@ __global__ void populateLastCircuitLayer(
     }
 }
 
-extern "C" void *logup_gkr_populate_last_circuit_layer_koala_bear()
-{
-    return (void *)populateLastCircuitLayer<kb31_t, kb31_extension_t>;
+extern "C" void* logup_gkr_populate_last_circuit_layer_koala_bear() {
+    return (void*)populateLastCircuitLayer<kb31_t, kb31_extension_t>;
 }
 
 template <typename EF>
 __global__ void extractOutputKernel(
-    const EF *__restrict__ layer,
-    const uint32_t *__restrict__ interactionData,
-    const uint32_t *__restrict__ startIndices,
-    EF *__restrict__ numerator,
-    EF *__restrict__ denominator,
+    const EF* __restrict__ layer,
+    const uint32_t* __restrict__ interactionData,
+    const uint32_t* __restrict__ startIndices,
+    EF* __restrict__ numerator,
+    EF* __restrict__ denominator,
     const size_t height,
-    size_t gridHeight)
-{
-    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < gridHeight; i += blockDim.x * gridDim.x)
-    {
+    size_t gridHeight) {
+    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < gridHeight;
+         i += blockDim.x * gridDim.x) {
         CircuitValues<EF> values;
-        if (i < height) 
-        {
+        if (i < height) {
             size_t interactionIdx = interactionData[i] & 0x00FFFFFF;
 
             CircuitValues<EF> valuesZero = CircuitValues<EF>::load(layer, i, 0UL, height);
-            values.numeratorZero = valuesZero.numeratorZero * valuesZero.denominatorOne + valuesZero.numeratorOne * valuesZero.denominatorZero;
+            values.numeratorZero = valuesZero.numeratorZero * valuesZero.denominatorOne +
+                                   valuesZero.numeratorOne * valuesZero.denominatorZero;
             values.denominatorZero = valuesZero.denominatorZero * valuesZero.denominatorOne;
 
             CircuitValues<EF> valuesOne = CircuitValues<EF>::load(layer, i, 1UL, height);
-            values.numeratorOne = valuesOne.numeratorZero * valuesOne.denominatorOne + valuesOne.numeratorOne * valuesOne.denominatorZero;
+            values.numeratorOne = valuesOne.numeratorZero * valuesOne.denominatorOne +
+                                  valuesOne.numeratorOne * valuesOne.denominatorZero;
             values.denominatorOne = valuesOne.denominatorZero * valuesOne.denominatorOne;
-        }
-        else
-        {
+        } else {
             values = CircuitValues<EF>::paddingValues();
         }
 
@@ -261,7 +268,6 @@ __global__ void extractOutputKernel(
     }
 }
 
-extern "C" void *logup_gkr_extract_output_koala_bear()
-{
-    return (void *)extractOutputKernel<kb31_extension_t>;
+extern "C" void* logup_gkr_extract_output_koala_bear() {
+    return (void*)extractOutputKernel<kb31_extension_t>;
 }

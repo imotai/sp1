@@ -4,29 +4,25 @@
 
 template <typename K>
 __global__ void interpolate_row(
-    const K *input,
-    K *__restrict__ output,
+    const K* input,
+    K* __restrict__ output,
     size_t inputHeight,
     size_t width,
     size_t outputHeight,
     size_t offset,
-    size_t globalHeight)
-{
+    size_t globalHeight) {
     bool oddNumRows = (inputHeight & 1) == 1;
-    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight; i += blockDim.x * gridDim.x)
-    {
-        for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width; j += blockDim.y * gridDim.y)
-        {
+    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight;
+         i += blockDim.x * gridDim.x) {
+        for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < width;
+             j += blockDim.y * gridDim.y) {
             size_t rowIdx = i + offset;
             K zeroValue = K::load(input, j * inputHeight + (rowIdx << 1));
             K oneValue;
-            
-            if (oddNumRows && (rowIdx == (globalHeight - 1)))
-            {
+
+            if (oddNumRows && (rowIdx == (globalHeight - 1))) {
                 oneValue = K::zero();
-            }
-            else
-            {
+            } else {
                 // Load the next row value
                 oneValue = K::load(input, j * inputHeight + (rowIdx << 1) + 1);
             }
@@ -47,12 +43,8 @@ __global__ void interpolate_row(
     }
 }
 
-extern "C" void *interpolate_row_koala_bear_kernel()
-{
-    return (void *)interpolate_row<kb31_t>;
-}
+extern "C" void* interpolate_row_koala_bear_kernel() { return (void*)interpolate_row<kb31_t>; }
 
-extern "C" void *interpolate_row_koala_bear_extension_kernel()
-{
-    return (void *)interpolate_row<kb31_extension_t>;
+extern "C" void* interpolate_row_koala_bear_extension_kernel() {
+    return (void*)interpolate_row<kb31_extension_t>;
 }
