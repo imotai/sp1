@@ -197,7 +197,7 @@ pub struct Executor<'a> {
     transpiler: InstructionTranspiler,
 
     /// Decoded instruction cache.
-    decoded_instruction_cache: HashMap<u64, Instruction>,
+    decoded_instruction_cache: HashMap<u32, Instruction>,
 
     /// Decoded instruction events.
     decoded_instruction_events: HashMap<u32, InstructionDecodeEvent>,
@@ -308,7 +308,7 @@ pub struct LocalCounts {
     pub local_instruction_fetch: usize,
 
     /// The number of instruction decode events that occurred in this shard.
-    pub shard_distinct_instructions: HashSet<(u64, u32)>,
+    pub shard_distinct_instructions: HashSet<u32>,
 }
 
 /// Errors that the [``Executor``] can throw.
@@ -1727,16 +1727,15 @@ impl<'a> Executor<'a> {
             }
 
             let instruction: Instruction;
-            if let Some(cached_instruction) = self.decoded_instruction_cache.get(&self.state.pc) {
+            if let Some(cached_instruction) = self.decoded_instruction_cache.get(&instruction_value)
+            {
                 instruction = *cached_instruction;
             } else {
                 instruction = process_instruction(&mut self.transpiler, instruction_value).unwrap();
-                self.decoded_instruction_cache.insert(self.state.pc, instruction);
+                self.decoded_instruction_cache.insert(instruction_value, instruction);
             }
 
-            self.local_counts
-                .shard_distinct_instructions
-                .insert((self.state.pc, instruction_value));
+            self.local_counts.shard_distinct_instructions.insert(instruction_value);
 
             Ok(instruction)
         } else {
