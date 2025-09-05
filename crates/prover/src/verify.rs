@@ -13,7 +13,7 @@ use sp1_hypercube::{
 };
 use sp1_primitives::{
     io::{blake3_hash, SP1PublicValues},
-    SP1Field,
+    SP1Field, SP1GlobalContext, SP1OuterGlobalContext,
 };
 use sp1_recursion_circuit::machine::RootPublicValues;
 use sp1_recursion_executor::RecursionPublicValues;
@@ -58,7 +58,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         &self,
         proof: &SP1CoreProofData,
         vk: &SP1VerifyingKey,
-    ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
+    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, CoreSC>> {
         let SP1VerifyingKey { vk } = vk;
 
         if proof.0.is_empty() {
@@ -406,9 +406,9 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     /// Verify a compressed proof.
     pub fn verify_compressed(
         &self,
-        proof: &SP1RecursionProof<SP1CoreJaggedConfig>,
+        proof: &SP1RecursionProof<SP1GlobalContext, SP1CoreJaggedConfig>,
         vk: &SP1VerifyingKey,
-    ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
+    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, CoreSC>> {
         let SP1RecursionProof { vk: compress_vk, proof } = proof;
         let mut challenger = self.recursion_prover.verifier().challenger();
         compress_vk.observe_into(&mut challenger);
@@ -459,9 +459,9 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     /// Verify a shrink proof.
     pub fn verify_shrink(
         &self,
-        proof: &SP1RecursionProof<SP1CoreJaggedConfig>,
+        proof: &SP1RecursionProof<SP1GlobalContext, SP1CoreJaggedConfig>,
         vk: &SP1VerifyingKey,
-    ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
+    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, CoreSC>> {
         let SP1RecursionProof { vk: _, proof } = proof;
         let shrink_vk = self.recursion_prover.get_shrink_keys().1;
         let mut challenger = self.recursion_prover.shrink_verifier().challenger();
@@ -513,9 +513,9 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     /// Verify a wrap bn254 proof.
     pub fn verify_wrap_bn254(
         &self,
-        proof: &SP1RecursionProof<SP1OuterConfig>,
+        proof: &SP1RecursionProof<SP1OuterGlobalContext, SP1OuterConfig>,
         vk: &SP1VerifyingKey,
-    ) -> Result<(), MachineVerifierConfigError<OuterSC>> {
+    ) -> Result<(), MachineVerifierConfigError<SP1OuterGlobalContext, OuterSC>> {
         let SP1RecursionProof { vk: _, proof } = proof;
         let wrap_vk = self.recursion_prover.get_wrap_keys().1;
         let mut challenger = self.recursion_prover.wrap_verifier().challenger();
@@ -685,11 +685,11 @@ use crate::{
 impl<C: SP1ProverComponents> SubproofVerifier for SP1Prover<C> {
     fn verify_deferred_proof(
         &self,
-        proof: &sp1_core_machine::recursion::SP1RecursionProof<InnerSC>,
-        vk: &sp1_hypercube::MachineVerifyingKey<CoreSC>,
+        proof: &sp1_core_machine::recursion::SP1RecursionProof<SP1GlobalContext, InnerSC>,
+        vk: &sp1_hypercube::MachineVerifyingKey<SP1GlobalContext, CoreSC>,
         vk_hash: [u64; 4],
         committed_value_digest: [u64; 4],
-    ) -> Result<(), MachineVerifierConfigError<CoreSC>> {
+    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, CoreSC>> {
         // Check that the vk hash matches the vk hash from the input.
         if vk.hash_u64() != vk_hash {
             return Err(MachineVerifierError::InvalidPublicValues(

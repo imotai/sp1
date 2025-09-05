@@ -9,17 +9,17 @@ use slop_air::{
     AirBuilder, AirBuilderWithPublicValues, ExtensionBuilder, PairBuilder, PermutationAirBuilder,
 };
 use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, Field};
-use slop_jagged::JaggedConfig;
+use slop_challenger::IopCtx;
 use slop_matrix::dense::RowMajorMatrixView;
 
 /// A folder for verifier constraints.
-pub type VerifierConstraintFolder<'a, C> = GenericVerifierConstraintFolder<
+pub type VerifierConstraintFolder<'a, GC> = GenericVerifierConstraintFolder<
     'a,
-    <C as JaggedConfig>::F,
-    <C as JaggedConfig>::EF,
-    <C as JaggedConfig>::F,
-    <C as JaggedConfig>::EF,
-    <C as JaggedConfig>::EF,
+    <GC as IopCtx>::F,
+    <GC as IopCtx>::EF,
+    <GC as IopCtx>::F,
+    <GC as IopCtx>::EF,
+    <GC as IopCtx>::EF,
 >;
 
 /// A folder for verifier constraints.
@@ -396,11 +396,11 @@ impl<
 /// A folder for verifier constraints on public values.
 pub type VerifierPublicValuesConstraintFolder<'a, C> = GenericVerifierPublicValuesConstraintFolder<
     'a,
-    <C as JaggedConfig>::F,
-    <C as JaggedConfig>::EF,
-    <C as JaggedConfig>::F,
-    <C as JaggedConfig>::EF,
-    <C as JaggedConfig>::EF,
+    <C as IopCtx>::F,
+    <C as IopCtx>::EF,
+    <C as IopCtx>::F,
+    <C as IopCtx>::EF,
+    <C as IopCtx>::EF,
 >;
 
 /// A folder for verifier constraints.

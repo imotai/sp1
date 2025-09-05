@@ -10,13 +10,13 @@ use itertools::Itertools;
 use slop_air::Air;
 
 use slop_algebra::AbstractField;
-use slop_jagged::JaggedConfig;
+use slop_challenger::IopCtx;
 
 use serde::{Deserialize, Serialize};
 use sp1_core_machine::riscv::MAX_LOG_NUMBER_OF_SHARDS;
 use sp1_recursion_compiler::ir::{Builder, Felt, IrIter};
 
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
 use sp1_recursion_executor::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS};
 
 use sp1_hypercube::{
@@ -34,7 +34,7 @@ use crate::{
     },
     shard::{MachineVerifyingKeyVariable, RecursiveShardVerifier, ShardProofVariable},
     zerocheck::RecursiveVerifierConstraintFolder,
-    CircuitConfig, SP1FieldConfigVariable, EF,
+    CircuitConfig, SP1FieldConfigVariable,
 };
 
 use sp1_recursion_compiler::circuit::CircuitV2Builder;
@@ -54,7 +54,7 @@ pub enum PublicValuesOutputDigest {
 /// Witness layout for the compress stage verifier.
 #[allow(clippy::type_complexity)]
 pub struct SP1ShapedWitnessVariable<
-    C: CircuitConfig<F = SP1Field, EF = EF>,
+    C: CircuitConfig,
     SC: SP1FieldConfigVariable<C> + Send + Sync,
     JC: RecursiveJaggedConfig<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
@@ -62,26 +62,40 @@ pub struct SP1ShapedWitnessVariable<
 > {
     /// The shard proofs to verify.
     pub vks_and_proofs: Vec<(MachineVerifyingKeyVariable<C, SC>, ShardProofVariable<C, SC, JC>)>,
-    pub is_complete: Felt<C::F>,
+    pub is_complete: Felt<SP1Field>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "ShardProof<SC>: Serialize"))]
-#[serde(bound(deserialize = "ShardProof<SC>: Deserialize<'de>"))]
+#[serde(bound(serialize = "ShardProof<GC,SC>: Serialize"))]
+#[serde(bound(deserialize = "ShardProof<GC,SC>: Deserialize<'de>"))]
 /// An input layout for the shard proofs that have been normalized to a standard shape.
-pub struct SP1ShapedWitnessValues<SC: MachineConfig> {
-    pub vks_and_proofs: Vec<(MachineVerifyingKey<SC>, ShardProof<SC>)>,
+pub struct SP1ShapedWitnessValues<GC: IopCtx, SC: MachineConfig<GC>> {
+    pub vks_and_proofs: Vec<(MachineVerifyingKey<GC, SC>, ShardProof<GC, SC>)>,
     pub is_complete: bool,
 }
+
+// GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
+// A: MachineAir<SP1Field>,
+// SC: SP1FieldConfigVariable<C> + MachineConfig<GC>,
+// C: CircuitConfig,
+// JC: RecursiveJaggedConfig<
+//     F = SP1Field,
+//     EF = SP1ExtensionField,
+//     Circuit = C,
+//     Commitment = SC::DigestVariable,
+//     Challenger = SC::FriChallengerVariable,
+//     BatchPcsProof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>,
+//     BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
+// >,
 
 impl<C, SC, A, JC> SP1CompressVerifier<C, SC, A, JC>
 where
     SC: SP1FieldConfigVariable<C> + Send + Sync,
-    C: CircuitConfig<F = SP1Field, EF = <SC as JaggedConfig>::EF>,
-    A: MachineAir<InnerVal> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
+    C: CircuitConfig,
+    A: MachineAir<InnerVal> + for<'a> Air<RecursiveVerifierConstraintFolder<'a>>,
     JC: RecursiveJaggedConfig<
         F = SP1Field,
-        EF = C::EF,
+        EF = SP1ExtensionField,
         Circuit = C,
         Commitment = SC::DigestVariable,
         Challenger = SC::FriChallengerVariable,
@@ -103,9 +117,9 @@ where
     ///   checked against itself as in [sp1_prover::Prover] or as in [super::SP1RootVerifier].
     pub fn verify(
         builder: &mut Builder<C>,
-        machine: &RecursiveShardVerifier<A, SC, C, JC>,
+        machine: &RecursiveShardVerifier<SP1GlobalContext, A, SC, C, JC>,
         input: SP1ShapedWitnessVariable<C, SC, JC>,
-        vk_root: [Felt<C::F>; DIGEST_SIZE],
+        vk_root: [Felt<SP1Field>; DIGEST_SIZE],
         kind: PublicValuesOutputDigest,
     ) {
         // Read input.
@@ -146,8 +160,8 @@ where
             array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
         let mut commit_syscall: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut commit_deferred_syscall: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
-        let mut contains_first_shard: Felt<_> = builder.eval(C::F::zero());
-        let mut num_included_shard: Felt<_> = builder.eval(C::F::zero());
+        let mut contains_first_shard: Felt<_> = builder.eval(SP1Field::zero());
+        let mut num_included_shard: Felt<_> = builder.eval(SP1Field::zero());
 
         // Verify the shard proofs.
         // Verification of proofs can be done in parallel but the aggregation/consistency checks
@@ -165,7 +179,7 @@ where
                 challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
                 challenger.observe(builder, vk.enable_untrusted_programs);
                 // Observe the padding.
-                let zero: Felt<_> = builder.eval(C::F::zero());
+                let zero: Felt<_> = builder.eval(SP1Field::zero());
                 for _ in 0..6 {
                     challenger.observe(builder, zero);
                 }
@@ -177,7 +191,7 @@ where
         // Check consistency and aggregate public values.
         for (i, (_, shard_proof)) in vks_and_proofs.into_iter().enumerate() {
             // Get the current public values.
-            let current_public_values: &RecursionPublicValues<Felt<C::F>> =
+            let current_public_values: &RecursionPublicValues<Felt<SP1Field>> =
                 shard_proof.public_values.as_slice().borrow();
             // Assert that the public values are valid.
             assert_recursion_public_values_valid::<C, SC>(builder, current_public_values);
@@ -196,8 +210,8 @@ where
             // Verify that `contains_first_shard` is boolean.
             builder.assert_felt_eq(
                 current_public_values.contains_first_shard
-                    * (current_public_values.contains_first_shard - C::F::one()),
-                C::F::zero(),
+                    * (current_public_values.contains_first_shard - SP1Field::one()),
+                SP1Field::zero(),
             );
 
             // Accumulate the number of included shards.
@@ -380,8 +394,8 @@ where
 
         // Check that the `contains_first_shard` flag is boolean.
         builder.assert_felt_eq(
-            contains_first_shard * (contains_first_shard - C::F::one()),
-            C::F::zero(),
+            contains_first_shard * (contains_first_shard - SP1Field::one()),
+            SP1Field::zero(),
         );
 
         // Sum all the global cumulative sum of the proofs.

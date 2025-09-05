@@ -33,7 +33,7 @@ use sp1_hypercube::prover::{CpuShardProver, MachineProverBuilder, ProverSemaphor
 use sp1_recursion_executor::RecursionProgram;
 
 use sp1_hypercube::{SP1CoreJaggedConfig, SP1OuterConfig};
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1Field, SP1GlobalContext, SP1OuterGlobalContext};
 
 pub use types::*;
 
@@ -81,10 +81,10 @@ pub struct SP1Prover<C: SP1ProverComponents> {
 }
 
 pub struct SP1ProverBuilder<C: SP1ProverComponents> {
-    core_prover_builder: MachineProverBuilder<C::CoreComponents>,
-    compress_prover_builder: MachineProverBuilder<C::RecursionComponents>,
-    shrink_prover_builder: MachineProverBuilder<C::RecursionComponents>,
-    wrap_prover_builder: MachineProverBuilder<C::WrapComponents>,
+    core_prover_builder: MachineProverBuilder<SP1GlobalContext, C::CoreComponents>,
+    compress_prover_builder: MachineProverBuilder<SP1GlobalContext, C::RecursionComponents>,
+    shrink_prover_builder: MachineProverBuilder<SP1GlobalContext, C::RecursionComponents>,
+    wrap_prover_builder: MachineProverBuilder<SP1OuterGlobalContext, C::WrapComponents>,
     normalize_programs_cache_size: usize,
     maximum_compose_arity: usize,
     normalize_programs: BTreeMap<SP1NormalizeInputShape, Arc<RecursionProgram<SP1Field>>>,

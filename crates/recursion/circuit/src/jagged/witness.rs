@@ -1,10 +1,10 @@
-use slop_algebra::extension::BinomialExtensionField;
+use slop_challenger::IopCtx;
 use slop_jagged::{
-    JaggedConfig, JaggedEvalConfig, JaggedLittlePolynomialVerifierParams, JaggedPcsProof,
-    JaggedSumcheckEvalProof,
+    JaggedConfig, JaggedLittlePolynomialVerifierParams, JaggedPcsProof, JaggedSumcheckEvalProof,
 };
-use sp1_primitives::SP1Field;
-use sp1_recursion_compiler::ir::{Builder, Ext};
+use slop_multilinear::MultilinearPcsVerifier;
+use sp1_primitives::{SP1ExtensionField, SP1Field};
+use sp1_recursion_compiler::ir::Builder;
 
 use crate::{
     witness::{WitnessWriter, Witnessable},
@@ -58,28 +58,21 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C>
     }
 }
 
-impl<C, SC, RecursiveStackedPcsProof, RecursiveJaggedEvalProof> Witnessable<C>
-    for JaggedPcsProof<SC>
+impl<GC, C, SC, RecursiveStackedPcsProof> Witnessable<C> for JaggedPcsProof<GC, SC>
 where
-    C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
-    SC: JaggedConfig<
-            F = C::F,
-            EF = C::EF,
-            BatchPcsProof: Witnessable<C, WitnessVariable = RecursiveStackedPcsProof>,
-        > + AsRecursive<C>,
-    <<SC as JaggedConfig>::JaggedEvaluator as JaggedEvalConfig<
-        C::F,
-        C::EF,
-        <SC as JaggedConfig>::Challenger,
-    >>::JaggedEvalProof: Witnessable<C, WitnessVariable = RecursiveJaggedEvalProof>,
+    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
+    C: CircuitConfig,
+    SC: JaggedConfig<GC> + AsRecursive<C>,
+
     SC::Recursive: RecursiveJaggedConfig<
-        F = C::F,
-        EF = C::EF,
+        F = SP1Field,
+        EF = SP1ExtensionField,
         Circuit = C,
         BatchPcsProof = RecursiveStackedPcsProof,
-        JaggedEvalProof = RecursiveJaggedEvalProof,
+        // JaggedEvalProof = RecursiveJaggedEvalProof,
     >,
-    C::EF: Witnessable<C, WitnessVariable = Ext<C::F, C::EF>>,
+    <SC::BatchPcsVerifier as MultilinearPcsVerifier<GC>>::Proof:
+        Witnessable<C, WitnessVariable = RecursiveStackedPcsProof>,
 {
     type WitnessVariable = JaggedPcsProofVariable<SC::Recursive>;
 

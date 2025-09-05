@@ -1,6 +1,7 @@
 use slop_alloc::Buffer;
 use slop_multilinear::{Mle, MleEval, Point};
 use slop_tensor::Tensor;
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::ir::{Ext, Felt, SymbolicExt, SymbolicFelt};
 
 use crate::CircuitConfig;
@@ -11,16 +12,16 @@ pub(crate) trait IntoSymbolic<C: CircuitConfig> {
     fn as_symbolic(&self) -> Self::Output;
 }
 
-impl<C: CircuitConfig> IntoSymbolic<C> for Felt<C::F> {
-    type Output = SymbolicFelt<C::F>;
+impl<C: CircuitConfig> IntoSymbolic<C> for Felt<SP1Field> {
+    type Output = SymbolicFelt<SP1Field>;
 
     fn as_symbolic(&self) -> Self::Output {
         SymbolicFelt::from(*self)
     }
 }
 
-impl<C: CircuitConfig> IntoSymbolic<C> for Ext<C::F, C::EF> {
-    type Output = SymbolicExt<C::F, C::EF>;
+impl<C: CircuitConfig> IntoSymbolic<C> for Ext<SP1Field, SP1ExtensionField> {
+    type Output = SymbolicExt<SP1Field, SP1ExtensionField>;
 
     fn as_symbolic(&self) -> Self::Output {
         SymbolicExt::from(*self)

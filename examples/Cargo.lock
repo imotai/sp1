@@ -3123,9 +3123,9 @@ checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
 name = "js-sys"
-version = "0.3.77"
+version = "0.3.78"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1cfaf33c695fc6e08064efbc1f72ec937429614f25eef83af942d0e227c3a28f"
+checksum = "0c0b063578492ceec17683ef2f8c5e89121fbd0b172cbc280635ab7567db2738"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
@@ -3315,9 +3315,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.27"
+version = "0.4.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
+checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 
 [[package]]
 name = "lru"
@@ -4612,7 +4612,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.0",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -6388,6 +6388,7 @@ dependencies = [
  "p3-baby-bear 0.1.0",
  "serde",
  "slop-algebra",
+ "slop-challenger",
  "slop-poseidon2",
 ]
 
@@ -6447,6 +6448,11 @@ version = "1.2.0"
 source = "git+https://github.com/succinctlabs/slop#54e01846d15873239add2cbc29d69c15e695bf73"
 dependencies = [
  "p3-bn254-fr",
+ "serde",
+ "slop-algebra",
+ "slop-challenger",
+ "slop-poseidon2",
+ "slop-symmetric",
 ]
 
 [[package]]
@@ -6456,6 +6462,7 @@ source = "git+https://github.com/succinctlabs/slop#54e01846d15873239add2cbc29d69
 dependencies = [
  "futures",
  "p3-challenger",
+ "serde",
  "slop-algebra",
  "slop-symmetric",
 ]
@@ -6468,6 +6475,7 @@ dependencies = [
  "p3-commit",
  "serde",
  "slop-alloc",
+ "slop-challenger",
  "slop-futures",
  "slop-tensor",
 ]
@@ -6523,6 +6531,7 @@ dependencies = [
  "slop-baby-bear",
  "slop-basefold",
  "slop-basefold-prover",
+ "slop-bn254",
  "slop-challenger",
  "slop-commit",
  "slop-futures",
@@ -6554,6 +6563,7 @@ dependencies = [
  "p3-koala-bear",
  "serde",
  "slop-algebra",
+ "slop-challenger",
  "slop-poseidon2",
 ]
 
@@ -6587,6 +6597,7 @@ dependencies = [
  "slop-alloc",
  "slop-baby-bear",
  "slop-bn254",
+ "slop-challenger",
  "slop-commit",
  "slop-futures",
  "slop-koala-bear",
@@ -6638,6 +6649,7 @@ dependencies = [
  "serde",
  "slop-algebra",
  "slop-alloc",
+ "slop-challenger",
  "slop-commit",
  "slop-futures",
  "slop-multilinear",
@@ -6815,6 +6827,7 @@ dependencies = [
  "serde_json",
  "slop-air",
  "slop-algebra",
+ "slop-challenger",
  "slop-koala-bear",
  "slop-maybe-rayon",
  "slop-merkle-tree",
@@ -6850,6 +6863,7 @@ dependencies = [
  "serde_json",
  "slop-air",
  "slop-algebra",
+ "slop-challenger",
  "slop-futures",
  "slop-keccak-air",
  "slop-koala-bear",
@@ -7022,6 +7036,8 @@ dependencies = [
  "serde",
  "sha2 0.10.8",
  "slop-algebra",
+ "slop-bn254",
+ "slop-challenger",
  "slop-koala-bear",
  "slop-poseidon2",
  "slop-symmetric",
@@ -7050,7 +7066,9 @@ dependencies = [
  "sha2 0.10.8",
  "slop-air",
  "slop-algebra",
+ "slop-basefold",
  "slop-bn254",
+ "slop-challenger",
  "slop-futures",
  "slop-jagged",
  "slop-koala-bear",
@@ -7122,6 +7140,7 @@ dependencies = [
  "serde",
  "slop-algebra",
  "slop-bn254",
+ "slop-challenger",
  "slop-koala-bear",
  "slop-merkle-tree",
  "slop-symmetric",
@@ -8430,21 +8449,22 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.100"
+version = "0.2.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1edc8929d7499fc4e8f0be2262a241556cfc54a0bea223790e71446f2aab1ef5"
+checksum = "7e14915cadd45b529bb8d1f343c4ed0ac1de926144b746e2710f9cd05df6603b"
 dependencies = [
  "cfg-if",
  "once_cell",
  "rustversion",
  "wasm-bindgen-macro",
+ "wasm-bindgen-shared",
 ]
 
 [[package]]
 name = "wasm-bindgen-backend"
-version = "0.2.100"
+version = "0.2.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f0a0651a5c2bc21487bde11ee802ccaf4c51935d0d3d42a6101f98161700bc6"
+checksum = "e28d1ba982ca7923fd01448d5c30c6864d0a14109560296a162f80f305fb93bb"
 dependencies = [
  "bumpalo",
  "log",
@@ -8456,9 +8476,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-futures"
-version = "0.4.50"
+version = "0.4.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "555d470ec0bc3bb57890405e5d4322cc9ea83cebb085523ced7be4144dac1e61"
+checksum = "0ca85039a9b469b38336411d6d6ced91f3fc87109a2a27b0c197663f5144dffe"
 dependencies = [
  "cfg-if",
  "js-sys",
@@ -8469,9 +8489,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.100"
+version = "0.2.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fe63fc6d09ed3792bd0897b314f53de8e16568c2b3f7982f468c0bf9bd0b407"
+checksum = "7c3d463ae3eff775b0c45df9da45d68837702ac35af998361e2c84e7c5ec1b0d"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -8479,9 +8499,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.100"
+version = "0.2.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ae87ea40c9f689fc23f209965b6fb8a99ad69aeeb0231408be24920604395de"
+checksum = "7bb4ce89b08211f923caf51d527662b75bdc9c9c7aab40f86dcb9fb85ac552aa"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8492,9 +8512,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.100"
+version = "0.2.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a05d73b933a847d6cccdda8f838a22ff101ad9bf93e33684f39c1f5f0eece3d"
+checksum = "f143854a3b13752c6950862c906306adb27c7e839f7414cec8fea35beab624c1"
 dependencies = [
  "unicode-ident",
 ]
@@ -8514,9 +8534,9 @@ dependencies = [
 
 [[package]]
 name = "web-sys"
-version = "0.3.77"
+version = "0.3.78"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33b6dd2ef9186f1f2072e409e99cd22a975331a6b3591b12c764e0e55c60d5d2"
+checksum = "77e4b637749ff0d92b8fad63aa1f7cff3cbe125fd49c175cd6345e7272638b12"
 dependencies = [
  "js-sys",
  "wasm-bindgen",

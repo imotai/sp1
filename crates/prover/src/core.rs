@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use slop_jagged::JaggedConfig;
 use sp1_core_executor::{ExecutionRecord, Program, HEIGHT_THRESHOLD};
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_hypercube::{
@@ -9,7 +8,7 @@ use sp1_hypercube::{
     },
     Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
 };
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1Field, SP1GlobalContext};
 use static_assertions::const_assert;
 
 use crate::{
@@ -17,7 +16,7 @@ use crate::{
 };
 
 pub struct SP1CoreProver<C: CoreProverComponents> {
-    prover: MachineProver<C>,
+    prover: MachineProver<SP1GlobalContext, C>,
 }
 
 pub const CORE_LOG_BLOWUP: usize = 1;
@@ -27,16 +26,12 @@ pub const CORE_MAX_LOG_ROW_COUNT: usize = 22;
 const_assert!(HEIGHT_THRESHOLD <= (1 << CORE_MAX_LOG_ROW_COUNT));
 
 pub trait CoreProverComponents:
-    MachineProverComponents<
-    Config = CoreSC,
-    F = <CoreSC as JaggedConfig>::F,
-    Air = RiscvAir<<CoreSC as JaggedConfig>::F>,
->
+    MachineProverComponents<SP1GlobalContext, Config = CoreSC, Air = RiscvAir<SP1Field>>
 {
     /// The default verifier for the core prover.
     ///
     /// Thew verifier fixes the parameters of the underlying proof system.
-    fn verifier() -> MachineVerifier<CoreSC, RiscvAir<SP1Field>> {
+    fn verifier() -> MachineVerifier<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>> {
         let core_log_blowup = CORE_LOG_BLOWUP;
         let core_log_stacking_height = CORE_LOG_STACKING_HEIGHT;
         let core_max_log_row_count = CORE_MAX_LOG_ROW_COUNT;
@@ -55,18 +50,14 @@ pub trait CoreProverComponents:
 }
 
 impl<C> CoreProverComponents for C where
-    C: MachineProverComponents<
-        Config = CoreSC,
-        F = <CoreSC as JaggedConfig>::F,
-        Air = RiscvAir<<CoreSC as JaggedConfig>::F>,
-    >
+    C: MachineProverComponents<SP1GlobalContext, Config = CoreSC, Air = RiscvAir<SP1Field>>
 {
 }
 
 impl<C: CoreProverComponents> SP1CoreProver<C> {
     #[inline]
     #[must_use]
-    pub const fn new(prover: MachineProver<C>) -> Self {
+    pub const fn new(prover: MachineProver<SP1GlobalContext, C>) -> Self {
         Self { prover }
     }
 
@@ -77,7 +68,7 @@ impl<C: CoreProverComponents> SP1CoreProver<C> {
         self.prover.num_workers()
     }
 
-    pub fn machine(&self) -> &Machine<C::F, RiscvAir<C::F>> {
+    pub fn machine(&self) -> &Machine<SP1Field, RiscvAir<SP1Field>> {
         self.prover.machine()
     }
 
@@ -86,7 +77,8 @@ impl<C: CoreProverComponents> SP1CoreProver<C> {
     pub async fn setup(
         &self,
         elf: &[u8],
-    ) -> (PreprocessedData<MachineProvingKey<C>>, Arc<Program>, SP1VerifyingKey) {
+    ) -> (PreprocessedData<MachineProvingKey<SP1GlobalContext, C>>, Arc<Program>, SP1VerifyingKey)
+    {
         let program = Program::from(elf).unwrap();
         let (pk, vk) = self.prover.setup(Arc::new(program.clone()), None).await;
         (pk, Arc::new(program), SP1VerifyingKey { vk })
@@ -98,7 +90,7 @@ impl<C: CoreProverComponents> SP1CoreProver<C> {
         &self,
         program: Arc<Program>,
         vk: SP1VerifyingKey,
-    ) -> PreprocessedData<MachineProvingKey<C>> {
+    ) -> PreprocessedData<MachineProvingKey<SP1GlobalContext, C>> {
         let (pk, _) = self.prover.setup(program, Some(vk.vk)).await;
 
         pk
@@ -110,13 +102,13 @@ impl<C: CoreProverComponents> SP1CoreProver<C> {
     #[tracing::instrument(skip_all, name = "prove_core_shard")]
     pub async fn prove_shard(
         &self,
-        pk: Arc<MachineProvingKey<C>>,
+        pk: Arc<MachineProvingKey<SP1GlobalContext, C>>,
         record: ExecutionRecord,
-    ) -> ShardProof<CoreSC> {
+    ) -> ShardProof<SP1GlobalContext, CoreSC> {
         self.prover.prove_shard(pk.clone(), record).await
     }
 
-    pub fn verifier(&self) -> &MachineVerifier<C::Config, RiscvAir<C::F>> {
+    pub fn verifier(&self) -> &MachineVerifier<SP1GlobalContext, C::Config, RiscvAir<SP1Field>> {
         self.prover.verifier()
     }
 
@@ -131,7 +123,7 @@ impl<C: CoreProverComponents> SP1CoreProver<C> {
         program: Arc<Program>,
         vk: Option<SP1VerifyingKey>,
         record: ExecutionRecord,
-    ) -> (MachineVerifyingKey<CoreSC>, ShardProof<CoreSC>) {
+    ) -> (MachineVerifyingKey<SP1GlobalContext, CoreSC>, ShardProof<SP1GlobalContext, CoreSC>) {
         self.prover.setup_and_prove_shard(program, vk.map(|vk| vk.vk), record).await
     }
 
@@ -140,7 +132,7 @@ impl<C: CoreProverComponents> SP1CoreProver<C> {
     pub fn core_shape_from_record(
         &self,
         record: &ExecutionRecord,
-    ) -> Option<CoreProofShape<C::F, C::Air>> {
+    ) -> Option<CoreProofShape<SP1Field, RiscvAir<SP1Field>>> {
         self.prover.shape_from_record(record)
     }
 

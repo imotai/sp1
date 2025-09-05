@@ -8,7 +8,7 @@ use futures::future::OptionFuture;
 use itertools::Itertools;
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::{Backend, CanCopyFromRef, CanCopyIntoRef, CpuBackend, ToHost};
-use slop_challenger::FieldChallenger;
+use slop_challenger::{FieldChallenger, IopCtx};
 use slop_multilinear::{
     Mle, MleBaseBackend, MleEvaluationBackend, MultilinearPcsChallenger, PartialLagrangeBackend,
     Point, PointBackend,
@@ -24,31 +24,24 @@ use super::{
 };
 
 /// TODO
-pub trait LogUpGkrProver: 'static + Send + Sync {
+pub trait LogUpGkrProver<GC: IopCtx>: 'static + Send + Sync {
     /// TODO
-    type F: Field;
-    /// TODO
-    type EF: ExtensionField<Self::F>;
-    /// TODO
-    type A: MachineAir<Self::F>;
+    type A: MachineAir<GC::F>;
     /// TODO
     type B: Backend;
-
-    /// TODO
-    type Challenger: FieldChallenger<Self::F>;
 
     /// TODO
     #[allow(clippy::too_many_arguments)]
     fn prove_logup_gkr(
         &self,
-        chips: &BTreeSet<Chip<Self::F, Self::A>>,
-        preprocessed_traces: Traces<Self::F, Self::B>,
-        traces: Traces<Self::F, Self::B>,
-        public_values: Vec<Self::F>,
-        alpha: Self::EF,
-        beta_seed: Point<Self::EF>,
-        challenger: &mut Self::Challenger,
-    ) -> impl Future<Output = LogupGkrProof<Self::EF>> + Send;
+        chips: &BTreeSet<Chip<GC::F, Self::A>>,
+        preprocessed_traces: Traces<GC::F, Self::B>,
+        traces: Traces<GC::F, Self::B>,
+        public_values: Vec<GC::F>,
+        alpha: GC::EF,
+        beta_seed: Point<GC::EF>,
+        challenger: &mut GC::Challenger,
+    ) -> impl Future<Output = LogupGkrProof<GC::EF>> + Send;
 }
 
 /// TODO
@@ -70,25 +63,19 @@ pub trait LogUpGkrRoundProver<F: Field, EF: ExtensionField<F>, Challenger, B: Ba
 }
 
 /// TODO
-pub trait LogUpGkrProverComponents: 'static + Send + Sync {
+pub trait LogUpGkrProverComponents<GC: IopCtx>: 'static + Send + Sync {
     /// TODO
-    type F: Field;
+    type A: MachineAir<GC::F>;
     /// TODO
-    type EF: ExtensionField<Self::F>;
-    /// TODO
-    type A: MachineAir<Self::F>;
-    /// TODO
-    type B: MleBaseBackend<Self::F>
-        + MleBaseBackend<Self::EF>
-        + MleEvaluationBackend<Self::F, Self::EF>
-        + MleEvaluationBackend<Self::EF, Self::EF>
-        + MleEvaluationBackend<Self::F, Self::F>
-        + PartialLagrangeBackend<Self::EF>
-        + PointBackend<Self::EF>
-        + AddAssignBackend<Self::EF>
-        + CanCopyIntoRef<Mle<Self::EF, Self::B>, CpuBackend, Output = Mle<Self::EF>>;
-    /// TODO
-    type Challenger: FieldChallenger<Self::F> + 'static + Send + Sync;
+    type B: MleBaseBackend<GC::F>
+        + MleBaseBackend<GC::EF>
+        + MleEvaluationBackend<GC::F, GC::EF>
+        + MleEvaluationBackend<GC::EF, GC::EF>
+        + MleEvaluationBackend<GC::F, GC::F>
+        + PartialLagrangeBackend<GC::EF>
+        + PointBackend<GC::EF>
+        + AddAssignBackend<GC::EF>
+        + CanCopyIntoRef<Mle<GC::EF, Self::B>, CpuBackend, Output = Mle<GC::EF>>;
 
     /// TODO
     type CircuitLayer: 'static + Send + Sync;
@@ -97,8 +84,8 @@ pub trait LogUpGkrProverComponents: 'static + Send + Sync {
 
     /// TODO
     type TraceGenerator: LogUpGkrTraceGenerator<
-        Self::F,
-        Self::EF,
+        GC::F,
+        GC::EF,
         Self::A,
         Self::B,
         Circuit = Self::Circuit,
@@ -106,16 +93,16 @@ pub trait LogUpGkrProverComponents: 'static + Send + Sync {
 
     /// TODO
     type RoundProver: LogUpGkrRoundProver<
-        Self::F,
-        Self::EF,
-        Self::Challenger,
+        GC::F,
+        GC::EF,
+        GC::Challenger,
         Self::B,
         CircuitLayer = Self::CircuitLayer,
     >;
 }
 
 /// TODO
-pub struct GkrProverImpl<GkrComponents: LogUpGkrProverComponents> {
+pub struct GkrProverImpl<GC: IopCtx, GkrComponents: LogUpGkrProverComponents<GC>> {
     /// TODO
     trace_generator: GkrComponents::TraceGenerator,
     /// TODO
@@ -123,7 +110,7 @@ pub struct GkrProverImpl<GkrComponents: LogUpGkrProverComponents> {
 }
 
 /// TODO
-impl<GkrComponents: LogUpGkrProverComponents> GkrProverImpl<GkrComponents> {
+impl<GC: IopCtx, GkrComponents: LogUpGkrProverComponents<GC>> GkrProverImpl<GC, GkrComponents> {
     /// TODO
     pub fn new(
         trace_generator: GkrComponents::TraceGenerator,
@@ -135,12 +122,12 @@ impl<GkrComponents: LogUpGkrProverComponents> GkrProverImpl<GkrComponents> {
     /// TODO
     pub async fn prove_gkr_circuit(
         &self,
-        numerator_value: GkrComponents::EF,
-        denominator_value: GkrComponents::EF,
-        eval_point: Point<GkrComponents::EF>,
+        numerator_value: GC::EF,
+        denominator_value: GC::EF,
+        eval_point: Point<GC::EF>,
         mut circuit: GkrComponents::Circuit,
-        challenger: &mut GkrComponents::Challenger,
-    ) -> (Point<GkrComponents::EF>, Vec<LogupGkrRoundProof<GkrComponents::EF>>) {
+        challenger: &mut GC::Challenger,
+    ) -> (Point<GC::EF>, Vec<LogupGkrRoundProof<GC::EF>>) {
         let mut round_proofs = Vec::new();
         // Follow the GKR protocol layer by layer.
         let mut numerator_eval = numerator_value;
@@ -159,7 +146,7 @@ impl<GkrComponents: LogUpGkrProverComponents> GkrProverImpl<GkrComponents> {
             // Get the evaluation point for the claims of the next round.
             eval_point = round_proof.sumcheck_proof.point_and_eval.0.clone();
             // Sample the last coordinate.
-            let last_coordinate = challenger.sample_ext_element::<GkrComponents::EF>();
+            let last_coordinate = challenger.sample_ext_element::<GC::EF>();
             // Compute the evaluation of the numerator and denominator at the last coordinate.
             numerator_eval = round_proof.numerator_0
                 + (round_proof.numerator_1 - round_proof.numerator_0) * last_coordinate;
@@ -173,24 +160,22 @@ impl<GkrComponents: LogUpGkrProverComponents> GkrProverImpl<GkrComponents> {
     }
 }
 
-impl<GkrComponents: LogUpGkrProverComponents> LogUpGkrProver for GkrProverImpl<GkrComponents> {
-    type F = GkrComponents::F;
-    type EF = GkrComponents::EF;
+impl<GC: IopCtx, GkrComponents: LogUpGkrProverComponents<GC>> LogUpGkrProver<GC>
+    for GkrProverImpl<GC, GkrComponents>
+{
     type A = GkrComponents::A;
     type B = GkrComponents::B;
 
-    type Challenger = GkrComponents::Challenger;
-
     async fn prove_logup_gkr(
         &self,
-        chips: &BTreeSet<Chip<Self::F, Self::A>>,
-        preprocessed_traces: Traces<Self::F, Self::B>,
-        traces: Traces<Self::F, Self::B>,
-        public_values: Vec<Self::F>,
-        alpha: Self::EF,
-        beta_seed: Point<Self::EF>,
-        challenger: &mut Self::Challenger,
-    ) -> LogupGkrProof<Self::EF> {
+        chips: &BTreeSet<Chip<GC::F, Self::A>>,
+        preprocessed_traces: Traces<GC::F, Self::B>,
+        traces: Traces<GC::F, Self::B>,
+        public_values: Vec<GC::F>,
+        alpha: GC::EF,
+        beta_seed: Point<GC::EF>,
+        challenger: &mut GC::Challenger,
+    ) -> LogupGkrProof<GC::EF> {
         let num_interactions =
             chips.iter().map(|chip| chip.sends().len() + chip.receives().len()).sum::<usize>();
         let num_interaction_variables = num_interactions.next_power_of_two().ilog2();
@@ -228,7 +213,7 @@ impl<GkrComponents: LogUpGkrProverComponents> LogUpGkrProver for GkrProverImpl<G
         // TODO: instead calculate from number of interactions.
         let initial_number_of_variables = numerator.num_variables();
         assert_eq!(initial_number_of_variables, num_interaction_variables + 1);
-        let first_eval_point = challenger.sample_point::<Self::EF>(initial_number_of_variables);
+        let first_eval_point = challenger.sample_point::<GC::EF>(initial_number_of_variables);
 
         // Follow the GKR protocol layer by layer.
         let first_point = numerator.backend().copy_to(&first_eval_point).await.unwrap();

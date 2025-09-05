@@ -40,7 +40,7 @@ pub fn koalabear_bytes_to_bn254(bytes: &[SP1Field; 32]) -> Bn254Fr {
 #[allow(dead_code)]
 pub fn felts_to_bn254_var<C: Config>(
     builder: &mut Builder<C>,
-    digest: &[Felt<C::F>; DIGEST_SIZE],
+    digest: &[Felt<SP1Field>; DIGEST_SIZE],
 ) -> Var<C::N> {
     let var_2_31: Var<_> = builder.constant(C::N::from_canonical_u32(1 << 31));
     let result = builder.constant(C::N::zero());
@@ -58,7 +58,7 @@ pub fn felts_to_bn254_var<C: Config>(
 #[allow(dead_code)]
 pub fn felt_bytes_to_bn254_var<C: Config>(
     builder: &mut Builder<C>,
-    bytes: &[Felt<C::F>; 32],
+    bytes: &[Felt<SP1Field>; 32],
 ) -> Var<C::N> {
     let var_256: Var<_> = builder.constant(C::N::from_canonical_u32(256));
     let zero_var: Var<_> = builder.constant(C::N::zero());

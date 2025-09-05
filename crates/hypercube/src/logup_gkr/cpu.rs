@@ -7,7 +7,7 @@ use std::{
 use crate::{air::InteractionScope, debug_interactions_with_all_chips, InteractionKind};
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::CpuBackend;
-use slop_challenger::FieldChallenger;
+use slop_challenger::{FieldChallenger, IopCtx};
 use slop_multilinear::{Mle, PaddedMle, Point};
 use slop_sumcheck::reduce_sumcheck_to_evaluation;
 
@@ -270,21 +270,15 @@ where
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LogupGkrCpuProverComponents<F, EF, A, Challenger>(PhantomData<(F, EF, A, Challenger)>);
 
-impl<F, EF, A, Challenger> LogUpGkrProverComponents
-    for LogupGkrCpuProverComponents<F, EF, A, Challenger>
+impl<GC: IopCtx, A> LogUpGkrProverComponents<GC>
+    for LogupGkrCpuProverComponents<GC::F, GC::EF, A, GC::Challenger>
 where
-    F: Field,
-    EF: ExtensionField<F>,
-    A: MachineAir<F>,
-    Challenger: FieldChallenger<F> + 'static + Send + Sync,
+    A: MachineAir<GC::F>,
 {
-    type F = F;
-    type EF = EF;
     type A = A;
     type B = CpuBackend;
-    type Challenger = Challenger;
-    type CircuitLayer = GkrCircuitLayer<F, EF>;
-    type Circuit = LogupGkrCpuCircuit<F, EF>;
-    type TraceGenerator = LogupGkrCpuTraceGenerator<F, EF, A>;
+    type CircuitLayer = GkrCircuitLayer<GC::F, GC::EF>;
+    type Circuit = LogupGkrCpuCircuit<GC::F, GC::EF>;
+    type TraceGenerator = LogupGkrCpuTraceGenerator<GC::F, GC::EF, A>;
     type RoundProver = LogupGkrCpuRoundProver;
 }

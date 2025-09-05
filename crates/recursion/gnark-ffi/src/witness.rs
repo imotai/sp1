@@ -2,6 +2,7 @@ use std::{fs::File, io::Write};
 
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractExtensionField, AbstractField, PrimeField};
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::ir::{Config, Witness};
 
 /// A witness that can be used to initialize values for witness generation inside Gnark.
@@ -20,8 +21,8 @@ impl GnarkWitness {
     /// Creates a new witness from a given [Witness].
     pub fn new<C: Config>(mut witness: Witness<C>) -> Self {
         witness.vars.push(C::N::from_canonical_usize(999));
-        witness.felts.push(C::F::from_canonical_usize(999));
-        witness.exts.push(C::EF::from_canonical_usize(999));
+        witness.felts.push(SP1Field::from_canonical_usize(999));
+        witness.exts.push(SP1ExtensionField::from_canonical_usize(999));
         GnarkWitness {
             vars: witness.vars.into_iter().map(|w| w.as_canonical_biguint().to_string()).collect(),
             felts: witness
@@ -33,7 +34,10 @@ impl GnarkWitness {
                 .exts
                 .into_iter()
                 .map(|w| {
-                    w.as_base_slice().iter().map(|x| x.as_canonical_biguint().to_string()).collect()
+                    <SP1ExtensionField as AbstractExtensionField<SP1Field>>::as_base_slice(&w)
+                        .iter()
+                        .map(|x| x.as_canonical_biguint().to_string())
+                        .collect()
                 })
                 .collect(),
             vkey_hash: witness.vkey_hash.as_canonical_biguint().to_string(),

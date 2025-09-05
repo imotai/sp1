@@ -1,14 +1,14 @@
 use slop_algebra::AbstractField;
 use slop_alloc::CpuBackend;
-use slop_basefold::{BasefoldConfig, BasefoldProof};
-use slop_commit::{Rounds, TensorCsOpening};
+use slop_basefold::BasefoldProof;
+use slop_commit::Rounds;
 use slop_jagged::{JaggedLittlePolynomialVerifierParams, JaggedPcsProof, JaggedSumcheckEvalProof};
-use slop_merkle_tree::MerkleTreeTcsProof;
+use slop_merkle_tree::{MerkleTreeOpening, MerkleTreeTcsProof};
 use slop_multilinear::{Evaluations, Point};
 use slop_stacked::StackedPcsProof;
 use slop_tensor::Tensor;
 use sp1_hypercube::{log2_ceil_usize, SP1BasefoldConfig, SP1CoreJaggedConfig};
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1Field, SP1GlobalContext};
 use sp1_recursion_executor::DIGEST_SIZE;
 
 use crate::machine::{InnerChallenge, InnerVal};
@@ -23,7 +23,7 @@ pub fn dummy_query_proof(
     max_height: usize,
     log_blowup: usize,
     num_queries: usize,
-) -> Vec<TensorCsOpening<<SP1BasefoldConfig as BasefoldConfig>::Tcs>> {
+) -> Vec<MerkleTreeOpening<SP1GlobalContext>> {
     // The outer Vec is an iteration over the commit-phase rounds, of which there should be
     // `log_max_height-1` (perhaps there's an off-by-one error here). The TensorCsOpening is
     // laid out so that the tensor shape is [num_queries, 8 (degree of extension field*folding
@@ -36,7 +36,7 @@ pub fn dummy_query_proof(
                 CpuBackend,
             );
 
-            TensorCsOpening { values: openings, proof: MerkleTreeTcsProof { paths: proof } }
+            MerkleTreeOpening { values: openings, proof: MerkleTreeTcsProof { paths: proof } }
         })
         .collect::<Vec<_>>()
 }
@@ -53,25 +53,26 @@ pub fn dummy_pcs_proof(
     total_machine_cols: usize,
     max_log_row_count: usize,
     added_cols: &[usize],
-) -> JaggedPcsProof<SP1CoreJaggedConfig> {
+) -> JaggedPcsProof<SP1GlobalContext, SP1CoreJaggedConfig> {
     let max_pcs_height = log_stacking_height;
     let dummy_component_polys = log_stacking_height_multiples.iter().map(|&x| {
         let proof = Tensor::<[SP1Field; DIGEST_SIZE], _>::zeros_in(
             [fri_queries, max_pcs_height + log_blowup],
             CpuBackend,
         );
-        TensorCsOpening {
+        MerkleTreeOpening::<SP1GlobalContext> {
             values: Tensor::<SP1Field, _>::zeros_in([fri_queries, x], CpuBackend),
             proof: MerkleTreeTcsProof { paths: proof },
         }
     });
-    let basefold_proof = BasefoldProof::<SP1BasefoldConfig> {
+    let basefold_proof = BasefoldProof::<SP1GlobalContext, SP1BasefoldConfig> {
         univariate_messages: vec![[InnerChallenge::zero(); 2]; max_pcs_height],
         fri_commitments: vec![dummy_hash(); max_pcs_height],
         final_poly: InnerChallenge::zero(),
         pow_witness: InnerVal::zero(),
         component_polynomials_query_openings: dummy_component_polys.collect(),
         query_phase_openings: dummy_query_proof(max_pcs_height, log_blowup, fri_queries),
+        marker: std::marker::PhantomData,
     };
 
     let batch_evaluations: Rounds<Evaluations<InnerChallenge, CpuBackend>> = Rounds {
@@ -127,11 +128,12 @@ mod tests {
     use itertools::Itertools;
     use rand::{thread_rng, Rng};
     use slop_basefold::BasefoldProof;
+    use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
     use std::sync::Arc;
 
     use slop_challenger::CanObserve;
     use slop_commit::Rounds;
-    use slop_jagged::{JaggedConfig, JaggedPcsVerifier, JaggedProver};
+    use slop_jagged::{JaggedPcsVerifier, JaggedProver};
     use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
 
     use sp1_hypercube::{SP1CoreJaggedConfig, SP1CpuJaggedProverComponents};
@@ -148,9 +150,9 @@ mod tests {
         let max_log_row_count = 9;
 
         type JC = SP1CoreJaggedConfig;
-        type Prover = JaggedProver<SP1CpuJaggedProverComponents>;
-        type F = <JC as JaggedConfig>::F;
-        type EF = <JC as JaggedConfig>::EF;
+        type Prover = JaggedProver<SP1GlobalContext, SP1CpuJaggedProverComponents>;
+        type F = SP1Field;
+        type EF = SP1ExtensionField;
 
         let row_counts = row_counts_rounds.clone().into_iter().collect::<Rounds<Vec<usize>>>();
         let column_counts =
@@ -179,7 +181,7 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let jagged_verifier = JaggedPcsVerifier::<JC>::new(
+        let jagged_verifier = JaggedPcsVerifier::<_, JC>::new(
             log_blowup,
             log_stacking_height,
             max_log_row_count as usize,

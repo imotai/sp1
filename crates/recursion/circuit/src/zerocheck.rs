@@ -11,7 +11,8 @@ use crate::{
 };
 use itertools::Itertools;
 use slop_air::{Air, BaseAir};
-use slop_algebra::{extension::BinomialExtensionField, AbstractField};
+use slop_algebra::AbstractField;
+use slop_challenger::IopCtx;
 use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{full_geq, Mle, Point};
 use slop_sumcheck::PartialSumcheckProof;
@@ -19,33 +20,33 @@ use sp1_hypercube::{
     air::MachineAir, Chip, ChipOpenedValues, GenericVerifierConstraintFolder, LogUpEvaluations,
     OpeningShapeError, ShardOpenedValues,
 };
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::{
-    ir::{Config, Felt},
+    ir::Felt,
     prelude::{Builder, Ext, SymbolicExt},
 };
 
-pub type RecursiveVerifierConstraintFolder<'a, C> = GenericVerifierConstraintFolder<
+pub type RecursiveVerifierConstraintFolder<'a> = GenericVerifierConstraintFolder<
     'a,
-    <C as Config>::F,
-    <C as Config>::EF,
-    Felt<<C as Config>::F>,
-    Ext<<C as Config>::F, <C as Config>::EF>,
-    SymbolicExt<<C as Config>::F, <C as Config>::EF>,
+    SP1Field,
+    SP1ExtensionField,
+    Felt<SP1Field>,
+    Ext<SP1Field, SP1ExtensionField>,
+    SymbolicExt<SP1Field, SP1ExtensionField>,
 >;
 
 #[allow(clippy::type_complexity)]
-pub fn eval_constraints<C: CircuitConfig<F = SP1Field>, SC: SP1FieldConfigVariable<C>, A>(
+pub fn eval_constraints<C: CircuitConfig, SC: SP1FieldConfigVariable<C>, A>(
     builder: &mut Builder<C>,
-    chip: &Chip<C::F, A>,
-    opening: &ChipOpenedValues<Felt<C::F>, Ext<C::F, C::EF>>,
-    alpha: Ext<C::F, C::EF>,
-    public_values: &[Felt<C::F>],
-) -> Ext<C::F, C::EF>
+    chip: &Chip<SP1Field, A>,
+    opening: &ChipOpenedValues<Felt<SP1Field>, Ext<SP1Field, SP1ExtensionField>>,
+    alpha: Ext<SP1Field, SP1ExtensionField>,
+    public_values: &[Felt<SP1Field>],
+) -> Ext<SP1Field, SP1ExtensionField>
 where
-    A: MachineAir<C::F> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
+    A: MachineAir<SP1Field> + for<'a> Air<RecursiveVerifierConstraintFolder<'a>>,
 {
-    let mut folder = RecursiveVerifierConstraintFolder::<C> {
+    let mut folder = RecursiveVerifierConstraintFolder {
         preprocessed: RowMajorMatrixView::new_row(&opening.preprocessed.local),
         main: RowMajorMatrixView::new_row(&opening.main.local),
         public_values,
@@ -61,18 +62,18 @@ where
 /// Compute the padded row adjustment for a chip.
 pub fn compute_padded_row_adjustment<C: CircuitConfig, A>(
     builder: &mut Builder<C>,
-    chip: &Chip<C::F, A>,
-    alpha: Ext<C::F, C::EF>,
-    public_values: &[Felt<C::F>],
-) -> Ext<C::F, C::EF>
+    chip: &Chip<SP1Field, A>,
+    alpha: Ext<SP1Field, SP1ExtensionField>,
+    public_values: &[Felt<SP1Field>],
+) -> Ext<SP1Field, SP1ExtensionField>
 where
-    A: MachineAir<C::F> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
+    A: MachineAir<SP1Field> + for<'a> Air<RecursiveVerifierConstraintFolder<'a>>,
 {
-    let zero = builder.constant(C::EF::zero());
+    let zero = builder.constant(SP1ExtensionField::zero());
     let dummy_preprocessed_trace = vec![zero; chip.preprocessed_width()];
     let dummy_main_trace = vec![zero; chip.width()];
 
-    let mut folder = RecursiveVerifierConstraintFolder::<C> {
+    let mut folder = RecursiveVerifierConstraintFolder {
         preprocessed: RowMajorMatrixView::new_row(&dummy_preprocessed_trace),
         main: RowMajorMatrixView::new_row(&dummy_main_trace),
         alpha,
@@ -87,11 +88,11 @@ where
 
 #[allow(clippy::type_complexity)]
 pub fn verify_opening_shape<C: CircuitConfig, A>(
-    chip: &Chip<C::F, A>,
-    opening: &ChipOpenedValues<Felt<C::F>, Ext<C::F, C::EF>>,
+    chip: &Chip<SP1Field, A>,
+    opening: &ChipOpenedValues<Felt<SP1Field>, Ext<SP1Field, SP1ExtensionField>>,
 ) -> Result<(), OpeningShapeError>
 where
-    A: MachineAir<C::F> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
+    A: MachineAir<SP1Field> + for<'a> Air<RecursiveVerifierConstraintFolder<'a>>,
 {
     // Verify that the preprocessed width matches the expected value for the chip.
     if opening.preprocessed.local.len() != chip.preprocessed_width() {
@@ -109,11 +110,12 @@ where
     Ok(())
 }
 
-impl<C, SC, A, JC> RecursiveShardVerifier<A, SC, C, JC>
+impl<GC, C, SC, A, JC> RecursiveShardVerifier<GC, A, SC, C, JC>
 where
-    C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
+    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
+    C: CircuitConfig,
     SC: SP1FieldConfigVariable<C>,
-    A: MachineAir<C::F>,
+    A: MachineAir<SP1Field>,
     JC: RecursiveJaggedConfig<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
     >,
@@ -123,28 +125,29 @@ where
     pub fn verify_zerocheck(
         &self,
         builder: &mut Builder<C>,
-        shard_chips: &BTreeSet<Chip<C::F, A>>,
-        opened_values: &ShardOpenedValues<Felt<C::F>, Ext<C::F, C::EF>>,
-        gkr_evaluations: &LogUpEvaluations<Ext<C::F, C::EF>>,
-        zerocheck_proof: &PartialSumcheckProof<Ext<C::F, C::EF>>,
-        public_values: &[Felt<C::F>],
+        shard_chips: &BTreeSet<Chip<SP1Field, A>>,
+        opened_values: &ShardOpenedValues<Felt<SP1Field>, Ext<SP1Field, SP1ExtensionField>>,
+        gkr_evaluations: &LogUpEvaluations<Ext<SP1Field, SP1ExtensionField>>,
+        zerocheck_proof: &PartialSumcheckProof<Ext<SP1Field, SP1ExtensionField>>,
+        public_values: &[Felt<SP1Field>],
         challenger: &mut SC::FriChallengerVariable,
     ) where
-        A: for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
+        A: for<'a> Air<RecursiveVerifierConstraintFolder<'a>>,
     {
-        let zero: Ext<C::F, C::EF> = builder.constant(C::EF::zero());
-        let one: Ext<C::F, C::EF> = builder.constant(C::EF::one());
-        let mut rlc_eval: Ext<C::F, C::EF> = zero;
+        let zero: Ext<SP1Field, SP1ExtensionField> = builder.constant(SP1ExtensionField::zero());
+        let one: Ext<SP1Field, SP1ExtensionField> = builder.constant(SP1ExtensionField::one());
+        let mut rlc_eval: Ext<SP1Field, SP1ExtensionField> = zero;
 
         let alpha = challenger.sample_ext(builder);
-        let gkr_batch_open_challenge: SymbolicExt<C::F, C::EF> =
+        let gkr_batch_open_challenge: SymbolicExt<SP1Field, SP1ExtensionField> =
             challenger.sample_ext(builder).into();
         let lambda = challenger.sample_ext(builder);
 
         // Get the value of eq(zeta, sumcheck's reduced point).
-        let point_symbolic = <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(
-            &zerocheck_proof.point_and_eval.0,
-        );
+        let point_symbolic =
+            <Point<Ext<SP1Field, SP1ExtensionField>> as IntoSymbolic<C>>::as_symbolic(
+                &zerocheck_proof.point_and_eval.0,
+            );
 
         let gkr_evaluations_point = IntoSymbolic::<C>::as_symbolic(&gkr_evaluations.point);
 
@@ -173,7 +176,7 @@ where
 
             let mut proof_point_extended = point_symbolic.clone();
             proof_point_extended.add_dimension(zero.into());
-            let degree_symbolic_ext: Point<SymbolicExt<C::F, C::EF>> =
+            let degree_symbolic_ext: Point<SymbolicExt<SP1Field, SP1ExtensionField>> =
                 openings.degree.iter().map(|x| SymbolicExt::from(*x)).collect::<Point<_>>();
             degree_symbolic_ext.iter().enumerate().for_each(|(i, x)| {
                 builder.assert_ext_eq(*x * (*x - one), zero);
@@ -203,7 +206,7 @@ where
                         .copied(),
                 )
                 .map(|(opening, power)| opening * power)
-                .sum::<SymbolicExt<C::F, C::EF>>();
+                .sum::<SymbolicExt<SP1Field, SP1ExtensionField>>();
 
             rlc_eval = builder
                 .eval(rlc_eval * lambda + zerocheck_eq_val * (constraint_eval + openings_batch));
@@ -229,11 +232,11 @@ where
                     )
                     .zip(gkr_batch_open_challenge_powers.iter().copied())
                     .map(|(opening, power)| opening * power)
-                    .sum::<SymbolicExt<C::F, C::EF>>()
+                    .sum::<SymbolicExt<SP1Field, SP1ExtensionField>>()
             })
             .collect::<Vec<_>>();
 
-        let zerocheck_sum_modification: SymbolicExt<C::F, C::EF> =
+        let zerocheck_sum_modification: SymbolicExt<SP1Field, SP1ExtensionField> =
             zerocheck_sum_modifications_from_gkr
                 .iter()
                 .fold(zero.into(), |acc, modification| lambda * acc + *modification);

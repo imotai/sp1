@@ -18,6 +18,7 @@ sp1-hypercube = { workspace = true }
 # slop (replaced p3 dependencies)
 slop-algebra = { workspace = true }
 slop-maybe-rayon = { workspace = true }
+slop-challenger = { workspace = true }
 slop-air = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-koala-bear = { workspace = true }

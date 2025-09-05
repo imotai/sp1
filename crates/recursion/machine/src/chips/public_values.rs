@@ -225,10 +225,11 @@ mod tests {
     use rand::{rngs::StdRng, Rng, SeedableRng};
     use slop_algebra::AbstractField;
 
-    use slop_jagged::JaggedConfig;
+    use slop_challenger::IopCtx;
     use slop_matrix::Matrix;
     use sp1_core_machine::utils::setup_logger;
-    use sp1_hypercube::{air::MachineAir, SP1CoreJaggedConfig};
+    use sp1_hypercube::air::MachineAir;
+    use sp1_primitives::SP1GlobalContext;
     use sp1_recursion_executor::{
         instruction as instr, ExecutionRecord, MemAccessKind, RecursionPublicValues, DIGEST_SIZE,
         NUM_PV_ELMS_TO_HASH, RECURSIVE_PROOF_NUM_PV_ELTS,
@@ -238,7 +239,7 @@ mod tests {
     #[tokio::test]
     async fn prove_koalabear_circuit_public_values() {
         setup_logger();
-        type F = <SP1CoreJaggedConfig as JaggedConfig>::F;
+        type F = <SP1GlobalContext as IopCtx>::F;
 
         let mut rng = StdRng::seed_from_u64(0xDEADBEEF);
         let mut random_felt = move || -> F { F::from_canonical_u32(rng.gen_range(0..1 << 16)) };

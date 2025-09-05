@@ -1,5 +1,5 @@
 use sp1_core_machine::{io::SP1Stdin, recursion::SP1RecursionProof};
-use sp1_primitives::Elf;
+use sp1_primitives::{Elf, SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_prover::{InnerSC, OuterSC, SP1CoreProof, SP1VerifyingKey};
 use std::{
     collections::HashMap,
@@ -62,8 +62,8 @@ impl CudaClient {
         &self,
         vk: &SP1VerifyingKey,
         proof: SP1CoreProof,
-        deferred: Vec<SP1RecursionProof<InnerSC>>,
-    ) -> Result<SP1RecursionProof<InnerSC>, CudaClientError> {
+        deferred: Vec<SP1RecursionProof<SP1GlobalContext, InnerSC>>,
+    ) -> Result<SP1RecursionProof<SP1GlobalContext, InnerSC>, CudaClientError> {
         let request = Request::Compress { vk: vk.clone(), proof, deferred };
         let response = self.send_and_recv(request).await?.into_result()?;
 
@@ -76,8 +76,8 @@ impl CudaClient {
     /// Shrink a compress proof.
     pub(crate) async fn shrink(
         &self,
-        proof: SP1RecursionProof<InnerSC>,
-    ) -> Result<SP1RecursionProof<InnerSC>, CudaClientError> {
+        proof: SP1RecursionProof<SP1GlobalContext, InnerSC>,
+    ) -> Result<SP1RecursionProof<SP1GlobalContext, InnerSC>, CudaClientError> {
         let request = Request::Shrink { proof };
         let response = self.send_and_recv(request).await?.into_result()?;
 
@@ -90,8 +90,8 @@ impl CudaClient {
     /// Wrap a shrink proof.
     pub(crate) async fn wrap(
         &self,
-        proof: SP1RecursionProof<InnerSC>,
-    ) -> Result<SP1RecursionProof<OuterSC>, CudaClientError> {
+        proof: SP1RecursionProof<SP1GlobalContext, InnerSC>,
+    ) -> Result<SP1RecursionProof<SP1OuterGlobalContext, OuterSC>, CudaClientError> {
         let request = Request::Wrap { proof };
         let response = self.send_and_recv(request).await?.into_result()?;
 

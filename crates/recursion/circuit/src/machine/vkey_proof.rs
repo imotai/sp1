@@ -14,14 +14,13 @@ use crate::{
     hash::FieldHasher,
     jagged::RecursiveJaggedConfig,
     zerocheck::RecursiveVerifierConstraintFolder,
-    CircuitConfig, FieldHasherVariable, SP1FieldConfigVariable, EF,
+    CircuitConfig, FieldHasherVariable, SP1FieldConfigVariable,
 };
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
-use slop_algebra::{extension::BinomialExtensionField, AbstractField};
-use slop_jagged::JaggedConfig;
+use slop_algebra::AbstractField;
 use sp1_hypercube::{air::MachineAir, MachineConfig, SP1CoreJaggedConfig};
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
 use sp1_recursion_compiler::ir::{Builder, Felt};
 use sp1_recursion_executor::DIGEST_SIZE;
 
@@ -39,7 +38,7 @@ pub struct MerkleProofVariable<C: CircuitConfig, HV: FieldHasherVariable<C>> {
 
 /// Witness layout for the compress stage verifier.
 pub struct SP1MerkleProofWitnessVariable<
-    C: CircuitConfig<F = SP1Field>,
+    C: CircuitConfig,
     SC: FieldHasherVariable<C> + SP1FieldConfigVariable<C>,
 > {
     /// The shard proofs to verify.
@@ -63,7 +62,7 @@ pub struct SP1MerkleProofWitnessValues<SC: FieldHasher<SP1Field>> {
 impl<C, SC> SP1MerkleProofVerifier<C, SC>
 where
     SC: SP1FieldConfigVariable<C>,
-    C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
+    C: CircuitConfig,
 {
     /// Verify (via Merkle tree) that the vkey digests of a proof belong to a specified set
     /// (encoded the Merkle tree proofs in input).
@@ -94,7 +93,7 @@ pub struct SP1CompressWithVKeyVerifier<C, SC, A, JC> {
 
 /// Witness layout for the verifier of the proof shape phase of the compress stage.
 pub struct SP1CompressWithVKeyWitnessVariable<
-    C: CircuitConfig<F = SP1Field, EF = EF>,
+    C: CircuitConfig,
     SC: SP1FieldConfigVariable<C> + Send + Sync,
     JC: RecursiveJaggedConfig<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
@@ -105,8 +104,10 @@ pub struct SP1CompressWithVKeyWitnessVariable<
 }
 
 /// An input layout for the verifier of the proof shape phase of the compress stage.
-pub struct SP1CompressWithVKeyWitnessValues<SC: MachineConfig + FieldHasher<SP1Field>> {
-    pub compress_val: SP1ShapedWitnessValues<SC>,
+pub struct SP1CompressWithVKeyWitnessValues<
+    SC: MachineConfig<SP1GlobalContext> + FieldHasher<SP1Field>,
+> {
+    pub compress_val: SP1ShapedWitnessValues<SP1GlobalContext, SC>,
     pub merkle_val: SP1MerkleProofWitnessValues<SC>,
 }
 
@@ -117,11 +118,11 @@ where
         FriChallengerVariable = DuplexChallengerVariable<C>,
         DigestVariable = [Felt<SP1Field>; DIGEST_SIZE],
     >,
-    C: CircuitConfig<F = SP1Field, EF = <SC as JaggedConfig>::EF, Bit = Felt<SP1Field>>,
-    A: MachineAir<InnerVal> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
+    C: CircuitConfig<Bit = Felt<SP1Field>>,
+    A: MachineAir<InnerVal> + for<'a> Air<RecursiveVerifierConstraintFolder<'a>>,
     JC: RecursiveJaggedConfig<
         F = SP1Field,
-        EF = C::EF,
+        EF = SP1ExtensionField,
         Circuit = C,
         Commitment = SC::DigestVariable,
         Challenger = SC::FriChallengerVariable,
@@ -132,7 +133,7 @@ where
     /// Verify the proof shape phase of the compress stage.
     pub fn verify(
         builder: &mut Builder<C>,
-        machine: &RecursiveShardVerifier<A, SC, C, JC>,
+        machine: &RecursiveShardVerifier<SP1GlobalContext, A, SC, C, JC>,
         input: SP1CompressWithVKeyWitnessVariable<C, SC, JC>,
         value_assertions: bool,
         kind: PublicValuesOutputDigest,

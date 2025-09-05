@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
+use slop_challenger::IopCtx;
 use slop_jagged::JaggedPcsProof;
 use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::Point;
@@ -18,36 +19,36 @@ pub const PROOF_MAX_NUM_PVS: usize = 181;
 /// Data required for testing.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(
-    serialize = "C: MachineConfig, C::Challenger: Serialize",
-    deserialize = "C: MachineConfig, C::Challenger: Deserialize<'de>"
+    serialize = "GC: IopCtx, GC::Challenger: Serialize",
+    deserialize = "GC: IopCtx, GC::Challenger: Deserialize<'de>"
 ))]
 // #[cfg(any(test, feature = "test-proof"))]
-pub struct TestingData<C: MachineConfig> {
+pub struct TestingData<GC: IopCtx> {
     /// The gkr points.
-    pub gkr_points: Vec<Point<C::EF>>,
+    pub gkr_points: Vec<Point<GC::EF>>,
     /// The challenger state just before the zerocheck.
-    pub challenger_state: C::Challenger,
+    pub challenger_state: GC::Challenger,
 }
 
 /// A proof for a shard.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(
-    serialize = "C: MachineConfig, C::Challenger: Serialize",
-    deserialize = "C: MachineConfig, C::Challenger: Deserialize<'de>"
+    serialize = "C: MachineConfig<GC>, GC::Challenger: Serialize",
+    deserialize = "C: MachineConfig<GC>, GC::Challenger: Deserialize<'de>"
 ))]
-pub struct ShardProof<C: MachineConfig> {
+pub struct ShardProof<GC: IopCtx, C: MachineConfig<GC>> {
     /// The public values
-    pub public_values: Vec<C::F>,
+    pub public_values: Vec<GC::F>,
     /// The commitments to main traces.
-    pub main_commitment: C::Commitment,
+    pub main_commitment: GC::Digest,
     /// The Logup GKR IOP proof.
-    pub logup_gkr_proof: LogupGkrProof<C::EF>,
+    pub logup_gkr_proof: LogupGkrProof<GC::EF>,
     /// TH zerocheck IOP proof.
-    pub zerocheck_proof: PartialSumcheckProof<C::EF>,
+    pub zerocheck_proof: PartialSumcheckProof<GC::EF>,
     /// The values of the traces at the final random point.
-    pub opened_values: ShardOpenedValues<C::F, C::EF>,
+    pub opened_values: ShardOpenedValues<GC::F, GC::EF>,
     /// The evaluation proof.
-    pub evaluation_proof: JaggedPcsProof<C>,
+    pub evaluation_proof: JaggedPcsProof<GC, C>,
     /// The chips participating in the shard.
     pub shard_chips: BTreeSet<String>,
 }

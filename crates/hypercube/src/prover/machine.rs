@@ -1,8 +1,8 @@
 use itertools::Itertools;
 use slop_air::{Air, BaseAir};
-use slop_algebra::{ExtensionField, Field, PrimeField32};
+use slop_algebra::PrimeField32;
+use slop_challenger::IopCtx;
 use slop_futures::queue::WorkerQueue;
-use slop_jagged::JaggedConfig;
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
@@ -18,64 +18,60 @@ use crate::{
 use super::{PreprocessedData, ProverSemaphore};
 
 /// The components of a machine prover.
-pub trait MachineProverComponents: 'static + Send + Sync {
-    /// The base field.
-    type F: Field;
-    /// The extension field from which challenges are drawn.            
-    type EF: ExtensionField<Self::F>;
+#[allow(clippy::type_complexity)]
+pub trait MachineProverComponents<GC: IopCtx>: 'static + Send + Sync {
     /// The machine configuration.
-    type Config: MachineConfig<F = Self::F, EF = Self::EF>;
+    type Config: MachineConfig<GC>;
     /// The AIR.
-    type Air: MachineAir<Self::F>;
+    type Air: MachineAir<GC::F>;
     /// The prover.
-    type Prover: AirProver<Self::Config, Self::Air>;
+    type Prover: AirProver<GC, Self::Config, Self::Air>;
 
     /// A function which deduces preprocessed table heights from the proving key.
     fn preprocessed_table_heights(
-        pk: Arc<ProvingKey<Self::Config, Self::Air, Self::Prover>>,
+        pk: Arc<ProvingKey<GC, Self::Config, Self::Air, Self::Prover>>,
     ) -> BTreeMap<String, usize>;
 }
 
 /// The type of program this prover can make proofs for.
-pub type Program<C> = <<C as MachineProverComponents>::Air as MachineAir<
-    <<C as MachineProverComponents>::Config as JaggedConfig>::F,
->>::Program;
+pub type Program<GC, C> =
+    <<C as MachineProverComponents<GC>>::Air as MachineAir<<GC as IopCtx>::F>>::Program;
 
 /// The execution record for this prover.
-pub type Record<C> = <<C as MachineProverComponents>::Air as MachineAir<
-    <<C as MachineProverComponents>::Config as JaggedConfig>::F,
->>::Record;
+pub type Record<GC, C> =
+    <<C as MachineProverComponents<GC>>::Air as MachineAir<<GC as IopCtx>::F>>::Record;
 
 /// An alias for the proving key for a machine prover.
-pub type MachineProvingKey<C> = ProvingKey<
-    <C as MachineProverComponents>::Config,
-    <C as MachineProverComponents>::Air,
-    <C as MachineProverComponents>::Prover,
+pub type MachineProvingKey<GC, C> = ProvingKey<
+    GC,
+    <C as MachineProverComponents<GC>>::Config,
+    <C as MachineProverComponents<GC>>::Air,
+    <C as MachineProverComponents<GC>>::Prover,
 >;
 
 /// A builder for a machine prover.
-pub struct MachineProverBuilder<C: MachineProverComponents> {
-    verifier: MachineVerifier<C::Config, C::Air>,
+pub struct MachineProverBuilder<GC: IopCtx, C: MachineProverComponents<GC>> {
+    verifier: MachineVerifier<GC, C::Config, C::Air>,
     base_workers: Vec<Arc<C::Prover>>,
     worker_permits: Vec<ProverSemaphore>,
     num_workers: Vec<usize>,
 }
 
 /// A machine prover.
-pub struct MachineProver<C: MachineProverComponents> {
+pub struct MachineProver<GC: IopCtx, C: MachineProverComponents<GC>> {
     base_workers: Vec<Arc<C::Prover>>,
     worker_permits: Vec<ProverSemaphore>,
     worker_queue: Arc<WorkerQueue<usize>>,
-    verifier: MachineVerifier<C::Config, C::Air>,
+    verifier: MachineVerifier<GC, C::Config, C::Air>,
 }
 
-impl<C: MachineProverComponents> MachineProverBuilder<C> {
+impl<GC: IopCtx, C: MachineProverComponents<GC>> MachineProverBuilder<GC, C> {
     /// Crate a new builder for a machine prover.
     ///
     /// The builder is constructed from different groups of workers, each sharing their own permits.
     /// In practice, those permits can come from the same semaphore or different ones.
     pub fn new(
-        shard_verifier: ShardVerifier<C::Config, C::Air>,
+        shard_verifier: ShardVerifier<GC, C::Config, C::Air>,
         worker_permits: Vec<ProverSemaphore>,
         base_workers: Vec<Arc<C::Prover>>,
     ) -> Self {
@@ -96,7 +92,7 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
     #[inline]
     #[must_use]
     pub fn new_single_kind(
-        shard_verifier: ShardVerifier<C::Config, C::Air>,
+        shard_verifier: ShardVerifier<GC, C::Config, C::Air>,
         shard_prover: C::Prover,
         permits: ProverSemaphore,
     ) -> Self {
@@ -124,7 +120,7 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
     }
 
     /// Build the machine prover.
-    pub fn build(&mut self) -> MachineProver<C> {
+    pub fn build(&mut self) -> MachineProver<GC, C> {
         // For each base worker, repeat it the number of times specified by the number of workers.
         let mut worker_queue: Vec<usize> = Vec::new();
         for ((idx, _), num_workers) in
@@ -142,16 +138,16 @@ impl<C: MachineProverComponents> MachineProverBuilder<C> {
     }
 }
 
-impl<C: MachineProverComponents> MachineProver<C> {
+impl<GC: IopCtx, C: MachineProverComponents<GC>> MachineProver<GC, C> {
     /// Verify a machine proof.
     pub fn verify(
         &self,
-        vk: &MachineVerifyingKey<C::Config>,
-        proof: &MachineProof<C::Config>,
-    ) -> Result<(), MachineVerifierConfigError<C::Config>>
+        vk: &MachineVerifyingKey<GC, C::Config>,
+        proof: &MachineProof<GC, C::Config>,
+    ) -> Result<(), MachineVerifierConfigError<GC, C::Config>>
     where
-        C::Air: for<'a> Air<VerifierConstraintFolder<'a, C::Config>>,
-        C::F: PrimeField32,
+        C::Air: for<'a> Air<VerifierConstraintFolder<'a, GC>>,
+        GC::F: PrimeField32,
     {
         self.verifier.verify(vk, proof)
     }
@@ -166,21 +162,21 @@ impl<C: MachineProverComponents> MachineProver<C> {
     /// Get the verifier.
     #[must_use]
     #[inline]
-    pub fn verifier(&self) -> &MachineVerifier<C::Config, C::Air> {
+    pub fn verifier(&self) -> &MachineVerifier<GC, C::Config, C::Air> {
         &self.verifier
     }
 
     /// Get a new challenger.
     #[must_use]
     #[inline]
-    pub fn challenger(&self) -> <C::Config as JaggedConfig>::Challenger {
+    pub fn challenger(&self) -> GC::Challenger {
         self.verifier.challenger()
     }
 
     /// Get the machine.
     #[must_use]
     #[inline]
-    pub fn machine(&self) -> &Machine<C::F, C::Air> {
+    pub fn machine(&self) -> &Machine<GC::F, C::Air> {
         self.verifier.machine()
     }
 
@@ -197,7 +193,10 @@ impl<C: MachineProverComponents> MachineProver<C> {
     }
 
     /// Given a record, compute the shape of the resulting shard proof.
-    pub fn shape_from_record(&self, record: &Record<C>) -> Option<CoreProofShape<C::F, C::Air>> {
+    pub fn shape_from_record(
+        &self,
+        record: &Record<GC, C>,
+    ) -> Option<CoreProofShape<GC::F, C::Air>> {
         let log_stacking_height = self.verifier.log_stacking_height() as usize;
         let max_log_row_count = self.verifier.max_log_row_count();
         let airs = self.machine().chips();
@@ -266,9 +265,9 @@ impl<C: MachineProverComponents> MachineProver<C> {
     #[tracing::instrument(skip_all, name = "machine_setup")]
     pub async fn setup(
         &self,
-        program: Arc<Program<C>>,
-        vk: Option<MachineVerifyingKey<C::Config>>,
-    ) -> (PreprocessedData<MachineProvingKey<C>>, MachineVerifyingKey<C::Config>) {
+        program: Arc<Program<GC, C>>,
+        vk: Option<MachineVerifyingKey<GC, C::Config>>,
+    ) -> (PreprocessedData<MachineProvingKey<GC, C>>, MachineVerifyingKey<GC, C::Config>) {
         // Get a worker from the queue.
         let worker =
             self.worker_queue.clone().pop().await.expect("no workers for setup, this is a bug.");
@@ -285,9 +284,9 @@ impl<C: MachineProverComponents> MachineProver<C> {
     #[tracing::instrument(skip_all, name = "machine_prove_shard")]
     pub async fn prove_shard(
         &self,
-        pk: Arc<MachineProvingKey<C>>,
-        record: Record<C>,
-    ) -> ShardProof<C::Config> {
+        pk: Arc<MachineProvingKey<GC, C>>,
+        record: Record<GC, C>,
+    ) -> ShardProof<GC, C::Config> {
         // Get a worker from the queue.
         let worker =
             self.worker_queue.clone().pop().await.expect("no workers for setup, this is a bug.");
@@ -313,10 +312,10 @@ impl<C: MachineProverComponents> MachineProver<C> {
     #[tracing::instrument(skip_all, name = "machine_setup_and_prove_shard")]
     pub async fn setup_and_prove_shard(
         &self,
-        program: Arc<Program<C>>,
-        vk: Option<MachineVerifyingKey<C::Config>>,
-        record: Record<C>,
-    ) -> (MachineVerifyingKey<C::Config>, ShardProof<C::Config>) {
+        program: Arc<Program<GC, C>>,
+        vk: Option<MachineVerifyingKey<GC, C::Config>>,
+        record: Record<GC, C>,
+    ) -> (MachineVerifyingKey<GC, C::Config>, ShardProof<GC, C::Config>) {
         // Get a worker from the queue.
         let worker =
             self.worker_queue.clone().pop().await.expect("no workers for setup, this is a bug.");
@@ -342,7 +341,7 @@ impl<C: MachineProverComponents> MachineProver<C> {
     /// A function to extract preprocessed table heights from the pk.
     pub fn preprocessed_table_heights(
         &self,
-        pk: Arc<MachineProvingKey<C>>,
+        pk: Arc<MachineProvingKey<GC, C>>,
     ) -> BTreeMap<String, usize> {
         C::preprocessed_table_heights(pk)
     }

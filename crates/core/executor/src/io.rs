@@ -2,6 +2,7 @@ use std::io::Read;
 
 use serde::{de::DeserializeOwned, Serialize};
 use sp1_hypercube::{MachineVerifyingKey, SP1CoreJaggedConfig};
+use sp1_primitives::SP1GlobalContext;
 
 use super::Executor;
 use crate::SP1RecursionProof;
@@ -36,8 +37,8 @@ impl Executor<'_> {
     /// Write a proof and verifying key to the proof stream.
     pub fn write_proof(
         &mut self,
-        proof: SP1RecursionProof<SP1CoreJaggedConfig>,
-        vk: MachineVerifyingKey<SP1CoreJaggedConfig>,
+        proof: SP1RecursionProof<SP1GlobalContext, SP1CoreJaggedConfig>,
+        vk: MachineVerifyingKey<SP1GlobalContext, SP1CoreJaggedConfig>,
     ) {
         self.state.proof_stream.push((proof, vk));
     }

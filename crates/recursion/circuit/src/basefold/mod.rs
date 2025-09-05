@@ -1,5 +1,6 @@
 use crate::{
     challenger::{CanObserveVariable, CanSampleBitsVariable, FieldChallengerVariable},
+    hash::FieldHasherVariable,
     CircuitConfig, SP1FieldConfigVariable,
 };
 use itertools::Itertools;
@@ -14,10 +15,10 @@ use sp1_recursion_compiler::{
     ir::{Builder, DslIr, Ext, Felt, SymbolicExt},
 };
 
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_executor::D;
 use std::{iter::once, marker::PhantomData};
-use tcs::{RecursiveMerkleTreeTcs, RecursiveTcs, RecursiveTensorCsOpening};
+use tcs::{RecursiveMerkleTreeTcs, RecursiveTensorCsOpening};
 pub mod merkle_tree;
 pub mod stacked;
 pub mod tcs;
@@ -30,16 +31,10 @@ use sp1_hypercube::{SP1BasefoldConfig, SP1CoreJaggedConfig, SP1OuterConfig};
 pub trait RecursiveBasefoldConfig: Sized {
     type F: Copy;
     type EF: Copy;
-    type Commitment;
-    type Circuit: CircuitConfig<F = Self::F, EF = Self::EF, Bit = Self::Bit>;
+    type Circuit: CircuitConfig<Bit = Self::Bit>;
     type Bit;
-    type Tcs: RecursiveTcs<
-        Data = Felt<Self::F>,
-        Commitment = Self::Commitment,
-        Circuit = Self::Circuit,
-        Bit = Self::Bit,
-    >;
-    type Challenger: CanObserveVariable<Self::Circuit, Felt<Self::F>>;
+    type M: FieldHasherVariable<Self::Circuit>;
+    type Challenger: CanObserveVariable<Self::Circuit, Felt<SP1Field>>;
 }
 
 pub struct RecursiveBasefoldConfigImpl<C, SC>(PhantomData<(C, SC)>);
@@ -48,24 +43,23 @@ impl<C: CircuitConfig> AsRecursive<C> for SP1BasefoldConfig {
     type Recursive = RecursiveBasefoldConfigImpl<C, SP1CoreJaggedConfig>;
 }
 
-impl<C: CircuitConfig> AsRecursive<C> for Poseidon2Bn254FrBasefoldConfig<C::F>
+impl<C: CircuitConfig> AsRecursive<C>
+    for Poseidon2Bn254FrBasefoldConfig<SP1Field, SP1ExtensionField>
 where
-    C::F: PrimeField31 + TwoAdicField + BinomiallyExtendable<4> + HasTwoAdicBionmialExtension<4>,
+    SP1Field:
+        PrimeField31 + TwoAdicField + BinomiallyExtendable<4> + HasTwoAdicBionmialExtension<4>,
 {
     type Recursive = RecursiveBasefoldConfigImpl<C, SP1OuterConfig>;
 }
 
-impl<
-        C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
-        SC: SP1FieldConfigVariable<C>,
-    > RecursiveBasefoldConfig for RecursiveBasefoldConfigImpl<C, SC>
+impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> RecursiveBasefoldConfig
+    for RecursiveBasefoldConfigImpl<C, SC>
 {
     type F = SP1Field;
     type EF = BinomialExtensionField<SP1Field, 4>;
-    type Commitment = SC::DigestVariable;
     type Circuit = C;
     type Bit = C::Bit;
-    type Tcs = RecursiveMerkleTreeTcs<C, SC>;
+    type M = SC;
     type Challenger = SC::FriChallengerVariable;
 }
 
@@ -74,12 +68,14 @@ pub struct RecursiveBasefoldProof<B: RecursiveBasefoldConfig> {
     pub univariate_messages: Vec<[Ext<B::F, B::EF>; 2]>,
     /// The FRI parts of the proof.
     /// The commitments to the folded polynomials produced in the commit phase.
-    pub fri_commitments: Vec<<B::Tcs as RecursiveTcs>::Commitment>,
-    /// The query openings for the individual multilinear polynmomials.
+    pub fri_commitments: Vec<<B::M as FieldHasherVariable<B::Circuit>>::DigestVariable>,
+    /// The query openings for the individual multilinear polynomials.
     /// The vector is indexed by the batch number.
-    pub component_polynomials_query_openings: Vec<RecursiveTensorCsOpening<B::Tcs>>,
+    pub component_polynomials_query_openings:
+        Vec<RecursiveTensorCsOpening<<B::M as FieldHasherVariable<B::Circuit>>::DigestVariable>>,
     /// The query openings and the FRI query proofs for the FRI query phase.
-    pub query_phase_openings: Vec<RecursiveTensorCsOpening<B::Tcs>>,
+    pub query_phase_openings:
+        Vec<RecursiveTensorCsOpening<<B::M as FieldHasherVariable<B::Circuit>>::DigestVariable>>,
     /// The prover performs FRI until we reach a polynomial of degree 0, and return the constant
     /// value of this polynomial.
     pub final_poly: Ext<B::F, B::EF>,
@@ -89,24 +85,22 @@ pub struct RecursiveBasefoldProof<B: RecursiveBasefoldConfig> {
 
 pub struct RecursiveBasefoldVerifier<B: RecursiveBasefoldConfig> {
     pub fri_config: FriConfig<B::F>,
-    pub tcs: B::Tcs,
+    pub tcs: RecursiveMerkleTreeTcs<B::Circuit, B::M>,
 }
 
 pub trait RecursiveMultilinearPcsVerifier: Sized {
-    type F: Copy;
-    type EF: Copy;
     type Commitment;
     type Proof;
-    type Circuit: CircuitConfig<F = Self::F, EF = Self::EF, Bit = Self::Bit>;
+    type Circuit: CircuitConfig<Bit = Self::Bit>;
     type Bit;
-    type Challenger: CanObserveVariable<Self::Circuit, Felt<Self::F>>;
+    type Challenger: CanObserveVariable<Self::Circuit, Felt<SP1Field>>;
 
     fn verify_trusted_evaluations(
         &self,
         builder: &mut Builder<Self::Circuit>,
         commitments: &[Self::Commitment],
-        point: Point<Ext<Self::F, Self::EF>>,
-        evaluation_claims: &[Evaluations<Ext<Self::F, Self::EF>>],
+        point: Point<Ext<SP1Field, SP1ExtensionField>>,
+        evaluation_claims: &[Evaluations<Ext<SP1Field, SP1ExtensionField>>],
         proof: &Self::Proof,
         challenger: &mut Self::Challenger,
     );
@@ -115,8 +109,8 @@ pub trait RecursiveMultilinearPcsVerifier: Sized {
         &self,
         builder: &mut Builder<Self::Circuit>,
         commitments: &[Self::Commitment],
-        point: Point<Ext<Self::F, Self::EF>>,
-        evaluation_claims: &[Evaluations<Ext<Self::F, Self::EF>>],
+        point: Point<Ext<SP1Field, SP1ExtensionField>>,
+        evaluation_claims: &[Evaluations<Ext<SP1Field, SP1ExtensionField>>],
         proof: &Self::Proof,
         challenger: &mut Self::Challenger,
     ) {
@@ -141,14 +135,9 @@ pub trait RecursiveMultilinearPcsVerifier: Sized {
     }
 }
 
-impl<
-        C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
-        SC: SP1FieldConfigVariable<C>,
-    > RecursiveMultilinearPcsVerifier
+impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> RecursiveMultilinearPcsVerifier
     for RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>
 {
-    type F = SP1Field;
-    type EF = BinomialExtensionField<SP1Field, 4>;
     type Commitment = SC::DigestVariable;
     type Proof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>;
     type Circuit = C;
@@ -159,8 +148,8 @@ impl<
         &self,
         builder: &mut Builder<Self::Circuit>,
         commitments: &[Self::Commitment],
-        point: Point<Ext<Self::F, Self::EF>>,
-        evaluation_claims: &[Evaluations<Ext<Self::F, Self::EF>>],
+        point: Point<Ext<SP1Field, SP1ExtensionField>>,
+        evaluation_claims: &[Evaluations<Ext<SP1Field, SP1ExtensionField>>],
         proof: &Self::Proof,
         challenger: &mut Self::Challenger,
     ) {
@@ -175,22 +164,21 @@ impl<
     }
 }
 
-impl<
-        C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
-        SC: SP1FieldConfigVariable<C>,
-    > RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>
+impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>>
+    RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>
 {
     fn verify_mle_evaluations(
         &self,
         builder: &mut Builder<C>,
         commitments: &[SC::DigestVariable],
-        mut point: Point<Ext<C::F, C::EF>>,
-        evaluation_claims: &[Evaluations<Ext<C::F, C::EF>>],
+        mut point: Point<Ext<SP1Field, SP1ExtensionField>>,
+        evaluation_claims: &[Evaluations<Ext<SP1Field, SP1ExtensionField>>],
         proof: &RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>,
         challenger: &mut SC::FriChallengerVariable,
     ) {
         // Sample the challenge used to batch all the different polynomials.
-        let batching_challenge = SymbolicExt::<C::F, C::EF>::from(challenger.sample_ext(builder));
+        let batching_challenge =
+            SymbolicExt::<SP1Field, SP1ExtensionField>::from(challenger.sample_ext(builder));
 
         builder.cycle_tracker_v2_enter("compute eval_claim");
         // Compute the batched evaluation claim.
@@ -200,7 +188,7 @@ impl<
             .flatten()
             .zip(batching_challenge.powers())
             .map(|(eval, batch_power)| *eval * batch_power)
-            .sum::<SymbolicExt<C::F, C::EF>>();
+            .sum::<SymbolicExt<SP1Field, SP1ExtensionField>>();
         builder.cycle_tracker_v2_exit();
 
         // Assert correctness of shape.
@@ -234,7 +222,7 @@ impl<
         // X_{d-1}, 1)`. Given this, the claimed evaluation should be `(1 - X_d) *
         // first_poly[0] + X_d * first_poly[1]`.
         let first_poly = proof.univariate_messages[0];
-        let one: Ext<C::F, C::EF> = builder.constant(C::EF::one());
+        let one: Ext<SP1Field, SP1ExtensionField> = builder.constant(SP1ExtensionField::one());
 
         builder.assert_ext_eq(
             eval_claim,
@@ -279,7 +267,7 @@ impl<
         builder.cycle_tracker_v2_enter("compute batch_evals");
 
         // Compute the batch evaluations from the openings of the component polynomials.
-        let zero = SymbolicExt::<C::F, C::EF>::zero();
+        let zero = SymbolicExt::<SP1Field, SP1ExtensionField>::zero();
         let mut batch_evals = vec![zero; query_indices.len()];
         let mut batch_challenge_power = SymbolicExt::from(one);
         for opening in proof.component_polynomials_query_openings.iter() {
@@ -294,7 +282,7 @@ impl<
             batch_challenge_power =
                 batching_challenge.shifted_powers(batch_challenge_power).nth(count).unwrap();
         }
-        let batch_evals: Vec<Ext<C::F, C::EF>> =
+        let batch_evals: Vec<Ext<SP1Field, SP1ExtensionField>> =
             batch_evals.into_iter().map(|x| builder.eval(x)).collect_vec();
         builder.cycle_tracker_v2_exit();
 
@@ -342,20 +330,20 @@ impl<
         builder: &mut Builder<C>,
         commitments: &[SC::DigestVariable],
         indices: &[Vec<C::Bit>],
-        final_poly: Ext<C::F, C::EF>,
-        reduced_openings: Vec<Ext<C::F, C::EF>>,
-        query_openings: &[RecursiveTensorCsOpening<RecursiveMerkleTreeTcs<C, SC>>],
-        betas: &[Ext<C::F, C::EF>],
+        final_poly: Ext<SP1Field, SP1ExtensionField>,
+        reduced_openings: Vec<Ext<SP1Field, SP1ExtensionField>>,
+        query_openings: &[RecursiveTensorCsOpening<SC::DigestVariable>],
+        betas: &[Ext<SP1Field, SP1ExtensionField>],
     ) {
         let log_max_height = commitments.len() + self.fri_config.log_blowup();
 
         let mut folded_evals = reduced_openings;
         builder.cycle_tracker_v2_enter("compute exp reverse bits");
-        let mut xis: Vec<Felt<C::F>> = indices
+        let mut xis: Vec<Felt<SP1Field>> = indices
             .iter()
             .map(|index| {
-                let two_adic_generator: Felt<C::F> =
-                    builder.constant(C::F::two_adic_generator(log_max_height));
+                let two_adic_generator: Felt<SP1Field> =
+                    builder.constant(SP1Field::two_adic_generator(log_max_height));
                 C::exp_reverse_bits(builder, two_adic_generator, index.to_vec())
             })
             .collect::<Vec<_>>();
@@ -380,11 +368,11 @@ impl<
 
                 builder.reduce_e(*folded_eval);
 
-                let evals: [Ext<C::F, C::EF>; 2] = opening
+                let evals: [Ext<SP1Field, SP1ExtensionField>; 2] = opening
                     .as_slice()
                     .chunks_exact(D)
                     .map(|slice| {
-                        let reconstructed_ext: Ext<C::F, C::EF> =
+                        let reconstructed_ext: Ext<SP1Field, SP1ExtensionField> =
                             C::felt2ext(builder, slice.try_into().unwrap());
                         reconstructed_ext
                     })
@@ -402,7 +390,7 @@ impl<
                 // Check that the folded evaluation is consistent with the FRI query proof opening.
                 builder.assert_ext_eq(eval_ordered[0], *folded_eval);
 
-                let xs_new = builder.eval((*x) * C::F::two_adic_generator(1));
+                let xs_new = builder.eval((*x) * SP1Field::two_adic_generator(1));
                 let xs =
                     C::select_chain_f(builder, index_sibling_complement, once(*x), once(xs_new));
 
@@ -476,7 +464,7 @@ mod tests {
 
     use slop_multilinear::Mle;
     use sp1_hypercube::inner_perm;
-    use sp1_primitives::SP1Field;
+    use sp1_primitives::{SP1Field, SP1GlobalContext};
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler};
     use sp1_recursion_executor::Runtime;
 
@@ -486,7 +474,8 @@ mod tests {
     #[tokio::test]
     async fn test_basefold_proof() {
         type C = SP1BasefoldConfig;
-        type Prover = BasefoldProver<sp1_hypercube::prover::SP1BasefoldCpuProverComponents>;
+        type Prover =
+            BasefoldProver<SP1GlobalContext, sp1_hypercube::prover::SP1BasefoldCpuProverComponents>;
 
         let num_variables = 16;
         let round_widths = [vec![16, 10, 14], vec![20, 78, 34], vec![10, 10]];
@@ -503,12 +492,12 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let verifier = BasefoldVerifier::<C>::new(log_blowup);
+        let verifier = BasefoldVerifier::<_, C>::new(log_blowup);
         let recursive_verifier = RecursiveBasefoldVerifier::<
-            RecursiveBasefoldConfigImpl<AsmConfig<F, EF>, SP1CoreJaggedConfig>,
+            RecursiveBasefoldConfigImpl<AsmConfig, SP1CoreJaggedConfig>,
         > {
             fri_config: verifier.fri_config,
-            tcs: RecursiveMerkleTreeTcs::<AsmConfig<F, EF>, SP1CoreJaggedConfig>(PhantomData),
+            tcs: RecursiveMerkleTreeTcs::<AsmConfig, SP1CoreJaggedConfig>(PhantomData),
         };
 
         let prover = Prover::new(&verifier);
@@ -541,7 +530,7 @@ mod tests {
             .await
             .unwrap();
 
-        let mut builder = AsmBuilder::<F, EF>::default();
+        let mut builder = AsmBuilder::default();
         let mut witness_stream = Vec::new();
         let mut challenger_variable = DuplexChallengerVariable::new(&mut builder);
 
@@ -549,24 +538,24 @@ mod tests {
             challenger.observe(*commitment);
         }
 
-        Witnessable::<AsmConfig<F, EF>>::write(&commitments, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&commitments, &mut witness_stream);
         let commitments = commitments.read(&mut builder);
 
         for commitment in commitments.iter() {
             challenger_variable.observe(&mut builder, *commitment);
         }
 
-        Witnessable::<AsmConfig<F, EF>>::write(&point, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&point, &mut witness_stream);
         let point = point.read(&mut builder);
 
-        Witnessable::<AsmConfig<F, EF>>::write(&eval_claims, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&eval_claims, &mut witness_stream);
         let eval_claims = eval_claims.read(&mut builder);
 
-        Witnessable::<AsmConfig<F, EF>>::write(&proof, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&proof, &mut witness_stream);
         let proof = proof.read(&mut builder);
 
         RecursiveBasefoldVerifier::<
-            RecursiveBasefoldConfigImpl<AsmConfig<F, EF>, SP1CoreJaggedConfig>,
+            RecursiveBasefoldConfigImpl<AsmConfig, SP1CoreJaggedConfig>,
         >::verify_mle_evaluations(
             &recursive_verifier,
             &mut builder,
@@ -587,7 +576,8 @@ mod tests {
     #[tokio::test]
     async fn test_invalid_basefold_proof() {
         type C = SP1BasefoldConfig;
-        type Prover = BasefoldProver<sp1_hypercube::prover::SP1BasefoldCpuProverComponents>;
+        type Prover =
+            BasefoldProver<SP1GlobalContext, sp1_hypercube::prover::SP1BasefoldCpuProverComponents>;
 
         let num_variables = 16;
         let round_widths = [vec![16, 10, 14], vec![20, 78, 34], vec![10, 10]];
@@ -604,12 +594,12 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let verifier = BasefoldVerifier::<C>::new(log_blowup);
+        let verifier = BasefoldVerifier::<_, C>::new(log_blowup);
         let recursive_verifier = RecursiveBasefoldVerifier::<
-            RecursiveBasefoldConfigImpl<AsmConfig<F, EF>, SP1CoreJaggedConfig>,
+            RecursiveBasefoldConfigImpl<AsmConfig, SP1CoreJaggedConfig>,
         > {
             fri_config: verifier.fri_config,
-            tcs: RecursiveMerkleTreeTcs::<AsmConfig<F, EF>, SP1CoreJaggedConfig>(PhantomData),
+            tcs: RecursiveMerkleTreeTcs::<AsmConfig, SP1CoreJaggedConfig>(PhantomData),
         };
 
         let prover = Prover::new(&verifier);
@@ -645,7 +635,7 @@ mod tests {
         // Make a new point that is different from the original point.
         let point = Point::<EF>::rand(&mut rng, num_variables);
 
-        let mut builder = AsmBuilder::<F, EF>::default();
+        let mut builder = AsmBuilder::default();
         let mut witness_stream = Vec::new();
         let mut challenger_variable = DuplexChallengerVariable::new(&mut builder);
 
@@ -653,24 +643,24 @@ mod tests {
             challenger.observe(*commitment);
         }
 
-        Witnessable::<AsmConfig<F, EF>>::write(&commitments, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&commitments, &mut witness_stream);
         let commitments = commitments.read(&mut builder);
 
         for commitment in commitments.iter() {
             challenger_variable.observe(&mut builder, *commitment);
         }
 
-        Witnessable::<AsmConfig<F, EF>>::write(&point, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&point, &mut witness_stream);
         let point = point.read(&mut builder);
 
-        Witnessable::<AsmConfig<F, EF>>::write(&eval_claims, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&eval_claims, &mut witness_stream);
         let eval_claims = eval_claims.read(&mut builder);
 
-        Witnessable::<AsmConfig<F, EF>>::write(&proof, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&proof, &mut witness_stream);
         let proof = proof.read(&mut builder);
 
         RecursiveBasefoldVerifier::<
-            RecursiveBasefoldConfigImpl<AsmConfig<F, EF>, SP1CoreJaggedConfig>,
+            RecursiveBasefoldConfigImpl<AsmConfig, SP1CoreJaggedConfig>,
         >::verify_mle_evaluations(
             &recursive_verifier,
             &mut builder,

@@ -1,7 +1,7 @@
 use std::{cell::UnsafeCell, ptr};
 
 use slop_algebra::AbstractField;
-use sp1_primitives::types::RecursionProgramType;
+use sp1_primitives::{types::RecursionProgramType, SP1ExtensionField, SP1Field};
 
 use super::{
     Array, Config, DslIr, DslIrBlock, Ext, ExtHandle, ExtOperations, Felt, FeltHandle,
@@ -26,12 +26,12 @@ pub struct Builder<C: Config> {
     pub(crate) witness_felt_count: u32,
     pub(crate) witness_ext_count: u32,
     pub(crate) var_handle: Box<VarHandle<C::N>>,
-    pub(crate) felt_handle: Box<FeltHandle<C::F>>,
-    pub(crate) ext_handle: Box<ExtHandle<C::F, C::EF>>,
+    pub(crate) felt_handle: Box<FeltHandle<SP1Field>>,
+    pub(crate) ext_handle: Box<ExtHandle<SP1Field, SP1ExtensionField>>,
     pub(crate) p2_hash_num: Var<C::N>,
     pub(crate) debug: bool,
     pub(crate) is_sub_builder: bool,
-    pub poseidon2_constants: Vec<Ext<C::F, C::EF>>,
+    pub poseidon2_constants: Vec<Ext<SP1Field, SP1ExtensionField>>,
     pub program_type: RecursionProgramType,
 }
 
@@ -216,21 +216,27 @@ impl<C: Config> Builder<C> {
     }
 
     /// Assert that two felts are equal.
-    pub fn assert_felt_eq<LhsExpr: Into<SymbolicFelt<C::F>>, RhsExpr: Into<SymbolicFelt<C::F>>>(
+    pub fn assert_felt_eq<
+        LhsExpr: Into<SymbolicFelt<SP1Field>>,
+        RhsExpr: Into<SymbolicFelt<SP1Field>>,
+    >(
         &mut self,
         lhs: LhsExpr,
         rhs: RhsExpr,
     ) {
-        self.assert_eq::<Felt<C::F>>(lhs, rhs);
+        self.assert_eq::<Felt<SP1Field>>(lhs, rhs);
     }
 
     /// Assert that two felts are not equal.
-    pub fn assert_felt_ne<LhsExpr: Into<SymbolicFelt<C::F>>, RhsExpr: Into<SymbolicFelt<C::F>>>(
+    pub fn assert_felt_ne<
+        LhsExpr: Into<SymbolicFelt<SP1Field>>,
+        RhsExpr: Into<SymbolicFelt<SP1Field>>,
+    >(
         &mut self,
         lhs: LhsExpr,
         rhs: RhsExpr,
     ) {
-        self.assert_ne::<Felt<C::F>>(lhs, rhs);
+        self.assert_ne::<Felt<SP1Field>>(lhs, rhs);
     }
 
     /// Assert that two usizes are equal.
@@ -256,26 +262,26 @@ impl<C: Config> Builder<C> {
 
     /// Assert that two exts are equal.
     pub fn assert_ext_eq<
-        LhsExpr: Into<SymbolicExt<C::F, C::EF>>,
-        RhsExpr: Into<SymbolicExt<C::F, C::EF>>,
+        LhsExpr: Into<SymbolicExt<SP1Field, SP1ExtensionField>>,
+        RhsExpr: Into<SymbolicExt<SP1Field, SP1ExtensionField>>,
     >(
         &mut self,
         lhs: LhsExpr,
         rhs: RhsExpr,
     ) {
-        self.assert_eq::<Ext<C::F, C::EF>>(lhs, rhs);
+        self.assert_eq::<Ext<SP1Field, SP1ExtensionField>>(lhs, rhs);
     }
 
     /// Assert that two exts are not equal.
     pub fn assert_ext_ne<
-        LhsExpr: Into<SymbolicExt<C::F, C::EF>>,
-        RhsExpr: Into<SymbolicExt<C::F, C::EF>>,
+        LhsExpr: Into<SymbolicExt<SP1Field, SP1ExtensionField>>,
+        RhsExpr: Into<SymbolicExt<SP1Field, SP1ExtensionField>>,
     >(
         &mut self,
         lhs: LhsExpr,
         rhs: RhsExpr,
     ) {
-        self.assert_ne::<Ext<C::F, C::EF>>(lhs, rhs);
+        self.assert_ne::<Ext<SP1Field, SP1ExtensionField>>(lhs, rhs);
     }
 
     pub fn lt(&mut self, lhs: Var<C::N>, rhs: Var<C::N>) -> Var<C::N> {
@@ -327,12 +333,12 @@ impl<C: Config> Builder<C> {
     }
 
     /// Print a felt.
-    pub fn print_f(&mut self, dst: Felt<C::F>) {
+    pub fn print_f(&mut self, dst: Felt<SP1Field>) {
         self.push_op(DslIr::PrintF(dst));
     }
 
     /// Print an ext.
-    pub fn print_e(&mut self, dst: Ext<C::F, C::EF>) {
+    pub fn print_e(&mut self, dst: Ext<SP1Field, SP1ExtensionField>) {
         self.push_op(DslIr::PrintE(dst));
     }
 
@@ -352,7 +358,7 @@ impl<C: Config> Builder<C> {
     }
 
     /// Hint a single felt.
-    pub fn hint_felt(&mut self) -> Felt<C::F> {
+    pub fn hint_felt(&mut self) -> Felt<SP1Field> {
         let len = self.hint_len();
         let arr = self.dyn_array(len);
         self.push_op(DslIr::HintFelts(arr.clone()));
@@ -360,7 +366,7 @@ impl<C: Config> Builder<C> {
     }
 
     /// Hint a single ext.
-    pub fn hint_ext(&mut self) -> Ext<C::F, C::EF> {
+    pub fn hint_ext(&mut self) -> Ext<SP1Field, SP1ExtensionField> {
         let len = self.hint_len();
         let arr = self.dyn_array(len);
         self.push_op(DslIr::HintExts(arr.clone()));
@@ -376,7 +382,7 @@ impl<C: Config> Builder<C> {
     }
 
     /// Hint a vector of felts.
-    pub fn hint_felts(&mut self) -> Array<C, Felt<C::F>> {
+    pub fn hint_felts(&mut self) -> Array<C, Felt<SP1Field>> {
         let len = self.hint_len();
         let arr = self.dyn_array(len);
         self.push_op(DslIr::HintFelts(arr.clone()));
@@ -384,7 +390,7 @@ impl<C: Config> Builder<C> {
     }
 
     /// Hint a vector of exts.
-    pub fn hint_exts(&mut self) -> Array<C, Ext<C::F, C::EF>> {
+    pub fn hint_exts(&mut self) -> Array<C, Ext<SP1Field, SP1ExtensionField>> {
         let len = self.hint_len();
         let arr = self.dyn_array(len);
         self.push_op(DslIr::HintExts(arr.clone()));
@@ -399,7 +405,7 @@ impl<C: Config> Builder<C> {
         witness
     }
 
-    pub fn witness_felt(&mut self) -> Felt<C::F> {
+    pub fn witness_felt(&mut self) -> Felt<SP1Field> {
         assert!(!self.is_sub_builder, "Cannot create a witness felt with a sub builder");
         let witness = self.uninit();
         self.push_op(DslIr::WitnessFelt(witness, self.witness_felt_count));
@@ -407,7 +413,7 @@ impl<C: Config> Builder<C> {
         witness
     }
 
-    pub fn witness_ext(&mut self) -> Ext<C::F, C::EF> {
+    pub fn witness_ext(&mut self) -> Ext<SP1Field, SP1ExtensionField> {
         assert!(!self.is_sub_builder, "Cannot create a witness ext with a sub builder");
         let witness = self.uninit();
         self.push_op(DslIr::WitnessExt(witness, self.witness_ext_count));
@@ -429,12 +435,12 @@ impl<C: Config> Builder<C> {
     }
 
     /// Register a felt as public value.  This is append to the proof's public values buffer.
-    pub fn register_public_value(&mut self, val: Felt<C::F>) {
+    pub fn register_public_value(&mut self, val: Felt<SP1Field>) {
         self.push_op(DslIr::RegisterPublicValue(val));
     }
 
     /// Register and commits a felt as public value.  This value will be constrained when verified.
-    pub fn commit_public_value(&mut self, val: Felt<C::F>) {
+    pub fn commit_public_value(&mut self, val: Felt<SP1Field>) {
         assert!(!self.is_sub_builder, "Cannot commit to a public value with a sub builder");
         if self.nb_public_values.is_none() {
             self.nb_public_values = Some(self.eval(C::N::zero()));
@@ -446,7 +452,7 @@ impl<C: Config> Builder<C> {
     }
 
     /// Commits an array of felts in public values.
-    pub fn commit_public_values(&mut self, vals: &Array<C, Felt<C::F>>) {
+    pub fn commit_public_values(&mut self, vals: &Array<C, Felt<SP1Field>>) {
         assert!(!self.is_sub_builder, "Cannot commit to public values with a sub builder");
         let len = vals.len();
         self.range(0, len).for_each(|i, builder| {
@@ -471,11 +477,11 @@ impl<C: Config> Builder<C> {
         self.push_op(DslIr::CircuitCommitVkRoot(var));
     }
 
-    pub fn reduce_e(&mut self, ext: Ext<C::F, C::EF>) {
+    pub fn reduce_e(&mut self, ext: Ext<SP1Field, SP1ExtensionField>) {
         self.push_op(DslIr::ReduceE(ext));
     }
 
-    pub fn felt2var_circuit(&mut self, felt: Felt<C::F>) -> Var<C::N> {
+    pub fn felt2var_circuit(&mut self, felt: Felt<SP1Field>) -> Var<C::N> {
         let var = self.uninit();
         self.push_op(DslIr::CircuitFelt2Var(felt, var));
         var

@@ -3,10 +3,11 @@ use std::{iter, marker::PhantomData};
 
 use crate::{
     basefold::{
-        tcs::{RecursiveTcs, RecursiveTensorCsOpening},
+        tcs::{RecursiveMerkleTreeTcs, RecursiveTensorCsOpening},
         RecursiveBasefoldConfig,
     },
     challenger::{CanObserveVariable, CanSampleBitsVariable, FieldChallengerVariable},
+    hash::FieldHasherVariable,
     sumcheck::{evaluate_mle_ext, evaluate_mle_ext_batch},
     symbolic::IntoSymbolic,
     witness::Witnessable,
@@ -16,11 +17,11 @@ use slop_algebra::{
     extension::BinomialExtensionField, AbstractField, ExtensionField, Field, UnivariatePolynomial,
 };
 use slop_basefold::BasefoldConfig;
-use slop_challenger::GrindingChallenger;
-use slop_commit::TensorCsOpening;
+use slop_challenger::{GrindingChallenger, IopCtx};
+use slop_merkle_tree::MerkleTreeOpening;
 use slop_multilinear::{Mle, Point};
 use slop_whir::{map_to_pow, ParsedCommitment, SumcheckPoly, WhirProof, WhirProofShape};
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{Builder, Ext, ExtensionOperand, Felt, SymbolicExt},
@@ -31,66 +32,61 @@ pub struct RecursiveWhirVerifier<C: RecursiveBasefoldConfig> {
     _marker: PhantomData<C>,
 }
 
-impl<C: CircuitConfig> IntoSymbolic<C> for SumcheckPoly<Ext<C::F, C::EF>> {
-    type Output = SumcheckPoly<SymbolicExt<C::F, C::EF>>;
+impl<C: CircuitConfig> IntoSymbolic<C> for SumcheckPoly<Ext<SP1Field, SP1ExtensionField>> {
+    type Output = SumcheckPoly<SymbolicExt<SP1Field, SP1ExtensionField>>;
 
     fn as_symbolic(&self) -> Self::Output {
         SumcheckPoly(self.0.map(SymbolicExt::from))
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RecursiveParsedCommitment<C>
 where
     C: RecursiveBasefoldConfig,
 {
-    pub(crate) commitment: C::Commitment,
-    pub(crate) ood_points: Vec<Point<Ext<C::F, C::EF>>>,
-    pub(crate) ood_answers: Vec<Ext<C::F, C::EF>>,
+    pub(crate) commitment: <C::M as FieldHasherVariable<C::Circuit>>::DigestVariable,
+    pub(crate) ood_points: Vec<Point<Ext<SP1Field, SP1ExtensionField>>>,
+    pub(crate) ood_answers: Vec<Ext<SP1Field, SP1ExtensionField>>,
 }
 
-pub type RecursiveProverMessage<C> = (
-    SumcheckPoly<Ext<<C as RecursiveBasefoldConfig>::F, <C as RecursiveBasefoldConfig>::EF>>,
-    Felt<<C as RecursiveBasefoldConfig>::F>,
-);
-
-type ProverMessage<C> = (
-    SumcheckPoly<Ext<<C as RecursiveBasefoldConfig>::F, <C as RecursiveBasefoldConfig>::EF>>,
-    Felt<<C as RecursiveBasefoldConfig>::F>,
-);
+pub type RecursiveProverMessage = (SumcheckPoly<Ext<SP1Field, SP1ExtensionField>>, Felt<SP1Field>);
 
 type PointAndEval<F> = (Point<F>, F);
 pub struct RecursiveWhirProof<C>
 where
     C: RecursiveBasefoldConfig,
-    C::Challenger: CanObserveVariable<C::Circuit, C::Commitment>,
-    C::Commitment: Copy,
+    C::Challenger:
+        CanObserveVariable<C::Circuit, <C::M as FieldHasherVariable<C::Circuit>>::DigestVariable>,
+    <C::M as FieldHasherVariable<C::Circuit>>::DigestVariable: Copy,
 {
     // First sumcheck
-    pub initial_sumcheck_polynomials: Vec<ProverMessage<C>>,
+    pub initial_sumcheck_polynomials: Vec<RecursiveProverMessage>,
 
     // For internal rounds
     pub commitments: Vec<RecursiveParsedCommitment<C>>,
-    pub merkle_proofs: Vec<RecursiveTensorCsOpening<C::Tcs>>,
-    pub query_proof_of_works: Vec<Felt<C::F>>,
-    pub sumcheck_polynomials: Vec<Vec<RecursiveProverMessage<C>>>,
+    pub merkle_proofs:
+        Vec<RecursiveTensorCsOpening<<C::M as FieldHasherVariable<C::Circuit>>::DigestVariable>>,
+    pub query_proof_of_works: Vec<Felt<SP1Field>>,
+    pub sumcheck_polynomials: Vec<Vec<RecursiveProverMessage>>,
 
     // Final round
-    pub final_polynomial: Vec<Ext<C::F, C::EF>>,
-    pub final_merkle_proof: RecursiveTensorCsOpening<C::Tcs>,
-    pub final_sumcheck_polynomials: Vec<RecursiveProverMessage<C>>,
-    pub final_pow: Felt<C::F>,
+    pub final_polynomial: Vec<Ext<SP1Field, SP1ExtensionField>>,
+    pub final_merkle_proof:
+        RecursiveTensorCsOpening<<C::M as FieldHasherVariable<C::Circuit>>::DigestVariable>,
+    pub final_sumcheck_polynomials: Vec<RecursiveProverMessage>,
+    pub final_pow: Felt<SP1Field>,
     pub _config: PhantomData<C>,
 }
 
 impl<C: RecursiveBasefoldConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>>
     RecursiveWhirVerifier<C>
 where
-    C::Challenger:
-        FieldChallengerVariable<C::Circuit, C::Bit> + CanObserveVariable<C::Circuit, C::Commitment>,
+    C::Challenger: FieldChallengerVariable<C::Circuit, C::Bit>
+        + CanObserveVariable<C::Circuit, <C::M as FieldHasherVariable<C::Circuit>>::DigestVariable>,
     C::F: Field,
     C::EF: ExtensionField<C::F>,
-    C::Commitment: Copy,
+    <C::M as FieldHasherVariable<C::Circuit>>::DigestVariable: Copy,
     C::Bit: Clone,
 {
     pub(crate) fn observe_commitment(
@@ -101,11 +97,12 @@ where
         config: &WhirProofShape<C::F>,
     ) {
         challenger.observe(builder, commitment.commitment);
-        let ood_points: Vec<Point<Ext<C::F, C::EF>>> = (0..config.starting_ood_samples)
+        let ood_points: Vec<Point<Ext<SP1Field, SP1ExtensionField>>> = (0..config
+            .starting_ood_samples)
             .map(|_| {
                 (0..config.num_variables)
                     .map(|_| challenger.sample_ext(builder))
-                    .collect::<Vec<Ext<C::F, C::EF>>>()
+                    .collect::<Vec<Ext<SP1Field, SP1ExtensionField>>>()
                     .into()
             })
             .collect();
@@ -126,16 +123,17 @@ where
         &self,
         builder: &mut Builder<C::Circuit>,
         commitment: &RecursiveParsedCommitment<C>,
-        claim: Ext<C::F, C::EF>,
+        claim: Ext<SP1Field, SP1ExtensionField>,
         proof: &RecursiveWhirProof<C>,
         challenger: &mut C::Challenger,
         config: &WhirProofShape<C::F>,
-    ) -> PointAndEval<Ext<C::F, C::EF>> {
+    ) -> PointAndEval<Ext<SP1Field, SP1ExtensionField>> {
         let n_rounds = config.round_parameters.len();
 
         // Batch the initial claim with the OOD claims of the commitment
-        let claim_batching_randomness: Ext<C::F, C::EF> = challenger.sample_ext(builder);
-        let claimed_sum: Ext<C::F, C::EF> = builder.eval(
+        let claim_batching_randomness: Ext<SP1Field, SP1ExtensionField> =
+            challenger.sample_ext(builder);
+        let claimed_sum: Ext<SP1Field, SP1ExtensionField> = builder.eval(
             IntoSymbolic::<C::Circuit>::as_symbolic(&claim_batching_randomness)
                 .powers()
                 .zip(iter::once(&claim).chain(&commitment.ood_answers))
@@ -168,7 +166,7 @@ where
         // this size)
         let mut domain_size =
             config.num_variables - config.starting_folding_factor + config.starting_log_inv_rate;
-        let mut generator: Felt<C::F> = builder.constant(config.domain_generator);
+        let mut generator: Felt<SP1Field> = builder.constant(config.domain_generator);
         let mut prev_commitment = commitment;
 
         let mut prev_folding_factor = config.starting_folding_factor;
@@ -182,11 +180,12 @@ where
             challenger.observe(builder, new_commitment.commitment);
 
             // Squeeze the ood points
-            let ood_points: Vec<Point<Ext<C::F, C::EF>>> = (0..round_params.ood_samples)
+            let ood_points: Vec<Point<Ext<SP1Field, SP1ExtensionField>>> = (0..round_params
+                .ood_samples)
                 .map(|_| {
                     (0..num_variables)
                         .map(|_| challenger.sample_ext(builder))
-                        .collect::<Vec<Ext<C::F, C::EF>>>()
+                        .collect::<Vec<Ext<SP1Field, SP1ExtensionField>>>()
                         .into()
                 })
                 .collect();
@@ -210,13 +209,14 @@ where
             let id_query_indices = (0..round_params.num_queries)
                 .map(|_| challenger.sample_bits(builder, domain_size))
                 .collect::<Vec<_>>();
-            let id_query_values: Vec<Felt<C::F>> = id_query_indices
+            let id_query_values: Vec<Felt<SP1Field>> = id_query_indices
                 .iter()
                 .map(|val| {
                     <C::Circuit as CircuitConfig>::exp_reverse_bits(builder, generator, val.clone())
                 })
                 .collect();
-            let claim_batching_randomness: Ext<C::F, C::EF> = challenger.sample_ext(builder);
+            let claim_batching_randomness: Ext<SP1Field, SP1ExtensionField> =
+                challenger.sample_ext(builder);
 
             challenger.check_witness(
                 builder,
@@ -225,7 +225,7 @@ where
             );
 
             let merkle_proof = &proof.merkle_proofs[round_index];
-            <C::Tcs as RecursiveTcs>::verify_tensor_openings(
+            RecursiveMerkleTreeTcs::<C::Circuit, C::M>::verify_tensor_openings(
                 builder,
                 &prev_commitment.commitment,
                 &id_query_indices,
@@ -237,7 +237,8 @@ where
             // Except in the first round, the opened values in the Merkle proof are secretly
             // extension field elements, so we have to reinterpret them as such. (The
             // Merkle tree API commits to and opens only base-field values.)
-            let merkle_read_values: Vec<Mle<Ext<C::F, C::EF>>> = if round_index != 0 {
+            let merkle_read_values: Vec<Mle<Ext<SP1Field, SP1ExtensionField>>> = if round_index != 0
+            {
                 merkle_proof
                     .values
                     .clone()
@@ -262,7 +263,7 @@ where
                     .to_vec()
                     .into_iter()
                     .map(|f| {
-                        let e: SymbolicExt<C::F, C::EF> = f.into();
+                        let e: SymbolicExt<SP1Field, SP1ExtensionField> = f.into();
                         builder.eval(e)
                     })
                     .collect::<Vec<_>>()
@@ -271,7 +272,7 @@ where
                     .collect()
             };
             // Compute the STIR values by reading the merkle values and folding across the column.
-            let stir_values: Vec<Ext<C::F, C::EF>> =
+            let stir_values: Vec<Ext<SP1Field, SP1ExtensionField>> =
                 evaluate_mle_ext_batch(builder, merkle_read_values, folding_randomness.clone())
                     .iter()
                     .map(|eval| eval[0])
@@ -294,7 +295,7 @@ where
                             .chain(&stir_values),
                     )
                     .map(|(r, &v)| r * v)
-                    .sum::<SymbolicExt<C::F, C::EF>>(),
+                    .sum::<SymbolicExt<SP1Field, SP1ExtensionField>>(),
             );
 
             (folding_randomness, claimed_sum) = self.verify_whir_sumcheck(
@@ -358,21 +359,21 @@ where
         let final_id_indices = (0..config.final_queries)
             .map(|_| challenger.sample_bits(builder, domain_size))
             .collect::<Vec<_>>();
-        let final_id_values: Vec<Felt<C::F>> = final_id_indices
+        let final_id_values: Vec<Felt<SP1Field>> = final_id_indices
             .iter()
             .map(|val| {
                 <C::Circuit as CircuitConfig>::exp_reverse_bits(builder, generator, val.clone())
             })
             .collect();
 
-        <C::Tcs as RecursiveTcs>::verify_tensor_openings(
+        RecursiveMerkleTreeTcs::<C::Circuit, C::M>::verify_tensor_openings(
             builder,
             &prev_commitment.commitment,
             &final_id_indices,
             &proof.final_merkle_proof,
         );
 
-        let final_merkle_read_values: Vec<Mle<Ext<C::F, C::EF>>> = proof
+        let final_merkle_read_values: Vec<Mle<Ext<SP1Field, SP1ExtensionField>>> = proof
             .final_merkle_proof
             .values
             .clone()
@@ -428,7 +429,7 @@ where
         for (i, eval_points) in final_evaluation_points.into_iter().enumerate() {
             let combination_randomness = all_claim_batching_randomness[i];
             let len = eval_points[0].len();
-            let eval_randomness: Point<Ext<C::F, C::EF>> =
+            let eval_randomness: Point<Ext<SP1Field, SP1ExtensionField>> =
                 concatenated_folding_randomness.split_at(len).0;
 
             let sum_modification = IntoSymbolic::<C::Circuit>::as_symbolic(&combination_randomness)
@@ -436,12 +437,12 @@ where
                 .skip(1)
                 .zip(eval_points)
                 .map(|(r, point)| {
-                    r * Mle::<SymbolicExt<C::F, C::EF>>::full_monomial_basis_eq(
+                    r * Mle::<SymbolicExt<SP1Field, SP1ExtensionField>>::full_monomial_basis_eq(
                         &IntoSymbolic::<C::Circuit>::as_symbolic(&point),
                         &IntoSymbolic::<C::Circuit>::as_symbolic(&eval_randomness),
                     )
                 })
-                .sum::<SymbolicExt<C::F, C::EF>>();
+                .sum::<SymbolicExt<SP1Field, SP1ExtensionField>>();
 
             summand += sum_modification;
         }
@@ -461,12 +462,12 @@ where
     pub(crate) fn verify_whir_sumcheck(
         &self,
         builder: &mut Builder<C::Circuit>,
-        sumcheck_polynomials: &[ProverMessage<C>],
-        mut claimed_sum: Ext<C::F, C::EF>,
+        sumcheck_polynomials: &[RecursiveProverMessage],
+        mut claimed_sum: Ext<SP1Field, SP1ExtensionField>,
         rounds: usize,
         pow_bits: &[f64],
         challenger: &mut C::Challenger,
-    ) -> PointAndEval<Ext<C::F, C::EF>> {
+    ) -> PointAndEval<Ext<SP1Field, SP1ExtensionField>> {
         let mut randomness = Vec::with_capacity(rounds);
         for i in 0..rounds {
             let (sumcheck_poly, pow_witness) = &sumcheck_polynomials[i];
@@ -478,7 +479,8 @@ where
 
             builder.assert_ext_eq(claimed_sum, sum);
 
-            let folding_randomness_single: Ext<C::F, C::EF> = challenger.sample_ext(builder);
+            let folding_randomness_single: Ext<SP1Field, SP1ExtensionField> =
+                challenger.sample_ext(builder);
             randomness.push(folding_randomness_single);
 
             challenger.check_witness(builder, pow_bits[i].ceil() as usize, *pow_witness);
@@ -494,14 +496,18 @@ where
     }
 }
 
-impl<C: CircuitConfig, BC: BasefoldConfig<F = C::F, EF = C::EF> + AsRecursive<C>> Witnessable<C>
-    for ParsedCommitment<BC>
+impl<C: CircuitConfig, GC: IopCtx, BC: BasefoldConfig<GC> + AsRecursive<C>> Witnessable<C>
+    for ParsedCommitment<GC, BC>
 where
-    BC::Recursive: RecursiveBasefoldConfig<F = C::F, EF = C::EF, Circuit = C>,
-    BC::Commitment:
-        Witnessable<C, WitnessVariable = <BC::Recursive as RecursiveBasefoldConfig>::Commitment>,
-    C::F: Witnessable<C, WitnessVariable = Felt<C::F>>,
-    C::EF: Witnessable<C, WitnessVariable = Ext<C::F, C::EF>>,
+    BC::Recursive: RecursiveBasefoldConfig<Circuit = C>,
+    GC::Digest: Witnessable<
+        C,
+        WitnessVariable = <<BC::Recursive as RecursiveBasefoldConfig>::M as FieldHasherVariable<
+            C,
+        >>::DigestVariable,
+    >,
+    GC::F: Witnessable<C, WitnessVariable = Felt<SP1Field>>,
+    GC::EF: Witnessable<C, WitnessVariable = Ext<SP1Field, SP1ExtensionField>>,
 {
     type WitnessVariable = RecursiveParsedCommitment<BC::Recursive>;
 
@@ -528,11 +534,8 @@ where
     }
 }
 
-impl<C: CircuitConfig> Witnessable<C> for SumcheckPoly<C::EF>
-where
-    C::EF: Witnessable<C, WitnessVariable = Ext<C::F, C::EF>>,
-{
-    type WitnessVariable = SumcheckPoly<Ext<C::F, C::EF>>;
+impl<C: CircuitConfig> Witnessable<C> for SumcheckPoly<SP1ExtensionField> {
+    type WitnessVariable = SumcheckPoly<Ext<SP1Field, SP1ExtensionField>>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let coeffs = std::array::from_fn(|i| self.0[i].read(builder));
@@ -546,22 +549,33 @@ where
     }
 }
 
-impl<C: CircuitConfig, BC: BasefoldConfig<F = C::F, EF = C::EF> + AsRecursive<C>> Witnessable<C>
-    for WhirProof<BC>
+type DigestVariable<BC, C> =
+    <<<BC as AsRecursive<C>>::Recursive as RecursiveBasefoldConfig>::M as FieldHasherVariable<C>>::DigestVariable;
+
+impl<
+        GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
+        C: CircuitConfig,
+        BC: BasefoldConfig<GC> + AsRecursive<C>,
+    > Witnessable<C> for WhirProof<GC, BC>
 where
-    BC::Recursive: RecursiveBasefoldConfig<F = C::F, EF = C::EF, Circuit = C>,
-    BC::Commitment:
-        Witnessable<C, WitnessVariable = <BC::Recursive as RecursiveBasefoldConfig>::Commitment>,
-    C::F: Witnessable<C, WitnessVariable = Felt<C::F>>,
-    C::EF: Witnessable<C, WitnessVariable = Ext<C::F, C::EF>>,
-    <BC::Challenger as GrindingChallenger>::Witness: Witnessable<C, WitnessVariable = Felt<C::F>>,
-    <BC::Recursive as RecursiveBasefoldConfig>::Challenger:
-        CanObserveVariable<C, <BC::Recursive as RecursiveBasefoldConfig>::Commitment>,
-    <BC::Recursive as RecursiveBasefoldConfig>::Commitment: Copy,
-    TensorCsOpening<BC::Tcs>: Witnessable<
+    BC::Recursive: RecursiveBasefoldConfig<Circuit = C>,
+    GC::Digest: Witnessable<
         C,
-        WitnessVariable = RecursiveTensorCsOpening<<BC::Recursive as RecursiveBasefoldConfig>::Tcs>,
+        WitnessVariable = <<BC::Recursive as RecursiveBasefoldConfig>::M as FieldHasherVariable<
+            C,
+        >>::DigestVariable,
     >,
+    <GC::Challenger as GrindingChallenger>::Witness:
+        Witnessable<C, WitnessVariable = Felt<SP1Field>>,
+    <BC::Recursive as RecursiveBasefoldConfig>::Challenger: CanObserveVariable<
+        C,
+        <<BC::Recursive as RecursiveBasefoldConfig>::M as FieldHasherVariable<C>>::DigestVariable,
+    >,
+    <<BC::Recursive as RecursiveBasefoldConfig>::M as FieldHasherVariable<C>>::DigestVariable: Copy,
+    MerkleTreeOpening<GC>:
+        Witnessable<C, WitnessVariable = RecursiveTensorCsOpening<DigestVariable<BC, C>>>,
+    SP1Field: Witnessable<C, WitnessVariable = Felt<SP1Field>>,
+    SP1ExtensionField: Witnessable<C, WitnessVariable = Ext<SP1Field, SP1ExtensionField>>,
 {
     type WitnessVariable = RecursiveWhirProof<BC::Recursive>;
 
@@ -683,11 +697,10 @@ mod tests {
 
         let merkle_prover: Poseidon2KoalaBear16Prover = FieldMerkleTreeProver::default();
 
-        let prover = Prover::<_, _, C>::new(Radix2DitParallel, merkle_prover).await;
+        let prover = Prover::<_, _, _, C>::new(Radix2DitParallel, merkle_prover).await;
         let merkle_verifier = MerkleTreeTcs::default();
-        let verifier = Verifier::<C>::new(merkle_verifier);
-        let polynomial: Mle<<C as BasefoldConfig>::F> =
-            Mle::rand(&mut rng, 1, config.num_variables as u32);
+        let verifier = Verifier::<_, C>::new(merkle_verifier);
+        let polynomial: Mle<SP1Field> = Mle::rand(&mut rng, 1, config.num_variables as u32);
         let query_vector: Mle<EF> = Mle::<EF>::rand(&mut rng, 1, config.num_variables as u32);
 
         let claim: EF = polynomial
@@ -709,18 +722,17 @@ mod tests {
         let (point, value) =
             verifier.verify(&commitment, claim, &proof, &mut challenger_verifier, &config).unwrap();
 
-        let mut builder = AsmBuilder::<F, EF>::default();
+        let mut builder = AsmBuilder::default();
         let mut witness_stream = Vec::new();
         let mut challenger_variable = DuplexChallengerVariable::new(&mut builder);
 
-        Witnessable::<AsmConfig<F, EF>>::write(&commitment, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&commitment, &mut witness_stream);
         let commitment = commitment.read(&mut builder);
 
-        let recursive_verifier = RecursiveWhirVerifier::<
-            RecursiveBasefoldConfigImpl<AsmConfig<F, EF>, SP1CoreJaggedConfig>,
-        > {
-            _marker: PhantomData,
-        };
+        let recursive_verifier =
+            RecursiveWhirVerifier::<RecursiveBasefoldConfigImpl<AsmConfig, SP1CoreJaggedConfig>> {
+                _marker: PhantomData,
+            };
 
         recursive_verifier.observe_commitment(
             &mut builder,
@@ -729,16 +741,16 @@ mod tests {
             &config,
         );
 
-        Witnessable::<AsmConfig<F, EF>>::write(&point, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&point, &mut witness_stream);
         let point = point.read(&mut builder);
 
-        Witnessable::<AsmConfig<F, EF>>::write(&value, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&value, &mut witness_stream);
         let value = value.read(&mut builder);
 
-        Witnessable::<AsmConfig<F, EF>>::write(&proof, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&proof, &mut witness_stream);
         let proof = proof.read(&mut builder);
 
-        Witnessable::<AsmConfig<F, EF>>::write(&claim, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&claim, &mut witness_stream);
         let eval_claim = claim.read(&mut builder);
 
         let (point_var, claim_var) = recursive_verifier.verify_whir(

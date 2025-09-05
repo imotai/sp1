@@ -9,18 +9,19 @@ use crate::{
 };
 use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField, AbstractField};
 use slop_bn254::Bn254Fr;
+use slop_challenger::IopCtx;
 use slop_commit::Rounds;
-use slop_jagged::{JaggedConfig, JaggedEvalConfig};
+use slop_multilinear::MultilinearPcsVerifier;
 use sp1_hypercube::{
     septic_curve::SepticCurve, septic_digest::SepticDigest, septic_extension::SepticExtension,
     AirOpenedValues, ChipDimensions, ChipOpenedValues, MachineConfig, MachineVerifyingKey,
     ShardOpenedValues, ShardProof,
 };
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 pub use sp1_recursion_compiler::ir::Witness as OuterWitness;
 use sp1_recursion_compiler::{
     config::OuterConfig,
-    ir::{Builder, Config, Ext, Felt, Var},
+    ir::{Builder, Ext, Felt, Var},
 };
 use sp1_recursion_executor::Block;
 
@@ -29,9 +30,9 @@ pub trait WitnessWriter<C: CircuitConfig>: Sized {
 
     fn write_var(&mut self, value: C::N);
 
-    fn write_felt(&mut self, value: C::F);
+    fn write_felt(&mut self, value: SP1Field);
 
-    fn write_ext(&mut self, value: C::EF);
+    fn write_ext(&mut self, value: SP1ExtensionField);
 }
 
 impl WitnessWriter<OuterConfig> for OuterWitness<OuterConfig> {
@@ -52,24 +53,22 @@ impl WitnessWriter<OuterConfig> for OuterWitness<OuterConfig> {
     }
 }
 
-pub type WitnessBlock<C> = Block<<C as Config>::F>;
+pub type WitnessBlock = Block<SP1Field>;
 
-impl<C: CircuitConfig<F = SP1Field, Bit = Felt<SP1Field>>> WitnessWriter<C>
-    for Vec<WitnessBlock<C>>
-{
+impl<C: CircuitConfig<Bit = Felt<SP1Field>>> WitnessWriter<C> for Vec<WitnessBlock> {
     fn write_bit(&mut self, value: bool) {
-        self.push(Block::from(C::F::from_bool(value)))
+        self.push(Block::from(SP1Field::from_bool(value)))
     }
 
     fn write_var(&mut self, _value: <C>::N) {
         unimplemented!("Cannot write Var<N> in this configuration")
     }
 
-    fn write_felt(&mut self, value: <C>::F) {
+    fn write_felt(&mut self, value: SP1Field) {
         self.push(Block::from(value))
     }
 
-    fn write_ext(&mut self, value: <C>::EF) {
+    fn write_ext(&mut self, value: SP1ExtensionField) {
         self.push(Block::from(value.as_base_slice()))
     }
 }
@@ -127,7 +126,7 @@ impl<C: CircuitConfig, T: Witnessable<C>, U: Witnessable<C>> Witnessable<C> for 
     }
 }
 
-impl<C: CircuitConfig<F = SP1Field>> Witnessable<C> for SP1Field {
+impl<C: CircuitConfig> Witnessable<C> for SP1Field {
     type WitnessVariable = Felt<SP1Field>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
@@ -139,9 +138,7 @@ impl<C: CircuitConfig<F = SP1Field>> Witnessable<C> for SP1Field {
     }
 }
 
-impl<C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>> Witnessable<C>
-    for BinomialExtensionField<SP1Field, 4>
-{
+impl<C: CircuitConfig> Witnessable<C> for BinomialExtensionField<SP1Field, 4> {
     type WitnessVariable = Ext<SP1Field, BinomialExtensionField<SP1Field, 4>>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
@@ -225,8 +222,8 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Rounds<T> {
     }
 }
 
-impl<C: CircuitConfig<F = SP1Field>> Witnessable<C> for SepticDigest<C::F> {
-    type WitnessVariable = SepticDigest<Felt<C::F>>;
+impl<C: CircuitConfig> Witnessable<C> for SepticDigest<SP1Field> {
+    type WitnessVariable = SepticDigest<Felt<SP1Field>>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let x = self.0.x.0.read(builder);
@@ -240,10 +237,8 @@ impl<C: CircuitConfig<F = SP1Field>> Witnessable<C> for SepticDigest<C::F> {
     }
 }
 
-impl<C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>> Witnessable<C>
-    for ShardOpenedValues<C::F, C::EF>
-{
-    type WitnessVariable = ShardOpenedValues<Felt<C::F>, Ext<C::F, C::EF>>;
+impl<C: CircuitConfig> Witnessable<C> for ShardOpenedValues<SP1Field, SP1ExtensionField> {
+    type WitnessVariable = ShardOpenedValues<Felt<SP1Field>, Ext<SP1Field, SP1ExtensionField>>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let chips = self.chips.read(builder);
@@ -255,10 +250,8 @@ impl<C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>> W
     }
 }
 
-impl<C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>> Witnessable<C>
-    for ChipOpenedValues<C::F, C::EF>
-{
-    type WitnessVariable = ChipOpenedValues<Felt<C::F>, Ext<C::F, C::EF>>;
+impl<C: CircuitConfig> Witnessable<C> for ChipOpenedValues<SP1Field, SP1ExtensionField> {
+    type WitnessVariable = ChipOpenedValues<Felt<SP1Field>, Ext<SP1Field, SP1ExtensionField>>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let preprocessed = self.preprocessed.read(builder);
@@ -276,10 +269,8 @@ impl<C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>> W
     }
 }
 
-impl<C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>> Witnessable<C>
-    for AirOpenedValues<C::EF>
-{
-    type WitnessVariable = AirOpenedValues<Ext<C::F, C::EF>>;
+impl<C: CircuitConfig> Witnessable<C> for AirOpenedValues<SP1ExtensionField> {
+    type WitnessVariable = AirOpenedValues<Ext<SP1Field, SP1ExtensionField>>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let local = self.local.read(builder);
@@ -291,32 +282,21 @@ impl<C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>> W
     }
 }
 
-impl<C, SC, RecursiveStackedPcsProof, RecursiveJaggedEvalProof> Witnessable<C> for ShardProof<SC>
+impl<C, GC, SC, RecursiveStackedPcsProof> Witnessable<C> for ShardProof<GC, SC>
 where
-    C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
-    SC: SP1FieldConfigVariable<C>
-        + MachineConfig
-        + JaggedConfig<
-            F = C::F,
-            EF = C::EF,
-            BatchPcsProof: Witnessable<C, WitnessVariable = RecursiveStackedPcsProof>,
-        > + AsRecursive<C>,
-    <<SC as JaggedConfig>::JaggedEvaluator as JaggedEvalConfig<
-        C::F,
-        C::EF,
-        <SC as JaggedConfig>::Challenger,
-    >>::JaggedEvalProof: Witnessable<C, WitnessVariable = RecursiveJaggedEvalProof>,
+    C: CircuitConfig,
+    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
+    SC: MachineConfig<GC> + AsRecursive<C> + SP1FieldConfigVariable<C>,
     SC::Recursive: RecursiveJaggedConfig<
-        F = C::F,
-        EF = C::EF,
+        F = SP1Field,
+        EF = SP1ExtensionField,
         Circuit = C,
         BatchPcsProof = RecursiveStackedPcsProof,
-        JaggedEvalProof = RecursiveJaggedEvalProof,
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
     >,
-    C::EF: Witnessable<C, WitnessVariable = Ext<C::F, C::EF>>,
-    SC::Commitment:
-        Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
+    GC::Digest: Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
+    <SC::BatchPcsVerifier as MultilinearPcsVerifier<GC>>::Proof:
+        Witnessable<C, WitnessVariable = RecursiveStackedPcsProof>,
 {
     type WitnessVariable = ShardProofVariable<C, SC, SC::Recursive>;
 
@@ -348,14 +328,14 @@ where
     }
 }
 
-impl<C, MC> Witnessable<C> for MachineVerifyingKey<MC>
+impl<C, GC, SC> Witnessable<C> for MachineVerifyingKey<GC, SC>
 where
-    C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
-    MC: MachineConfig + SP1FieldConfigVariable<C> + MachineConfig + JaggedConfig,
-    MC::Commitment:
-        Witnessable<C, WitnessVariable = <MC as FieldHasherVariable<C>>::DigestVariable>,
+    C: CircuitConfig,
+    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
+    SC: MachineConfig<GC> + SP1FieldConfigVariable<C>,
+    GC::Digest: Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
 {
-    type WitnessVariable = MachineVerifyingKeyVariable<C, MC>;
+    type WitnessVariable = MachineVerifyingKeyVariable<C, SC>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let pc_start = self.pc_start.read(builder);

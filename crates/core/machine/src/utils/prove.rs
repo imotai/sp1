@@ -11,6 +11,7 @@ use crate::{executor::MachineExecutor, riscv::RiscvAir};
 use thiserror::Error;
 
 use slop_algebra::PrimeField32;
+use slop_challenger::IopCtx;
 use sp1_hypercube::{
     air::PublicValues,
     prover::{
@@ -223,29 +224,30 @@ pub fn generate_records<F: PrimeField32>(
     }
 }
 
-pub async fn prove_core<F, PC>(
-    verifier: ShardVerifier<PC::Config, RiscvAir<F>>,
+pub async fn prove_core<GC, PC>(
+    verifier: ShardVerifier<GC, PC::Config, RiscvAir<GC::F>>,
     prover: Arc<PC::Prover>,
-    pk: Arc<MachineProvingKey<PC>>,
+    pk: Arc<MachineProvingKey<GC, PC>>,
     program: Arc<Program>,
     stdin: SP1Stdin,
     opts: SP1CoreOpts,
     context: SP1Context<'static>,
-) -> Result<(MachineProof<PC::Config>, u64), SP1CoreProverError>
+) -> Result<(MachineProof<GC, PC::Config>, u64), SP1CoreProverError>
 where
-    PC: MachineProverComponents<F = F, Air = RiscvAir<F>>,
-    F: PrimeField32,
+    GC: IopCtx,
+    PC: MachineProverComponents<GC, Air = RiscvAir<GC::F>>,
+    GC::F: PrimeField32,
 {
     let (proof_tx, mut proof_rx) = tokio::sync::mpsc::unbounded_channel();
 
     let (_, cycles) =
-        prove_core_stream::<F, PC>(verifier, prover, pk, program, stdin, opts, context, proof_tx)
+        prove_core_stream::<GC, PC>(verifier, prover, pk, program, stdin, opts, context, proof_tx)
             .await
             .unwrap();
 
     let mut shard_proofs = BTreeMap::new();
     while let Some(proof) = proof_rx.recv().await {
-        let public_values: &PublicValues<[F; 4], [F; 3], [F; 4], F> =
+        let public_values: &PublicValues<[GC::F; 4], [GC::F; 3], [GC::F; 4], GC::F> =
             proof.public_values.as_slice().borrow();
         shard_proofs.insert(
             (
@@ -264,20 +266,21 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn prove_core_stream<F, PC>(
+pub(crate) async fn prove_core_stream<GC, PC>(
     // TODO: clean this up
-    verifier: ShardVerifier<PC::Config, RiscvAir<F>>,
+    verifier: ShardVerifier<GC, PC::Config, RiscvAir<GC::F>>,
     prover: Arc<PC::Prover>,
-    pk: Arc<MachineProvingKey<PC>>,
+    pk: Arc<MachineProvingKey<GC, PC>>,
     program: Arc<Program>,
     stdin: SP1Stdin,
     opts: SP1CoreOpts,
     context: SP1Context<'static>,
-    proof_tx: UnboundedSender<ShardProof<PC::Config>>,
+    proof_tx: UnboundedSender<ShardProof<GC, PC::Config>>,
 ) -> Result<(Vec<u8>, u64), SP1CoreProverError>
 where
-    PC: MachineProverComponents<F = F, Air = RiscvAir<F>>,
-    F: PrimeField32,
+    GC: IopCtx,
+    PC: MachineProverComponents<GC, Air = RiscvAir<GC::F>>,
+    GC::F: PrimeField32,
 {
     // TODO: get this from input
     let num_record_workers = 4;
@@ -286,10 +289,10 @@ where
         mpsc::unbounded_channel::<(ExecutionRecord, Option<MemoryPermit>)>();
 
     let machine_executor =
-        MachineExecutor::<F>::new(u32::MAX as u64, num_record_workers, opts.clone());
+        MachineExecutor::<GC::F>::new(u32::MAX as u64, num_record_workers, opts.clone());
 
     let prover_permits = ProverSemaphore::new(5);
-    let prover = MachineProverBuilder::<PC>::new(verifier, vec![prover_permits], vec![prover])
+    let prover = MachineProverBuilder::<GC, PC>::new(verifier, vec![prover_permits], vec![prover])
         .num_workers(num_trace_gen_workers)
         .build();
 

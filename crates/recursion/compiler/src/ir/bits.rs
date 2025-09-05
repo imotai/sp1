@@ -1,4 +1,5 @@
 use slop_algebra::{AbstractField, Field};
+use sp1_primitives::SP1Field;
 use sp1_recursion_executor::NUM_BITS;
 
 use super::{Array, Builder, Config, DslIr, Felt, Usize, Var};
@@ -48,7 +49,7 @@ impl<C: Config> Builder<C> {
     }
 
     /// Range checks a felt to a certain number of bits.
-    pub fn range_check_f(&mut self, num: Felt<C::F>, num_bits: usize) {
+    pub fn range_check_f(&mut self, num: Felt<SP1Field>, num_bits: usize) {
         let bits = self.num2bits_f(num);
         self.range(num_bits, bits.len()).for_each(|i, builder| {
             let bit = builder.get(&bits, i);
@@ -57,16 +58,16 @@ impl<C: Config> Builder<C> {
     }
 
     /// Converts a felt to bits.
-    pub fn num2bits_f(&mut self, num: Felt<C::F>) -> Array<C, Var<C::N>> {
+    pub fn num2bits_f(&mut self, num: Felt<SP1Field>) -> Array<C, Var<C::N>> {
         let output = self.dyn_array::<Var<_>>(NUM_BITS);
         self.push_op(DslIr::HintBitsF(output.clone(), num));
 
-        let sum: Felt<_> = self.eval(C::F::zero());
+        let sum: Felt<_> = self.eval(SP1Field::zero());
         for i in 0..NUM_BITS {
             let bit = self.get(&output, i);
             self.assert_var_eq(bit * (bit - C::N::one()), C::N::zero());
             self.if_eq(bit, C::N::one()).then(|builder| {
-                builder.assign(sum, sum + C::F::from_canonical_u32(1 << i));
+                builder.assign(sum, sum + SP1Field::from_canonical_u32(1 << i));
             });
         }
 
@@ -78,7 +79,7 @@ impl<C: Config> Builder<C> {
     }
 
     /// Converts a felt to bits inside a circuit.
-    pub fn num2bits_f_circuit(&mut self, num: Felt<C::F>) -> Vec<Var<C::N>> {
+    pub fn num2bits_f_circuit(&mut self, num: Felt<SP1Field>) -> Vec<Var<C::N>> {
         let mut output = Vec::new();
         for _ in 0..NUM_BITS {
             output.push(self.uninit());
@@ -111,13 +112,13 @@ impl<C: Config> Builder<C> {
     }
 
     /// Convert bits to a felt.
-    pub fn bits2num_f(&mut self, bits: &Array<C, Var<C::N>>) -> Felt<C::F> {
-        let num: Felt<_> = self.eval(C::F::zero());
+    pub fn bits2num_f(&mut self, bits: &Array<C, Var<C::N>>) -> Felt<SP1Field> {
+        let num: Felt<_> = self.eval(SP1Field::zero());
         for i in 0..NUM_BITS {
             let bit = self.get(bits, i);
             // Add `bit * 2^i` to the sum.
             self.if_eq(bit, C::N::one()).then(|builder| {
-                builder.assign(num, num + C::F::from_canonical_u32(1 << i));
+                builder.assign(num, num + SP1Field::from_canonical_u32(1 << i));
             });
         }
         num

@@ -1,6 +1,7 @@
 use std::{cell::UnsafeCell, mem::ManuallyDrop};
 
 use slop_algebra::{AbstractExtensionField, AbstractField, Field};
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 
 use crate::ir::DslIr;
 
@@ -316,8 +317,8 @@ impl<C: Config> VarOperations<C::N> for UnsafeCell<InnerBuilder<C>> {
     }
 }
 
-impl<C: Config> FeltOperations<C::F> for UnsafeCell<InnerBuilder<C>> {
-    fn add_felt(ptr: *mut (), lhs: Felt<C::F>, rhs: Felt<C::F>) -> Felt<C::F> {
+impl<C: Config> FeltOperations<SP1Field> for UnsafeCell<InnerBuilder<C>> {
+    fn add_felt(ptr: *mut (), lhs: Felt<SP1Field>, rhs: Felt<SP1Field>) -> Felt<SP1Field> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -329,7 +330,7 @@ impl<C: Config> FeltOperations<C::F> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn sub_felt(ptr: *mut (), lhs: Felt<C::F>, rhs: Felt<C::F>) -> Felt<C::F> {
+    fn sub_felt(ptr: *mut (), lhs: Felt<SP1Field>, rhs: Felt<SP1Field>) -> Felt<SP1Field> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -341,7 +342,7 @@ impl<C: Config> FeltOperations<C::F> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn neg_felt(ptr: *mut (), lhs: Felt<C::F>) -> Felt<C::F> {
+    fn neg_felt(ptr: *mut (), lhs: Felt<SP1Field>) -> Felt<SP1Field> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -353,7 +354,7 @@ impl<C: Config> FeltOperations<C::F> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn mul_felt(ptr: *mut (), lhs: Felt<C::F>, rhs: Felt<C::F>) -> Felt<C::F> {
+    fn mul_felt(ptr: *mut (), lhs: Felt<SP1Field>, rhs: Felt<SP1Field>) -> Felt<SP1Field> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -365,7 +366,7 @@ impl<C: Config> FeltOperations<C::F> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn add_felt_const(ptr: *mut (), lhs: Felt<C::F>, rhs: C::F) -> Felt<C::F> {
+    fn add_felt_const(ptr: *mut (), lhs: Felt<SP1Field>, rhs: SP1Field) -> Felt<SP1Field> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -377,7 +378,7 @@ impl<C: Config> FeltOperations<C::F> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn sub_felt_const(ptr: *mut (), lhs: Felt<C::F>, rhs: C::F) -> Felt<C::F> {
+    fn sub_felt_const(ptr: *mut (), lhs: Felt<SP1Field>, rhs: SP1Field) -> Felt<SP1Field> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -389,7 +390,7 @@ impl<C: Config> FeltOperations<C::F> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn sub_const_felt(ptr: *mut (), lhs: C::F, rhs: Felt<C::F>) -> Felt<C::F> {
+    fn sub_const_felt(ptr: *mut (), lhs: SP1Field, rhs: Felt<SP1Field>) -> Felt<SP1Field> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -401,7 +402,7 @@ impl<C: Config> FeltOperations<C::F> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn mul_const_felt(ptr: *mut (), lhs: Felt<C::F>, rhs: C::F) -> Felt<C::F> {
+    fn mul_const_felt(ptr: *mut (), lhs: Felt<SP1Field>, rhs: SP1Field) -> Felt<SP1Field> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -413,7 +414,7 @@ impl<C: Config> FeltOperations<C::F> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn div_felt(ptr: *mut (), lhs: Felt<C::F>, rhs: Felt<C::F>) -> Felt<C::F> {
+    fn div_felt(ptr: *mut (), lhs: Felt<SP1Field>, rhs: Felt<SP1Field>) -> Felt<SP1Field> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -425,7 +426,7 @@ impl<C: Config> FeltOperations<C::F> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn div_felt_const(ptr: *mut (), lhs: Felt<C::F>, rhs: C::F) -> Felt<C::F> {
+    fn div_felt_const(ptr: *mut (), lhs: Felt<SP1Field>, rhs: SP1Field) -> Felt<SP1Field> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -437,7 +438,7 @@ impl<C: Config> FeltOperations<C::F> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn div_const_felt(ptr: *mut (), lhs: C::F, rhs: Felt<C::F>) -> Felt<C::F> {
+    fn div_const_felt(ptr: *mut (), lhs: SP1Field, rhs: Felt<SP1Field>) -> Felt<SP1Field> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -450,8 +451,12 @@ impl<C: Config> FeltOperations<C::F> for UnsafeCell<InnerBuilder<C>> {
     }
 }
 
-impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
-    fn add_ext(ptr: *mut (), lhs: Ext<C::F, C::EF>, rhs: Ext<C::F, C::EF>) -> Ext<C::F, C::EF> {
+impl<C: Config> ExtOperations<SP1Field, SP1ExtensionField> for UnsafeCell<InnerBuilder<C>> {
+    fn add_ext(
+        ptr: *mut (),
+        lhs: Ext<SP1Field, SP1ExtensionField>,
+        rhs: Ext<SP1Field, SP1ExtensionField>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -463,7 +468,11 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn add_ext_base(ptr: *mut (), lhs: Ext<C::F, C::EF>, rhs: Felt<C::F>) -> Ext<C::F, C::EF> {
+    fn add_ext_base(
+        ptr: *mut (),
+        lhs: Ext<SP1Field, SP1ExtensionField>,
+        rhs: Felt<SP1Field>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -475,7 +484,11 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn add_const_base(ptr: *mut (), lhs: Ext<C::F, C::EF>, rhs: C::F) -> Ext<C::F, C::EF> {
+    fn add_const_base(
+        ptr: *mut (),
+        lhs: Ext<SP1Field, SP1ExtensionField>,
+        rhs: SP1Field,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -487,7 +500,11 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn add_const_ext(ptr: *mut (), lhs: Ext<C::F, C::EF>, rhs: C::EF) -> Ext<C::F, C::EF> {
+    fn add_const_ext(
+        ptr: *mut (),
+        lhs: Ext<SP1Field, SP1ExtensionField>,
+        rhs: SP1ExtensionField,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -501,10 +518,10 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
 
     fn add_felt_const_ext(
         ptr: *mut (),
-        lhs: Felt<C::F>,
-        rhs: C::EF,
-        handle: *mut ExtHandle<C::F, C::EF>,
-    ) -> Ext<C::F, C::EF> {
+        lhs: Felt<SP1Field>,
+        rhs: SP1ExtensionField,
+        handle: *mut ExtHandle<SP1Field, SP1ExtensionField>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let idx = inner.get_mut().variable_count;
         let res = Ext::new(idx, handle);
@@ -516,7 +533,11 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn sub_ext(ptr: *mut (), lhs: Ext<C::F, C::EF>, rhs: Ext<C::F, C::EF>) -> Ext<C::F, C::EF> {
+    fn sub_ext(
+        ptr: *mut (),
+        lhs: Ext<SP1Field, SP1ExtensionField>,
+        rhs: Ext<SP1Field, SP1ExtensionField>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -528,7 +549,11 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn sub_ext_base(ptr: *mut (), lhs: Ext<C::F, C::EF>, rhs: Felt<C::F>) -> Ext<C::F, C::EF> {
+    fn sub_ext_base(
+        ptr: *mut (),
+        lhs: Ext<SP1Field, SP1ExtensionField>,
+        rhs: Felt<SP1Field>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -540,7 +565,11 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn sub_const_ext(ptr: *mut (), lhs: Ext<C::F, C::EF>, rhs: C::EF) -> Ext<C::F, C::EF> {
+    fn sub_const_ext(
+        ptr: *mut (),
+        lhs: Ext<SP1Field, SP1ExtensionField>,
+        rhs: SP1ExtensionField,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -552,7 +581,11 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn sub_ext_const(ptr: *mut (), lhs: C::EF, rhs: Ext<C::F, C::EF>) -> Ext<C::F, C::EF> {
+    fn sub_ext_const(
+        ptr: *mut (),
+        lhs: SP1ExtensionField,
+        rhs: Ext<SP1Field, SP1ExtensionField>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -566,20 +599,27 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
 
     fn sub_felt_const_ext(
         ptr: *mut (),
-        lhs: Felt<C::F>,
-        rhs: C::EF,
-        handle: *mut ExtHandle<C::F, C::EF>,
-    ) -> Ext<C::F, C::EF> {
+        lhs: Felt<SP1Field>,
+        rhs: SP1ExtensionField,
+        handle: *mut ExtHandle<SP1Field, SP1ExtensionField>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         Self::add_felt_const_ext(ptr, lhs, -rhs, handle)
     }
 
-    fn sub_base_ext(ptr: *mut (), lhs: Felt<C::F>, rhs: Ext<C::F, C::EF>) -> Ext<C::F, C::EF> {
+    fn sub_base_ext(
+        ptr: *mut (),
+        lhs: Felt<SP1Field>,
+        rhs: Ext<SP1Field, SP1ExtensionField>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         // TODO: optimize to one opcode.
         let rhs = Self::neg_ext(ptr, rhs);
         Self::add_ext_base(ptr, rhs, lhs)
     }
 
-    fn neg_ext(ptr: *mut (), lhs: Ext<C::F, C::EF>) -> Ext<C::F, C::EF> {
+    fn neg_ext(
+        ptr: *mut (),
+        lhs: Ext<SP1Field, SP1ExtensionField>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -591,7 +631,11 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn mul_ext(ptr: *mut (), lhs: Ext<C::F, C::EF>, rhs: Ext<C::F, C::EF>) -> Ext<C::F, C::EF> {
+    fn mul_ext(
+        ptr: *mut (),
+        lhs: Ext<SP1Field, SP1ExtensionField>,
+        rhs: Ext<SP1Field, SP1ExtensionField>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -603,7 +647,11 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn mul_ext_base(ptr: *mut (), lhs: Ext<C::F, C::EF>, rhs: Felt<C::F>) -> Ext<C::F, C::EF> {
+    fn mul_ext_base(
+        ptr: *mut (),
+        lhs: Ext<SP1Field, SP1ExtensionField>,
+        rhs: Felt<SP1Field>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -615,7 +663,11 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn mul_const_ext(ptr: *mut (), lhs: Ext<C::F, C::EF>, rhs: C::EF) -> Ext<C::F, C::EF> {
+    fn mul_const_ext(
+        ptr: *mut (),
+        lhs: Ext<SP1Field, SP1ExtensionField>,
+        rhs: SP1ExtensionField,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -629,16 +681,20 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
 
     fn mul_felt_const_ext(
         ptr: *mut (),
-        lhs: Felt<C::F>,
-        rhs: C::EF,
-        handle: *mut ExtHandle<C::F, C::EF>,
-    ) -> Ext<C::F, C::EF> {
+        lhs: Felt<SP1Field>,
+        rhs: SP1ExtensionField,
+        handle: *mut ExtHandle<SP1Field, SP1ExtensionField>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         // TODO: optimize to one opcode.
-        let lhs = Self::add_felt_const_ext(ptr, lhs, C::EF::zero(), handle);
+        let lhs = Self::add_felt_const_ext(ptr, lhs, SP1ExtensionField::zero(), handle);
         Self::mul_const_ext(ptr, lhs, rhs)
     }
 
-    fn div_ext(ptr: *mut (), lhs: Ext<C::F, C::EF>, rhs: Ext<C::F, C::EF>) -> Ext<C::F, C::EF> {
+    fn div_ext(
+        ptr: *mut (),
+        lhs: Ext<SP1Field, SP1ExtensionField>,
+        rhs: Ext<SP1Field, SP1ExtensionField>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -650,7 +706,11 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn div_const_base(ptr: *mut (), lhs: Ext<C::F, C::EF>, rhs: C::F) -> Ext<C::F, C::EF> {
+    fn div_const_base(
+        ptr: *mut (),
+        lhs: Ext<SP1Field, SP1ExtensionField>,
+        rhs: SP1Field,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -662,17 +722,29 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn div_const_ext(ptr: *mut (), lhs: Ext<C::F, C::EF>, rhs: C::EF) -> Ext<C::F, C::EF> {
+    fn div_const_ext(
+        ptr: *mut (),
+        lhs: Ext<SP1Field, SP1ExtensionField>,
+        rhs: SP1ExtensionField,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         Self::mul_const_ext(ptr, lhs, rhs.inverse())
     }
 
-    fn div_base_ext(ptr: *mut (), lhs: Felt<C::F>, rhs: Ext<C::F, C::EF>) -> Ext<C::F, C::EF> {
+    fn div_base_ext(
+        ptr: *mut (),
+        lhs: Felt<SP1Field>,
+        rhs: Ext<SP1Field, SP1ExtensionField>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         // TODO: optimize to one opcode.
-        let lhs = Self::add_felt_const_ext(ptr, lhs, C::EF::zero(), rhs.handle);
+        let lhs = Self::add_felt_const_ext(ptr, lhs, SP1ExtensionField::zero(), rhs.handle);
         Self::div_ext(ptr, lhs, rhs)
     }
 
-    fn div_ext_base(ptr: *mut (), lhs: Ext<C::F, C::EF>, rhs: Felt<C::F>) -> Ext<C::F, C::EF> {
+    fn div_ext_base(
+        ptr: *mut (),
+        lhs: Ext<SP1Field, SP1ExtensionField>,
+        rhs: Felt<SP1Field>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -684,7 +756,11 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
         res
     }
 
-    fn div_ext_const(ptr: *mut (), lhs: C::EF, rhs: Ext<C::F, C::EF>) -> Ext<C::F, C::EF> {
+    fn div_ext_const(
+        ptr: *mut (),
+        lhs: SP1ExtensionField,
+        rhs: Ext<SP1Field, SP1ExtensionField>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let mut inner = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut Self)) };
         let inner = inner.get_mut();
         let idx = inner.variable_count;
@@ -698,10 +774,10 @@ impl<C: Config> ExtOperations<C::F, C::EF> for UnsafeCell<InnerBuilder<C>> {
 
     fn div_felt_const_ext(
         ptr: *mut (),
-        lhs: Felt<C::F>,
-        rhs: C::EF,
-        handle: *mut ExtHandle<C::F, C::EF>,
-    ) -> Ext<C::F, C::EF> {
+        lhs: Felt<SP1Field>,
+        rhs: SP1ExtensionField,
+        handle: *mut ExtHandle<SP1Field, SP1ExtensionField>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         Self::mul_felt_const_ext(ptr, lhs, rhs.inverse(), handle)
     }
 }

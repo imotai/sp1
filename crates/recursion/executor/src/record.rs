@@ -127,8 +127,6 @@ impl<F> UnsafeRecord<F> {
 unsafe impl<F> Sync for UnsafeRecord<F> {}
 
 impl<F: PrimeField32> MachineRecord for ExecutionRecord<F> {
-    // type Config = SP1CoreOpts;
-
     fn stats(&self) -> hashbrown::HashMap<String, usize> {
         [
             ("base_alu_events", self.base_alu_events.len()),

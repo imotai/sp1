@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use sp1_primitives::{SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_prover::{InnerSC, OuterSC, SP1CoreProof, SP1VerifyingKey};
 
 use crate::CudaClientError;
@@ -11,11 +12,15 @@ pub enum Request {
     /// Tell the server to create a core proof.
     Core { key: [u8; 32], stdin: SP1Stdin },
     /// Tell the server to create a compress proof.
-    Compress { vk: SP1VerifyingKey, proof: SP1CoreProof, deferred: Vec<SP1RecursionProof<InnerSC>> },
+    Compress {
+        vk: SP1VerifyingKey,
+        proof: SP1CoreProof,
+        deferred: Vec<SP1RecursionProof<SP1GlobalContext, InnerSC>>,
+    },
     /// Tell the server to create a shrink proof.
-    Shrink { proof: SP1RecursionProof<InnerSC> },
+    Shrink { proof: SP1RecursionProof<SP1GlobalContext, InnerSC> },
     /// Tell the server to create a wrap proof.
-    Wrap { proof: SP1RecursionProof<InnerSC> },
+    Wrap { proof: SP1RecursionProof<SP1GlobalContext, InnerSC> },
     /// Tell the server to destroy a proving key.
     Destroy { key: [u8; 32] },
 }
@@ -29,11 +34,11 @@ pub enum Response {
     /// The core response, containing the core proof.
     Core { proof: SP1CoreProof },
     /// The compress response, containing the compress proof.
-    Compress { proof: SP1RecursionProof<InnerSC> },
+    Compress { proof: SP1RecursionProof<SP1GlobalContext, InnerSC> },
     /// The shrink response, containing the shrink proof.
-    Shrink { proof: SP1RecursionProof<InnerSC> },
+    Shrink { proof: SP1RecursionProof<SP1GlobalContext, InnerSC> },
     /// The wrap response, containing the wrap proof.
-    Wrap { proof: SP1RecursionProof<OuterSC> },
+    Wrap { proof: SP1RecursionProof<SP1OuterGlobalContext, OuterSC> },
     /// The server returned a prover error.
     ProverError(String),
     /// The error response, containing the error message.

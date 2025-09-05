@@ -864,9 +864,10 @@ mod tests {
     #[allow(clippy::too_many_lines)]
     async fn test_logup_poly_sumcheck_circuit_layer() {
         type Config = crate::SP1BasefoldConfig;
+        type GC = sp1_primitives::SP1GlobalContext;
         let mut rng = thread_rng();
 
-        let verifier = BasefoldVerifier::<Config>::new(1);
+        let verifier = BasefoldVerifier::<GC, Config>::new(1);
         let get_challenger = move || verifier.clone().challenger();
 
         let interaction_counts = vec![4, 5, 6];
@@ -1198,8 +1199,9 @@ mod tests {
     #[tokio::test]
     async fn test_logup_gkr_round_prover() {
         type Config = crate::SP1BasefoldConfig;
+        type GC = sp1_primitives::SP1GlobalContext;
         type TraceGenerator = LogupGkrCpuTraceGenerator<SP1Field, EF, ()>;
-        let verifier = BasefoldVerifier::<Config>::new(1);
+        let verifier = BasefoldVerifier::<GC, Config>::new(1);
         let get_challenger = move || verifier.clone().challenger();
         let trace_generator = TraceGenerator::default();
 

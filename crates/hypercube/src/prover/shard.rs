@@ -8,11 +8,11 @@ use std::{
 
 use derive_where::derive_where;
 use itertools::Itertools;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use slop_air::Air;
-use slop_algebra::{AbstractField, ExtensionField, Field};
+use slop_algebra::{AbstractField, Field};
 use slop_alloc::{Backend, Buffer, CanCopyFrom, CanCopyFromRef, CpuBackend};
-use slop_challenger::{CanObserve, FieldChallenger};
+use slop_challenger::{CanObserve, FieldChallenger, IopCtx};
 use slop_commit::Rounds;
 use slop_jagged::{JaggedBackend, JaggedProver, JaggedProverComponents, JaggedProverData};
 use slop_matrix::dense::RowMajorMatrixView;
@@ -35,44 +35,47 @@ use crate::{
 use super::{TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
 
 /// A prover for an AIR.
-pub trait AirProver<C: MachineConfig, Air: MachineAir<C::F>>:
+#[allow(clippy::type_complexity)]
+pub trait AirProver<GC: IopCtx, C: MachineConfig<GC>, Air: MachineAir<GC::F>>:
     'static + Send + Sync + Sized
 {
     /// The proving key type.
     type PreprocessedData: 'static + Send + Sync;
 
     /// Get the machine.
-    fn machine(&self) -> &Machine<C::F, Air>;
+    fn machine(&self) -> &Machine<GC::F, Air>;
 
     /// Setup from a verifying key.
     fn setup_from_vk(
         &self,
         program: Arc<Air::Program>,
-        vk: Option<MachineVerifyingKey<C>>,
+        vk: Option<MachineVerifyingKey<GC, C>>,
         prover_permits: ProverSemaphore,
-    ) -> impl Future<Output = (PreprocessedData<ProvingKey<C, Air, Self>>, MachineVerifyingKey<C>)> + Send;
+    ) -> impl Future<
+        Output = (PreprocessedData<ProvingKey<GC, C, Air, Self>>, MachineVerifyingKey<GC, C>),
+    > + Send;
 
     /// Setup and prove a shard.
     fn setup_and_prove_shard(
         &self,
         program: Arc<Air::Program>,
         record: Air::Record,
-        vk: Option<MachineVerifyingKey<C>>,
+        vk: Option<MachineVerifyingKey<GC, C>>,
         prover_permits: ProverSemaphore,
-        challenger: &mut C::Challenger,
-    ) -> impl Future<Output = (MachineVerifyingKey<C>, ShardProof<C>, ProverPermit)> + Send;
+        challenger: &mut GC::Challenger,
+    ) -> impl Future<Output = (MachineVerifyingKey<GC, C>, ShardProof<GC, C>, ProverPermit)> + Send;
 
     /// Prove a shard with a given proving key.
     fn prove_shard_with_pk(
         &self,
-        pk: Arc<ProvingKey<C, Air, Self>>,
+        pk: Arc<ProvingKey<GC, C, Air, Self>>,
         record: Air::Record,
         prover_permits: ProverSemaphore,
-        challenger: &mut C::Challenger,
-    ) -> impl Future<Output = (ShardProof<C>, ProverPermit)> + Send;
+        challenger: &mut GC::Challenger,
+    ) -> impl Future<Output = (ShardProof<GC, C>, ProverPermit)> + Send;
 
     /// Get all the chips in the machine.
-    fn all_chips(&self) -> &[Chip<C::F, Air>] {
+    fn all_chips(&self) -> &[Chip<GC::F, Air>] {
         self.machine().chips()
     }
 
@@ -85,16 +88,22 @@ pub trait AirProver<C: MachineConfig, Air: MachineAir<C::F>>:
         &self,
         program: Arc<Air::Program>,
         setup_permits: ProverSemaphore,
-    ) -> impl Future<Output = (PreprocessedData<ProvingKey<C, Air, Self>>, MachineVerifyingKey<C>)> + Send
-    {
+    ) -> impl Future<
+        Output = (PreprocessedData<ProvingKey<GC, C, Air, Self>>, MachineVerifyingKey<GC, C>),
+    > + Send {
         self.setup_from_vk(program, None, setup_permits)
     }
 }
 
 /// A proving key for an AIR prover.
-pub struct ProvingKey<C: MachineConfig, Air: MachineAir<C::F>, Prover: AirProver<C, Air>> {
+pub struct ProvingKey<
+    GC: IopCtx,
+    C: MachineConfig<GC>,
+    Air: MachineAir<GC::F>,
+    Prover: AirProver<GC, C, Air>,
+> {
     /// The verifying key.
-    pub vk: MachineVerifyingKey<C>,
+    pub vk: MachineVerifyingKey<GC, C>,
     /// The preprocessed data.
     pub preprocessed_data: Prover::PreprocessedData,
 }
@@ -102,55 +111,27 @@ pub struct ProvingKey<C: MachineConfig, Air: MachineAir<C::F>, Prover: AirProver
 /// The components of the machine prover.
 ///
 /// This trait is used specify a configuration of a hypercube prover.
-pub trait ShardProverComponents: 'static + Send + Sync + Sized {
-    /// The base field.
-    ///
-    /// This is the field on which the traces committed to are defined over.
-    type F: Field;
-    /// The field of random elements.
-    ///
-    /// This is an extension field of the base field which is of cryptographically secure size. The
-    /// random evaluation points of the protocol are drawn from `EF`.
-    type EF: ExtensionField<Self::F>;
+pub trait ShardProverComponents<GC: IopCtx>: 'static + Send + Sync + Sized {
     /// The program type.
-    type Program: MachineProgram<Self::F> + Send + Sync + 'static;
+    type Program: MachineProgram<GC::F> + Send + Sync + 'static;
     /// The record type.
     type Record: MachineRecord;
     /// The Air for which this prover.
-    type Air: ZerocheckAir<Self::F, Self::EF, Program = Self::Program, Record = Self::Record>;
+    type Air: ZerocheckAir<GC::F, GC::EF, Program = Self::Program, Record = Self::Record>;
     /// The backend used by the prover.
-    type B: JaggedBackend<Self::F, Self::EF>
-        + ZercocheckBackend<Self::F, Self::EF, Self::ZerocheckProverData>
-        + PointBackend<Self::EF>
-        + HostEvaluationBackend<Self::F, Self::EF>
-        + HostEvaluationBackend<Self::F, Self::F>
-        + HostEvaluationBackend<Self::EF, Self::EF>
-        + CanCopyFrom<Buffer<Self::EF>, CpuBackend, Output = Buffer<Self::EF, Self::B>>;
-
-    /// The commitment representing a batch of traces sent to the verifier.
-    type Commitment: 'static + Clone + Send + Sync + Serialize + DeserializeOwned;
-
-    /// The challenger type that creates the random challenges via Fiat-Shamir.
-    ///
-    /// The challenger is observing all the messages sent throughout the protocol and uses this
-    /// to create the verifier messages of the IOP.
-    type Challenger: FieldChallenger<Self::F>
-        + CanObserve<Self::Commitment>
-        + Send
-        + Sync
-        + 'static
-        + Clone;
+    type B: JaggedBackend<GC::F, GC::EF>
+        + ZercocheckBackend<GC::F, GC::EF, Self::ZerocheckProverData>
+        + PointBackend<GC::EF>
+        + HostEvaluationBackend<GC::F, GC::EF>
+        + HostEvaluationBackend<GC::F, GC::F>
+        + HostEvaluationBackend<GC::EF, GC::EF>
+        + CanCopyFrom<Buffer<GC::EF>, CpuBackend, Output = Buffer<GC::EF, Self::B>>;
 
     /// The machine configuration for which this prover can make proofs for.
-    type Config: MachineConfig<
-        F = Self::F,
-        EF = Self::EF,
-        Commitment = Self::Commitment,
-        Challenger = Self::Challenger,
-    >;
+    type Config: MachineConfig<GC>;
 
     /// The trace generator.
-    type TraceGenerator: TraceGenerator<Self::F, Self::Air, Self::B>;
+    type TraceGenerator: TraceGenerator<GC::F, Self::Air, Self::B>;
 
     /// The zerocheck prover data.
     ///
@@ -158,36 +139,25 @@ pub trait ShardProverComponents: 'static + Send + Sync + Sized {
     /// an AIR. The zerocheck prover implements the zerocheck IOP and reduces the claim that
     /// constraints vanish into an evaluation claim at a random point for the traces, considered
     /// as multilinear polynomials.
-    type ZerocheckProverData: ZerocheckProverData<Self::F, Self::EF, Self::B, Air = Self::Air>;
+    type ZerocheckProverData: ZerocheckProverData<GC::F, GC::EF, Self::B, Air = Self::Air>;
 
     /// The necessary pieces to form a GKR proof for the `LogUp` permutation argument.
-    type GkrProver: LogUpGkrProver<
-        F = Self::F,
-        EF = Self::EF,
-        A = Self::Air,
-        B = Self::B,
-        Challenger = Self::Challenger,
-    >;
+    type GkrProver: LogUpGkrProver<GC, A = Self::Air, B = Self::B>;
 
     /// The components of the jagged PCS prover.
-    type PcsProverComponents: JaggedProverComponents<
-            F = Self::F,
-            EF = Self::EF,
-            A = Self::B,
-            Commitment = Self::Commitment,
-            Challenger = Self::Challenger,
-            Config = Self::Config,
-        > + Send
+    type PcsProverComponents: JaggedProverComponents<GC, A = Self::B, Config = Self::Config>
+        + Send
         + Sync
         + 'static;
 }
 
 /// A collection of main traces with a permit.
-pub struct ShardData<C: ShardProverComponents> {
+#[allow(clippy::type_complexity)]
+pub struct ShardData<GC: IopCtx, C: ShardProverComponents<GC>> {
     /// The proving key.
-    pub pk: Arc<ProvingKey<C::Config, C::Air, ShardProver<C>>>,
+    pub pk: Arc<ProvingKey<GC, C::Config, C::Air, ShardProver<GC, C>>>,
     /// Main trace data
-    pub main_trace_data: MainTraceData<C::F, C::Air, C::B>,
+    pub main_trace_data: MainTraceData<GC::F, C::Air, C::B>,
 }
 
 /// The main traces for a program, with a permit.
@@ -239,7 +209,7 @@ impl<T> PreprocessedData<T> {
 }
 
 /// A prover for the hypercube STARK, given a configuration.
-pub struct ShardProver<C: ShardProverComponents> {
+pub struct ShardProver<GC: IopCtx, C: ShardProverComponents<GC>> {
     /// The trace generator.
     pub trace_generator: C::TraceGenerator,
     /// The logup GKR prover.
@@ -247,13 +217,15 @@ pub struct ShardProver<C: ShardProverComponents> {
     /// A prover for the zerocheck IOP.
     pub zerocheck_prover_data: C::ZerocheckProverData,
     /// A prover for the PCS.
-    pub pcs_prover: JaggedProver<C::PcsProverComponents>,
+    pub pcs_prover: JaggedProver<GC, C::PcsProverComponents>,
 }
 
-impl<C: ShardProverComponents> AirProver<C::Config, C::Air> for ShardProver<C> {
-    type PreprocessedData = ShardProverData<C>;
+impl<GC: IopCtx, C: ShardProverComponents<GC>> AirProver<GC, C::Config, C::Air>
+    for ShardProver<GC, C>
+{
+    type PreprocessedData = ShardProverData<GC, C>;
 
-    fn machine(&self) -> &Machine<C::F, C::Air> {
+    fn machine(&self) -> &Machine<GC::F, C::Air> {
         self.trace_generator.machine()
     }
 
@@ -261,10 +233,12 @@ impl<C: ShardProverComponents> AirProver<C::Config, C::Air> for ShardProver<C> {
     async fn setup_from_vk(
         &self,
         program: Arc<C::Program>,
-        vk: Option<MachineVerifyingKey<C::Config>>,
+        vk: Option<MachineVerifyingKey<GC, C::Config>>,
         prover_permits: ProverSemaphore,
-    ) -> (PreprocessedData<ProvingKey<C::Config, C::Air, Self>>, MachineVerifyingKey<C::Config>)
-    {
+    ) -> (
+        PreprocessedData<ProvingKey<GC, C::Config, C::Air, Self>>,
+        MachineVerifyingKey<GC, C::Config>,
+    ) {
         if let Some(vk) = vk {
             let initial_global_cumulative_sum = vk.initial_global_cumulative_sum;
             self.setup_with_initial_global_cumulative_sum(
@@ -293,10 +267,10 @@ impl<C: ShardProverComponents> AirProver<C::Config, C::Air> for ShardProver<C> {
         &self,
         program: Arc<C::Program>,
         record: C::Record,
-        vk: Option<MachineVerifyingKey<C::Config>>,
+        vk: Option<MachineVerifyingKey<GC, C::Config>>,
         prover_permits: ProverSemaphore,
-        challenger: &mut C::Challenger,
-    ) -> (MachineVerifyingKey<C::Config>, ShardProof<C::Config>, ProverPermit) {
+        challenger: &mut GC::Challenger,
+    ) -> (MachineVerifyingKey<GC, C::Config>, ShardProof<GC, C::Config>, ProverPermit) {
         // Get the initial global cumulative sum and pc start.
         let pc_start = program.pc_start();
         let enable_untrusted_programs = program.enable_untrusted_programs();
@@ -349,11 +323,11 @@ impl<C: ShardProverComponents> AirProver<C::Config, C::Air> for ShardProver<C> {
     /// Prove a shard with a given proving key.
     async fn prove_shard_with_pk(
         &self,
-        pk: Arc<ProvingKey<C::Config, C::Air, Self>>,
+        pk: Arc<ProvingKey<GC, C::Config, C::Air, Self>>,
         record: C::Record,
         prover_permits: ProverSemaphore,
-        challenger: &mut C::Challenger,
-    ) -> (ShardProof<C::Config>, ProverPermit) {
+        challenger: &mut GC::Challenger,
+    ) -> (ShardProof<GC, C::Config>, ProverPermit) {
         // Generate the traces.
         let main_trace_data = self
             .trace_generator
@@ -369,14 +343,14 @@ impl<C: ShardProverComponents> AirProver<C::Config, C::Air> for ShardProver<C> {
     }
 }
 
-impl<C: ShardProverComponents> ShardProver<C> {
+impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
     /// Get all the chips in the machine.
-    pub fn all_chips(&self) -> &[Chip<C::F, C::Air>] {
+    pub fn all_chips(&self) -> &[Chip<GC::F, C::Air>] {
         self.trace_generator.machine().chips()
     }
 
     /// Get the machine.
-    pub fn machine(&self) -> &Machine<C::F, C::Air> {
+    pub fn machine(&self) -> &Machine<GC::F, C::Air> {
         self.trace_generator.machine()
     }
 
@@ -394,11 +368,11 @@ impl<C: ShardProverComponents> ShardProver<C> {
     /// Setup from preprocessed data and traces.
     pub async fn setup_from_preprocessed_data_and_traces(
         &self,
-        pc_start: [C::F; 3],
-        initial_global_cumulative_sum: SepticDigest<C::F>,
-        preprocessed_traces: Traces<C::F, C::B>,
-        enable_untrusted_programs: C::F,
-    ) -> (ShardProverData<C>, MachineVerifyingKey<C::Config>) {
+        pc_start: [GC::F; 3],
+        initial_global_cumulative_sum: SepticDigest<GC::F>,
+        preprocessed_traces: Traces<GC::F, C::B>,
+        enable_untrusted_programs: GC::F,
+    ) -> (ShardProverData<GC, C>, MachineVerifyingKey<GC, C::Config>) {
         // Commit to the preprocessed traces, if there are any.
         assert!(!preprocessed_traces.is_empty(), "preprocessed trace cannot be empty");
         let message = preprocessed_traces.values().cloned().collect::<Vec<_>>();
@@ -411,8 +385,8 @@ impl<C: ShardProverComponents> ShardProver<C> {
                 (
                     name.to_owned(),
                     ChipDimensions {
-                        height: C::F::from_canonical_usize(trace.num_real_entries()),
-                        num_polynomials: C::F::from_canonical_usize(trace.num_polynomials()),
+                        height: GC::F::from_canonical_usize(trace.num_real_entries()),
+                        num_polynomials: GC::F::from_canonical_usize(trace.num_polynomials()),
                     },
                 )
             })
@@ -424,6 +398,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
             preprocessed_commit,
             preprocessed_chip_information,
             enable_untrusted_programs,
+            marker: std::marker::PhantomData,
         };
 
         let pk = ShardProverData { preprocessed_traces, preprocessed_data };
@@ -435,10 +410,12 @@ impl<C: ShardProverComponents> ShardProver<C> {
     pub async fn setup_with_initial_global_cumulative_sum(
         &self,
         program: Arc<C::Program>,
-        initial_global_cumulative_sum: SepticDigest<C::F>,
+        initial_global_cumulative_sum: SepticDigest<GC::F>,
         setup_permits: ProverSemaphore,
-    ) -> (PreprocessedData<ProvingKey<C::Config, C::Air, Self>>, MachineVerifyingKey<C::Config>)
-    {
+    ) -> (
+        PreprocessedData<ProvingKey<GC, C::Config, C::Air, Self>>,
+        MachineVerifyingKey<GC, C::Config>,
+    ) {
         let pc_start = program.pc_start();
         let enable_untrusted_programs = program.enable_untrusted_programs();
         let preprocessed_data = self
@@ -466,8 +443,8 @@ impl<C: ShardProverComponents> ShardProver<C> {
 
     async fn commit_traces(
         &self,
-        traces: &Traces<C::F, C::B>,
-    ) -> (C::Commitment, JaggedProverData<C::PcsProverComponents>) {
+        traces: &Traces<GC::F, C::B>,
+    ) -> (GC::Digest, JaggedProverData<GC, C::PcsProverComponents>) {
         let message = traces.values().cloned().collect::<Vec<_>>();
         self.pcs_prover.commit_multilinears(message).await.unwrap()
     }
@@ -476,15 +453,15 @@ impl<C: ShardProverComponents> ShardProver<C> {
     #[allow(clippy::too_many_lines)]
     async fn zerocheck(
         &self,
-        chips: &BTreeSet<Chip<C::F, C::Air>>,
-        preprocessed_traces: Traces<C::F, C::B>,
-        traces: Traces<C::F, C::B>,
-        batching_challenge: C::EF,
-        gkr_opening_batch_randomness: C::EF,
-        logup_evaluations: &LogUpEvaluations<C::EF>,
-        public_values: Vec<C::F>,
-        challenger: &mut C::Challenger,
-    ) -> (ShardOpenedValues<C::F, C::EF>, PartialSumcheckProof<C::EF>) {
+        chips: &BTreeSet<Chip<GC::F, C::Air>>,
+        preprocessed_traces: Traces<GC::F, C::B>,
+        traces: Traces<GC::F, C::B>,
+        batching_challenge: GC::EF,
+        gkr_opening_batch_randomness: GC::EF,
+        logup_evaluations: &LogUpEvaluations<GC::EF>,
+        public_values: Vec<GC::F>,
+        challenger: &mut GC::Challenger,
+    ) -> (ShardOpenedValues<GC::F, GC::EF>, PartialSumcheckProof<GC::EF>) {
         let max_num_constraints =
             itertools::max(chips.iter().map(|chip| chip.num_constraints)).unwrap();
         let powers_of_challenge =
@@ -517,8 +494,8 @@ impl<C: ShardProverComponents> ShardProver<C> {
             assert_eq!(num_variables, self.pcs_prover.max_log_row_count as u32);
 
             let preprocessed_width = air.preprocessed_width();
-            let dummy_preprocessed_trace = vec![C::F::zero(); preprocessed_width];
-            let dummy_main_trace = vec![C::F::zero(); main_trace.num_polynomials()];
+            let dummy_preprocessed_trace = vec![GC::F::zero(); preprocessed_width];
+            let dummy_main_trace = vec![GC::F::zero(); main_trace.num_polynomials()];
 
             // Calculate powers of alpha for constraint evaluation:
             // 1. Generate sequence [α⁰, α¹, ..., α^(n-1)] where n = num_constraints.
@@ -529,7 +506,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
             let mut folder = ConstraintSumcheckFolder {
                 preprocessed: RowMajorMatrixView::new_row(&dummy_preprocessed_trace),
                 main: RowMajorMatrixView::new_row(&dummy_main_trace),
-                accumulator: C::EF::zero(),
+                accumulator: GC::EF::zero(),
                 public_values: &public_values,
                 constraint_index: 0,
                 powers_of_alpha: &chip_powers_of_alpha,
@@ -570,15 +547,15 @@ impl<C: ShardProverComponents> ShardProver<C> {
                 )
                 .zip(gkr_powers.iter())
                 .map(|(opening, power)| *opening * *power)
-                .sum::<C::EF>();
+                .sum::<GC::EF>();
 
             let initial_geq_value =
-                if main_trace.num_real_entries() > 0 { C::EF::zero() } else { C::EF::one() };
+                if main_trace.num_real_entries() > 0 { GC::EF::zero() } else { GC::EF::one() };
 
             let virtual_geq = VirtualGeq::new(
                 main_trace.num_real_entries() as u32,
-                C::F::one(),
-                C::F::zero(),
+                GC::F::one(),
+                GC::F::zero(),
                 self.pcs_prover.max_log_row_count as u32,
             );
 
@@ -587,7 +564,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
                 gkr_point.clone(),
                 preprocessed_trace,
                 main_trace,
-                C::EF::one(),
+                GC::EF::one(),
                 initial_geq_value,
                 padded_row_adjustment,
                 virtual_geq,
@@ -597,7 +574,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
         }
 
         // Same lambda for the RLC of the zerocheck polynomials.
-        let lambda = challenger.sample_ext_element::<C::EF>();
+        let lambda = challenger.sample_ext_element::<GC::EF>();
 
         // Compute the sumcheck proof for the zerocheck polynomials.
         let (partial_sumcheck_proof, component_poly_evals) = reduce_sumcheck_to_evaluation(
@@ -610,7 +587,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
         .await;
 
         let mut point_extended = partial_sumcheck_proof.point_and_eval.0.clone();
-        point_extended.add_dimension(C::EF::zero());
+        point_extended.add_dimension(GC::EF::zero());
 
         // Compute the chip openings from the component poly evaluations.
 
@@ -638,7 +615,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
                     ChipOpenedValues {
                         preprocessed,
                         main,
-                        local_cumulative_sum: C::EF::zero(),
+                        local_cumulative_sum: GC::EF::zero(),
                         degree: chip_heights[&air.name()].clone(),
                     },
                 )
@@ -654,9 +631,9 @@ impl<C: ShardProverComponents> ShardProver<C> {
     #[allow(clippy::type_complexity)]
     pub async fn prove_shard_with_data(
         &self,
-        data: ShardData<C>,
-        challenger: &mut C::Challenger,
-    ) -> (ShardProof<C::Config>, ProverPermit) {
+        data: ShardData<GC, C>,
+        challenger: &mut GC::Challenger,
+    ) -> (ShardProof<GC, C::Config>, ProverPermit) {
         let ShardData { pk, main_trace_data } = data;
         let MainTraceData { traces, public_values, shard_chips, permit } = main_trace_data;
 
@@ -683,11 +660,11 @@ impl<C: ShardProverComponents> ShardProver<C> {
         let (main_commit, main_data) =
             self.commit_traces(&traces).instrument(tracing::debug_span!("commit traces")).await;
         // Observe the commitments.
-        challenger.observe(main_commit.clone());
+        challenger.observe(main_commit);
 
         for chips in shard_chips.iter() {
             let num_real_entries = traces.get(&chips.air.name()).unwrap().num_real_entries();
-            challenger.observe(C::F::from_canonical_usize(num_real_entries));
+            challenger.observe(GC::F::from_canonical_usize(num_real_entries));
         }
 
         let max_interaction_arity = shard_chips
@@ -699,11 +676,11 @@ impl<C: ShardProverComponents> ShardProver<C> {
         let beta_seed_dim = max_interaction_arity.next_power_of_two().ilog2();
 
         // Sample the logup challenges.
-        let alpha = challenger.sample_ext_element::<C::EF>();
+        let alpha = challenger.sample_ext_element::<GC::EF>();
         let beta_seed = (0..beta_seed_dim)
-            .map(|_| challenger.sample_ext_element::<C::EF>())
+            .map(|_| challenger.sample_ext_element::<GC::EF>())
             .collect::<Point<_>>();
-        let _pv_challenge = challenger.sample_ext_element::<C::EF>();
+        let _pv_challenge = challenger.sample_ext_element::<GC::EF>();
 
         let logup_gkr_proof = self
             .logup_gkr_prover
@@ -719,9 +696,9 @@ impl<C: ShardProverComponents> ShardProver<C> {
             .instrument(tracing::debug_span!("logup gkr proof"))
             .await;
         // Get the challenge for batching constraints.
-        let batching_challenge = challenger.sample_ext_element::<C::EF>();
+        let batching_challenge = challenger.sample_ext_element::<GC::EF>();
         // Get the challenge for batching the evaluations from the GKR proof.
-        let gkr_opening_batch_challenge = challenger.sample_ext_element::<C::EF>();
+        let gkr_opening_batch_challenge = challenger.sample_ext_element::<GC::EF>();
 
         // Generate the zerocheck proof.
         let (shard_open_values, zerocheck_partial_sumcheck_proof) = self
@@ -740,7 +717,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
 
         // Get the evaluation point for the trace polynomials.
         let evaluation_point = zerocheck_partial_sumcheck_proof.point_and_eval.0.clone();
-        let mut preprocessed_evaluation_claims: Option<Evaluations<C::EF, C::B>> = None;
+        let mut preprocessed_evaluation_claims: Option<Evaluations<GC::EF, C::B>> = None;
         let mut main_evaluation_claims = Evaluations::new(vec![]);
 
         let alloc = self.trace_generator.allocator();
@@ -844,14 +821,14 @@ where
 /// A proving key for a STARK.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(
-    serialize = "Tensor<C::F, C::B>: Serialize, JaggedProverData<C::PcsProverComponents>: Serialize, C::F: Serialize, C::B: Serialize, "
+    serialize = "Tensor<GC::F, C::B>: Serialize, JaggedProverData<GC,C::PcsProverComponents>: Serialize, GC::F: Serialize, C::B: Serialize, "
 ))]
 #[serde(bound(
-    deserialize = "Tensor<C::F, C::B>: Deserialize<'de>, JaggedProverData<C::PcsProverComponents>: Deserialize<'de>, C::F: Deserialize<'de>, C::B: Deserialize<'de>, "
+    deserialize = "Tensor<GC::F, C::B>: Deserialize<'de>, JaggedProverData<GC,C::PcsProverComponents>: Deserialize<'de>, GC::F: Deserialize<'de>, C::B: Deserialize<'de>, "
 ))]
-pub struct ShardProverData<C: ShardProverComponents> {
+pub struct ShardProverData<GC: IopCtx, C: ShardProverComponents<GC>> {
     /// The preprocessed traces.
-    pub preprocessed_traces: Traces<C::F, C::B>,
+    pub preprocessed_traces: Traces<GC::F, C::B>,
     /// The pcs data for the preprocessed traces.
-    pub preprocessed_data: JaggedProverData<C::PcsProverComponents>,
+    pub preprocessed_data: JaggedProverData<GC, C::PcsProverComponents>,
 }

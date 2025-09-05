@@ -12,7 +12,7 @@ use prove::CpuProveBuilder;
 use sp1_core_executor::{ExecutionError, Program, SP1Context};
 use sp1_core_machine::io::SP1Stdin;
 use sp1_hypercube::prover::MachineProvingKey;
-use sp1_primitives::Elf;
+use sp1_primitives::{Elf, SP1GlobalContext};
 use sp1_prover::{
     components::CpuSP1ProverComponents,
     // verify::{verify_groth16_bn254_public_inputs, verify_plonk_bn254_public_inputs},
@@ -45,8 +45,12 @@ pub struct CpuProver {
 /// This struct is used to store the proving key for the [`CpuProver`].
 #[derive(Clone)]
 pub struct CPUProvingKey {
-    pub(crate) raw:
-        Arc<MachineProvingKey<<CpuSP1ProverComponents as SP1ProverComponents>::CoreComponents>>,
+    pub(crate) raw: Arc<
+        MachineProvingKey<
+            SP1GlobalContext,
+            <CpuSP1ProverComponents as SP1ProverComponents>::CoreComponents,
+        >,
+    >,
     pub(crate) vk: SP1VerifyingKey,
     pub(crate) program: Arc<Program>,
     pub(crate) elf: Elf,

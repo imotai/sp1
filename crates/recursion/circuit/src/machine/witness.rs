@@ -7,15 +7,15 @@ use crate::{
     },
 };
 use slop_algebra::AbstractField;
-use slop_challenger::DuplexChallenger;
+use slop_challenger::{DuplexChallenger, IopCtx};
 use slop_jagged::JaggedConfig;
 use slop_symmetric::Hash;
-use sp1_primitives::{SP1Field, SP1Perm};
-use std::borrow::Borrow;
+use sp1_primitives::{SP1Field, SP1GlobalContext, SP1Perm};
+use std::{borrow::Borrow, marker::PhantomData};
 
 use super::{
-    InnerChallenge, InnerVal, SP1DeferredWitnessValues, SP1DeferredWitnessVariable,
-    SP1NormalizeWitnessValues, SP1RecursionWitnessVariable, SP1ShapedWitnessValues,
+    InnerVal, SP1DeferredWitnessValues, SP1DeferredWitnessVariable, SP1NormalizeWitnessValues,
+    SP1RecursionWitnessVariable, SP1ShapedWitnessValues,
 };
 use crate::{
     basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldVerifier},
@@ -24,9 +24,9 @@ use crate::{
     jagged::RecursiveJaggedConfigImpl,
     shard::{MachineVerifyingKeyVariable, ShardProofVariable},
     witness::{WitnessWriter, Witnessable},
-    CircuitConfig, InnerSC, SP1FieldConfigVariable,
+    CircuitConfig, SP1FieldConfigVariable,
 };
-use sp1_hypercube::{MachineVerifyingKey, SP1CoreJaggedConfig, ShardProof, Word};
+use sp1_hypercube::{MachineConfig, MachineVerifyingKey, SP1CoreJaggedConfig, ShardProof, Word};
 use sp1_recursion_compiler::{
     config::InnerConfig,
     ir::{Builder, Felt},
@@ -44,9 +44,9 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Word<T> {
     }
 }
 
-impl<C> Witnessable<C> for DuplexChallenger<<InnerSC as JaggedConfig>::F, SP1Perm, 16, 8>
+impl<C> Witnessable<C> for DuplexChallenger<SP1Field, SP1Perm, 16, 8>
 where
-    C: CircuitConfig<F = <InnerSC as JaggedConfig>::F, EF = <InnerSC as JaggedConfig>::EF>,
+    C: CircuitConfig,
 {
     type WitnessVariable = DuplexChallengerVariable<C>;
 
@@ -54,7 +54,7 @@ where
         let sponge_state = self.sponge_state.read(builder);
         let input_buffer = self.input_buffer.read(builder);
         let output_buffer = self.output_buffer.read(builder);
-        DuplexChallengerVariable { sponge_state, input_buffer, output_buffer }
+        DuplexChallengerVariable { sponge_state, input_buffer, output_buffer, marker: PhantomData }
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
@@ -66,7 +66,7 @@ where
 
 impl<C, F, W, const DIGEST_ELEMENTS: usize> Witnessable<C> for Hash<F, W, DIGEST_ELEMENTS>
 where
-    C: CircuitConfig<F: Witnessable<C>, EF: Witnessable<C>>,
+    C: CircuitConfig,
     W: Witnessable<C>,
 {
     type WitnessVariable = [W::WitnessVariable; DIGEST_ELEMENTS];
@@ -85,7 +85,7 @@ where
 pub type JC<C, SC> =
     RecursiveJaggedConfigImpl<C, SC, RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>>;
 
-impl Witnessable<InnerConfig> for SP1NormalizeWitnessValues<SP1CoreJaggedConfig> {
+impl Witnessable<InnerConfig> for SP1NormalizeWitnessValues<SP1GlobalContext, SP1CoreJaggedConfig> {
     type WitnessVariable = SP1RecursionWitnessVariable<
         InnerConfig,
         SP1CoreJaggedConfig,
@@ -117,14 +117,16 @@ impl Witnessable<InnerConfig> for SP1NormalizeWitnessValues<SP1CoreJaggedConfig>
 }
 
 impl<
-        C: CircuitConfig<F = InnerVal, EF = InnerChallenge>,
-        SC: SP1FieldConfigVariable<C> + Send + Sync,
-    > Witnessable<C> for SP1ShapedWitnessValues<SC>
+        GC: IopCtx,
+        C: CircuitConfig,
+        SC: SP1FieldConfigVariable<C> + JaggedConfig<GC> + Send + Sync,
+    > Witnessable<C> for SP1ShapedWitnessValues<GC, SC>
 where
-    SC::Commitment:
-        Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
-    MachineVerifyingKey<SC>: Witnessable<C, WitnessVariable = MachineVerifyingKeyVariable<C, SC>>,
-    ShardProof<SC>: Witnessable<C, WitnessVariable = ShardProofVariable<C, SC, JC<C, SC>>>,
+    // SC::Commitment:
+    //     Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
+    MachineVerifyingKey<GC, SC>:
+        Witnessable<C, WitnessVariable = MachineVerifyingKeyVariable<C, SC>>,
+    ShardProof<GC, SC>: Witnessable<C, WitnessVariable = ShardProofVariable<C, SC, JC<C, SC>>>,
 {
     type WitnessVariable = SP1ShapedWitnessVariable<C, SC, JC<C, SC>>;
 
@@ -141,9 +143,9 @@ where
     }
 }
 
-impl<C> Witnessable<C> for SP1DeferredWitnessValues<SP1CoreJaggedConfig>
+impl<C> Witnessable<C> for SP1DeferredWitnessValues<SP1GlobalContext, SP1CoreJaggedConfig>
 where
-    C: CircuitConfig<F = InnerVal, EF = InnerChallenge, Bit = Felt<InnerVal>>,
+    C: CircuitConfig<Bit = Felt<InnerVal>>,
 {
     type WitnessVariable =
         SP1DeferredWitnessVariable<C, SP1CoreJaggedConfig, JC<C, SP1CoreJaggedConfig>>;
@@ -174,7 +176,7 @@ where
     }
 }
 
-impl<C: CircuitConfig, HV: FieldHasherVariable<C>> Witnessable<C> for MerkleProof<C::F, HV>
+impl<C: CircuitConfig, HV: FieldHasherVariable<C>> Witnessable<C> for MerkleProof<SP1Field, HV>
 where
     HV::Digest: Witnessable<C, WitnessVariable = HV::DigestVariable>,
 {
@@ -209,7 +211,7 @@ where
     }
 }
 
-impl<C: CircuitConfig<F = SP1Field>, SC: SP1FieldConfigVariable<C>> Witnessable<C>
+impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> Witnessable<C>
     for SP1MerkleProofWitnessValues<SC>
 where
     // This trait bound is redundant, but Rust-Analyzer is not able to infer it.
@@ -233,16 +235,18 @@ where
     }
 }
 
-impl<C: CircuitConfig<F = SP1Field, EF = InnerChallenge>, SC: SP1FieldConfigVariable<C>>
-    Witnessable<C> for SP1CompressWithVKeyWitnessValues<SC>
+impl<C: CircuitConfig<Bit = Felt<SP1Field>>, SC: SP1FieldConfigVariable<C>> Witnessable<C>
+    for SP1CompressWithVKeyWitnessValues<SC>
 where
     // This trait bound is redundant, but Rust-Analyzer is not able to infer it.
-    SC: FieldHasher<SP1Field>,
+    SC: MachineConfig<SP1GlobalContext> + FieldHasher<SP1Field>,
     <SC as FieldHasher<SP1Field>>::Digest: Witnessable<C, WitnessVariable = SC::DigestVariable>,
-    SC::Commitment:
-        Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
-    MachineVerifyingKey<SC>: Witnessable<C, WitnessVariable = MachineVerifyingKeyVariable<C, SC>>,
-    ShardProof<SC>: Witnessable<C, WitnessVariable = ShardProofVariable<C, SC, JC<C, SC>>>,
+    // ::Commitment:
+    //     Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
+    MachineVerifyingKey<SP1GlobalContext, SC>:
+        Witnessable<C, WitnessVariable = MachineVerifyingKeyVariable<C, SC>>,
+    ShardProof<SP1GlobalContext, SC>:
+        Witnessable<C, WitnessVariable = ShardProofVariable<C, SC, JC<C, SC>>>,
 {
     type WitnessVariable = SP1CompressWithVKeyWitnessVariable<C, SC, JC<C, SC>>;
 

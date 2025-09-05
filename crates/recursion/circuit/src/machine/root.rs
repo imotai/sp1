@@ -13,7 +13,7 @@ use crate::{
 use slop_air::Air;
 use slop_algebra::AbstractField;
 use sp1_hypercube::air::MachineAir;
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
 use sp1_recursion_compiler::ir::{Builder, Felt};
 use sp1_recursion_executor::DIGEST_SIZE;
 
@@ -22,11 +22,11 @@ use sp1_recursion_executor::DIGEST_SIZE;
 /// The root verifier is simply a `SP1CompressVerifier` with an assertion that the `is_complete`
 /// flag is set to true.
 #[derive(Debug, Clone, Copy)]
-pub struct SP1CompressRootVerifierWithVKey<C, SC, A, JC> {
-    _phantom: PhantomData<(C, SC, A, JC)>,
+pub struct SP1CompressRootVerifierWithVKey<GC, C, SC, A, JC> {
+    _phantom: PhantomData<(GC, C, SC, A, JC)>,
 }
 
-impl<C, SC, A, JC> SP1CompressRootVerifierWithVKey<C, SC, A, JC>
+impl<GC, C, SC, A, JC> SP1CompressRootVerifierWithVKey<GC, C, SC, A, JC>
 where
     SC: SP1FieldConfigVariable<
             C,
@@ -34,11 +34,11 @@ where
             DigestVariable = [Felt<SP1Field>; DIGEST_SIZE],
         > + Send
         + Sync,
-    C: CircuitConfig<F = SC::F, EF = SC::EF, Bit = Felt<SP1Field>>,
-    A: MachineAir<SC::F> + for<'a> Air<RecursiveVerifierConstraintFolder<'a, C>>,
+    C: CircuitConfig<Bit = Felt<SP1Field>>,
+    A: MachineAir<SP1Field> + for<'a> Air<RecursiveVerifierConstraintFolder<'a>>,
     JC: RecursiveJaggedConfig<
-        F = C::F,
-        EF = C::EF,
+        F = SP1Field,
+        EF = SP1ExtensionField,
         Circuit = C,
         Commitment = SC::DigestVariable,
         Challenger = SC::FriChallengerVariable,
@@ -48,13 +48,13 @@ where
 {
     pub fn verify(
         builder: &mut Builder<C>,
-        machine: &RecursiveShardVerifier<A, SC, C, JC>,
+        machine: &RecursiveShardVerifier<SP1GlobalContext, A, SC, C, JC>,
         input: SP1CompressWithVKeyWitnessVariable<C, SC, JC>,
         value_assertions: bool,
         kind: PublicValuesOutputDigest,
     ) {
         // Assert that the program is complete.
-        builder.assert_felt_eq(input.compress_var.is_complete, C::F::one());
+        builder.assert_felt_eq(input.compress_var.is_complete, SP1Field::one());
         // Verify the proof, as a compress proof.
         SP1CompressWithVKeyVerifier::verify(builder, machine, input, value_assertions, kind);
     }

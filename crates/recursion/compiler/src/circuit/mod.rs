@@ -24,16 +24,12 @@ mod tests {
         ir::*,
     };
 
-    // const DEGREE: usize = 3;
-
-    // type SC = SP1CoreJaggedConfigInner;
     type F = SP1Field;
     type EF = BinomialExtensionField<SP1Field, 4>;
-    // type A = RecursionAir<F, DEGREE>;
 
     #[test]
     fn test_io() {
-        let mut builder = AsmBuilder::<F, EF>::default();
+        let mut builder = AsmBuilder::default();
 
         let felts = builder.hint_felts_v2(3);
         assert_eq!(felts.len(), 3);
@@ -79,7 +75,7 @@ mod tests {
     #[test]
     #[allow(clippy::uninlined_format_args)]
     fn test_empty_witness_stream() {
-        let mut builder = AsmBuilder::<F, EF>::default();
+        let mut builder = AsmBuilder::default();
 
         let felts = builder.hint_felts_v2(3);
         assert_eq!(felts.len(), 3);

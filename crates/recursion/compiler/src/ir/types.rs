@@ -2,6 +2,7 @@ use alloc::format;
 
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, Field};
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 
 use super::{
     Builder, Config, DslIr, ExtConst, ExtHandle, FeltHandle, FromConstant, MemIndex, MemVariable,
@@ -53,8 +54,8 @@ pub enum Usize<N> {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Witness<C: Config> {
     pub vars: Vec<C::N>,
-    pub felts: Vec<C::F>,
-    pub exts: Vec<C::EF>,
+    pub felts: Vec<SP1Field>,
+    pub exts: Vec<SP1ExtensionField>,
     pub vkey_hash: C::N,
     pub committed_values_digest: C::N,
     pub exit_code: C::N,
@@ -326,12 +327,12 @@ impl<C: Config> MemVariable<C> for Var<C::N> {
     }
 }
 
-impl<C: Config> Variable<C> for Felt<C::F> {
-    type Expression = SymbolicFelt<C::F>;
+impl<C: Config> Variable<C> for Felt<SP1Field> {
+    type Expression = SymbolicFelt<SP1Field>;
 
     fn uninit(builder: &mut Builder<C>) -> Self {
         let idx = builder.variable_count();
-        let felt = Felt::<C::F>::new(idx, builder.felt_handle.as_mut());
+        let felt = Felt::<SP1Field>::new(idx, builder.felt_handle.as_mut());
         builder.inner.get_mut().variable_count += 1;
         felt
     }
@@ -342,7 +343,7 @@ impl<C: Config> Variable<C> for Felt<C::F> {
                 builder.push_op(DslIr::ImmF(*self, src));
             }
             SymbolicFelt::Val(src) => {
-                builder.push_op(DslIr::AddFI(*self, src, C::F::zero()));
+                builder.push_op(DslIr::AddFI(*self, src, SP1Field::zero()));
             }
         }
     }
@@ -396,7 +397,7 @@ impl<C: Config> Variable<C> for Felt<C::F> {
     }
 }
 
-impl<C: Config> MemVariable<C> for Felt<C::F> {
+impl<C: Config> MemVariable<C> for Felt<SP1Field> {
     fn size_of() -> usize {
         1
     }
@@ -410,12 +411,12 @@ impl<C: Config> MemVariable<C> for Felt<C::F> {
     }
 }
 
-impl<C: Config> Variable<C> for Ext<C::F, C::EF> {
-    type Expression = SymbolicExt<C::F, C::EF>;
+impl<C: Config> Variable<C> for Ext<SP1Field, SP1ExtensionField> {
+    type Expression = SymbolicExt<SP1Field, SP1ExtensionField>;
 
     fn uninit(builder: &mut Builder<C>) -> Self {
         let idx = builder.variable_count();
-        let ext = Ext::<C::F, C::EF>::new(idx, builder.ext_handle.as_mut());
+        let ext = Ext::<SP1Field, SP1ExtensionField>::new(idx, builder.ext_handle.as_mut());
         builder.inner.get_mut().variable_count += 1;
         ext
     }
@@ -427,14 +428,14 @@ impl<C: Config> Variable<C> for Ext<C::F, C::EF> {
             }
             SymbolicExt::Base(src) => match src {
                 SymbolicFelt::Const(src) => {
-                    builder.push_op(DslIr::ImmE(*self, C::EF::from_base(src)));
+                    builder.push_op(DslIr::ImmE(*self, SP1ExtensionField::from_base(src)));
                 }
                 SymbolicFelt::Val(src) => {
-                    builder.push_op(DslIr::AddEFFI(*self, src, C::EF::zero()));
+                    builder.push_op(DslIr::AddEFFI(*self, src, SP1ExtensionField::zero()));
                 }
             },
             SymbolicExt::Val(src) => {
-                builder.push_op(DslIr::AddEI(*self, src, C::EF::zero()));
+                builder.push_op(DslIr::AddEI(*self, src, SP1ExtensionField::zero()));
             }
         }
     }
@@ -522,7 +523,7 @@ impl<C: Config> Variable<C> for Ext<C::F, C::EF> {
     }
 }
 
-impl<C: Config> MemVariable<C> for Ext<C::F, C::EF> {
+impl<C: Config> MemVariable<C> for Ext<SP1Field, SP1ExtensionField> {
     fn size_of() -> usize {
         1
     }
@@ -544,16 +545,16 @@ impl<C: Config> FromConstant<C> for Var<C::N> {
     }
 }
 
-impl<C: Config> FromConstant<C> for Felt<C::F> {
-    type Constant = C::F;
+impl<C: Config> FromConstant<C> for Felt<SP1Field> {
+    type Constant = SP1Field;
 
     fn constant(value: Self::Constant, builder: &mut Builder<C>) -> Self {
         builder.eval(value)
     }
 }
 
-impl<C: Config> FromConstant<C> for Ext<C::F, C::EF> {
-    type Constant = C::EF;
+impl<C: Config> FromConstant<C> for Ext<SP1Field, SP1ExtensionField> {
+    type Constant = SP1ExtensionField;
 
     fn constant(value: Self::Constant, builder: &mut Builder<C>) -> Self {
         builder.eval(value.cons())

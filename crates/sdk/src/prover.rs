@@ -14,7 +14,7 @@ use itertools::Itertools;
 use slop_algebra::PrimeField32;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_hypercube::{air::PublicValues, MachineVerifierConfigError};
-use sp1_primitives::types::Elf;
+use sp1_primitives::{types::Elf, SP1GlobalContext};
 use sp1_prover::{
     components::{CpuSP1ProverComponents, SP1ProverComponents},
     local::LocalProver,
@@ -113,10 +113,10 @@ pub enum SP1VerificationError {
     VersionMismatch(String),
     /// An error that occurs when the core machine verification fails.
     #[error("Core machine verification error: {0}")]
-    Core(MachineVerifierConfigError<CoreSC>),
+    Core(MachineVerifierConfigError<SP1GlobalContext, CoreSC>),
     /// An error that occurs when the recursion verification fails.
     #[error("Recursion verification error: {0}")]
-    Recursion(MachineVerifierConfigError<InnerSC>),
+    Recursion(MachineVerifierConfigError<SP1GlobalContext, InnerSC>),
     /// An error that occurs when the Plonk verification fails.
     #[error("Plonk verification error: {0}")]
     Plonk(anyhow::Error),

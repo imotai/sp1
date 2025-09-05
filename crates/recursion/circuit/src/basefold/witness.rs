@@ -1,17 +1,18 @@
 use crate::{
-    basefold::tcs::{RecursiveTcs, RecursiveTensorCsOpening},
+    basefold::tcs::RecursiveTensorCsOpening,
+    hash::FieldHasherVariable,
     witness::{WitnessWriter, Witnessable},
     AsRecursive, CircuitConfig,
 };
 use slop_alloc::Buffer;
 use slop_basefold::{BasefoldConfig, BasefoldProof};
-use slop_challenger::GrindingChallenger;
-use slop_commit::{TensorCs, TensorCsOpening};
-use slop_merkle_tree::MerkleTreeTcsProof;
+use slop_challenger::{GrindingChallenger, IopCtx};
+use slop_merkle_tree::{MerkleTreeOpening, MerkleTreeTcsProof};
 use slop_multilinear::{Evaluations, Mle, MleEval};
 use slop_stacked::StackedPcsProof;
 use slop_tensor::Tensor;
-use sp1_recursion_compiler::ir::{Builder, Ext, Felt};
+use sp1_primitives::{SP1ExtensionField, SP1Field};
+use sp1_recursion_compiler::ir::{Builder, Felt};
 
 use super::{stacked::RecursiveStackedPcsProof, RecursiveBasefoldConfig, RecursiveBasefoldProof};
 
@@ -73,23 +74,20 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for Evaluations<T> {
     }
 }
 
-impl<C, TC> Witnessable<C> for TensorCsOpening<TC>
+impl<GC: IopCtx<F = SP1Field>, C: CircuitConfig> Witnessable<C> for MerkleTreeOpening<GC>
 where
-    C: CircuitConfig,
-    TC: TensorCs<Data = C::F> + AsRecursive<C>,
-    <TC as TensorCs>::Proof: Witnessable<C>,
-    TC::Recursive: RecursiveTcs<
-        Data = Felt<C::F>,
-        Proof = <<TC as TensorCs>::Proof as Witnessable<C>>::WitnessVariable,
-    >,
-    C::F: Witnessable<C, WitnessVariable = Felt<C::F>>,
+    GC::Digest: Witnessable<C>,
 {
-    type WitnessVariable = RecursiveTensorCsOpening<TC::Recursive>;
+    type WitnessVariable =
+        RecursiveTensorCsOpening<<GC::Digest as Witnessable<C>>::WitnessVariable>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
-        let values: Tensor<Felt<C::F>> = self.values.read(builder);
-        let proof = self.proof.read(builder);
-        RecursiveTensorCsOpening::<TC::Recursive> { values, proof }
+        let values: Tensor<Felt<SP1Field>> = self.values.read(builder);
+        let proof = self.proof.paths.read(builder);
+        RecursiveTensorCsOpening::<<GC::Digest as Witnessable<C>>::WitnessVariable> {
+            values,
+            proof,
+        }
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
@@ -115,18 +113,23 @@ where
     }
 }
 
-impl<C, BC> Witnessable<C> for BasefoldProof<BC>
+impl<C, BC, GC> Witnessable<C> for BasefoldProof<GC, BC>
 where
     C: CircuitConfig,
-    C::EF: Witnessable<C, WitnessVariable = Ext<C::F, C::EF>>,
-    BC: BasefoldConfig<F = C::F, EF = C::EF> + AsRecursive<C>,
-    <BC::Challenger as GrindingChallenger>::Witness: Witnessable<C, WitnessVariable = Felt<C::F>>,
-    BC::Recursive: RecursiveBasefoldConfig<F = C::F, EF = C::EF, Circuit = C>,
-    BC::Commitment:
-        Witnessable<C, WitnessVariable = <BC::Recursive as RecursiveBasefoldConfig>::Commitment>,
-    TensorCsOpening<BC::Tcs>: Witnessable<
+    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
+    BC: BasefoldConfig<GC> + AsRecursive<C>,
+    <GC::Challenger as GrindingChallenger>::Witness:
+        Witnessable<C, WitnessVariable = Felt<SP1Field>>,
+    BC::Recursive: RecursiveBasefoldConfig<F = SP1Field, EF = SP1ExtensionField, Circuit = C>,
+    GC::Digest: Witnessable<
         C,
-        WitnessVariable = RecursiveTensorCsOpening<<BC::Recursive as RecursiveBasefoldConfig>::Tcs>,
+        WitnessVariable = <<BC::Recursive as RecursiveBasefoldConfig>::M as FieldHasherVariable<
+            C,
+        >>::DigestVariable,
+    >,
+    MerkleTreeOpening<GC>: Witnessable<
+        C,
+        WitnessVariable = RecursiveTensorCsOpening<<GC::Digest as Witnessable<C>>::WitnessVariable>,
     >,
 {
     type WitnessVariable = RecursiveBasefoldProof<BC::Recursive>;
@@ -158,18 +161,20 @@ where
     }
 }
 
-impl<C, PcsProof, RecursivePcsProof, EF> Witnessable<C> for StackedPcsProof<PcsProof, EF>
+impl<C, PcsProof, RecursivePcsProof> Witnessable<C> for StackedPcsProof<PcsProof, SP1ExtensionField>
 where
-    C: CircuitConfig<EF = EF>,
-    C::EF: Witnessable<C, WitnessVariable = Ext<C::F, C::EF>>,
+    C: CircuitConfig,
     PcsProof: Witnessable<C, WitnessVariable = RecursivePcsProof>,
 {
-    type WitnessVariable = RecursiveStackedPcsProof<RecursivePcsProof, C::F, C::EF>;
+    type WitnessVariable = RecursiveStackedPcsProof<RecursivePcsProof, SP1Field, SP1ExtensionField>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let batch_evaluations = self.batch_evaluations.read(builder);
         let pcs_proof = self.pcs_proof.read(builder);
-        RecursiveStackedPcsProof::<RecursivePcsProof, C::F, C::EF> { pcs_proof, batch_evaluations }
+        RecursiveStackedPcsProof::<RecursivePcsProof, SP1Field, SP1ExtensionField> {
+            pcs_proof,
+            batch_evaluations,
+        }
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {

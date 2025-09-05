@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::air::PV_DIGEST_NUM_WORDS;
+use sp1_primitives::SP1Field;
 use sp1_recursion_compiler::ir::{Builder, Felt};
 use sp1_recursion_executor::{RecursionPublicValues, DIGEST_SIZE, NUM_PV_ELMS_TO_HASH};
 
@@ -16,7 +17,7 @@ pub struct RootPublicValues<T> {
 #[allow(dead_code)]
 pub(crate) fn assert_recursion_public_values_valid<C, H>(
     builder: &mut Builder<C>,
-    public_values: &RecursionPublicValues<Felt<C::F>>,
+    public_values: &RecursionPublicValues<Felt<SP1Field>>,
 ) where
     C: CircuitConfig,
     H: Poseidon2SP1FieldHasherVariable<C>,
@@ -30,8 +31,8 @@ pub(crate) fn assert_recursion_public_values_valid<C, H>(
 /// Verifies the digest of a recursive public values struct.
 pub(crate) fn recursion_public_values_digest<C, H>(
     builder: &mut Builder<C>,
-    public_values: &RecursionPublicValues<Felt<C::F>>,
-) -> [Felt<C::F>; DIGEST_SIZE]
+    public_values: &RecursionPublicValues<Felt<SP1Field>>,
+) -> [Felt<SP1Field>; DIGEST_SIZE]
 where
     C: CircuitConfig,
     H: Poseidon2SP1FieldHasherVariable<C>,
@@ -44,7 +45,7 @@ where
 #[allow(dead_code)]
 pub(crate) fn assert_root_public_values_valid<C, H>(
     builder: &mut Builder<C>,
-    public_values: &RootPublicValues<Felt<C::F>>,
+    public_values: &RootPublicValues<Felt<SP1Field>>,
 ) where
     C: CircuitConfig,
     H: Poseidon2SP1FieldHasherVariable<C>,
@@ -58,8 +59,8 @@ pub(crate) fn assert_root_public_values_valid<C, H>(
 /// Compute the digest of the root public values.
 pub(crate) fn root_public_values_digest<C, H>(
     builder: &mut Builder<C>,
-    public_values: &RecursionPublicValues<Felt<C::F>>,
-) -> [Felt<C::F>; DIGEST_SIZE]
+    public_values: &RecursionPublicValues<Felt<SP1Field>>,
+) -> [Felt<SP1Field>; DIGEST_SIZE]
 where
     C: CircuitConfig,
     H: Poseidon2SP1FieldHasherVariable<C>,

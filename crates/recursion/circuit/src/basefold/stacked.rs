@@ -1,9 +1,8 @@
 use super::RecursiveMultilinearPcsVerifier;
 use crate::sumcheck::evaluate_mle_ext;
-use slop_algebra::extension::BinomialExtensionField;
 use slop_commit::Rounds;
 use slop_multilinear::{Evaluations, Mle, Point};
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{Builder, Ext, SymbolicExt},
@@ -20,10 +19,7 @@ pub struct RecursiveStackedPcsProof<PcsProof, F, EF> {
     pub pcs_proof: PcsProof,
 }
 
-impl<
-        P: RecursiveMultilinearPcsVerifier<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
-    > RecursiveStackedPcsVerifier<P>
-{
+impl<P: RecursiveMultilinearPcsVerifier> RecursiveStackedPcsVerifier<P> {
     pub const fn new(recursive_pcs_verifier: P, log_stacking_height: u32) -> Self {
         Self { recursive_pcs_verifier, log_stacking_height }
     }
@@ -32,9 +28,9 @@ impl<
         &self,
         builder: &mut Builder<P::Circuit>,
         commitments: &[P::Commitment],
-        point: &Point<Ext<P::F, P::EF>>,
-        proof: &RecursiveStackedPcsProof<P::Proof, P::F, P::EF>,
-        evaluation_claim: SymbolicExt<P::F, P::EF>,
+        point: &Point<Ext<SP1Field, SP1ExtensionField>>,
+        proof: &RecursiveStackedPcsProof<P::Proof, SP1Field, SP1ExtensionField>,
+        evaluation_claim: SymbolicExt<SP1Field, SP1ExtensionField>,
         challenger: &mut P::Challenger,
     ) {
         let (batch_point, stack_point) =
@@ -70,7 +66,7 @@ mod tests {
     use std::{collections::VecDeque, marker::PhantomData, sync::Arc};
 
     use slop_algebra::extension::BinomialExtensionField;
-    use sp1_primitives::SP1DiffusionMatrix;
+    use sp1_primitives::{SP1DiffusionMatrix, SP1GlobalContext};
 
     use crate::{
         basefold::{
@@ -104,7 +100,7 @@ mod tests {
         batch_size: usize,
     ) {
         type C = SP1BasefoldConfig;
-        type Prover = BasefoldProver<SP1BasefoldCpuProverComponents>;
+        type Prover = BasefoldProver<SP1GlobalContext, SP1BasefoldCpuProverComponents>;
         type EF = BinomialExtensionField<SP1Field, 4>;
         let total_data_length = round_widths_and_log_heights
             .iter()
@@ -125,7 +121,7 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let pcs_verifier = BasefoldVerifier::<C>::new(log_blowup);
+        let pcs_verifier = BasefoldVerifier::<_, C>::new(log_blowup);
         let pcs_prover = Prover::new(&pcs_verifier);
         let stacker = FixedRateInterleave::new(batch_size);
 
@@ -166,32 +162,32 @@ mod tests {
             .await
             .unwrap();
 
-        let mut builder = AsmBuilder::<F, EF>::default();
+        let mut builder = AsmBuilder::default();
         let mut witness_stream = Vec::new();
         let mut challenger_variable = DuplexChallengerVariable::new(&mut builder);
 
-        Witnessable::<AsmConfig<F, EF>>::write(&commitments, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&commitments, &mut witness_stream);
         let commitments = commitments.read(&mut builder);
 
         for commitment in commitments.iter() {
             challenger_variable.observe(&mut builder, *commitment);
         }
 
-        Witnessable::<AsmConfig<F, EF>>::write(&point, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&point, &mut witness_stream);
         let point = point.read(&mut builder);
 
-        Witnessable::<AsmConfig<F, EF>>::write(&proof, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&proof, &mut witness_stream);
         let proof = proof.read(&mut builder);
 
-        Witnessable::<AsmConfig<F, EF>>::write(&eval_claim, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&eval_claim, &mut witness_stream);
         let eval_claim = eval_claim.read(&mut builder);
 
-        let verifier = BasefoldVerifier::<C>::new(log_blowup);
+        let verifier = BasefoldVerifier::<_, C>::new(log_blowup);
         let recursive_verifier = RecursiveBasefoldVerifier::<
-            RecursiveBasefoldConfigImpl<AsmConfig<F, EF>, SP1CoreJaggedConfig>,
+            RecursiveBasefoldConfigImpl<AsmConfig, SP1CoreJaggedConfig>,
         > {
             fri_config: verifier.fri_config,
-            tcs: RecursiveMerkleTreeTcs::<AsmConfig<F, EF>, SP1CoreJaggedConfig>(PhantomData),
+            tcs: RecursiveMerkleTreeTcs::<AsmConfig, SP1CoreJaggedConfig>(PhantomData),
         };
         let recursive_verifier =
             RecursiveStackedPcsVerifier::new(recursive_verifier, log_stacking_height);

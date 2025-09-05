@@ -1,13 +1,15 @@
+use std::marker::PhantomData;
+
 use slop_algebra::{AbstractField, Field};
+use slop_bn254::{OUTER_CHALLENGER_RATE, OUTER_DIGEST_SIZE};
 use slop_challenger::DuplexChallenger;
-use slop_merkle_tree::{OUTER_CHALLENGER_RATE, OUTER_DIGEST_SIZE};
 use slop_multilinear::Point;
 use slop_symmetric::CryptographicPermutation;
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{DslIr, Var},
-    prelude::{Builder, Config, Ext, Felt},
+    prelude::{Builder, Ext, Felt},
 };
 use sp1_recursion_executor::{HASH_RATE, NUM_BITS, PERMUTATION_WIDTH};
 
@@ -42,11 +44,13 @@ pub trait CanSampleVariable<C: CircuitConfig, V> {
 
 /// Reference: [p3_challenger::FieldChallenger].
 pub trait FieldChallengerVariable<C: CircuitConfig, Bit>:
-    CanObserveVariable<C, Felt<C::F>> + CanSampleVariable<C, Felt<C::F>> + CanSampleBitsVariable<C, Bit>
+    CanObserveVariable<C, Felt<SP1Field>>
+    + CanSampleVariable<C, Felt<SP1Field>>
+    + CanSampleBitsVariable<C, Bit>
 {
-    fn sample_ext(&mut self, builder: &mut Builder<C>) -> Ext<C::F, C::EF>;
+    fn sample_ext(&mut self, builder: &mut Builder<C>) -> Ext<SP1Field, SP1ExtensionField>;
 
-    fn check_witness(&mut self, builder: &mut Builder<C>, nb_bits: usize, witness: Felt<C::F>);
+    fn check_witness(&mut self, builder: &mut Builder<C>, nb_bits: usize, witness: Felt<SP1Field>);
 
     fn duplexing(&mut self, builder: &mut Builder<C>);
 
@@ -54,20 +58,26 @@ pub trait FieldChallengerVariable<C: CircuitConfig, Bit>:
         &mut self,
         builder: &mut Builder<C>,
         dimension: u32,
-    ) -> Point<Ext<C::F, C::EF>> {
+    ) -> Point<Ext<SP1Field, SP1ExtensionField>> {
         (0..dimension).map(|_| self.sample_ext(builder)).collect()
     }
 
-    fn observe_ext_element(&mut self, builder: &mut Builder<C>, element: Ext<C::F, C::EF>)
-    where
+    fn observe_ext_element(
+        &mut self,
+        builder: &mut Builder<C>,
+        element: Ext<SP1Field, SP1ExtensionField>,
+    ) where
         C: CircuitConfig,
     {
         let felts = C::ext2felt(builder, element);
         self.observe_slice(builder, felts);
     }
 
-    fn observe_ext_element_slice(&mut self, builder: &mut Builder<C>, elements: &[Ext<C::F, C::EF>])
-    where
+    fn observe_ext_element_slice(
+        &mut self,
+        builder: &mut Builder<C>,
+        elements: &[Ext<SP1Field, SP1ExtensionField>],
+    ) where
         C: CircuitConfig,
     {
         for &element in elements {
@@ -83,18 +93,20 @@ pub trait CanSampleBitsVariable<C: CircuitConfig, V> {
 /// Reference: [p3_challenger::DuplexChallenger]
 #[derive(Clone, Debug)]
 pub struct DuplexChallengerVariable<C: CircuitConfig> {
-    pub sponge_state: [Felt<C::F>; PERMUTATION_WIDTH],
-    pub input_buffer: Vec<Felt<C::F>>,
-    pub output_buffer: Vec<Felt<C::F>>,
+    pub sponge_state: [Felt<SP1Field>; PERMUTATION_WIDTH],
+    pub input_buffer: Vec<Felt<SP1Field>>,
+    pub output_buffer: Vec<Felt<SP1Field>>,
+    pub marker: PhantomData<C>,
 }
 
-impl<C: CircuitConfig<F = SP1Field>> DuplexChallengerVariable<C> {
+impl<C: CircuitConfig> DuplexChallengerVariable<C> {
     /// Creates a new duplex challenger with the default state.
     pub fn new(builder: &mut Builder<C>) -> Self {
         DuplexChallengerVariable::<C> {
-            sponge_state: core::array::from_fn(|_| builder.eval(C::F::zero())),
+            sponge_state: core::array::from_fn(|_| builder.eval(SP1Field::zero())),
             input_buffer: vec![],
             output_buffer: vec![],
+            marker: PhantomData,
         }
     }
 
@@ -106,22 +118,29 @@ impl<C: CircuitConfig<F = SP1Field>> DuplexChallengerVariable<C> {
         let sponge_state = challenger.sponge_state.map(|x| builder.eval(x));
         let input_buffer = challenger.input_buffer.iter().map(|x| builder.eval(*x)).collect();
         let output_buffer = challenger.output_buffer.iter().map(|x| builder.eval(*x)).collect();
-        DuplexChallengerVariable::<C> { sponge_state, input_buffer, output_buffer }
+        DuplexChallengerVariable::<C> {
+            sponge_state,
+            input_buffer,
+            output_buffer,
+            marker: PhantomData,
+        }
     }
 
     /// Creates a new challenger with the same state as an existing challenger.
     pub fn copy(&self, builder: &mut Builder<C>) -> Self {
-        let DuplexChallengerVariable { sponge_state, input_buffer, output_buffer } = self;
+        let DuplexChallengerVariable { sponge_state, input_buffer, output_buffer, marker: _ } =
+            self;
         let sponge_state = sponge_state.map(|x| builder.eval(x));
-        let mut copy_vec = |v: &Vec<Felt<C::F>>| v.iter().map(|x| builder.eval(*x)).collect();
+        let mut copy_vec = |v: &Vec<Felt<SP1Field>>| v.iter().map(|x| builder.eval(*x)).collect();
         DuplexChallengerVariable::<C> {
             sponge_state,
             input_buffer: copy_vec(input_buffer),
             output_buffer: copy_vec(output_buffer),
+            marker: PhantomData,
         }
     }
 
-    fn observe(&mut self, builder: &mut Builder<C>, value: Felt<C::F>) {
+    fn observe(&mut self, builder: &mut Builder<C>, value: Felt<SP1Field>) {
         self.output_buffer.clear();
 
         self.input_buffer.push(value);
@@ -131,7 +150,7 @@ impl<C: CircuitConfig<F = SP1Field>> DuplexChallengerVariable<C> {
         }
     }
 
-    fn sample(&mut self, builder: &mut Builder<C>) -> Felt<C::F> {
+    fn sample(&mut self, builder: &mut Builder<C>) -> Felt<SP1Field> {
         if !self.input_buffer.is_empty() || self.output_buffer.is_empty() {
             self.duplexing(builder);
         }
@@ -139,7 +158,7 @@ impl<C: CircuitConfig<F = SP1Field>> DuplexChallengerVariable<C> {
         self.output_buffer.pop().expect("output buffer should be non-empty")
     }
 
-    fn sample_bits(&mut self, builder: &mut Builder<C>, nb_bits: usize) -> Vec<Felt<C::F>> {
+    fn sample_bits(&mut self, builder: &mut Builder<C>, nb_bits: usize) -> Vec<Felt<SP1Field>> {
         assert!(nb_bits <= NUM_BITS);
         let rand_f = self.sample(builder);
         let mut rand_f_bits = builder.num2bits_v2_f(rand_f, NUM_BITS);
@@ -148,23 +167,21 @@ impl<C: CircuitConfig<F = SP1Field>> DuplexChallengerVariable<C> {
     }
 }
 
-impl<C: CircuitConfig<F = SP1Field>> CanCopyChallenger<C> for DuplexChallengerVariable<C> {
+impl<C: CircuitConfig> CanCopyChallenger<C> for DuplexChallengerVariable<C> {
     fn copy(&self, builder: &mut Builder<C>) -> Self {
         DuplexChallengerVariable::copy(self, builder)
     }
 }
 
-impl<C: CircuitConfig<F = SP1Field>> CanObserveVariable<C, Felt<C::F>>
-    for DuplexChallengerVariable<C>
-{
-    fn observe(&mut self, builder: &mut Builder<C>, value: Felt<C::F>) {
+impl<C: CircuitConfig> CanObserveVariable<C, Felt<SP1Field>> for DuplexChallengerVariable<C> {
+    fn observe(&mut self, builder: &mut Builder<C>, value: Felt<SP1Field>) {
         DuplexChallengerVariable::observe(self, builder, value);
     }
 
     fn observe_slice(
         &mut self,
         builder: &mut Builder<C>,
-        values: impl IntoIterator<Item = Felt<C::F>>,
+        values: impl IntoIterator<Item = Felt<SP1Field>>,
     ) {
         for value in values {
             self.observe(builder, value);
@@ -172,36 +189,30 @@ impl<C: CircuitConfig<F = SP1Field>> CanObserveVariable<C, Felt<C::F>>
     }
 }
 
-impl<C: CircuitConfig<F = SP1Field>, const N: usize> CanObserveVariable<C, [Felt<C::F>; N]>
+impl<C: CircuitConfig, const N: usize> CanObserveVariable<C, [Felt<SP1Field>; N]>
     for DuplexChallengerVariable<C>
 {
-    fn observe(&mut self, builder: &mut Builder<C>, values: [Felt<C::F>; N]) {
+    fn observe(&mut self, builder: &mut Builder<C>, values: [Felt<SP1Field>; N]) {
         for value in values {
             self.observe(builder, value);
         }
     }
 }
 
-impl<C: CircuitConfig<F = SP1Field>> CanSampleVariable<C, Felt<C::F>>
-    for DuplexChallengerVariable<C>
-{
-    fn sample(&mut self, builder: &mut Builder<C>) -> Felt<C::F> {
+impl<C: CircuitConfig> CanSampleVariable<C, Felt<SP1Field>> for DuplexChallengerVariable<C> {
+    fn sample(&mut self, builder: &mut Builder<C>) -> Felt<SP1Field> {
         DuplexChallengerVariable::sample(self, builder)
     }
 }
 
-impl<C: CircuitConfig<F = SP1Field>> CanSampleBitsVariable<C, Felt<C::F>>
-    for DuplexChallengerVariable<C>
-{
-    fn sample_bits(&mut self, builder: &mut Builder<C>, nb_bits: usize) -> Vec<Felt<C::F>> {
+impl<C: CircuitConfig> CanSampleBitsVariable<C, Felt<SP1Field>> for DuplexChallengerVariable<C> {
+    fn sample_bits(&mut self, builder: &mut Builder<C>, nb_bits: usize) -> Vec<Felt<SP1Field>> {
         DuplexChallengerVariable::sample_bits(self, builder, nb_bits)
     }
 }
 
-impl<C: CircuitConfig<F = SP1Field>> FieldChallengerVariable<C, Felt<C::F>>
-    for DuplexChallengerVariable<C>
-{
-    fn sample_ext(&mut self, builder: &mut Builder<C>) -> Ext<C::F, C::EF> {
+impl<C: CircuitConfig> FieldChallengerVariable<C, Felt<SP1Field>> for DuplexChallengerVariable<C> {
+    fn sample_ext(&mut self, builder: &mut Builder<C>) -> Ext<SP1Field, SP1ExtensionField> {
         let a = self.sample(builder);
         let b = self.sample(builder);
         let c = self.sample(builder);
@@ -209,16 +220,11 @@ impl<C: CircuitConfig<F = SP1Field>> FieldChallengerVariable<C, Felt<C::F>>
         builder.ext_from_base_slice(&[a, b, c, d])
     }
 
-    fn check_witness(
-        &mut self,
-        builder: &mut Builder<C>,
-        nb_bits: usize,
-        witness: Felt<<C as Config>::F>,
-    ) {
+    fn check_witness(&mut self, builder: &mut Builder<C>, nb_bits: usize, witness: Felt<SP1Field>) {
         self.observe(builder, witness);
         let element_bits = self.sample_bits(builder, nb_bits);
         for bit in element_bits {
-            builder.assert_felt_eq(bit, C::F::zero());
+            builder.assert_felt_eq(bit, SP1Field::zero());
         }
     }
 
@@ -238,8 +244,8 @@ impl<C: CircuitConfig<F = SP1Field>> FieldChallengerVariable<C, Felt<C::F>>
 #[derive(Clone)]
 pub struct MultiField32ChallengerVariable<C: CircuitConfig> {
     sponge_state: [Var<C::N>; 3],
-    input_buffer: Vec<Felt<C::F>>,
-    output_buffer: Vec<Felt<C::F>>,
+    input_buffer: Vec<Felt<SP1Field>>,
+    output_buffer: Vec<Felt<SP1Field>>,
     output_var_buffer: Vec<Var<C::N>>,
     num_duplex_elms: usize,
     num_f_elms: usize,
@@ -256,8 +262,8 @@ impl<C: CircuitConfig> MultiField32ChallengerVariable<C> {
             input_buffer: vec![],
             output_buffer: vec![],
             output_var_buffer: vec![],
-            num_duplex_elms: C::N::bits() / C::F::bits(),
-            num_f_elms: C::N::bits() / C::F::bits() / 2,
+            num_duplex_elms: C::N::bits() / SP1Field::bits(),
+            num_f_elms: C::N::bits() / SP1Field::bits() / 2,
         }
     }
 
@@ -288,7 +294,7 @@ impl<C: CircuitConfig> MultiField32ChallengerVariable<C> {
         }
     }
 
-    pub fn observe(&mut self, builder: &mut Builder<C>, value: Felt<C::F>) {
+    pub fn observe(&mut self, builder: &mut Builder<C>, value: Felt<SP1Field>) {
         self.output_buffer.clear();
         self.output_var_buffer.clear();
 
@@ -304,14 +310,14 @@ impl<C: CircuitConfig> MultiField32ChallengerVariable<C> {
         value: [Var<C::N>; OUTER_DIGEST_SIZE],
     ) {
         for val in value {
-            let f_vals: Vec<Felt<C::F>> = split_32(builder, val, self.num_f_elms);
+            let f_vals: Vec<Felt<SP1Field>> = split_32(builder, val, self.num_f_elms);
             for f_val in f_vals {
                 self.observe(builder, f_val);
             }
         }
     }
 
-    pub fn sample(&mut self, builder: &mut Builder<C>) -> Felt<C::F> {
+    pub fn sample(&mut self, builder: &mut Builder<C>) -> Felt<SP1Field> {
         if !self.input_buffer.is_empty()
             || (self.output_buffer.is_empty() && self.output_var_buffer.is_empty())
         {
@@ -324,7 +330,7 @@ impl<C: CircuitConfig> MultiField32ChallengerVariable<C> {
         self.output_buffer.pop().expect("output buffer should be non-empty")
     }
 
-    pub fn sample_ext(&mut self, builder: &mut Builder<C>) -> Ext<C::F, C::EF> {
+    pub fn sample_ext(&mut self, builder: &mut Builder<C>) -> Ext<SP1Field, SP1ExtensionField> {
         let a = self.sample(builder);
         let b = self.sample(builder);
         let c = self.sample(builder);
@@ -337,7 +343,12 @@ impl<C: CircuitConfig> MultiField32ChallengerVariable<C> {
         builder.num2bits_f_circuit(rand_f)[0..bits].to_vec()
     }
 
-    pub fn check_witness(&mut self, builder: &mut Builder<C>, bits: usize, witness: Felt<C::F>) {
+    pub fn check_witness(
+        &mut self,
+        builder: &mut Builder<C>,
+        bits: usize,
+        witness: Felt<SP1Field>,
+    ) {
         self.observe(builder, witness);
         let element = self.sample_bits(builder, bits);
         for bit in element {
@@ -358,7 +369,7 @@ impl<C: CircuitConfig> CanCopyChallenger<C> for MultiField32ChallengerVariable<C
             num_f_elms,
         } = self;
         let sponge_state = sponge_state.map(|x| builder.eval(x));
-        let mut copy_vec = |v: &Vec<Felt<C::F>>| v.iter().map(|x| builder.eval(*x)).collect();
+        let mut copy_vec = |v: &Vec<Felt<SP1Field>>| v.iter().map(|x| builder.eval(*x)).collect();
         MultiField32ChallengerVariable::<C> {
             sponge_state,
             num_duplex_elms: *num_duplex_elms,
@@ -370,8 +381,8 @@ impl<C: CircuitConfig> CanCopyChallenger<C> for MultiField32ChallengerVariable<C
     }
 }
 
-impl<C: CircuitConfig> CanObserveVariable<C, Felt<C::F>> for MultiField32ChallengerVariable<C> {
-    fn observe(&mut self, builder: &mut Builder<C>, value: Felt<C::F>) {
+impl<C: CircuitConfig> CanObserveVariable<C, Felt<SP1Field>> for MultiField32ChallengerVariable<C> {
+    fn observe(&mut self, builder: &mut Builder<C>, value: Felt<SP1Field>) {
         MultiField32ChallengerVariable::observe(self, builder, value);
     }
 }
@@ -390,8 +401,8 @@ impl<C: CircuitConfig> CanObserveVariable<C, Var<C::N>> for MultiField32Challeng
     }
 }
 
-impl<C: CircuitConfig> CanSampleVariable<C, Felt<C::F>> for MultiField32ChallengerVariable<C> {
-    fn sample(&mut self, builder: &mut Builder<C>) -> Felt<C::F> {
+impl<C: CircuitConfig> CanSampleVariable<C, Felt<SP1Field>> for MultiField32ChallengerVariable<C> {
+    fn sample(&mut self, builder: &mut Builder<C>) -> Felt<SP1Field> {
         MultiField32ChallengerVariable::sample(self, builder)
     }
 }
@@ -403,11 +414,11 @@ impl<C: CircuitConfig> CanSampleBitsVariable<C, Var<C::N>> for MultiField32Chall
 }
 
 impl<C: CircuitConfig> FieldChallengerVariable<C, Var<C::N>> for MultiField32ChallengerVariable<C> {
-    fn sample_ext(&mut self, builder: &mut Builder<C>) -> Ext<C::F, C::EF> {
+    fn sample_ext(&mut self, builder: &mut Builder<C>) -> Ext<SP1Field, SP1ExtensionField> {
         MultiField32ChallengerVariable::sample_ext(self, builder)
     }
 
-    fn check_witness(&mut self, builder: &mut Builder<C>, bits: usize, witness: Felt<C::F>) {
+    fn check_witness(&mut self, builder: &mut Builder<C>, bits: usize, witness: Felt<SP1Field>) {
         MultiField32ChallengerVariable::check_witness(self, builder, bits, witness);
     }
 
@@ -416,7 +427,7 @@ impl<C: CircuitConfig> FieldChallengerVariable<C, Var<C::N>> for MultiField32Cha
     }
 }
 
-pub fn reduce_31<C: CircuitConfig>(builder: &mut Builder<C>, vals: &[Felt<C::F>]) -> Var<C::N> {
+pub fn reduce_31<C: CircuitConfig>(builder: &mut Builder<C>, vals: &[Felt<SP1Field>]) -> Var<C::N> {
     let mut power = C::N::one();
     let result: Var<C::N> = builder.eval(C::N::zero());
     for val in vals.iter() {
@@ -431,14 +442,14 @@ pub fn split_32<C: CircuitConfig>(
     builder: &mut Builder<C>,
     val: Var<C::N>,
     n: usize,
-) -> Vec<Felt<C::F>> {
+) -> Vec<Felt<SP1Field>> {
     let bits = builder.num2bits_v_circuit(val, 256);
     let mut results = Vec::new();
     for i in 0..n {
-        let result: Felt<C::F> = builder.eval(C::F::zero());
+        let result: Felt<SP1Field> = builder.eval(SP1Field::zero());
         for j in 0..64 {
             let bit = bits[i * 64 + j];
-            let t = builder.eval(result + C::F::from_wrapped_u64(1 << j));
+            let t = builder.eval(result + SP1Field::from_wrapped_u64(1 << j));
             let z = builder.select_f(bit, t, result);
             builder.assign(result, z);
         }
@@ -451,7 +462,7 @@ pub fn split_32<C: CircuitConfig>(
 pub(crate) mod tests {
     #![allow(clippy::print_stdout)]
 
-    use std::iter::zip;
+    use std::{iter::zip, marker::PhantomData};
 
     use crate::{
         challenger::{CanCopyChallenger, MultiField32ChallengerVariable},
@@ -460,16 +471,16 @@ pub(crate) mod tests {
     };
     use slop_algebra::AbstractField;
 
-    use slop_bn254::Bn254Fr;
+    use slop_bn254::{Bn254Fr, OuterPerm};
     use slop_challenger::{
-        CanObserve, CanSample, CanSampleBits, DuplexChallenger, FieldChallenger,
+        CanObserve, CanSample, CanSampleBits, DuplexChallenger, FieldChallenger, IopCtx,
         MultiField32Challenger,
     };
-    use slop_jagged::JaggedConfig;
-    use slop_merkle_tree::{outer_perm, DefaultMerkleTreeConfig, OuterPerm, Poseidon2Bn254Config};
+
+    use slop_merkle_tree::{outer_perm, DefaultMerkleTreeConfig, Poseidon2Bn254Config};
     use slop_symmetric::{CryptographicHasher, Hash, PseudoCompressionFunction};
-    use sp1_hypercube::{inner_perm, SP1CoreJaggedConfig, SP1OuterConfig};
-    use sp1_primitives::{SP1Field, SP1Perm};
+    use sp1_hypercube::{inner_perm, SP1OuterConfig};
+    use sp1_primitives::{SP1Field, SP1GlobalContext, SP1OuterGlobalContext, SP1Perm};
     use sp1_recursion_compiler::{
         circuit::{AsmBuilder, AsmCompiler, AsmConfig},
         config::OuterConfig,
@@ -481,10 +492,10 @@ pub(crate) mod tests {
 
     use crate::challenger::{DuplexChallengerVariable, FieldChallengerVariable};
 
-    type SC = SP1CoreJaggedConfig;
+    type GC = SP1GlobalContext;
     type C = OuterConfig;
-    type F = <SC as JaggedConfig>::F;
-    type EF = <SC as JaggedConfig>::EF;
+    type F = <GC as IopCtx>::F;
+    type EF = <GC as IopCtx>::EF;
 
     #[tokio::test]
     #[allow(clippy::uninlined_format_args)]
@@ -501,12 +512,13 @@ pub(crate) mod tests {
         let result_ef: EF = challenger.sample_ext_element();
         println!("expected result_ef: {result_ef}");
 
-        let mut builder = AsmBuilder::<F, EF>::default();
+        let mut builder = AsmBuilder::default();
 
-        let mut challenger = DuplexChallengerVariable::<AsmConfig<F, EF>> {
-            sponge_state: core::array::from_fn(|_| builder.eval(F::zero())),
+        let mut challenger = DuplexChallengerVariable::<AsmConfig> {
+            sponge_state: core::array::from_fn(|_| builder.eval(SP1Field::zero())),
             input_buffer: vec![],
             output_buffer: vec![],
+            marker: PhantomData,
         };
         let one: Felt<_> = builder.eval(F::one());
         let two: Felt<_> = builder.eval(F::two());
@@ -526,7 +538,7 @@ pub(crate) mod tests {
         builder.assert_ext_eq(expected_result_ef, element_ef);
 
         let block = builder.into_root_block();
-        let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
+        let mut compiler = AsmCompiler::default();
         let program = compiler.compile_inner(block).validate().unwrap();
 
         let witness_stream = Vec::new();
@@ -536,9 +548,9 @@ pub(crate) mod tests {
     #[tokio::test]
     #[allow(clippy::uninlined_format_args)]
     async fn test_challenger_outer() {
-        type SC = SP1OuterConfig;
-        type F = <SC as JaggedConfig>::F;
-        type EF = <SC as JaggedConfig>::EF;
+        type GC = SP1OuterGlobalContext;
+        type F = <GC as IopCtx>::F;
+        type EF = <GC as IopCtx>::EF;
         type N = <C as Config>::N;
 
         let default_perm = outer_perm();
@@ -624,7 +636,9 @@ pub(crate) mod tests {
 
     #[test]
     fn test_p2_hash() {
-        let (hasher, _) = Poseidon2Bn254Config::default_hasher_and_compressor();
+        let (hasher, _) = <Poseidon2Bn254Config<_> as DefaultMerkleTreeConfig<
+            SP1OuterGlobalContext,
+        >>::default_hasher_and_compressor();
 
         let input: [SP1Field; 7] = [
             SP1Field::from_canonical_u32(0),
@@ -657,7 +671,9 @@ pub(crate) mod tests {
     #[test]
     fn test_p2_compress() {
         type OuterDigestVariable = [Var<<C as Config>::N>; BN254_DIGEST_SIZE];
-        let (_, compressor) = Poseidon2Bn254Config::<SP1Field>::default_hasher_and_compressor();
+        let (_, compressor) = <Poseidon2Bn254Config<_> as DefaultMerkleTreeConfig<
+            SP1OuterGlobalContext,
+        >>::default_hasher_and_compressor();
 
         let a: [Bn254Fr; 1] = [Bn254Fr::two()];
         let b: [Bn254Fr; 1] = [Bn254Fr::two()];

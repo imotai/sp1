@@ -1,6 +1,5 @@
-use slop_jagged::JaggedConfig;
 use sp1_hypercube::{prover::MachineProverComponents, MachineVerifier, ShardVerifier};
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1Field, SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_recursion_circuit::machine::InnerVal;
 
 use crate::{CompressAir, InnerSC, OuterSC, WrapAir};
@@ -15,13 +14,9 @@ const SHRINK_LOG_BLOWUP: usize = 4;
 const WRAP_LOG_BLOWUP: usize = 4;
 
 pub trait RecursionProverComponents:
-    MachineProverComponents<
-    F = <InnerSC as JaggedConfig>::F,
-    Config = InnerSC,
-    Air = CompressAir<<InnerSC as JaggedConfig>::F>,
->
+    MachineProverComponents<SP1GlobalContext, Config = InnerSC, Air = CompressAir<SP1Field>>
 {
-    fn verifier() -> MachineVerifier<InnerSC, CompressAir<InnerVal>> {
+    fn verifier() -> MachineVerifier<SP1GlobalContext, InnerSC, CompressAir<InnerVal>> {
         let compress_log_blowup = RECURSION_LOG_BLOWUP;
         let compress_log_stacking_height = RECURSION_LOG_STACKING_HEIGHT;
         let compress_max_log_row_count = RECURSION_MAX_LOG_ROW_COUNT;
@@ -37,7 +32,7 @@ pub trait RecursionProverComponents:
         MachineVerifier::new(recursion_shard_verifier)
     }
 
-    fn shrink_verifier() -> MachineVerifier<InnerSC, CompressAir<InnerVal>> {
+    fn shrink_verifier() -> MachineVerifier<SP1GlobalContext, InnerSC, CompressAir<InnerVal>> {
         let shrink_log_blowup = SHRINK_LOG_BLOWUP;
         let shrink_log_stacking_height = SHRINK_LOG_STACKING_HEIGHT;
         let shrink_max_log_row_count = SHRINK_MAX_LOG_ROW_COUNT;
@@ -55,13 +50,9 @@ pub trait RecursionProverComponents:
 }
 
 pub trait WrapProverComponents:
-    MachineProverComponents<
-    F = <OuterSC as JaggedConfig>::F,
-    Config = OuterSC,
-    Air = WrapAir<<OuterSC as JaggedConfig>::F>,
->
+    MachineProverComponents<SP1OuterGlobalContext, Config = OuterSC, Air = WrapAir<SP1Field>>
 {
-    fn wrap_verifier() -> MachineVerifier<OuterSC, WrapAir<InnerVal>> {
+    fn wrap_verifier() -> MachineVerifier<SP1OuterGlobalContext, OuterSC, WrapAir<InnerVal>> {
         let wrap_log_blowup = WRAP_LOG_BLOWUP;
         let wrap_log_stacking_height = RECURSION_LOG_STACKING_HEIGHT;
         let wrap_max_log_row_count = RECURSION_MAX_LOG_ROW_COUNT;
@@ -79,19 +70,11 @@ pub trait WrapProverComponents:
 }
 
 impl<C> RecursionProverComponents for C where
-    C: MachineProverComponents<
-        F = <InnerSC as JaggedConfig>::F,
-        Config = InnerSC,
-        Air = CompressAir<<InnerSC as JaggedConfig>::F>,
-    >
+    C: MachineProverComponents<SP1GlobalContext, Config = InnerSC, Air = CompressAir<SP1Field>>
 {
 }
 
 impl<C> WrapProverComponents for C where
-    C: MachineProverComponents<
-        F = <OuterSC as JaggedConfig>::F,
-        Config = OuterSC,
-        Air = WrapAir<<OuterSC as JaggedConfig>::F>,
-    >
+    C: MachineProverComponents<SP1OuterGlobalContext, Config = OuterSC, Air = WrapAir<SP1Field>>
 {
 }

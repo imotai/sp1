@@ -6,7 +6,7 @@ use sp1_hypercube::{
     MachineProof, MachineVerifier, MachineVerifierConfigError, SP1CoreJaggedConfig,
     SP1CpuJaggedProverComponents, ShardVerifier,
 };
-use sp1_primitives::{io::SP1PublicValues, SP1Field};
+use sp1_primitives::{io::SP1PublicValues, SP1Field, SP1GlobalContext};
 use tracing::Instrument;
 
 use crate::{io::SP1Stdin, riscv::RiscvAir};
@@ -22,7 +22,7 @@ use super::prove_core;
 pub async fn run_test(
     program: Arc<Program>,
     inputs: SP1Stdin,
-) -> Result<SP1PublicValues, MachineVerifierConfigError<SP1CoreJaggedConfig>> {
+) -> Result<SP1PublicValues, MachineVerifierConfigError<SP1GlobalContext, SP1CoreJaggedConfig>> {
     let mut runtime = Executor::new(program, SP1CoreOpts::default());
     runtime.write_vecs(&inputs.buffer);
     runtime.run::<Trace>().unwrap();
@@ -71,7 +71,10 @@ pub async fn run_test(
 pub async fn run_test_core(
     runtime: Executor<'static>,
     inputs: SP1Stdin,
-) -> Result<MachineProof<SP1CoreJaggedConfig>, MachineVerifierConfigError<SP1CoreJaggedConfig>> {
+) -> Result<
+    MachineProof<SP1GlobalContext, SP1CoreJaggedConfig>,
+    MachineVerifierConfigError<SP1GlobalContext, SP1CoreJaggedConfig>,
+> {
     let log_blowup = 1;
     let log_stacking_height = 21;
     let max_log_row_count = 22;
@@ -85,7 +88,8 @@ pub async fn run_test_core(
         max_log_row_count,
         machine,
     );
-    let prover = CpuShardProver::<SP1CpuJaggedProverComponents, _>::new(verifier.clone());
+    let prover =
+        CpuShardProver::<SP1GlobalContext, SP1CpuJaggedProverComponents, _>::new(verifier.clone());
     let setup_permit = ProverSemaphore::new(1);
     let (pk, vk) = prover
         .setup(runtime.program.clone(), setup_permit.clone())
@@ -94,8 +98,12 @@ pub async fn run_test_core(
     let pk = unsafe { pk.into_inner() };
     let challenger = verifier.pcs_verifier.challenger();
     let (proof, _) = prove_core::<
-        SP1Field,
-        CpuMachineProverComponents<SP1CpuJaggedProverComponents, RiscvAir<SP1Field>>,
+        SP1GlobalContext,
+        CpuMachineProverComponents<
+            SP1GlobalContext,
+            SP1CpuJaggedProverComponents,
+            RiscvAir<SP1Field>,
+        >,
     >(
         verifier.clone(),
         Arc::new(prover),

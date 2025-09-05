@@ -2,8 +2,11 @@
 //! Because it is imported in the zkvm entrypoint, it should be kept minimal.
 use lazy_static::lazy_static;
 use slop_algebra::AbstractField;
+use slop_bn254::BNGC;
+use slop_challenger::IopCtx;
 #[allow(clippy::disallowed_types)]
 use slop_koala_bear::KoalaBear;
+use slop_koala_bear::KoalaBearDegree4Duplex;
 use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 
 pub mod consts;
@@ -16,6 +19,16 @@ pub use types::Elf;
 pub const SP1_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[allow(clippy::disallowed_types)]
 pub type SP1Field = KoalaBear;
+
+// The extension field in SP1: the degree-4 binomial extension of `SP1Field` with polynomial x^4-3.
+pub type SP1ExtensionField = <SP1GlobalContext as IopCtx>::EF;
+
+/// The `IopCtx` used for the RISC-V stage and inner recursion (compress and shrink).
+pub type SP1GlobalContext = KoalaBearDegree4Duplex;
+
+/// The `IopCtx` used for outer recursion (wrap and SNARK stages).
+pub type SP1OuterGlobalContext =
+    BNGC<<SP1GlobalContext as IopCtx>::F, <SP1GlobalContext as IopCtx>::EF>;
 
 lazy_static! {
     // These constants are created by a RNG.

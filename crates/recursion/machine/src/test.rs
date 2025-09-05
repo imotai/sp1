@@ -5,7 +5,7 @@ use sp1_hypercube::{
     inner_perm, prover::CpuProverBuilder, Machine, MachineProof, MachineVerifier,
     MachineVerifierConfigError, SP1CoreJaggedConfig, ShardVerifier,
 };
-use sp1_primitives::{SP1DiffusionMatrix, SP1Field};
+use sp1_primitives::{SP1DiffusionMatrix, SP1Field, SP1GlobalContext};
 use sp1_recursion_executor::{
     linear_program, Block, ExecutionRecord, Instruction, RecursionProgram, Runtime, D,
 };
@@ -43,7 +43,10 @@ pub async fn run_test_recursion<const DEGREE: usize, const VAR_EVENTS_PER_ROW: u
     records: Vec<ExecutionRecord<SP1Field>>,
     machine: Machine<SP1Field, RecursionAir<SP1Field, DEGREE, VAR_EVENTS_PER_ROW>>,
     program: RecursionProgram<SP1Field>,
-) -> Result<MachineProof<SP1CoreJaggedConfig>, MachineVerifierConfigError<SP1CoreJaggedConfig>> {
+) -> Result<
+    MachineProof<SP1GlobalContext, SP1CoreJaggedConfig>,
+    MachineVerifierConfigError<SP1GlobalContext, SP1CoreJaggedConfig>,
+> {
     let log_blowup = 1;
     let log_stacking_height = 22;
     let max_log_row_count = 21;

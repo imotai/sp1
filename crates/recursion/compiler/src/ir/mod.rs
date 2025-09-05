@@ -1,4 +1,4 @@
-use slop_algebra::{ExtensionField, PrimeField, PrimeField32, TwoAdicField};
+use slop_algebra::PrimeField;
 
 mod arithmetic;
 mod bits;
@@ -23,10 +23,8 @@ pub use symbolic::*;
 pub use types::*;
 pub use var::*;
 
-pub trait Config: Clone + Default {
+pub trait Config: Clone + Default + std::fmt::Debug {
     type N: PrimeField;
-    type F: PrimeField32 + TwoAdicField;
-    type EF: ExtensionField<Self::F> + TwoAdicField;
 
     // This function is called on the initialization of the builder.
     // Currently, this is used to save Poseidon2 round constants for `WrapConfig`.

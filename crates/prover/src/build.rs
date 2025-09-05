@@ -5,7 +5,7 @@ use slop_algebra::{AbstractField, PrimeField32};
 use slop_bn254::Bn254Fr;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_hypercube::{MachineVerifyingKey, ShardProof};
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1Field, SP1OuterGlobalContext};
 use sp1_recursion_circuit::{
     hash::FieldHasherVariable,
     machine::{SP1ShapedWitnessValues, SP1WrapVerifier},
@@ -31,8 +31,8 @@ use crate::{
 
 /// Tries to build the PLONK artifacts inside the development directory.
 pub fn try_build_plonk_bn254_artifacts_dev(
-    template_vk: &MachineVerifyingKey<OuterSC>,
-    template_proof: &ShardProof<OuterSC>,
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
+    template_proof: &ShardProof<SP1OuterGlobalContext, OuterSC>,
 ) -> PathBuf {
     let build_dir = plonk_bn254_artifacts_dev_dir();
     println!("[sp1] building plonk bn254 artifacts in development mode");
@@ -42,8 +42,8 @@ pub fn try_build_plonk_bn254_artifacts_dev(
 
 /// Tries to build the groth16 bn254 artifacts in the current environment.
 pub fn try_build_groth16_bn254_artifacts_dev(
-    template_vk: &MachineVerifyingKey<OuterSC>,
-    template_proof: &ShardProof<OuterSC>,
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
+    template_proof: &ShardProof<SP1OuterGlobalContext, OuterSC>,
 ) -> PathBuf {
     let build_dir = groth16_bn254_artifacts_dev_dir();
     println!("[sp1] building groth16 bn254 artifacts in development mode");
@@ -64,8 +64,8 @@ pub fn groth16_bn254_artifacts_dev_dir() -> PathBuf {
 /// Build the plonk bn254 artifacts to the given directory for the given verification key and
 /// template proof.
 pub fn build_plonk_bn254_artifacts(
-    template_vk: &MachineVerifyingKey<OuterSC>,
-    template_proof: &ShardProof<OuterSC>,
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
+    template_proof: &ShardProof<SP1OuterGlobalContext, OuterSC>,
     build_dir: impl Into<PathBuf>,
 ) {
     let build_dir = build_dir.into();
@@ -77,8 +77,8 @@ pub fn build_plonk_bn254_artifacts(
 /// Build the groth16 bn254 artifacts to the given directory for the given verification key and
 /// template proof.
 pub fn build_groth16_bn254_artifacts(
-    template_vk: &MachineVerifyingKey<OuterSC>,
-    template_proof: &ShardProof<OuterSC>,
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
+    template_proof: &ShardProof<SP1OuterGlobalContext, OuterSC>,
     build_dir: impl Into<PathBuf>,
 ) {
     let build_dir = build_dir.into();
@@ -123,8 +123,8 @@ pub async fn build_groth16_bn254_artifacts_with_dummy(build_dir: impl Into<PathB
 
 /// Build the verifier constraints and template witness for the circuit.
 pub fn build_constraints_and_witness(
-    template_vk: &MachineVerifyingKey<OuterSC>,
-    template_proof: &ShardProof<OuterSC>,
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
+    template_proof: &ShardProof<SP1OuterGlobalContext, OuterSC>,
 ) -> (Vec<Constraint>, OuterWitness<OuterConfig>) {
     tracing::info!("building verifier constraints");
     let template_input = SP1ShapedWitnessValues {
@@ -154,7 +154,9 @@ pub fn build_constraints_and_witness(
 
 /// Generate a dummy proof that we can use to build the circuit. We need this to know the shape of
 /// the proof.
-pub async fn dummy_proof() -> (MachineVerifyingKey<OuterSC>, ShardProof<OuterSC>) {
+pub async fn dummy_proof(
+) -> (MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>, ShardProof<SP1OuterGlobalContext, OuterSC>)
+{
     let elf = include_bytes!("../elf/riscv64im-succinct-zkvm-elf");
 
     tracing::info!("initializing prover");
@@ -184,11 +186,13 @@ pub async fn dummy_proof() -> (MachineVerifyingKey<OuterSC>, ShardProof<OuterSC>
     (wrapped_proof.vk, wrapped_proof.proof)
 }
 
-fn build_outer_circuit(template_input: &SP1ShapedWitnessValues<OuterSC>) -> Vec<Constraint> {
+fn build_outer_circuit(
+    template_input: &SP1ShapedWitnessValues<SP1OuterGlobalContext, OuterSC>,
+) -> Vec<Constraint> {
     let wrap_verifier = CpuSP1ProverComponents::wrap_verifier();
     let wrap_verifier = wrap_verifier.shard_verifier();
     let recursive_wrap_verifier =
-        crate::recursion::recursive_verifier::<_, OuterSC, OuterConfig, _>(wrap_verifier);
+        crate::recursion::recursive_verifier::<_, _, _, OuterSC, OuterConfig, _>(wrap_verifier);
 
     let wrap_span = tracing::debug_span!("build wrap circuit").entered();
     let mut builder = Builder::<OuterConfig>::default();

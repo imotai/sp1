@@ -6,7 +6,7 @@ use slop_jagged::{
 };
 use slop_multilinear::{Evaluations, Mle, Point};
 use slop_sumcheck::PartialSumcheckProof;
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{Builder, Ext, Felt, SymbolicExt},
@@ -29,51 +29,39 @@ pub trait RecursiveJaggedConfig: Sized {
     type F;
     type EF: AbstractField;
     type Bit;
-    type Circuit: CircuitConfig<F = Self::F, EF = Self::EF, Bit = Self::Bit>;
+    type Circuit: CircuitConfig<Bit = Self::Bit>;
     type Commitment;
     type Challenger: FieldChallengerVariable<Self::Circuit, Self::Bit>;
     type BatchPcsProof;
     type BatchPcsVerifier;
-    type JaggedEvaluator: RecursiveJaggedEvalConfig<
-        Self::Circuit,
-        Self::Challenger,
-        JaggedEvalProof = Self::JaggedEvalProof,
-    >;
-    type JaggedEvalProof;
 }
 
 pub struct RecursiveJaggedConfigImpl<C, SC, P> {
     _marker: PhantomData<(C, SC, P)>,
 }
 
-impl<
-        C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
-        SC: SP1FieldConfigVariable<C>,
-        P: RecursiveMultilinearPcsVerifier<F = C::F, EF = C::EF>,
-    > RecursiveJaggedConfig for RecursiveJaggedConfigImpl<C, SC, P>
+impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>, P: RecursiveMultilinearPcsVerifier>
+    RecursiveJaggedConfig for RecursiveJaggedConfigImpl<C, SC, P>
 {
-    type F = C::F;
-    type EF = C::EF;
+    type F = SP1Field;
+    type EF = SP1ExtensionField;
     type Bit = C::Bit;
     type Circuit = C;
     type Commitment = SC::DigestVariable;
     type Challenger = SC::FriChallengerVariable;
     type BatchPcsProof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>;
     type BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>;
-    type JaggedEvaluator = RecursiveJaggedEvalSumcheckConfig<SC>;
-    type JaggedEvalProof = JaggedSumcheckEvalProof<Ext<C::F, C::EF>>;
 }
 
 pub struct JaggedPcsProofVariable<JC: RecursiveJaggedConfig> {
     pub params: JaggedLittlePolynomialVerifierParams<Felt<JC::F>>,
     pub sumcheck_proof: PartialSumcheckProof<Ext<JC::F, JC::EF>>,
-    pub jagged_eval_proof: JC::JaggedEvalProof,
+    pub jagged_eval_proof: JaggedSumcheckEvalProof<Ext<SP1Field, SP1ExtensionField>>,
     pub stacked_pcs_proof: RecursiveStackedPcsProof<JC::BatchPcsProof, JC::F, JC::EF>,
     pub added_columns: Vec<usize>,
 }
 
-impl<C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>, BC, E> AsRecursive<C>
-    for JaggedBasefoldConfig<BC, E>
+impl<C: CircuitConfig, GC, BC> AsRecursive<C> for JaggedBasefoldConfig<GC, BC>
 where
     Self: SP1FieldConfigVariable<C>,
 {
@@ -88,22 +76,22 @@ where
 #[derive(Clone)]
 pub struct RecursiveJaggedPcsVerifier<
     SC: SP1FieldConfigVariable<C>,
-    C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
+    C: CircuitConfig,
     JC: RecursiveJaggedConfig<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
     >,
 > {
     pub stacked_pcs_verifier: RecursiveStackedPcsVerifier<JC::BatchPcsVerifier>,
     pub max_log_row_count: usize,
-    pub jagged_evaluator: JC::JaggedEvaluator,
+    pub jagged_evaluator: RecursiveJaggedEvalSumcheckConfig<SC>,
 }
 
 impl<
         SC: SP1FieldConfigVariable<C>,
-        C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
+        C: CircuitConfig,
         JC: RecursiveJaggedConfig<
-            F = C::F,
-            EF = C::EF,
+            F = SP1Field,
+            EF = SP1ExtensionField,
             Circuit = C,
             Commitment = SC::DigestVariable,
             Challenger = SC::FriChallengerVariable,
@@ -201,7 +189,7 @@ impl<
 pub struct RecursiveMachineJaggedPcsVerifier<
     'a,
     SC: SP1FieldConfigVariable<C>,
-    C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
+    C: CircuitConfig,
     JC: RecursiveJaggedConfig<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
     >,
@@ -213,10 +201,10 @@ pub struct RecursiveMachineJaggedPcsVerifier<
 impl<
         'a,
         SC: SP1FieldConfigVariable<C>,
-        C: CircuitConfig<F = SP1Field, EF = BinomialExtensionField<SP1Field, 4>>,
+        C: CircuitConfig,
         JC: RecursiveJaggedConfig<
-            F = C::F,
-            EF = C::EF,
+            F = SP1Field,
+            EF = SP1ExtensionField,
             Circuit = C,
             Commitment = SC::DigestVariable,
             Challenger = SC::FriChallengerVariable,
@@ -271,18 +259,15 @@ mod tests {
     use rand::{thread_rng, Rng};
     use slop_algebra::AbstractField;
     use slop_basefold::BasefoldVerifier;
-    use slop_challenger::CanObserve;
+    use slop_challenger::{CanObserve, IopCtx};
     use slop_commit::Rounds;
-    use slop_jagged::{
-        JaggedConfig, JaggedPcsProof, JaggedPcsVerifier, JaggedProver, JaggedProverComponents,
-        MachineJaggedPcsVerifier,
-    };
+    use slop_jagged::{JaggedPcsProof, JaggedPcsVerifier, JaggedProver, MachineJaggedPcsVerifier};
     use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
     use sp1_core_machine::utils::setup_logger;
     use sp1_hypercube::{
         inner_perm, SP1BasefoldConfig, SP1CoreJaggedConfig, SP1CpuJaggedProverComponents,
     };
-    use sp1_primitives::SP1DiffusionMatrix;
+    use sp1_primitives::{SP1DiffusionMatrix, SP1ExtensionField, SP1Field, SP1GlobalContext};
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler, AsmConfig, CircuitV2Builder};
     use sp1_recursion_executor::Runtime;
 
@@ -303,20 +288,17 @@ mod tests {
     };
 
     type SC = SP1CoreJaggedConfig;
-    type F = <SC as JaggedConfig>::F;
-    type EF = <SC as JaggedConfig>::EF;
-    type C = AsmConfig<F, EF>;
-    type Prover = JaggedProver<SP1CpuJaggedProverComponents>;
+    type GC = SP1GlobalContext;
+    type F = SP1Field;
+    type EF = SP1ExtensionField;
+    type C = AsmConfig;
+    type Prover = JaggedProver<SP1GlobalContext, SP1CpuJaggedProverComponents>;
 
     async fn generate_jagged_proof(
-        jagged_verifier: &JaggedPcsVerifier<SC>,
+        jagged_verifier: &JaggedPcsVerifier<GC, SC>,
         round_mles: Rounds<Vec<PaddedMle<F>>>,
         eval_point: Point<EF>,
-    ) -> (
-        JaggedPcsProof<SC>,
-        Rounds<<SP1CpuJaggedProverComponents as JaggedProverComponents>::Commitment>,
-        Rounds<Evaluations<EF>>,
-    ) {
+    ) -> (JaggedPcsProof<GC, SC>, Rounds<<GC as IopCtx>::Digest>, Rounds<Evaluations<EF>>) {
         let jagged_prover = Prover::from_verifier(jagged_verifier);
 
         let mut challenger = jagged_verifier.challenger();
@@ -417,7 +399,7 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let jagged_verifier = JaggedPcsVerifier::<SC>::new(
+        let jagged_verifier = JaggedPcsVerifier::<GC, SC>::new(
             log_blowup,
             log_stacking_height,
             max_log_row_count as usize,
@@ -451,7 +433,7 @@ mod tests {
             .unwrap();
 
         // Define the verification circuit.
-        let mut builder = AsmBuilder::<F, EF>::default();
+        let mut builder = AsmBuilder::default();
         builder.cycle_tracker_v2_enter("jagged - read input");
         let mut challenger_variable = DuplexChallengerVariable::new(&mut builder);
         let commitments_var = commitments.read(&mut builder);
@@ -464,7 +446,7 @@ mod tests {
             challenger_variable.observe_slice(&mut builder, *commitment_var);
         }
         builder.cycle_tracker_v2_exit();
-        let verifier = BasefoldVerifier::<SP1BasefoldConfig>::new(log_blowup);
+        let verifier = BasefoldVerifier::<_, SP1BasefoldConfig>::new(log_blowup);
         let recursive_verifier = RecursiveBasefoldVerifier::<RecursiveBasefoldConfigImpl<C, SC>> {
             fri_config: verifier.fri_config,
             tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),
@@ -503,17 +485,17 @@ mod tests {
         builder.cycle_tracker_v2_exit();
 
         let block = builder.into_root_block();
-        let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
+        let mut compiler = AsmCompiler::default();
 
         // Compile the verification circuit.
         let program = compiler.compile_inner(block).validate().unwrap();
 
         // Run the verification circuit with the proof artifacts.
         let mut witness_stream = Vec::new();
-        Witnessable::<AsmConfig<F, EF>>::write(&commitments, &mut witness_stream);
-        Witnessable::<AsmConfig<F, EF>>::write(&eval_point, &mut witness_stream);
-        Witnessable::<AsmConfig<F, EF>>::write(&evaluation_claims, &mut witness_stream);
-        Witnessable::<AsmConfig<F, EF>>::write(&proof, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&commitments, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&eval_point, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&evaluation_claims, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&proof, &mut witness_stream);
         let mut runtime =
             Runtime::<F, EF, SP1DiffusionMatrix>::new(Arc::new(program.clone()), inner_perm());
         runtime.witness_stream = witness_stream.into();
@@ -522,10 +504,10 @@ mod tests {
         // Run the verification circuit with the proof artifacts with an expected failure.
         let mut witness_stream = Vec::new();
         commitments.rounds[0][0] += F::one();
-        Witnessable::<AsmConfig<F, EF>>::write(&commitments, &mut witness_stream);
-        Witnessable::<AsmConfig<F, EF>>::write(&eval_point, &mut witness_stream);
-        Witnessable::<AsmConfig<F, EF>>::write(&evaluation_claims, &mut witness_stream);
-        Witnessable::<AsmConfig<F, EF>>::write(&proof, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&commitments, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&eval_point, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&evaluation_claims, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&proof, &mut witness_stream);
         let mut runtime =
             Runtime::<F, EF, SP1DiffusionMatrix>::new(Arc::new(program), inner_perm());
         runtime.witness_stream = witness_stream.into();

@@ -13,9 +13,9 @@ use sp1_core_executor::{
 use sp1_core_machine::{executor::MachineExecutor, io::SP1Stdin};
 use sp1_hypercube::{
     prover::{MachineProvingKey, MemoryPermit},
-    MachineVerifierConfigError, MachineVerifyingKey, SP1CoreJaggedConfig, ShardProof,
+    MachineVerifierConfigError, MachineVerifyingKey, ShardProof,
 };
-use sp1_primitives::{io::SP1PublicValues, SP1Field};
+use sp1_primitives::{io::SP1PublicValues, SP1Field, SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_recursion_circuit::{
     machine::{SP1DeferredWitnessValues, SP1NormalizeWitnessValues, SP1ShapedWitnessValues},
     utils::{koalabear_bytes_to_bn254, koalabears_to_bn254, words_to_bytes},
@@ -163,7 +163,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
     /// the core prover. Uses the provided context.
     pub async fn prove_core(
         self: Arc<Self>,
-        pk: Arc<MachineProvingKey<C::CoreComponents>>,
+        pk: Arc<MachineProvingKey<SP1GlobalContext, C::CoreComponents>>,
         program: Arc<Program>,
         stdin: SP1Stdin,
         mut context: SP1Context<'static>,
@@ -264,8 +264,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         self: Arc<Self>,
         vk: &SP1VerifyingKey,
         proof: SP1CoreProof,
-        deferred_proofs: Vec<SP1RecursionProof<InnerSC>>,
-    ) -> Result<SP1RecursionProof<InnerSC>, SP1ProverError> {
+        deferred_proofs: Vec<SP1RecursionProof<SP1GlobalContext, InnerSC>>,
+    ) -> Result<SP1RecursionProof<SP1GlobalContext, InnerSC>, SP1ProverError> {
         // Initialize the recursion tree channels.
         let (compress_tree_tx, mut compress_tree_rx) = mpsc::unbounded_channel::<RecursionProof>();
 
@@ -401,8 +401,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
     #[tracing::instrument(name = "prove shrink", skip_all)]
     pub async fn shrink(
         &self,
-        compressed_proof: SP1RecursionProof<InnerSC>,
-    ) -> Result<SP1RecursionProof<InnerSC>, SP1ProverError> {
+        compressed_proof: SP1RecursionProof<SP1GlobalContext, InnerSC>,
+    ) -> Result<SP1RecursionProof<SP1GlobalContext, InnerSC>, SP1ProverError> {
         // Make the compress proof.
         let SP1RecursionProof { vk: compressed_vk, proof: compressed_proof } = compressed_proof;
         let input = SP1ShapedWitnessValues {
@@ -436,8 +436,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
     #[tracing::instrument(name = "prove wrap", skip_all)]
     pub async fn wrap(
         &self,
-        shrunk_proof: SP1RecursionProof<InnerSC>,
-    ) -> Result<SP1RecursionProof<OuterSC>, SP1ProverError> {
+        shrunk_proof: SP1RecursionProof<SP1GlobalContext, InnerSC>,
+    ) -> Result<SP1RecursionProof<SP1OuterGlobalContext, OuterSC>, SP1ProverError> {
         let SP1RecursionProof { vk: compressed_vk, proof: compressed_proof } = shrunk_proof;
         let input = SP1ShapedWitnessValues {
             vks_and_proofs: vec![(compressed_vk.clone(), compressed_proof)],
@@ -468,7 +468,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
     #[tracing::instrument(name = "prove wrap plonk bn254", skip_all)]
     pub async fn wrap_plonk_bn254(
         &self,
-        wrap_proof: SP1RecursionProof<OuterSC>,
+        wrap_proof: SP1RecursionProof<SP1OuterGlobalContext, OuterSC>,
         build_dir: &Path,
     ) -> PlonkBn254Proof {
         let SP1RecursionProof { vk: wrap_vk, proof: wrap_proof } = wrap_proof;
@@ -512,7 +512,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
     #[tracing::instrument(name = "prove wrap plonk bn254", skip_all)]
     pub async fn wrap_groth16_bn254(
         &self,
-        wrap_proof: SP1RecursionProof<OuterSC>,
+        wrap_proof: SP1RecursionProof<SP1OuterGlobalContext, OuterSC>,
         build_dir: &Path,
     ) -> Groth16Bn254Proof {
         let SP1RecursionProof { vk: wrap_vk, proof: wrap_proof } = wrap_proof;
@@ -558,8 +558,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
     pub fn get_first_layer_inputs<'a>(
         &'a self,
         vk: &'a SP1VerifyingKey,
-        shard_proofs: &[ShardProof<InnerSC>],
-        deferred_proofs: &[SP1RecursionProof<InnerSC>],
+        shard_proofs: &[ShardProof<SP1GlobalContext, InnerSC>],
+        deferred_proofs: &[SP1RecursionProof<SP1GlobalContext, InnerSC>],
         batch_size: usize,
     ) -> Vec<SP1CircuitWitness> {
         let (deferred_inputs, deferred_digest) =
@@ -583,10 +583,10 @@ impl<C: SP1ProverComponents> LocalProver<C> {
     #[inline]
     pub fn get_deferred_inputs<'a>(
         &'a self,
-        vk: &'a MachineVerifyingKey<CoreSC>,
-        deferred_proofs: &[SP1RecursionProof<InnerSC>],
+        vk: &'a MachineVerifyingKey<SP1GlobalContext, CoreSC>,
+        deferred_proofs: &[SP1RecursionProof<SP1GlobalContext, InnerSC>],
         batch_size: usize,
-    ) -> (Vec<SP1DeferredWitnessValues<InnerSC>>, [SP1Field; 8]) {
+    ) -> (Vec<SP1DeferredWitnessValues<SP1GlobalContext, InnerSC>>, [SP1Field; 8]) {
         self.get_deferred_inputs_with_initial_digest(
             vk,
             deferred_proofs,
@@ -597,11 +597,11 @@ impl<C: SP1ProverComponents> LocalProver<C> {
 
     pub fn get_deferred_inputs_with_initial_digest<'a>(
         &'a self,
-        vk: &'a MachineVerifyingKey<CoreSC>,
-        deferred_proofs: &[SP1RecursionProof<InnerSC>],
+        vk: &'a MachineVerifyingKey<SP1GlobalContext, CoreSC>,
+        deferred_proofs: &[SP1RecursionProof<SP1GlobalContext, InnerSC>],
         initial_deferred_digest: [SP1Field; 8],
         batch_size: usize,
-    ) -> (Vec<SP1DeferredWitnessValues<InnerSC>>, [SP1Field; 8]) {
+    ) -> (Vec<SP1DeferredWitnessValues<SP1GlobalContext, InnerSC>>, [SP1Field; 8]) {
         // Prepare the inputs for the deferred proofs recursive verification.
         let mut deferred_digest = initial_deferred_digest;
         let mut deferred_inputs = Vec::new();
@@ -629,11 +629,11 @@ impl<C: SP1ProverComponents> LocalProver<C> {
     pub fn get_normalize_witnesses(
         &self,
         vk: &SP1VerifyingKey,
-        shard_proofs: &[ShardProof<CoreSC>],
+        shard_proofs: &[ShardProof<SP1GlobalContext, CoreSC>],
         batch_size: usize,
         is_complete: bool,
         deferred_digest: [SP1Field; 8],
-    ) -> Vec<SP1NormalizeWitnessValues<CoreSC>> {
+    ) -> Vec<SP1NormalizeWitnessValues<SP1GlobalContext, CoreSC>> {
         let mut core_inputs = Vec::new();
 
         // Prepare the inputs for the recursion programs.
@@ -655,11 +655,11 @@ impl<C: SP1ProverComponents> LocalProver<C> {
 impl<C: SP1ProverComponents> SubproofVerifier for LocalProver<C> {
     fn verify_deferred_proof(
         &self,
-        proof: &SP1RecursionProof<SP1CoreJaggedConfig>,
-        vk: &MachineVerifyingKey<SP1CoreJaggedConfig>,
+        proof: &SP1RecursionProof<SP1GlobalContext, InnerSC>,
+        vk: &MachineVerifyingKey<SP1GlobalContext, CoreSC>,
         vk_hash: [u64; 4],
         committed_value_digest: [u64; 4],
-    ) -> Result<(), MachineVerifierConfigError<SP1CoreJaggedConfig>> {
+    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, CoreSC>> {
         self.prover.verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
     }
 }
@@ -672,11 +672,14 @@ pub struct CompressTree {
 #[derive(Clone, Debug)]
 struct RangeProofs {
     shard_range: Range<usize>,
-    proofs: VecDeque<SP1RecursionProof<InnerSC>>,
+    proofs: VecDeque<SP1RecursionProof<SP1GlobalContext, InnerSC>>,
 }
 
 impl RangeProofs {
-    pub fn new(shard_range: Range<usize>, proofs: VecDeque<SP1RecursionProof<InnerSC>>) -> Self {
+    pub fn new(
+        shard_range: Range<usize>,
+        proofs: VecDeque<SP1RecursionProof<SP1GlobalContext, InnerSC>>,
+    ) -> Self {
         Self { shard_range, proofs }
     }
 
@@ -727,7 +730,7 @@ impl RangeProofs {
     pub fn into_witness(
         self,
         full_range: &Range<usize>,
-    ) -> (Range<usize>, SP1ShapedWitnessValues<InnerSC>) {
+    ) -> (Range<usize>, SP1ShapedWitnessValues<SP1GlobalContext, InnerSC>) {
         let is_complete = self.is_complete(full_range);
         let vks_and_proofs =
             self.proofs.into_iter().map(|proof| (proof.vk, proof.proof)).collect::<Vec<_>>();
@@ -778,7 +781,7 @@ impl CompressTree {
         full_range: &Range<usize>,
         proofs_rx: &mut UnboundedReceiver<RecursionProof>,
         recursion_executors: Arc<WorkerQueue<UnboundedSender<ExecuteTask>>>,
-    ) -> Result<Vec<SP1RecursionProof<InnerSC>>, SP1ProverError> {
+    ) -> Result<Vec<SP1RecursionProof<SP1GlobalContext, InnerSC>>, SP1ProverError> {
         // Populate the recursion proofs into the tree until we reach the reduce batch size.
         while let Some(proof) = proofs_rx.recv().await {
             if proof.is_complete(full_range) {
@@ -840,7 +843,7 @@ impl CompressTree {
 #[derive(Debug, Clone)]
 struct RecursionProof {
     shard_range: Range<usize>,
-    proof: SP1RecursionProof<InnerSC>,
+    proof: SP1RecursionProof<SP1GlobalContext, InnerSC>,
 }
 
 impl RecursionProof {
@@ -862,7 +865,10 @@ struct ExecuteTask {
 
 #[allow(clippy::type_complexity)]
 struct ProveTask<C: SP1ProverComponents> {
-    keys: Option<(Arc<MachineProvingKey<C::RecursionComponents>>, MachineVerifyingKey<InnerSC>)>,
+    keys: Option<(
+        Arc<MachineProvingKey<SP1GlobalContext, C::RecursionComponents>>,
+        MachineVerifyingKey<SP1GlobalContext, InnerSC>,
+    )>,
     range: Range<usize>,
     record: RecursionRecord<SP1Field>,
 }

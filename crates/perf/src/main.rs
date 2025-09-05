@@ -107,7 +107,7 @@ async fn main() {
             })
             .await;
 
-            let machine_proof: MachineProof<_> =
+            let machine_proof: MachineProof<_, _> =
                 MachineProof { shard_proofs: core_proof.proof.0.clone() };
             let (_, verify_core_duration) =
                 time_operation(|| prover.prover().core().verifier().verify(&vk.vk, &machine_proof));
@@ -166,7 +166,7 @@ async fn main() {
             })
             .await;
 
-            let machine_proof: MachineProof<_> =
+            let machine_proof: MachineProof<_, _> =
                 MachineProof { shard_proofs: core_proof.proof.0.clone() };
             let (_, verify_core_duration) =
                 time_operation(|| prover.prover().core().verifier().verify(&vk.vk, &machine_proof));

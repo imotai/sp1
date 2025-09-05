@@ -1,4 +1,5 @@
 use slop_algebra::{AbstractExtensionField, AbstractField};
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 use std::ops::{Add, Mul, MulAssign};
 
 use super::{Array, Builder, Config, DslIr, Ext, Felt, SymbolicExt, Usize, Var, Variable};
@@ -7,8 +8,8 @@ impl<C: Config> Builder<C> {
     /// The generator for the field.
     ///
     /// Reference: [p3_koala_bear::KoalaBear]
-    pub fn generator(&mut self) -> Felt<C::F> {
-        self.eval(C::F::generator())
+    pub fn generator(&mut self) -> Felt<SP1Field> {
+        self.eval(SP1Field::generator())
     }
 
     /// Select a variable based on a condition.
@@ -19,7 +20,12 @@ impl<C: Config> Builder<C> {
     }
 
     /// Select a felt based on a condition.
-    pub fn select_f(&mut self, cond: Var<C::N>, a: Felt<C::F>, b: Felt<C::F>) -> Felt<C::F> {
+    pub fn select_f(
+        &mut self,
+        cond: Var<C::N>,
+        a: Felt<SP1Field>,
+        b: Felt<SP1Field>,
+    ) -> Felt<SP1Field> {
         let c = self.uninit();
         self.push_op(DslIr::CircuitSelectF(cond, a, b, c));
         c
@@ -29,9 +35,9 @@ impl<C: Config> Builder<C> {
     pub fn select_ef(
         &mut self,
         cond: Var<C::N>,
-        a: Ext<C::F, C::EF>,
-        b: Ext<C::F, C::EF>,
-    ) -> Ext<C::F, C::EF> {
+        a: Ext<SP1Field, SP1ExtensionField>,
+        b: Ext<SP1Field, SP1ExtensionField>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
         let c = self.uninit();
         self.push_op(DslIr::CircuitSelectE(cond, a, b, c));
         c
@@ -72,8 +78,8 @@ impl<C: Config> Builder<C> {
     }
 
     /// Exponentiates a felt to a list of bits in little endian.
-    pub fn exp_f_bits(&mut self, x: Felt<C::F>, power_bits: Vec<Var<C::N>>) -> Felt<C::F> {
-        let mut result = self.eval(C::F::one());
+    pub fn exp_f_bits(&mut self, x: Felt<SP1Field>, power_bits: Vec<Var<C::N>>) -> Felt<SP1Field> {
+        let mut result = self.eval(SP1Field::one());
         let mut power_f: Felt<_> = self.eval(x);
         for i in 0..power_bits.len() {
             let bit = power_bits[i];
@@ -87,10 +93,10 @@ impl<C: Config> Builder<C> {
     /// Exponentiates a extension to a list of bits in little endian.
     pub fn exp_e_bits(
         &mut self,
-        x: Ext<C::F, C::EF>,
+        x: Ext<SP1Field, SP1ExtensionField>,
         power_bits: Vec<Var<C::N>>,
-    ) -> Ext<C::F, C::EF> {
-        let mut result = self.eval(SymbolicExt::from_f(C::EF::one()));
+    ) -> Ext<SP1Field, SP1ExtensionField> {
+        let mut result = self.eval(SymbolicExt::from_f(SP1ExtensionField::one()));
         let mut power_f: Ext<_, _> = self.eval(x);
         for i in 0..power_bits.len() {
             let bit = power_bits[i];
@@ -182,42 +188,33 @@ impl<C: Config> Builder<C> {
     }
 
     /// Creates an ext from a slice of felts.
-    pub fn ext_from_base_slice(&mut self, arr: &[Felt<C::F>]) -> Ext<C::F, C::EF> {
-        assert!(arr.len() <= <C::EF as AbstractExtensionField::<C::F>>::D);
-        let mut res = SymbolicExt::from_f(C::EF::zero());
+    pub fn ext_from_base_slice(
+        &mut self,
+        arr: &[Felt<SP1Field>],
+    ) -> Ext<SP1Field, SP1ExtensionField> {
+        assert!(arr.len() <= <SP1ExtensionField as AbstractExtensionField<SP1Field>>::D);
+        let mut res = SymbolicExt::from_f(SP1ExtensionField::zero());
         for i in 0..arr.len() {
-            res += arr[i] * SymbolicExt::from_f(C::EF::monomial(i));
+            res += arr[i]
+                * SymbolicExt::from_f(
+                    <SP1ExtensionField as AbstractExtensionField<SP1Field>>::monomial(i),
+                );
         }
         self.eval(res)
     }
 
-    pub fn felts2ext(&mut self, felts: &[Felt<C::F>]) -> Ext<C::F, C::EF> {
+    pub fn felts2ext(&mut self, felts: &[Felt<SP1Field>]) -> Ext<SP1Field, SP1ExtensionField> {
         assert_eq!(felts.len(), 4);
-        let out: Ext<C::F, C::EF> = self.uninit();
+        let out: Ext<SP1Field, SP1ExtensionField> = self.uninit();
         self.push_op(DslIr::CircuitFelts2Ext(felts.try_into().unwrap(), out));
         out
     }
 
-    /// Converts an ext to a slice of felts.
-    pub fn ext2felt(&mut self, value: Ext<C::F, C::EF>) -> Array<C, Felt<C::F>> {
-        let result = self.dyn_array(4);
-        self.push_op(DslIr::HintExt2Felt(result.clone(), value));
-
-        // Verify that the decomposed extension element is correct.
-        let mut reconstructed_ext: Ext<C::F, C::EF> = self.constant(C::EF::zero());
-        for i in 0..4 {
-            let felt = self.get(&result, i);
-            let monomial: Ext<C::F, C::EF> = self.constant(C::EF::monomial(i));
-            reconstructed_ext = self.eval(reconstructed_ext + monomial * felt);
-        }
-
-        self.assert_ext_eq(reconstructed_ext, value);
-
-        result
-    }
-
     /// Converts an ext to a slice of felts inside a circuit.
-    pub fn ext2felt_circuit(&mut self, value: Ext<C::F, C::EF>) -> [Felt<C::F>; 4] {
+    pub fn ext2felt_circuit(
+        &mut self,
+        value: Ext<SP1Field, SP1ExtensionField>,
+    ) -> [Felt<SP1Field>; 4] {
         let a = self.uninit();
         let b = self.uninit();
         let c = self.uninit();

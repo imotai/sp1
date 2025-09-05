@@ -186,16 +186,15 @@ where
 mod tests {
     use crate::{chips::test_fixtures, test::test_recursion_linear_program};
     use rand::{rngs::StdRng, Rng, SeedableRng};
-    use slop_jagged::JaggedConfig;
-
-    use sp1_hypercube::SP1CoreJaggedConfig;
+    use slop_challenger::IopCtx;
+    use sp1_primitives::SP1GlobalContext;
     use sp1_recursion_executor::{instruction as instr, MemAccessKind};
 
     use super::*;
 
     #[tokio::test]
     async fn prove_select() {
-        type F = <SP1CoreJaggedConfig as JaggedConfig>::F;
+        type F = <SP1GlobalContext as IopCtx>::F;
 
         let mut rng = StdRng::seed_from_u64(0xDEADBEEF);
         let mut addr = 0;

@@ -10,7 +10,7 @@ use slop_alloc::{buffer, Buffer};
 use slop_multilinear::{partial_lagrange_blocking, Mle, MleEval, Point};
 use slop_sumcheck::PartialSumcheckProof;
 use slop_tensor::{Dimensions, Tensor};
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::{
     ir::Felt,
     prelude::{Builder, Ext, SymbolicExt},
@@ -18,10 +18,11 @@ use sp1_recursion_compiler::{
 
 pub fn evaluate_mle_ext_batch<C: CircuitConfig>(
     builder: &mut Builder<C>,
-    mles: Vec<Mle<Ext<C::F, C::EF>>>,
-    point: Point<Ext<C::F, C::EF>>,
-) -> Vec<MleEval<Ext<C::F, C::EF>>> {
-    let point_symbolic = <Point<Ext<C::F, C::EF>> as IntoSymbolic<C>>::as_symbolic(&point);
+    mles: Vec<Mle<Ext<SP1Field, SP1ExtensionField>>>,
+    point: Point<Ext<SP1Field, SP1ExtensionField>>,
+) -> Vec<MleEval<Ext<SP1Field, SP1ExtensionField>>> {
+    let point_symbolic =
+        <Point<Ext<SP1Field, SP1ExtensionField>> as IntoSymbolic<C>>::as_symbolic(&point);
     let partial_lagrange = partial_lagrange_blocking(&point_symbolic);
     let mut result = Vec::new();
     // TODO: use builder par iter collect.
@@ -38,7 +39,7 @@ pub fn evaluate_mle_ext_batch<C: CircuitConfig>(
             .zip(partial_lagrange.as_buffer().iter())
             .map(|(chunk, scalar)| chunk.iter().map(|a| *scalar * *a).collect())
             .fold(
-                vec![SymbolicExt::<C::F, C::EF>::zero(); total_len],
+                vec![SymbolicExt::<SP1Field, SP1ExtensionField>::zero(); total_len],
                 |mut a, b: Vec<SymbolicExt<_, _>>| {
                     a.iter_mut().zip(b.iter()).for_each(|(a, b)| *a += *b);
                     a
@@ -54,24 +55,24 @@ pub fn evaluate_mle_ext_batch<C: CircuitConfig>(
 
 pub fn evaluate_mle_ext<C: CircuitConfig>(
     builder: &mut Builder<C>,
-    mle: Mle<Ext<C::F, C::EF>>,
-    point: Point<Ext<C::F, C::EF>>,
-) -> MleEval<Ext<C::F, C::EF>> {
+    mle: Mle<Ext<SP1Field, SP1ExtensionField>>,
+    point: Point<Ext<SP1Field, SP1ExtensionField>>,
+) -> MleEval<Ext<SP1Field, SP1ExtensionField>> {
     evaluate_mle_ext_batch(builder, vec![mle], point).pop().unwrap()
 }
 
-pub fn verify_sumcheck<C: CircuitConfig<F = SP1Field>, SC: SP1FieldConfigVariable<C>>(
+pub fn verify_sumcheck<C: CircuitConfig, SC: SP1FieldConfigVariable<C>>(
     builder: &mut Builder<C>,
     challenger: &mut SC::FriChallengerVariable,
-    proof: &PartialSumcheckProof<Ext<C::F, C::EF>>,
+    proof: &PartialSumcheckProof<Ext<SP1Field, SP1ExtensionField>>,
 ) {
     let num_variables = proof.univariate_polys.len();
-    let mut alpha_point: Point<SymbolicExt<C::F, C::EF>> = Point::default();
+    let mut alpha_point: Point<SymbolicExt<SP1Field, SP1ExtensionField>> = Point::default();
 
     assert_eq!(num_variables, proof.point_and_eval.0.dimension());
 
     let first_poly = proof.univariate_polys[0].clone();
-    let first_poly_symbolic: UnivariatePolynomial<SymbolicExt<C::F, C::EF>> =
+    let first_poly_symbolic: UnivariatePolynomial<SymbolicExt<SP1Field, SP1ExtensionField>> =
         UnivariatePolynomial {
             coefficients: first_poly
                 .coefficients
@@ -82,7 +83,7 @@ pub fn verify_sumcheck<C: CircuitConfig<F = SP1Field>, SC: SP1FieldConfigVariabl
         };
     builder.assert_ext_eq(first_poly_symbolic.eval_one_plus_eval_zero(), proof.claimed_sum);
 
-    let coeffs: Vec<Felt<C::F>> =
+    let coeffs: Vec<Felt<SP1Field>> =
         first_poly.coefficients.iter().flat_map(|x| C::ext2felt(builder, *x)).collect::<Vec<_>>();
 
     challenger.observe_slice(builder, coeffs);
@@ -91,18 +92,19 @@ pub fn verify_sumcheck<C: CircuitConfig<F = SP1Field>, SC: SP1FieldConfigVariabl
     for poly in proof.univariate_polys.iter().skip(1) {
         let alpha = challenger.sample_ext(builder);
         alpha_point.add_dimension(alpha.into());
-        let poly_symbolic: UnivariatePolynomial<SymbolicExt<C::F, C::EF>> = UnivariatePolynomial {
-            coefficients: poly
-                .coefficients
-                .clone()
-                .into_iter()
-                .map(|c| c.into())
-                .collect::<Vec<_>>(),
-        };
+        let poly_symbolic: UnivariatePolynomial<SymbolicExt<SP1Field, SP1ExtensionField>> =
+            UnivariatePolynomial {
+                coefficients: poly
+                    .coefficients
+                    .clone()
+                    .into_iter()
+                    .map(|c| c.into())
+                    .collect::<Vec<_>>(),
+            };
         let expected_eval = previous_poly.eval_at_point(alpha.into());
         builder.assert_ext_eq(expected_eval, poly_symbolic.eval_one_plus_eval_zero());
 
-        let coeffs: Vec<Felt<C::F>> =
+        let coeffs: Vec<Felt<SP1Field>> =
             poly.coefficients.iter().flat_map(|x| C::ext2felt(builder, *x)).collect::<Vec<_>>();
         challenger.observe_slice(builder, coeffs);
         previous_poly = poly_symbolic;
@@ -178,10 +180,10 @@ mod tests {
         verify_sumcheck::<C, SC>(&mut builder, &mut challenger_variable, &sumcheck_proof_variable);
 
         let mut witness_stream = Vec::new();
-        Witnessable::<AsmConfig<F, EF>>::write(&sumcheck_proof, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&sumcheck_proof, &mut witness_stream);
 
         let block = builder.into_root_block();
-        let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
+        let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
         let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
         runtime.witness_stream = witness_stream.into();
@@ -224,10 +226,10 @@ mod tests {
         verify_sumcheck::<C, SC>(&mut builder, &mut challenger_variable, &sumcheck_proof_variable);
 
         let mut witness_stream = Vec::new();
-        Witnessable::<AsmConfig<F, EF>>::write(&sumcheck_proof, &mut witness_stream);
+        Witnessable::<AsmConfig>::write(&sumcheck_proof, &mut witness_stream);
 
         let block = builder.into_root_block();
-        let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
+        let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
         let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
         runtime.witness_stream = witness_stream.into();
@@ -237,7 +239,7 @@ mod tests {
     #[test]
     fn test_eval_at_point() {
         let mut rng = OsRng;
-        let mut builder = AsmBuilder::<F, EF>::default();
+        let mut builder = AsmBuilder::default();
         let exts = builder.hint_exts_v2(3);
         let point = builder.hint_ext_v2();
         let univariate_poly =
@@ -250,7 +252,7 @@ mod tests {
         builder.assert_ext_eq(expected_eval, exts[0] + exts[1] * point + exts[2] * point * point);
 
         let block = builder.into_root_block();
-        let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
+        let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
         let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
         let coeffs = (0..3).map(|_| F::rand(&mut rng)).collect::<Vec<_>>();
@@ -264,7 +266,7 @@ mod tests {
 
     #[test]
     fn test_eq_eval() {
-        let mut builder = AsmBuilder::<F, EF>::default();
+        let mut builder = AsmBuilder::default();
         let vec_1: Vec<SymbolicExt<F, EF>> =
             builder.hint_exts_v2(2).iter().copied().map(|x| x.into()).collect::<Vec<_>>();
         let vec_2: Vec<SymbolicExt<F, EF>> =
@@ -276,7 +278,7 @@ mod tests {
         builder.assert_ext_eq(eq_eval, one);
 
         let block = builder.into_root_block();
-        let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
+        let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
         let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
         runtime.witness_stream =
@@ -288,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_full_geq() {
-        let mut builder = AsmBuilder::<F, EF>::default();
+        let mut builder = AsmBuilder::default();
         let vec_1: Vec<SymbolicExt<F, EF>> =
             builder.hint_exts_v2(2).iter().copied().map(|x| x.into()).collect::<Vec<_>>();
         let vec_2: Vec<SymbolicExt<F, EF>> =
@@ -300,7 +302,7 @@ mod tests {
         builder.assert_ext_eq(geq_eval, one);
 
         let block = builder.into_root_block();
-        let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
+        let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
         let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
         runtime.witness_stream =

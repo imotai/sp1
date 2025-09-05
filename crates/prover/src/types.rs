@@ -4,9 +4,10 @@ use clap::ValueEnum;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::{AbstractField, PrimeField, PrimeField32};
 use slop_bn254::Bn254Fr;
+use slop_challenger::IopCtx;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_hypercube::{ChipDimensions, MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE};
-use sp1_primitives::{io::SP1PublicValues, poseidon2_hash, SP1Field};
+use sp1_primitives::{io::SP1PublicValues, poseidon2_hash, SP1Field, SP1GlobalContext};
 use sp1_recursion_circuit::{
     machine::{
         SP1CompressWithVKeyWitnessValues, SP1DeferredWitnessValues, SP1NormalizeWitnessValues,
@@ -24,7 +25,7 @@ use crate::CoreSC;
 /// The information necessary to verify a proof for a given RISC-V program.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SP1VerifyingKey {
-    pub vk: MachineVerifyingKey<CoreSC>,
+    pub vk: MachineVerifyingKey<SP1GlobalContext, CoreSC>,
 }
 
 /// A trait for keys that can be hashed into a digest.
@@ -85,9 +86,9 @@ impl HashableKey for SP1VerifyingKey {
     }
 }
 
-impl<C: MachineConfig<F = SP1Field>> HashableKey for MachineVerifyingKey<C>
+impl<GC: IopCtx<F = SP1Field>, C: MachineConfig<GC>> HashableKey for MachineVerifyingKey<GC, C>
 where
-    C::Commitment: Borrow<[SP1Field; DIGEST_SIZE]>,
+    GC::Digest: Borrow<[SP1Field; DIGEST_SIZE]>,
 {
     fn hash_koalabear(&self) -> [SP1Field; DIGEST_SIZE] {
         let num_inputs = DIGEST_SIZE + 3 + 14 + 1;
@@ -166,10 +167,10 @@ pub type SP1Groth16Bn254Proof = SP1ProofWithMetadata<SP1Groth16Bn254ProofData>;
 pub type SP1Proof = SP1ProofWithMetadata<SP1Bn254ProofData>;
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct SP1CoreProofData(pub Vec<ShardProof<CoreSC>>);
+pub struct SP1CoreProofData(pub Vec<ShardProof<SP1GlobalContext, CoreSC>>);
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct SP1ReducedProofData(pub ShardProof<InnerSC>);
+pub struct SP1ReducedProofData(pub ShardProof<SP1GlobalContext, InnerSC>);
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SP1PlonkBn254ProofData(pub PlonkBn254Proof);
@@ -232,9 +233,9 @@ pub enum SP1RecursionProverError {
 
 #[allow(clippy::large_enum_variant)]
 pub enum SP1CircuitWitness {
-    Core(SP1NormalizeWitnessValues<CoreSC>),
-    Deferred(SP1DeferredWitnessValues<InnerSC>),
-    Compress(SP1ShapedWitnessValues<InnerSC>),
+    Core(SP1NormalizeWitnessValues<SP1GlobalContext, CoreSC>),
+    Deferred(SP1DeferredWitnessValues<SP1GlobalContext, InnerSC>),
+    Compress(SP1ShapedWitnessValues<SP1GlobalContext, InnerSC>),
     Shrink(SP1CompressWithVKeyWitnessValues<InnerSC>),
     Wrap(SP1CompressWithVKeyWitnessValues<InnerSC>),
 }

@@ -15,7 +15,6 @@ use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use slop_air::BaseAir;
 use slop_algebra::AbstractField;
-use slop_jagged::JaggedConfig;
 use sp1_core_executor::{ELEMENT_THRESHOLD, MAX_PROGRAM_SIZE};
 use sp1_core_machine::{
     bytes::columns::NUM_BYTE_PREPROCESSED_COLS, program::NUM_PROGRAM_PREPROCESSED_COLS,
@@ -27,7 +26,7 @@ use sp1_hypercube::{
     prover::{CoreProofShape, DefaultTraceGenerator, ProverSemaphore, TraceGenerator},
     Chip, ChipDimensions, Machine, MachineShape,
 };
-use sp1_primitives::SP1Field;
+use sp1_primitives::{SP1Field, SP1GlobalContext};
 use sp1_recursion_circuit::{
     dummy::{dummy_shard_proof, dummy_vk},
     machine::{
@@ -97,7 +96,10 @@ pub enum VkBuildError {
 }
 
 impl SP1NormalizeInputShape {
-    pub fn dummy_input(&self, vk: SP1VerifyingKey) -> SP1NormalizeWitnessValues<CoreSC> {
+    pub fn dummy_input(
+        &self,
+        vk: SP1VerifyingKey,
+    ) -> SP1NormalizeWitnessValues<SP1GlobalContext, CoreSC> {
         let shard_proofs = self
             .proof_shapes
             .iter()
@@ -391,22 +393,22 @@ pub async fn build_vk_map<C: SP1ProverComponents + 'static>(
                                     (
                                         "Byte".to_string(),
                                         ChipDimensions {
-                                            height: <CoreSC as JaggedConfig>::F::zero(),
-                                            num_polynomials: <CoreSC as JaggedConfig>::F::zero(),
+                                            height: SP1Field::zero(),
+                                            num_polynomials: SP1Field::zero(),
                                         },
                                     ),
                                     (
                                         "Program".to_string(),
                                         ChipDimensions {
-                                            height: <CoreSC as JaggedConfig>::F::zero(),
-                                            num_polynomials: <CoreSC as JaggedConfig>::F::zero(),
+                                            height: SP1Field::zero(),
+                                            num_polynomials: SP1Field::zero(),
                                         },
                                     ),
                                     (
                                         "Range".to_string(),
                                         ChipDimensions {
-                                            height: <CoreSC as JaggedConfig>::F::zero(),
-                                            num_polynomials: <CoreSC as JaggedConfig>::F::zero(),
+                                            height: SP1Field::zero(),
+                                            num_polynomials: SP1Field::zero(),
                                         },
                                     ),
                                 ]

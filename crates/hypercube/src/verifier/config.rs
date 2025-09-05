@@ -2,19 +2,20 @@ use std::collections::BTreeMap;
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::AbstractField;
-use slop_challenger::CanObserve;
+use slop_challenger::{CanObserve, IopCtx};
 use slop_jagged::JaggedConfig;
 
 use crate::septic_digest::SepticDigest;
 
 /// A configuration for a machine.
-pub trait MachineConfig:
-    JaggedConfig + 'static + Send + Sync + Serialize + DeserializeOwned
+pub trait MachineConfig<GC: IopCtx>:
+//TODO: Move bounds to JaggedConfig
+    JaggedConfig<GC> + 'static + Send + Sync + Serialize + DeserializeOwned
 {
 }
 
-impl<C> MachineConfig for C where
-    C: JaggedConfig + 'static + Send + Sync + Serialize + DeserializeOwned
+impl<GC: IopCtx, C> MachineConfig<GC> for C where
+    C: JaggedConfig<GC> + 'static + Send + Sync + Serialize + DeserializeOwned
 {
 }
 
@@ -60,23 +61,25 @@ pub struct ChipDimensions<T> {
 
 /// A verifying key.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MachineVerifyingKey<C: MachineConfig> {
+pub struct MachineVerifyingKey<C: IopCtx, SC: MachineConfig<C>> {
     /// The start pc of the program.
     pub pc_start: [C::F; 3],
     /// The starting global digest of the program, after incorporating the initial memory.
     pub initial_global_cumulative_sum: SepticDigest<C::F>,
     /// The preprocessed commitments.
-    pub preprocessed_commit: C::Commitment,
+    pub preprocessed_commit: C::Digest,
     /// The dimensions of the preprocessed polynomials.
     pub preprocessed_chip_information: BTreeMap<String, ChipDimensions<C::F>>,
     /// Flag indicating if untrusted programs are allowed.
     pub enable_untrusted_programs: C::F,
+    /// Phantom data.
+    pub marker: std::marker::PhantomData<SC>,
 }
 
-impl<C: MachineConfig> MachineVerifyingKey<C> {
+impl<C: IopCtx, SC: MachineConfig<C>> MachineVerifyingKey<C, SC> {
     /// Observes the values of the proving key into the challenger.
     pub fn observe_into(&self, challenger: &mut C::Challenger) {
-        challenger.observe(self.preprocessed_commit.clone());
+        challenger.observe(self.preprocessed_commit);
         challenger.observe_slice(&self.pc_start);
         challenger.observe_slice(&self.initial_global_cumulative_sum.0.x.0);
         challenger.observe_slice(&self.initial_global_cumulative_sum.0.y.0);
