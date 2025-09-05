@@ -89,19 +89,6 @@ impl<F, A: Backend> Mle<F, A> {
     }
 
     #[inline]
-    pub fn zeros(num_polynomials: usize, num_non_zero_entries: usize, scope: &A) -> Self
-    where
-        F: AbstractField,
-        A: MleBaseBackend<F>,
-    {
-        let mut mle = Self::uninit(num_polynomials, num_non_zero_entries, scope);
-        let guts = mle.guts_mut();
-        let total_len = guts.total_len();
-        guts.storage.write_bytes(0, total_len * std::mem::size_of::<F>()).unwrap();
-        mle
-    }
-
-    #[inline]
     pub const fn guts(&self) -> &Tensor<F, A> {
         &self.guts
     }

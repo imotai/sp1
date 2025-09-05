@@ -109,6 +109,10 @@ impl<GC: IopCtx, M: MerkleTreeConfig<GC>> MerkleTreeTcs<GC, M> {
             if root != *commit {
                 return Err(MerkleTreeTcsError::RootMismatch);
             }
+
+            if index != 0 {
+                return Err(MerkleTreeTcsError::IncorrectShape);
+            }
         }
 
         Ok(())
