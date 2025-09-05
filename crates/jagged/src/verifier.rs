@@ -1,30 +1,33 @@
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
-use slop_challenger::FieldChallenger;
+use slop_challenger::{FieldChallenger, IopCtx};
 use slop_multilinear::{full_geq, Evaluations, Mle, MultilinearPcsVerifier, Point};
 use slop_stacked::{StackedPcsProof, StackedPcsVerifier, StackedVerifierError};
 use slop_sumcheck::{partially_verify_sumcheck_proof, PartialSumcheckProof, SumcheckError};
 use std::fmt::Debug;
 use thiserror::Error;
 
-use crate::{JaggedConfig, JaggedEvalConfig, JaggedLittlePolynomialVerifierParams};
+use crate::{
+    JaggedConfig, JaggedError, JaggedEvalSumcheckConfig, JaggedLittlePolynomialVerifierParams,
+    JaggedSumcheckEvalProof,
+};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct JaggedPcsProof<C: JaggedConfig> {
-    pub stacked_pcs_proof: StackedPcsProof<C::BatchPcsProof, C::EF>,
-    pub sumcheck_proof: PartialSumcheckProof<C::EF>,
-    pub jagged_eval_proof:
-        <C::JaggedEvaluator as JaggedEvalConfig<C::F, C::EF, C::Challenger>>::JaggedEvalProof,
-    pub params: JaggedLittlePolynomialVerifierParams<C::F>,
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(bound(serialize = "", deserialize = ""))]
+pub struct JaggedPcsProof<GC: IopCtx, C: JaggedConfig<GC>> {
+    pub stacked_pcs_proof:
+        StackedPcsProof<<C::BatchPcsVerifier as MultilinearPcsVerifier<GC>>::Proof, GC::EF>,
+    pub sumcheck_proof: PartialSumcheckProof<GC::EF>,
+    pub jagged_eval_proof: JaggedSumcheckEvalProof<GC::EF>,
+    pub params: JaggedLittlePolynomialVerifierParams<GC::F>,
     pub added_columns: Vec<usize>,
 }
 
 #[derive(Debug, Clone)]
-pub struct JaggedPcsVerifier<C: JaggedConfig> {
-    pub stacked_pcs_verifier: StackedPcsVerifier<C::BatchPcsVerifier>,
+pub struct JaggedPcsVerifier<GC: IopCtx, C: JaggedConfig<GC>> {
+    pub stacked_pcs_verifier: StackedPcsVerifier<GC, C::BatchPcsVerifier>,
     pub max_log_row_count: usize,
-    pub jagged_evaluator: C::JaggedEvaluator,
 }
 
 #[derive(Debug, Error)]
@@ -47,26 +50,20 @@ pub enum JaggedPcsVerifierError<EF, PcsError> {
     InvalidPrefixSums,
 }
 
-impl<C: JaggedConfig> JaggedPcsVerifier<C> {
-    pub fn challenger(&self) -> C::Challenger {
+impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
+    pub fn challenger(&self) -> GC::Challenger {
         self.stacked_pcs_verifier.challenger()
     }
 
     fn verify_trusted_evaluations(
         &self,
-        commitments: &[C::Commitment],
-        point: Point<C::EF>,
-        evaluation_claims: &[Evaluations<C::EF>],
-        proof: &JaggedPcsProof<C>,
+        commitments: &[GC::Digest],
+        point: Point<GC::EF>,
+        evaluation_claims: &[Evaluations<GC::EF>],
+        proof: &JaggedPcsProof<GC, C>,
         insertion_points: &[usize],
-        challenger: &mut C::Challenger,
-    ) -> Result<
-        (),
-        JaggedPcsVerifierError<
-            C::EF,
-            <C::BatchPcsVerifier as MultilinearPcsVerifier>::VerifierError,
-        >,
-    > {
+        challenger: &mut GC::Challenger,
+    ) -> Result<(), JaggedPcsVerifierError<GC::EF, JaggedError<GC, C>>> {
         let JaggedPcsProof {
             stacked_pcs_proof,
             sumcheck_proof,
@@ -81,7 +78,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
 
         let num_col_variables = (params.col_prefix_sums.len() - 1).next_power_of_two().ilog2();
         let z_col = (0..num_col_variables)
-            .map(|_| challenger.sample_ext_element::<C::EF>())
+            .map(|_| challenger.sample_ext_element::<GC::EF>())
             .collect::<Point<_>>();
 
         let z_row = point;
@@ -110,7 +107,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
             insertion_points.iter().rev().zip_eq(added_columns.iter().rev())
         {
             for _ in 0..*num_added_columns {
-                column_claims.insert(*insertion_point, C::EF::zero());
+                column_claims.insert(*insertion_point, GC::EF::zero());
             }
         }
 
@@ -123,7 +120,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
             .iter()
             .map(|bits| {
                 bits.iter()
-                    .fold(0u32, |acc, &bit| (acc << 1) | if bit == C::F::one() { 1 } else { 0 })
+                    .fold(0u32, |acc, &bit| (acc << 1) | if bit == GC::F::one() { 1 } else { 0 })
             })
             .collect();
 
@@ -163,7 +160,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         }
 
         // Pad the column claims to the next power of two.
-        column_claims.resize(column_claims.len().next_power_of_two(), C::EF::zero());
+        column_claims.resize(column_claims.len().next_power_of_two(), GC::EF::zero());
 
         if (1 << z_col.len()) != column_claims.len() {
             return Err(JaggedPcsVerifierError::IncorrectShape);
@@ -190,7 +187,7 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
         // Check the booleanity of the column prefix sums.
         for t_col in params.col_prefix_sums.iter() {
             for &elem in t_col.iter() {
-                if elem * (C::F::one() - elem) != C::F::zero() {
+                if elem * (GC::F::one() - elem) != GC::F::zero() {
                     return Err(JaggedPcsVerifierError::BooleanityCheckFailed);
                 }
             }
@@ -206,22 +203,20 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
                 return Err(JaggedPcsVerifierError::IncorrectShape);
             }
             // Check monotonicity of the column prefix sums.
-            if full_geq(t_col, next_t_col) != C::F::one() {
+            if full_geq(t_col, next_t_col) != GC::F::one() {
                 return Err(JaggedPcsVerifierError::MonotonicityCheckFailed);
             }
         }
 
-        let jagged_eval = self
-            .jagged_evaluator
-            .jagged_evaluation(
-                params,
-                &z_row,
-                &z_col,
-                &sumcheck_proof.point_and_eval.0,
-                jagged_eval_proof,
-                challenger,
-            )
-            .map_err(|_| JaggedPcsVerifierError::JaggedEvalProofVerificationFailed)?;
+        let jagged_eval = JaggedEvalSumcheckConfig::jagged_evaluation(
+            params,
+            &z_row,
+            &z_col,
+            &sumcheck_proof.point_and_eval.0,
+            jagged_eval_proof,
+            challenger,
+        )
+        .map_err(|_| JaggedPcsVerifierError::JaggedEvalProofVerificationFailed)?;
 
         // Compute the expected evaluation of the dense trace polynomial.
         let expected_eval = sumcheck_proof.point_and_eval.1 / jagged_eval;
@@ -240,14 +235,14 @@ impl<C: JaggedConfig> JaggedPcsVerifier<C> {
     }
 }
 
-pub struct MachineJaggedPcsVerifier<'a, C: JaggedConfig> {
-    pub jagged_pcs_verifier: &'a JaggedPcsVerifier<C>,
+pub struct MachineJaggedPcsVerifier<'a, GC: IopCtx, C: JaggedConfig<GC>> {
+    pub jagged_pcs_verifier: &'a JaggedPcsVerifier<GC, C>,
     pub column_counts_by_round: Vec<Vec<usize>>,
 }
 
-impl<'a, C: JaggedConfig> MachineJaggedPcsVerifier<'a, C> {
+impl<'a, GC: IopCtx, C: JaggedConfig<GC>> MachineJaggedPcsVerifier<'a, GC, C> {
     pub fn new(
-        jagged_pcs_verifier: &'a JaggedPcsVerifier<C>,
+        jagged_pcs_verifier: &'a JaggedPcsVerifier<GC, C>,
         column_counts_by_round: Vec<Vec<usize>>,
     ) -> Self {
         Self { jagged_pcs_verifier, column_counts_by_round }
@@ -255,18 +250,12 @@ impl<'a, C: JaggedConfig> MachineJaggedPcsVerifier<'a, C> {
 
     pub fn verify_trusted_evaluations(
         &self,
-        commitments: &[C::Commitment],
-        point: Point<C::EF>,
-        evaluation_claims: &[Evaluations<C::EF>],
-        proof: &JaggedPcsProof<C>,
-        challenger: &mut C::Challenger,
-    ) -> Result<
-        (),
-        JaggedPcsVerifierError<
-            C::EF,
-            <C::BatchPcsVerifier as MultilinearPcsVerifier>::VerifierError,
-        >,
-    > {
+        commitments: &[GC::Digest],
+        point: Point<GC::EF>,
+        evaluation_claims: &[Evaluations<GC::EF>],
+        proof: &JaggedPcsProof<GC, C>,
+        challenger: &mut GC::Challenger,
+    ) -> Result<(), JaggedPcsVerifierError<GC::EF, JaggedError<GC, C>>> {
         if evaluation_claims.len() != self.column_counts_by_round.len() {
             return Err(JaggedPcsVerifierError::IncorrectShape);
         }

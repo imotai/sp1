@@ -1,25 +1,27 @@
 use derive_where::derive_where;
 use futures::prelude::*;
 use slop_alloc::{HasBackend, ToHost};
+use slop_challenger::IopCtx;
 use slop_commit::{Message, Rounds};
-use slop_multilinear::{Evaluations, Mle, MultilinearPcsProver, Point};
+use slop_multilinear::{Evaluations, Mle, MultilinearPcsProver, MultilinearPcsVerifier, Point};
 use std::fmt::Debug;
 use thiserror::Error;
 
 use crate::{InterleaveMultilinears, StackedPcsProof};
 
 #[derive(Debug, Clone)]
-pub struct StackedPcsProver<P, S> {
+pub struct StackedPcsProver<P, S, GC> {
     pcs_prover: P,
     stacker: S,
     pub log_stacking_height: u32,
+    _marker: std::marker::PhantomData<GC>,
 }
 
 #[derive_where(Debug, Clone; P::ProverData: Debug + Clone)]
-#[derive_where(Serialize, Deserialize; P::ProverData, Mle<P::F, P::A>)]
-pub struct StackedPcsProverData<P: MultilinearPcsProver> {
+#[derive_where(Serialize, Deserialize; P::ProverData, Mle<GC::F, P::A>)]
+pub struct StackedPcsProverData<GC: IopCtx, P: MultilinearPcsProver<GC>> {
     pcs_batch_data: P::ProverData,
-    pub interleaved_mles: Message<Mle<P::F, P::A>>,
+    pub interleaved_mles: Message<Mle<GC::F, P::A>>,
 }
 
 #[derive(Error, Debug)]
@@ -27,20 +29,21 @@ pub enum StackedPcsProverError<E> {
     PcsProverError(E),
 }
 
-impl<P, S> StackedPcsProver<P, S>
+impl<GC, P, S> StackedPcsProver<P, S, GC>
 where
-    P: MultilinearPcsProver,
-    S: InterleaveMultilinears<P::F, P::A>,
+    GC: IopCtx,
+    P: MultilinearPcsProver<GC>,
+    S: InterleaveMultilinears<GC::F, P::A>,
 {
     pub const fn new(pcs_prover: P, stacker: S, log_stacking_height: u32) -> Self {
-        Self { pcs_prover, stacker, log_stacking_height }
+        Self { pcs_prover, stacker, log_stacking_height, _marker: std::marker::PhantomData }
     }
 
     pub async fn round_batch_evaluations(
         &self,
-        stacked_point: &Point<P::EF, P::A>,
-        prover_data: &StackedPcsProverData<P>,
-    ) -> Evaluations<P::EF, P::A> {
+        stacked_point: &Point<GC::EF, P::A>,
+        prover_data: &StackedPcsProverData<GC, P>,
+    ) -> Evaluations<GC::EF, P::A> {
         stream::iter(prover_data.interleaved_mles.iter())
             .then(|mle| mle.eval_at(stacked_point))
             .collect::<Evaluations<_, _>>()
@@ -49,8 +52,8 @@ where
 
     pub async fn commit_multilinears(
         &self,
-        multilinears: Message<Mle<P::F, P::A>>,
-    ) -> Result<(P::Commitment, StackedPcsProverData<P>), StackedPcsProverError<P::ProverError>>
+        multilinears: Message<Mle<GC::F, P::A>>,
+    ) -> Result<(GC::Digest, StackedPcsProverData<GC, P>), StackedPcsProverError<P::ProverError>>
     {
         let interleaved_mles =
             self.stacker.interleave_multilinears(multilinears, self.log_stacking_height).await;
@@ -65,12 +68,15 @@ where
 
     pub async fn prove_trusted_evaluation(
         &self,
-        eval_point: Point<P::EF>,
-        _evaluation_claim: P::EF,
-        prover_data: Rounds<StackedPcsProverData<P>>,
-        batch_evaluations: Rounds<Evaluations<P::EF, P::A>>,
-        challenger: &mut P::Challenger,
-    ) -> Result<StackedPcsProof<P::Proof, P::EF>, StackedPcsProverError<P::ProverError>> {
+        eval_point: Point<GC::EF>,
+        _evaluation_claim: GC::EF,
+        prover_data: Rounds<StackedPcsProverData<GC, P>>,
+        batch_evaluations: Rounds<Evaluations<GC::EF, P::A>>,
+        challenger: &mut GC::Challenger,
+    ) -> Result<
+        StackedPcsProof<<P::Verifier as MultilinearPcsVerifier<GC>>::Proof, GC::EF>,
+        StackedPcsProverError<P::ProverError>,
+    > {
         let mut host_batch_evaluations = Rounds::new();
         for round_evals in batch_evaluations.iter() {
             let mut host_round_evals = vec![];
@@ -105,7 +111,7 @@ where
     }
 }
 
-impl<P: MultilinearPcsProver> HasBackend for StackedPcsProverData<P> {
+impl<GC: IopCtx, P: MultilinearPcsProver<GC>> HasBackend for StackedPcsProverData<GC, P> {
     type Backend = P::A;
 
     fn backend(&self) -> &Self::Backend {
@@ -117,7 +123,7 @@ impl<P: MultilinearPcsProver> HasBackend for StackedPcsProverData<P> {
 mod tests {
     use rand::thread_rng;
     use slop_algebra::extension::BinomialExtensionField;
-    use slop_baby_bear::BabyBear;
+    use slop_baby_bear::{baby_bear_poseidon2::BabyBearDegree4Duplex, BabyBear};
     use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
     use slop_basefold_prover::{BasefoldProver, Poseidon2BabyBear16BasefoldCpuProverComponents};
     use slop_challenger::CanObserve;
@@ -132,7 +138,8 @@ mod tests {
         let batch_size = 10;
 
         type C = Poseidon2BabyBear16BasefoldConfig;
-        type Prover = BasefoldProver<Poseidon2BabyBear16BasefoldCpuProverComponents>;
+        type GC = BabyBearDegree4Duplex;
+        type Prover = BasefoldProver<GC, Poseidon2BabyBear16BasefoldCpuProverComponents>;
         type EF = BinomialExtensionField<BabyBear, 4>;
 
         let round_widths_and_log_heights = [vec![(1 << 10, 10), (1 << 4, 11), (496, 11)]];
@@ -156,7 +163,7 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let pcs_verifier = BasefoldVerifier::<C>::new(log_blowup);
+        let pcs_verifier = BasefoldVerifier::<GC, C>::new(log_blowup);
         let pcs_prover = Prover::new(&pcs_verifier);
         let stacker = FixedRateInterleave::new(batch_size);
 

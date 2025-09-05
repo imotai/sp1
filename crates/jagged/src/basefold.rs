@@ -1,43 +1,39 @@
 use serde::{Deserialize, Serialize};
-use slop_algebra::extension::BinomialExtensionField;
+use slop_algebra::{extension::BinomialExtensionField, TwoAdicField};
 use slop_alloc::CpuBackend;
-use slop_baby_bear::BabyBear;
+use slop_baby_bear::{baby_bear_poseidon2::BabyBearDegree4Duplex, BabyBear};
 use slop_basefold::{
-    BasefoldConfig, BasefoldProof, BasefoldVerifier, DefaultBasefoldConfig,
-    Poseidon2BabyBear16BasefoldConfig, Poseidon2Bn254FrBasefoldConfig,
-    Poseidon2KoalaBear16BasefoldConfig,
+    BasefoldConfig, BasefoldVerifier, DefaultBasefoldConfig, Poseidon2BabyBear16BasefoldConfig,
+    Poseidon2Bn254FrBasefoldConfig, Poseidon2KoalaBear16BasefoldConfig,
 };
 use slop_basefold_prover::{
     BasefoldProver, BasefoldProverComponents, DefaultBasefoldProver,
     Poseidon2BabyBear16BasefoldCpuProverComponents, Poseidon2Bn254BasefoldCpuProverComponents,
     Poseidon2KoalaBear16BasefoldCpuProverComponents,
 };
-use slop_challenger::{CanObserve, FieldChallenger};
-use slop_commit::TensorCs;
-use slop_koala_bear::KoalaBear;
+use slop_bn254::BNGC;
+use slop_challenger::IopCtx;
+use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 use slop_stacked::{FixedRateInterleave, StackedPcsProver, StackedPcsVerifier};
-use std::fmt::Debug;
+use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
     CpuJaggedMleGenerator, DefaultJaggedProver, HadamardJaggedSumcheckProver,
-    JaggedAssistSumAsPolyCPUImpl, JaggedBackend, JaggedConfig, JaggedEvalConfig, JaggedEvalProver,
-    JaggedEvalSumcheckConfig, JaggedEvalSumcheckProver, JaggedPcsVerifier, JaggedProver,
-    JaggedProverComponents, JaggedSumcheckProver, TrivialJaggedEvalConfig,
+    JaggedAssistSumAsPolyCPUImpl, JaggedBackend, JaggedConfig, JaggedEvalProver,
+    JaggedEvalSumcheckProver, JaggedPcsVerifier, JaggedProver, JaggedProverComponents,
+    JaggedSumcheckProver,
 };
 
 pub type BabyBearPoseidon2 =
-    JaggedBasefoldConfig<Poseidon2BabyBear16BasefoldConfig, JaggedEvalSumcheckConfig<BabyBear>>;
+    JaggedBasefoldConfig<BabyBearDegree4Duplex, Poseidon2BabyBear16BasefoldConfig>;
 
 pub type KoalaBearPoseidon2 =
-    JaggedBasefoldConfig<Poseidon2KoalaBear16BasefoldConfig, JaggedEvalSumcheckConfig<KoalaBear>>;
+    JaggedBasefoldConfig<KoalaBearDegree4Duplex, Poseidon2KoalaBear16BasefoldConfig>;
 
-pub type Bn254JaggedConfig<F> =
-    JaggedBasefoldConfig<Poseidon2Bn254FrBasefoldConfig<F>, JaggedEvalSumcheckConfig<F>>;
+pub type Bn254JaggedConfig<F, EF> =
+    JaggedBasefoldConfig<BNGC<F, EF>, Poseidon2Bn254FrBasefoldConfig<F, EF>>;
 
-pub type SP1OuterConfig = Bn254JaggedConfig<KoalaBear>;
-
-pub type BabyBearPoseidon2TrivialEval =
-    JaggedBasefoldConfig<Poseidon2BabyBear16BasefoldConfig, TrivialJaggedEvalConfig>;
+pub type SP1OuterConfig = Bn254JaggedConfig<KoalaBear, BinomialExtensionField<KoalaBear, 4>>;
 
 pub type Poseidon2BabyBearJaggedCpuProverComponents = JaggedBasefoldProverComponents<
     Poseidon2BabyBear16BasefoldCpuProverComponents,
@@ -47,11 +43,12 @@ pub type Poseidon2BabyBearJaggedCpuProverComponents = JaggedBasefoldProverCompon
         JaggedAssistSumAsPolyCPUImpl<
             BabyBear,
             BinomialExtensionField<BabyBear, 4>,
-            <BabyBearPoseidon2 as JaggedConfig>::Challenger,
+            <BabyBearDegree4Duplex as IopCtx>::Challenger,
         >,
         CpuBackend,
-        <BabyBearPoseidon2 as JaggedConfig>::Challenger,
+        <BabyBearDegree4Duplex as IopCtx>::Challenger,
     >,
+    BabyBearDegree4Duplex,
 >;
 
 pub type Poseidon2KoalaBearJaggedCpuProverComponents = JaggedBasefoldProverComponents<
@@ -62,14 +59,15 @@ pub type Poseidon2KoalaBearJaggedCpuProverComponents = JaggedBasefoldProverCompo
         JaggedAssistSumAsPolyCPUImpl<
             KoalaBear,
             BinomialExtensionField<KoalaBear, 4>,
-            <KoalaBearPoseidon2 as JaggedConfig>::Challenger,
+            <KoalaBearDegree4Duplex as IopCtx>::Challenger,
         >,
         CpuBackend,
-        <KoalaBearPoseidon2 as JaggedConfig>::Challenger,
+        <KoalaBearDegree4Duplex as IopCtx>::Challenger,
     >,
+    KoalaBearDegree4Duplex,
 >;
 
-pub type Poseidon2Bn254JaggedCpuProverComponents<F> = JaggedBasefoldProverComponents<
+pub type Poseidon2Bn254JaggedCpuProverComponents<F, EF> = JaggedBasefoldProverComponents<
     Poseidon2Bn254BasefoldCpuProverComponents<F>,
     HadamardJaggedSumcheckProver<CpuJaggedMleGenerator>,
     JaggedEvalSumcheckProver<
@@ -77,88 +75,73 @@ pub type Poseidon2Bn254JaggedCpuProverComponents<F> = JaggedBasefoldProverCompon
         JaggedAssistSumAsPolyCPUImpl<
             F,
             BinomialExtensionField<F, 4>,
-            <Bn254JaggedConfig<F> as JaggedConfig>::Challenger,
+            <BNGC<F, EF> as IopCtx>::Challenger,
         >,
         CpuBackend,
-        <Bn254JaggedConfig<F> as JaggedConfig>::Challenger,
+        <BNGC<F, EF> as IopCtx>::Challenger,
     >,
+    BNGC<F, EF>,
 >;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct JaggedBasefoldConfig<BC, E>(BC, E);
+pub struct JaggedBasefoldConfig<GC, BC>(BC, PhantomData<GC>);
 
-impl<BC, E> JaggedConfig for JaggedBasefoldConfig<BC, E>
+impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, BC> JaggedConfig<GC>
+    for JaggedBasefoldConfig<GC, BC>
 where
-    BC: BasefoldConfig,
-    E: JaggedEvalConfig<BC::F, BC::EF, BC::Challenger> + Clone,
-    BC::Commitment: Debug,
+    BC: BasefoldConfig<GC>,
+    GC::Digest: Debug,
 {
-    type F = BC::F;
-    type EF = BC::EF;
-    type Commitment = BC::Commitment;
-    type BatchPcsProof = BasefoldProof<BC>;
-    type Challenger = BC::Challenger;
-    type BatchPcsVerifier = BasefoldVerifier<BC>;
-    type JaggedEvaluator = E;
+    type BatchPcsVerifier = BasefoldVerifier<GC, BC>;
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct JaggedBasefoldProverComponents<B, J, E>(B, J, E);
+pub struct JaggedBasefoldProverComponents<B, J, E, GC>(B, J, E, PhantomData<GC>);
 
-impl<Bpc, JaggedProver, EvalProver> JaggedProverComponents
-    for JaggedBasefoldProverComponents<Bpc, JaggedProver, EvalProver>
+impl<Bpc, JaggedProver, EvalProver, GC> JaggedProverComponents<GC>
+    for JaggedBasefoldProverComponents<Bpc, JaggedProver, EvalProver, GC>
 where
-    Bpc: BasefoldProverComponents,
-    Bpc::A: JaggedBackend<Bpc::F, Bpc::EF>,
-    Bpc::Challenger:
-        CanObserve<<Bpc::Config as BasefoldConfig>::Commitment> + FieldChallenger<Bpc::F>,
-    JaggedProver: JaggedSumcheckProver<Bpc::F, Bpc::EF, Bpc::A>,
-    EvalProver: JaggedEvalProver<Bpc::F, Bpc::EF, Bpc::Challenger, A = Bpc::A>
-        + 'static
-        + Send
-        + Sync
-        + Clone,
-    <<Bpc as BasefoldProverComponents>::Tcs as TensorCs>::Commitment: std::fmt::Debug,
+    GC: IopCtx,
+    GC::F: TwoAdicField,
+    GC::EF: TwoAdicField,
+    Bpc: BasefoldProverComponents<GC>,
+    Bpc::A: JaggedBackend<GC::F, GC::EF>,
+    JaggedProver: JaggedSumcheckProver<GC::F, GC::EF, Bpc::A>,
+    EvalProver:
+        JaggedEvalProver<GC::F, GC::EF, GC::Challenger, A = Bpc::A> + 'static + Send + Sync + Clone,
 {
-    type F = Bpc::F;
-    type EF = Bpc::EF;
     type A = Bpc::A;
-    type Challenger = Bpc::Challenger;
-    type Commitment = <Bpc::Config as BasefoldConfig>::Commitment;
-    type BatchPcsProof = BasefoldProof<Bpc::Config>;
-    type Config = JaggedBasefoldConfig<Bpc::Config, EvalProver::EvalConfig>;
+    type Config = JaggedBasefoldConfig<GC, Bpc::Config>;
 
     type JaggedSumcheckProver = JaggedProver;
-    type BatchPcsProver = BasefoldProver<Bpc>;
-    type Stacker = FixedRateInterleave<Bpc::F, Bpc::A>;
+    type BatchPcsProver = BasefoldProver<GC, Bpc>;
+    type Stacker = FixedRateInterleave<GC::F, Bpc::A>;
     type JaggedEvalProver = EvalProver;
 }
 
-impl<BC, E> JaggedPcsVerifier<JaggedBasefoldConfig<BC, E>>
+impl<GC, BC> JaggedPcsVerifier<GC, JaggedBasefoldConfig<GC, BC>>
 where
-    BC: DefaultBasefoldConfig,
-    BC::Commitment: Debug,
-    E: JaggedEvalConfig<BC::F, BC::EF, BC::Challenger> + Default,
+    GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>,
+    BC: DefaultBasefoldConfig<GC>,
 {
     pub fn new(log_blowup: usize, log_stacking_height: u32, max_log_row_count: usize) -> Self {
-        let basefold_verifer = BasefoldVerifier::<BC>::new(log_blowup);
+        let basefold_verifer = BasefoldVerifier::<GC, BC>::new(log_blowup);
         let stacked_pcs_verifier = StackedPcsVerifier::new(basefold_verifer, log_stacking_height);
-        Self { stacked_pcs_verifier, max_log_row_count, jagged_evaluator: E::default() }
+        Self { stacked_pcs_verifier, max_log_row_count }
     }
 }
 
-impl<Bpc, JP, E> JaggedProver<JaggedBasefoldProverComponents<Bpc, JP, E>>
+impl<GC, Bpc, JP, E> JaggedProver<GC, JaggedBasefoldProverComponents<Bpc, JP, E, GC>>
 where
-    Bpc: BasefoldProverComponents + DefaultBasefoldProver,
-    Bpc::Config: DefaultBasefoldConfig,
-    <Bpc::Config as BasefoldConfig>::Commitment: Debug,
-    Bpc::A: JaggedBackend<Bpc::F, Bpc::EF>,
-    Bpc::Challenger: CanObserve<<Bpc::Config as BasefoldConfig>::Commitment>,
-    JP: JaggedSumcheckProver<Bpc::F, Bpc::EF, Bpc::A>,
-    E: JaggedEvalProver<Bpc::F, Bpc::EF, Bpc::Challenger, A = Bpc::A> + Default,
+    GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>,
+    Bpc: BasefoldProverComponents<GC> + DefaultBasefoldProver<GC>,
+    Bpc::Config: DefaultBasefoldConfig<GC>,
+    Bpc::A: JaggedBackend<GC::F, GC::EF>,
+    JP: JaggedSumcheckProver<GC::F, GC::EF, Bpc::A>,
+    E: JaggedEvalProver<GC::F, GC::EF, GC::Challenger, A = Bpc::A> + Default,
 {
     pub fn from_basefold_components(
-        verifier: &JaggedPcsVerifier<JaggedBasefoldConfig<Bpc::Config, E::EvalConfig>>,
+        verifier: &JaggedPcsVerifier<GC, JaggedBasefoldConfig<GC, Bpc::Config>>,
         jagged_generator: JP,
         interleave_batch_size: usize,
     ) -> Self {
@@ -176,17 +159,18 @@ where
 
 const DEFAULT_INTERLEAVE_BATCH_SIZE: usize = 32;
 
-impl<Bpc, JP, E> DefaultJaggedProver for JaggedBasefoldProverComponents<Bpc, JP, E>
+impl<Bpc, JP, E, GC> DefaultJaggedProver<GC> for JaggedBasefoldProverComponents<Bpc, JP, E, GC>
 where
-    Bpc: BasefoldProverComponents + DefaultBasefoldProver,
-    Bpc::Config: DefaultBasefoldConfig,
-    <Bpc::Config as BasefoldConfig>::Commitment: Debug,
-    Bpc::A: JaggedBackend<Bpc::F, Bpc::EF>,
-    Bpc::Challenger: CanObserve<<Bpc::Config as BasefoldConfig>::Commitment>,
-    JP: JaggedSumcheckProver<Bpc::F, Bpc::EF, Bpc::A> + Default,
-    E: JaggedEvalProver<Bpc::F, Bpc::EF, Bpc::Challenger, A = Bpc::A> + Default,
+    GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>,
+    Bpc: BasefoldProverComponents<GC> + DefaultBasefoldProver<GC>,
+    Bpc::Config: DefaultBasefoldConfig<GC>,
+    Bpc::A: JaggedBackend<GC::F, GC::EF>,
+    JP: JaggedSumcheckProver<GC::F, GC::EF, Bpc::A> + Default,
+    E: JaggedEvalProver<GC::F, GC::EF, GC::Challenger, A = Bpc::A> + Default,
 {
-    fn prover_from_verifier(verifier: &JaggedPcsVerifier<Self::Config>) -> JaggedProver<Self> {
+    fn prover_from_verifier(
+        verifier: &JaggedPcsVerifier<GC, Self::Config>,
+    ) -> JaggedProver<GC, Self> {
         JaggedProver::from_basefold_components(
             verifier,
             JP::default(),
@@ -200,6 +184,7 @@ mod tests {
     use std::sync::Arc;
 
     use rand::{thread_rng, Rng};
+    use slop_challenger::CanObserve;
     use slop_commit::Rounds;
     use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
 
@@ -207,14 +192,10 @@ mod tests {
 
     use super::*;
 
-    //     type JC = BabyBearPoseidon2;
-    // type Prover = JaggedProver<Poseidon2BabyBearJaggedCpuProverComponents>;
-    // type F = <JC as JaggedConfig>::F;
-    // type EF = <JC as JaggedConfig>::EF;
-
     #[tokio::test]
     async fn test_baby_bear_jagged_basefold() {
         test_jagged_basefold::<
+            BabyBearDegree4Duplex,
             Poseidon2BabyBear16BasefoldConfig,
             Poseidon2BabyBearJaggedCpuProverComponents,
         >()
@@ -224,6 +205,7 @@ mod tests {
     #[tokio::test]
     async fn test_koala_bear_jagged_basefold() {
         test_jagged_basefold::<
+            KoalaBearDegree4Duplex,
             Poseidon2KoalaBear16BasefoldConfig,
             Poseidon2KoalaBearJaggedCpuProverComponents,
         >()
@@ -233,8 +215,9 @@ mod tests {
     #[tokio::test]
     async fn test_bn254_jagged_basefold() {
         test_jagged_basefold::<
-            Poseidon2Bn254FrBasefoldConfig<BabyBear>,
-            Poseidon2Bn254JaggedCpuProverComponents<BabyBear>,
+            BNGC<BabyBear, BinomialExtensionField<BabyBear, 4>>,
+            Poseidon2Bn254FrBasefoldConfig<BabyBear, BinomialExtensionField<BabyBear, 4>>,
+            Poseidon2Bn254JaggedCpuProverComponents<BabyBear, BinomialExtensionField<BabyBear, 4>>,
         >()
         .await;
     }
@@ -242,32 +225,26 @@ mod tests {
     #[tokio::test]
     async fn test_bn254_jagged_kb_basefold() {
         test_jagged_basefold::<
-            Poseidon2Bn254FrBasefoldConfig<KoalaBear>,
-            Poseidon2Bn254JaggedCpuProverComponents<KoalaBear>,
+            BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>,
+            Poseidon2Bn254FrBasefoldConfig<KoalaBear, BinomialExtensionField<KoalaBear, 4>>,
+            Poseidon2Bn254JaggedCpuProverComponents<
+                KoalaBear,
+                BinomialExtensionField<KoalaBear, 4>,
+            >,
         >()
         .await;
     }
 
-    type E<F> = JaggedEvalSumcheckConfig<F>;
-    type JC<B> = JaggedBasefoldConfig<B, E<<B as BasefoldConfig>::F>>;
-
     // #[tokio::test]
     async fn test_jagged_basefold<
-        BC: BasefoldConfig<Commitment: Debug> + DefaultBasefoldConfig,
-        Prover: JaggedProverComponents<
-                Config = JaggedBasefoldConfig<BC, E<BC::F>>,
-                F = BC::F,
-                EF = BC::EF,
-                Challenger = <JC<BC> as JaggedConfig>::Challenger,
-                A = CpuBackend,
-                Commitment = <JC<BC> as JaggedConfig>::Commitment,
-            > + DefaultJaggedProver,
+        GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>,
+        BC: BasefoldConfig<GC> + DefaultBasefoldConfig<GC>,
+        Prover: JaggedProverComponents<GC, Config = JaggedBasefoldConfig<GC, BC>, A = CpuBackend>
+            + DefaultJaggedProver<GC>,
     >()
     where
-        rand::distributions::Standard: rand::distributions::Distribution<<BC as BasefoldConfig>::F>,
-        rand::distributions::Standard:
-            rand::distributions::Distribution<<BC as BasefoldConfig>::EF>,
-        <JC<BC> as JaggedConfig>::Commitment: Copy,
+        rand::distributions::Standard: rand::distributions::Distribution<GC::F>,
+        rand::distributions::Standard: rand::distributions::Distribution<GC::EF>,
     {
         let row_counts_rounds = vec![vec![1 << 10, 0, 1 << 10], vec![1 << 8]];
         let column_counts_rounds = vec![vec![128, 45, 32], vec![512]];
@@ -294,7 +271,7 @@ mod tests {
                         if *num_rows == 0 {
                             PaddedMle::zeros(*num_cols, max_log_row_count)
                         } else {
-                            let mle = Mle::<BC::F>::rand(&mut rng, *num_cols, num_rows.ilog(2));
+                            let mle = Mle::<GC::F>::rand(&mut rng, *num_cols, num_rows.ilog(2));
                             PaddedMle::padded_with_zeros(Arc::new(mle), max_log_row_count)
                         }
                     })
@@ -302,20 +279,20 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let jagged_verifier = JaggedPcsVerifier::<JaggedBasefoldConfig<BC, E<BC::F>>>::new(
+        let jagged_verifier = JaggedPcsVerifier::<GC, JaggedBasefoldConfig<GC, BC>>::new(
             log_blowup,
             log_stacking_height,
             max_log_row_count as usize,
         );
 
-        let jagged_prover = JaggedProver::<Prover>::from_verifier(&jagged_verifier);
+        let jagged_prover = JaggedProver::<GC, Prover>::from_verifier(&jagged_verifier);
 
         let machine_verifier = MachineJaggedPcsVerifier::new(
             &jagged_verifier,
             vec![column_counts[0].clone(), column_counts[1].clone()],
         );
 
-        let eval_point = (0..max_log_row_count).map(|_| rng.gen::<BC::EF>()).collect::<Point<_>>();
+        let eval_point = (0..max_log_row_count).map(|_| rng.gen::<GC::EF>()).collect::<Point<_>>();
 
         // Begin the commit rounds
         let mut challenger = jagged_verifier.challenger();

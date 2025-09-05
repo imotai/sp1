@@ -3,10 +3,10 @@ use std::array::from_fn;
 use crate::{DiffusionMatrixKoalaBear, KoalaBear};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use slop_algebra::AbstractField;
+use slop_algebra::{extension::BinomialExtensionField, AbstractField};
+use slop_challenger::{DuplexChallenger, IopCtx};
 use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 
-// use crate::{DefaultMerkleTreeConfig, MerkleTreeConfig};
 pub(crate) fn string_to_koala_bear(hex_string: String) -> KoalaBear {
     KoalaBear::from_canonical_u64(
         u64::from_str_radix(&hex_string[2..], 16).expect("Invalid KoalaBear hex string"),
@@ -18,6 +18,18 @@ pub struct Poseidon2KoalaBearConfig<const STATE_WIDTH: usize = 16>;
 
 pub type KoalaPerm =
     Poseidon2<KoalaBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixKoalaBear, 16, 3>;
+
+#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+pub struct KoalaBearDegree4Duplex;
+
+pub const KOALA_BEAR_DIGEST_SIZE: usize = 8;
+
+impl IopCtx for KoalaBearDegree4Duplex {
+    type F = KoalaBear;
+    type EF = BinomialExtensionField<KoalaBear, 4>;
+    type Digest = [KoalaBear; KOALA_BEAR_DIGEST_SIZE];
+    type Challenger = DuplexChallenger<Self::F, KoalaPerm, 16, 8>;
+}
 
 pub fn my_kb_16_perm() -> KoalaPerm {
     const ROUNDS_F: usize = 8;

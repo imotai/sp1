@@ -9,4 +9,9 @@ categories.workspace = true
 
 [dependencies]
 p3-bn254-fr = {workspace = true}
+slop-challenger = { workspace = true }
+slop-algebra = { workspace = true }
+slop-poseidon2 = { workspace = true}
+slop-symmetric = { workspace = true }
+serde = { workspace = true }
 

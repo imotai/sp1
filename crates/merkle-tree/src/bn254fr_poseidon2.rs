@@ -2,36 +2,28 @@ use std::marker::PhantomData;
 
 use ff::PrimeField as FFPrimeField;
 use serde::{Deserialize, Serialize};
-use slop_algebra::PrimeField31;
+use slop_algebra::{ExtensionField, PrimeField31};
 use zkhash::{
     ark_ff::{BigInteger, PrimeField},
     fields::bn256::FpBN256 as ark_FpBN256,
     poseidon2::poseidon2_instance_bn256::RC3,
 };
 
-use slop_bn254::{Bn254Fr, DiffusionMatrixBN254, FFBn254Fr};
-use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
-use slop_symmetric::{Hash, MultiField32PaddingFreeSponge, TruncatedPermutation};
+use slop_bn254::{
+    Bn254Fr, DiffusionMatrixBN254, FFBn254Fr, OuterPerm, Poseidon2Bn254GlobalConfig,
+    OUTER_CHALLENGER_STATE_WIDTH, OUTER_DIGEST_SIZE,
+};
+use slop_poseidon2::Poseidon2ExternalMatrixGeneral;
+use slop_symmetric::{MultiField32PaddingFreeSponge, TruncatedPermutation};
 
 use crate::{DefaultMerkleTreeConfig, MerkleTreeConfig};
 
-pub const OUTER_CHALLENGER_STATE_WIDTH: usize = 3;
-pub const OUTER_DIGEST_SIZE: usize = 1;
-pub const OUTER_CHALLENGER_RATE: usize = 2;
 #[derive(Debug, Clone, Default, Copy, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct Poseidon2Bn254Config<F>(PhantomData<F>);
 
-pub type OuterPerm = Poseidon2<
-    Bn254Fr,
-    Poseidon2ExternalMatrixGeneral,
-    DiffusionMatrixBN254,
-    OUTER_CHALLENGER_STATE_WIDTH,
-    5,
->;
-
-impl<F: PrimeField31> MerkleTreeConfig for Poseidon2Bn254Config<F> {
-    type Data = F;
-    type Digest = Hash<F, Bn254Fr, OUTER_DIGEST_SIZE>;
+impl<F: PrimeField31, EF: ExtensionField<F>> MerkleTreeConfig<Poseidon2Bn254GlobalConfig<F, EF>>
+    for Poseidon2Bn254Config<F>
+{
     type Hasher = MultiField32PaddingFreeSponge<
         F,
         Bn254Fr,
@@ -44,7 +36,9 @@ impl<F: PrimeField31> MerkleTreeConfig for Poseidon2Bn254Config<F> {
         TruncatedPermutation<OuterPerm, 2, OUTER_DIGEST_SIZE, OUTER_CHALLENGER_STATE_WIDTH>;
 }
 
-impl<F: PrimeField31> DefaultMerkleTreeConfig for Poseidon2Bn254Config<F> {
+impl<F: PrimeField31, EF: ExtensionField<F>>
+    DefaultMerkleTreeConfig<Poseidon2Bn254GlobalConfig<F, EF>> for Poseidon2Bn254Config<F>
+{
     fn default_hasher_and_compressor() -> (Self::Hasher, Self::Compressor) {
         let perm = outer_perm();
         let hasher = Self::Hasher::new(perm.clone()).unwrap();

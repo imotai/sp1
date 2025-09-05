@@ -7,7 +7,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::ToHost;
 use slop_alloc::{Backend, CpuBackend, HasBackend};
-use slop_challenger::FieldChallenger;
+use slop_challenger::{FieldChallenger, IopCtx};
 use slop_commit::{Message, Rounds};
 
 #[derive(Debug, Clone)]
@@ -27,28 +27,9 @@ pub struct Evaluations<F, A: Backend = CpuBackend> {
 /// [MultilinearPcsVerifier::Commitment] which represents a batch of multilinear polynomials. After
 /// all the rounds are complete, the verifier can check an evaluation claim for all the polynomials
 /// in all rounds, evaluated at same [Point].
-pub trait MultilinearPcsVerifier: 'static + Send + Sync + Clone {
-    /// The base field.
-    ///
-    /// This is the field on which the MLEs committed to are defined over.
-    type F: Field;
-    /// The field of random elements.
-    ///
-    /// This is an extension field of the base field which is of cryptographically secure size. The
-    /// random evaluation points of the protocol are drawn from `EF`.
-    type EF: ExtensionField<Self::F>;
-
-    /// The compressed message that represents a batch of multilinear polynomials.
-    type Commitment: 'static + Clone + Serialize + DeserializeOwned + Send + Sync;
-
+pub trait MultilinearPcsVerifier<GC: IopCtx>: 'static + Send + Sync + Clone {
     /// The proof of a multilinear PCS evaluation.
     type Proof: 'static + Clone + Serialize + DeserializeOwned + Send + Sync;
-
-    /// The challenger type that creates the random challenges via Fiat-Shamir.
-    ///
-    /// The challenger is observing all the messages sent throughout the protocol and uses this
-    /// to create the verifier messages of the IOP.
-    type Challenger: FieldChallenger<Self::F>;
 
     /// The error type of the verifier.
     type VerifierError: Error;
@@ -56,7 +37,7 @@ pub trait MultilinearPcsVerifier: 'static + Send + Sync + Clone {
     /// A default challenger for Fiat-Shamir.
     ///
     /// The challenger returned by this method is un-seeded and it's state can be determinstic.
-    fn default_challenger(&self) -> Self::Challenger;
+    fn default_challenger(&self) -> GC::Challenger;
 
     /// Verify an evaluation proofs for multilinear polynomials sent.
     ///
@@ -75,11 +56,11 @@ pub trait MultilinearPcsVerifier: 'static + Send + Sync + Clone {
     /// * `challenger` - The challenger that creates the verifier messages of the IOP.
     fn verify_trusted_evaluations(
         &self,
-        commitments: &[Self::Commitment],
-        point: Point<Self::EF>,
-        evaluation_claims: &[Evaluations<Self::EF>],
+        commitments: &[GC::Digest],
+        point: Point<GC::EF>,
+        evaluation_claims: &[Evaluations<GC::EF>],
         proof: &Self::Proof,
-        challenger: &mut Self::Challenger,
+        challenger: &mut GC::Challenger,
     ) -> Result<(), Self::VerifierError>;
 
     /// Verify an evaluation proof for a multilinear polynomial.
@@ -89,11 +70,11 @@ pub trait MultilinearPcsVerifier: 'static + Send + Sync + Clone {
     /// absorb the evaluation claims into the Fiat-Shamir randomness represented by the challenger.
     fn verify_untrusted_evaluations(
         &self,
-        commitments: &[Self::Commitment],
-        point: Point<Self::EF>,
-        evaluation_claims: &[Evaluations<Self::EF>],
+        commitments: &[GC::Digest],
+        point: Point<GC::EF>,
+        evaluation_claims: &[Evaluations<GC::EF>],
         proof: &Self::Proof,
-        challenger: &mut Self::Challenger,
+        challenger: &mut GC::Challenger,
     ) -> Result<(), Self::VerifierError> {
         // Observe the evaluation claims.
         for round in evaluation_claims.iter() {
@@ -111,36 +92,10 @@ pub trait MultilinearPcsVerifier: 'static + Send + Sync + Clone {
 }
 
 /// The prover of a multilinear commitment scheme.
-pub trait MultilinearPcsProver: 'static + Debug + Send + Sync {
-    /// The base field.
-    ///
-    /// This is the field on which the MLEs committed to are defined over.
-    type F: Field;
-    /// The field of random elements.
-    ///
-    /// This is an extension field of the base field which is of cryptographically secure size. The
-    /// random evaluation points of the protocol are drawn from `EF`.
-    type EF: ExtensionField<Self::F>;
-
-    /// The compressed message that represents a batch of multilinear polynomials.
-    type Commitment: 'static + Clone + Serialize + DeserializeOwned + Send + Sync;
-
+pub trait MultilinearPcsProver<GC: IopCtx>: 'static + Debug + Send + Sync {
     /// The proof of a multilinear PCS evaluation.
-    type Proof: 'static + Clone + Serialize + DeserializeOwned + Send + Sync;
 
-    /// The challenger type that creates the random challenges via Fiat-Shamir.
-    ///
-    /// The challenger is observing all the messages sent throughout the protocol and uses this
-    /// to create the verifier messages of the IOP.
-    type Challenger: FieldChallenger<Self::F> + Send + Sync;
-
-    type Verifier: MultilinearPcsVerifier<
-        F = Self::F,
-        EF = Self::EF,
-        Commitment = Self::Commitment,
-        Proof = Self::Proof,
-        Challenger = Self::Challenger,
-    >;
+    type Verifier: MultilinearPcsVerifier<GC>;
 
     /// The auxilary data for a prover.
     ///
@@ -151,33 +106,37 @@ pub trait MultilinearPcsProver: 'static + Debug + Send + Sync {
     /// The backend used by the prover.
     ///
     /// The backend parametrizes the type of hardware assumptions this prover is using.
-    type A: MleEvaluationBackend<Self::F, Self::EF>;
+    type A: MleEvaluationBackend<GC::F, GC::EF>;
 
     /// The error type of the prover.
     type ProverError: Error;
 
     fn commit_multilinears(
         &self,
-        mles: Message<Mle<Self::F, Self::A>>,
-    ) -> impl Future<Output = Result<(Self::Commitment, Self::ProverData), Self::ProverError>> + Send;
+        mles: Message<Mle<GC::F, Self::A>>,
+    ) -> impl Future<Output = Result<(GC::Digest, Self::ProverData), Self::ProverError>> + Send;
 
     fn prove_trusted_evaluations(
         &self,
-        eval_point: Point<Self::EF>,
-        mle_rounds: Rounds<Message<Mle<Self::F, Self::A>>>,
-        evaluation_claims: Rounds<Evaluations<Self::EF, Self::A>>,
+        eval_point: Point<GC::EF>,
+        mle_rounds: Rounds<Message<Mle<GC::F, Self::A>>>,
+        evaluation_claims: Rounds<Evaluations<GC::EF, Self::A>>,
         prover_data: Rounds<Self::ProverData>,
-        challenger: &mut Self::Challenger,
-    ) -> impl Future<Output = Result<Self::Proof, Self::ProverError>> + Send;
+        challenger: &mut GC::Challenger,
+    ) -> impl Future<
+        Output = Result<<Self::Verifier as MultilinearPcsVerifier<GC>>::Proof, Self::ProverError>,
+    > + Send;
 
     fn prove_untrusted_evaluations(
         &self,
-        eval_point: Point<Self::EF>,
-        mle_rounds: Rounds<Message<Mle<Self::F, Self::A>>>,
-        evaluation_claims: Rounds<Evaluations<Self::EF, Self::A>>,
+        eval_point: Point<GC::EF>,
+        mle_rounds: Rounds<Message<Mle<GC::F, Self::A>>>,
+        evaluation_claims: Rounds<Evaluations<GC::EF, Self::A>>,
         prover_data: Rounds<Self::ProverData>,
-        challenger: &mut Self::Challenger,
-    ) -> impl Future<Output = Result<Self::Proof, Self::ProverError>> + Send {
+        challenger: &mut GC::Challenger,
+    ) -> impl Future<
+        Output = Result<<Self::Verifier as MultilinearPcsVerifier<GC>>::Proof, Self::ProverError>,
+    > + Send {
         async {
             // Observe the evaluation claims.
             for round in evaluation_claims.iter() {

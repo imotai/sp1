@@ -2,46 +2,23 @@ mod eval_sumcheck_prover;
 mod sumcheck_eval;
 mod sumcheck_poly;
 mod sumcheck_sum_as_poly;
-mod trivial_eval;
 
 pub use eval_sumcheck_prover::*;
 use slop_alloc::{Buffer, CanCopyFrom, CpuBackend};
 pub use sumcheck_eval::*;
 pub use sumcheck_poly::*;
 pub use sumcheck_sum_as_poly::*;
-pub use trivial_eval::*;
 
-use std::{error::Error, fmt::Debug, future::Future};
+use std::future::Future;
 
-use serde::{de::DeserializeOwned, Serialize};
 use slop_algebra::{ExtensionField, Field};
 use slop_multilinear::{Point, PointBackend};
 
-use crate::{JaggedLittlePolynomialProverParams, JaggedLittlePolynomialVerifierParams};
-
-pub trait JaggedEvalConfig<F: Field, EF: ExtensionField<F>, Challenger>:
-    'static + Send + Sync + Serialize + DeserializeOwned + std::fmt::Debug + Clone
-{
-    type JaggedEvalProof: 'static + Debug + Clone + Send + Sync + Serialize + DeserializeOwned;
-
-    type JaggedEvalError: Error + 'static + Send + Sync;
-
-    fn jagged_evaluation(
-        &self,
-        params: &JaggedLittlePolynomialVerifierParams<F>,
-        z_row: &Point<EF>,
-        z_col: &Point<EF>,
-        z_trace: &Point<EF>,
-        proof: &Self::JaggedEvalProof,
-        challenger: &mut Challenger,
-    ) -> Result<EF, Self::JaggedEvalError>;
-}
+use crate::JaggedLittlePolynomialProverParams;
 
 pub trait JaggedEvalProver<F: Field, EF: ExtensionField<F>, Challenger>:
     'static + Send + Sync + Clone
 {
-    type EvalProof: 'static + Debug + Clone + Serialize + DeserializeOwned;
-    type EvalConfig: JaggedEvalConfig<F, EF, Challenger, JaggedEvalProof = Self::EvalProof>;
     type A: PointBackend<EF> + CanCopyFrom<Buffer<EF>, CpuBackend, Output = Buffer<EF, Self::A>>;
 
     fn prove_jagged_evaluation(
@@ -52,12 +29,13 @@ pub trait JaggedEvalProver<F: Field, EF: ExtensionField<F>, Challenger>:
         z_trace: &Point<EF>,
         challenger: &mut Challenger,
         backend: Self::A,
-    ) -> impl Future<Output = Self::EvalProof> + Send + Sync;
+    ) -> impl Future<Output = JaggedSumcheckEvalProof<EF>> + Send + Sync;
 }
 
 #[cfg(test)]
 mod tests {
 
+    use crate::JaggedLittlePolynomialVerifierParams;
     use crate::{
         jagged_eval::sumcheck_poly::JaggedEvalSumcheckPoly, BranchingProgram,
         JaggedLittlePolynomialProverParams,

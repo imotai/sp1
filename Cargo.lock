@@ -1422,6 +1422,7 @@ dependencies = [
  "p3-baby-bear",
  "serde",
  "slop-algebra",
+ "slop-challenger",
  "slop-poseidon2",
 ]
 
@@ -1479,6 +1480,11 @@ name = "slop-bn254"
 version = "1.2.0"
 dependencies = [
  "p3-bn254-fr",
+ "serde",
+ "slop-algebra",
+ "slop-challenger",
+ "slop-poseidon2",
+ "slop-symmetric",
 ]
 
 [[package]]
@@ -1487,6 +1493,7 @@ version = "1.2.0"
 dependencies = [
  "futures",
  "p3-challenger",
+ "serde",
  "slop-algebra",
  "slop-symmetric",
 ]
@@ -1498,6 +1505,7 @@ dependencies = [
  "p3-commit",
  "serde",
  "slop-alloc",
+ "slop-challenger",
  "slop-futures",
  "slop-tensor",
 ]
@@ -1549,6 +1557,7 @@ dependencies = [
  "slop-baby-bear",
  "slop-basefold",
  "slop-basefold-prover",
+ "slop-bn254",
  "slop-challenger",
  "slop-commit",
  "slop-futures",
@@ -1578,6 +1587,7 @@ dependencies = [
  "p3-koala-bear",
  "serde",
  "slop-algebra",
+ "slop-challenger",
  "slop-poseidon2",
 ]
 
@@ -1609,6 +1619,7 @@ dependencies = [
  "slop-alloc",
  "slop-baby-bear",
  "slop-bn254",
+ "slop-challenger",
  "slop-commit",
  "slop-futures",
  "slop-koala-bear",

@@ -1,8 +1,8 @@
 use serde::Serialize;
 use slop_algebra::{AbstractField, UnivariatePolynomial};
 use slop_basefold::BasefoldConfig;
-use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger};
-use slop_commit::{TensorCs, TensorCsOpening};
+use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger, IopCtx};
+use slop_merkle_tree::{MerkleTreeOpening, MerkleTreeTcs};
 use slop_multilinear::{Mle, Point};
 use slop_utils::reverse_bits_len;
 use std::{iter, marker::PhantomData};
@@ -10,22 +10,24 @@ use thiserror::Error;
 
 use crate::config::WhirProofShape;
 
-pub struct Verifier<'a, C>
+pub struct Verifier<'a, GC, C>
 where
-    C: BasefoldConfig,
+    GC: IopCtx,
+    C: BasefoldConfig<GC>,
 {
-    merkle_verifier: C::Tcs,
+    merkle_verifier: MerkleTreeTcs<GC, C::Tcs>,
     _marker: PhantomData<&'a C>,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct ParsedCommitment<C>
+pub struct ParsedCommitment<GC, BC: BasefoldConfig<GC>>
 where
-    C: BasefoldConfig,
+    GC: IopCtx,
 {
-    pub commitment: C::Commitment,
-    pub ood_points: Vec<Point<C::EF>>,
-    pub ood_answers: Vec<C::EF>,
+    pub commitment: GC::Digest,
+    pub ood_points: Vec<Point<GC::EF>>,
+    pub ood_answers: Vec<GC::EF>,
+    pub _marker: PhantomData<BC>,
 }
 
 #[derive(Serialize)]
@@ -48,28 +50,29 @@ where
     }
 }
 
-pub type ProofOfWork<C> = <<C as BasefoldConfig>::Challenger as GrindingChallenger>::Witness;
-pub type ProverMessage<C> = (SumcheckPoly<<C as BasefoldConfig>::EF>, ProofOfWork<C>);
+pub type ProofOfWork<GC> = <<GC as IopCtx>::Challenger as GrindingChallenger>::Witness;
+pub type ProverMessage<GC> = (SumcheckPoly<<GC as IopCtx>::EF>, ProofOfWork<GC>);
 
 #[derive(Serialize)]
-pub struct WhirProof<C>
+pub struct WhirProof<GC, C>
 where
-    C: BasefoldConfig,
+    GC: IopCtx,
+    C: BasefoldConfig<GC>,
 {
     // First sumcheck
-    pub initial_sumcheck_polynomials: Vec<(SumcheckPoly<C::EF>, ProofOfWork<C>)>,
+    pub initial_sumcheck_polynomials: Vec<(SumcheckPoly<GC::EF>, ProofOfWork<GC>)>,
 
     // For internal rounds
-    pub commitments: Vec<ParsedCommitment<C>>,
-    pub merkle_proofs: Vec<TensorCsOpening<C::Tcs>>,
-    pub query_proof_of_works: Vec<ProofOfWork<C>>,
-    pub sumcheck_polynomials: Vec<Vec<ProverMessage<C>>>,
+    pub commitments: Vec<ParsedCommitment<GC, C>>,
+    pub merkle_proofs: Vec<MerkleTreeOpening<GC>>,
+    pub query_proof_of_works: Vec<ProofOfWork<GC>>,
+    pub sumcheck_polynomials: Vec<Vec<ProverMessage<GC>>>,
 
     // Final round
-    pub final_polynomial: Vec<C::EF>,
-    pub final_merkle_proof: TensorCsOpening<C::Tcs>,
-    pub final_sumcheck_polynomials: Vec<ProverMessage<C>>,
-    pub final_pow: ProofOfWork<C>,
+    pub final_polynomial: Vec<GC::EF>,
+    pub final_merkle_proof: MerkleTreeOpening<GC>,
+    pub final_sumcheck_polynomials: Vec<ProverMessage<GC>>,
+    pub final_pow: ProofOfWork<GC>,
     pub _config: PhantomData<C>,
 }
 
@@ -112,26 +115,27 @@ pub fn map_to_pow<F: AbstractField>(mut elem: F, len: usize) -> Point<F> {
     res.into()
 }
 
-impl<'a, C> Verifier<'a, C>
+impl<'a, C, GC> Verifier<'a, GC, C>
 where
-    C: BasefoldConfig,
+    GC: IopCtx,
+    C: BasefoldConfig<GC>,
 {
-    pub const fn new(merkle_verifier: C::Tcs) -> Self {
+    pub const fn new(merkle_verifier: MerkleTreeTcs<GC, C::Tcs>) -> Self {
         Self { _marker: PhantomData, merkle_verifier }
     }
 
     pub fn observe_commitment(
         &self,
-        commitment: &ParsedCommitment<C>,
-        challenger: &mut C::Challenger,
-        config: &WhirProofShape<C::F>,
+        commitment: &ParsedCommitment<GC, C>,
+        challenger: &mut GC::Challenger,
+        config: &WhirProofShape<GC::F>,
     ) -> Result<(), WhirProofError> {
-        challenger.observe(commitment.commitment.clone());
-        let ood_points: Vec<Point<C::EF>> = (0..config.starting_ood_samples)
+        challenger.observe(commitment.commitment);
+        let ood_points: Vec<Point<GC::EF>> = (0..config.starting_ood_samples)
             .map(|_| {
                 (0..config.num_variables)
                     .map(|_| challenger.sample_ext_element())
-                    .collect::<Vec<C::EF>>()
+                    .collect::<Vec<GC::EF>>()
                     .into()
             })
             .collect();
@@ -149,12 +153,12 @@ where
     /// WHIR reduces it to a claim that v(point) = claim'
     pub fn verify(
         &self,
-        commitment: &ParsedCommitment<C>,
-        claim: C::EF,
-        proof: &WhirProof<C>,
-        challenger: &mut C::Challenger,
-        config: &WhirProofShape<C::F>,
-    ) -> Result<(Point<C::EF>, C::EF), WhirProofError> {
+        commitment: &ParsedCommitment<GC, C>,
+        claim: GC::EF,
+        proof: &WhirProof<GC, C>,
+        challenger: &mut GC::Challenger,
+        config: &WhirProofShape<GC::F>,
+    ) -> Result<(Point<GC::EF>, GC::EF), WhirProofError> {
         let n_rounds = config.round_parameters.len();
 
         // Check that the number of OOD answers in the proof matches the expected value.
@@ -166,8 +170,8 @@ where
         }
 
         // Batch the initial claim with the OOD claims of the commitment
-        let claim_batching_randomness: C::EF = challenger.sample_ext_element();
-        let claimed_sum: C::EF = claim_batching_randomness
+        let claim_batching_randomness: GC::EF = challenger.sample_ext_element();
+        let claimed_sum: GC::EF = claim_batching_randomness
             .powers()
             .zip(iter::once(&claim).chain(&commitment.ood_answers))
             .map(|(r, &v)| v * r)
@@ -215,14 +219,14 @@ where
             }
 
             // Observe the commitment
-            challenger.observe(new_commitment.commitment.clone());
+            challenger.observe(new_commitment.commitment);
 
             // Squeeze the ood points
-            let ood_points: Vec<Point<C::EF>> = (0..round_params.ood_samples)
+            let ood_points: Vec<Point<GC::EF>> = (0..round_params.ood_samples)
                 .map(|_| {
                     (0..num_variables)
                         .map(|_| challenger.sample_ext_element())
-                        .collect::<Vec<C::EF>>()
+                        .collect::<Vec<GC::EF>>()
                         .into()
                 })
                 .collect();
@@ -238,12 +242,12 @@ where
             let id_query_indices = (0..round_params.num_queries)
                 .map(|_| challenger.sample_bits(domain_size))
                 .collect::<Vec<_>>();
-            let id_query_values: Vec<C::F> = id_query_indices
+            let id_query_values: Vec<GC::F> = id_query_indices
                 .iter()
                 .map(|val| reverse_bits_len(*val, domain_size))
                 .map(|pos| generator.exp_u64(pos as u64))
                 .collect();
-            let claim_batching_randomness: C::EF = challenger.sample_ext_element();
+            let claim_batching_randomness: GC::EF = challenger.sample_ext_element();
 
             if !challenger.check_witness(
                 round_params.queries_pow_bits.ceil() as usize,
@@ -267,12 +271,12 @@ where
             // Except in the first round, the opened values in the Merkle proof are secretly extension
             // field elements, so we have to reinterpret them as such. (The Merkle tree API commits
             // to and opens only base-field values.)
-            let merkle_read_values: Vec<Mle<C::EF>> = if round_index != 0 {
+            let merkle_read_values: Vec<Mle<GC::EF>> = if round_index != 0 {
                 merkle_proof
                     .values
                     .clone()
                     .into_buffer()
-                    .into_extension::<C::EF>()
+                    .into_extension::<GC::EF>()
                     .to_vec()
                     .chunks_exact(1 << prev_folding_factor)
                     .map(|v| Mle::new(v.to_vec().into()))
@@ -284,7 +288,7 @@ where
                     .into_buffer()
                     .to_vec()
                     .into_iter()
-                    .map(C::EF::from)
+                    .map(GC::EF::from)
                     .collect::<Vec<_>>()
                     .chunks_exact(1 << prev_folding_factor)
                     .map(|v| Mle::new(v.to_vec().into()))
@@ -292,7 +296,7 @@ where
             };
 
             // Compute the STIR values by reading the merkle values and folding across the column.
-            let stir_values: Vec<C::EF> = merkle_read_values
+            let stir_values: Vec<GC::EF> = merkle_read_values
                 .iter()
                 .map(|coeffs| coeffs.blocking_eval_at(&folding_randomness.clone().into())[0])
                 .collect();
@@ -355,7 +359,7 @@ where
         let final_id_indices = (0..config.final_queries)
             .map(|_| challenger.sample_bits(domain_size))
             .collect::<Vec<_>>();
-        let final_id_values: Vec<C::F> = final_id_indices
+        let final_id_values: Vec<GC::F> = final_id_indices
             .iter()
             .map(|val| reverse_bits_len(*val, domain_size))
             .map(|pos| generator.exp_u64(pos as u64))
@@ -370,19 +374,19 @@ where
             )
             .map_err(|_| WhirProofError::InvalidMerkleAuthentication)?;
 
-        let final_merkle_read_values: Vec<Mle<C::EF>> = proof
+        let final_merkle_read_values: Vec<Mle<GC::EF>> = proof
             .final_merkle_proof
             .values
             .clone()
             .into_buffer()
-            .into_extension::<C::EF>()
+            .into_extension::<GC::EF>()
             .to_vec()
             .chunks_exact(1 << prev_folding_factor)
             .map(|v| Mle::new(v.to_vec().into()))
             .collect();
 
         // Compute the STIR values by reading the merkle values and folding across the column
-        let final_stir_values: Vec<C::EF> = final_merkle_read_values
+        let final_stir_values: Vec<GC::EF> = final_merkle_read_values
             .iter()
             .map(|coeffs| coeffs.blocking_eval_at(&folding_randomness.clone().into())[0])
             .collect();
@@ -416,11 +420,11 @@ where
         let f = Mle::new(proof.final_polynomial.clone().into())
             .blocking_eval_at(&Point::from(folding_randomness))[0];
 
-        let mut summand = C::EF::zero();
+        let mut summand = GC::EF::zero();
         for (i, eval_points) in final_evaluation_points.into_iter().enumerate() {
             let combination_randomness = all_claim_batching_randomness[i];
             let len = eval_points[0].len();
-            let eval_randomness: Point<C::EF> =
+            let eval_randomness: Point<GC::EF> =
                 concatenated_folding_randomness[..len].to_vec().into();
 
             let sum_modification = combination_randomness
@@ -428,7 +432,7 @@ where
                 .skip(1)
                 .zip(eval_points)
                 .map(|(r, point)| r * { Mle::full_monomial_basis_eq(&point, &eval_randomness) })
-                .sum::<C::EF>();
+                .sum::<GC::EF>();
 
             summand += sum_modification;
         }
@@ -443,12 +447,12 @@ where
     // Verifies the sumcheck polynomial, returning the new claim value
     fn verify_sumcheck(
         &self,
-        sumcheck_polynomials: &[(SumcheckPoly<C::EF>, ProofOfWork<C>)],
-        mut claimed_sum: C::EF,
+        sumcheck_polynomials: &[(SumcheckPoly<GC::EF>, ProofOfWork<GC>)],
+        mut claimed_sum: GC::EF,
         rounds: usize,
         pow_bits: &[f64],
-        challenger: &mut C::Challenger,
-    ) -> Result<(Vec<C::EF>, C::EF), SumcheckError> {
+        challenger: &mut GC::Challenger,
+    ) -> Result<(Vec<GC::EF>, GC::EF), SumcheckError> {
         if sumcheck_polynomials.len() != rounds {
             return Err(SumcheckError::InvalidNumberOfSumcheckPoly(
                 rounds,
@@ -463,7 +467,7 @@ where
                 return Err(SumcheckError::InvalidSum);
             }
 
-            let folding_randomness_single: C::EF = challenger.sample_ext_element();
+            let folding_randomness_single: GC::EF = challenger.sample_ext_element();
             randomness.push(folding_randomness_single);
 
             if !challenger.check_witness(pow_bits[i].ceil() as usize, *pow_witness) {

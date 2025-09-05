@@ -1,26 +1,28 @@
+use std::marker::PhantomData;
+
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use slop_algebra::{AbstractExtensionField, AbstractField, TwoAdicField};
-use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger};
-use slop_commit::{TensorCs, TensorCsOpening};
+use slop_algebra::AbstractExtensionField;
+use slop_algebra::{AbstractField, TwoAdicField};
+use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger, IopCtx};
+use slop_merkle_tree::{MerkleTreeOpening, MerkleTreeTcs, MerkleTreeTcsError};
 use slop_multilinear::{Evaluations, MultilinearPcsVerifier, Point};
 use slop_utils::reverse_bits_len;
 use thiserror::Error;
 
 use crate::{BasefoldConfig, DefaultBasefoldConfig};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct BasefoldVerifier<B: BasefoldConfig> {
-    pub fri_config: crate::FriConfig<B::F>,
-    pub tcs: B::Tcs,
+#[derive(Clone)]
+pub struct BasefoldVerifier<GC: IopCtx, B: BasefoldConfig<GC>> {
+    pub fri_config: crate::FriConfig<GC::F>,
+    pub tcs: MerkleTreeTcs<GC, B::Tcs>,
 }
-
-impl<B: DefaultBasefoldConfig> BasefoldVerifier<B> {
+impl<GC: IopCtx, B: DefaultBasefoldConfig<GC>> BasefoldVerifier<GC, B> {
     pub fn new(log_blowup: usize) -> Self {
         B::default_verifier(log_blowup)
     }
 
-    pub fn challenger(&self) -> B::Challenger {
+    pub fn challenger(&self) -> GC::Challenger {
         B::default_challenger(self)
     }
 }
@@ -70,60 +72,64 @@ impl<TcsError: std::fmt::Display> std::fmt::Debug for BaseFoldVerifierError<TcsE
 
 /// A proof of a Basefold evaluation claim.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct BasefoldProof<B: BasefoldConfig> {
+#[serde(bound(serialize = "", deserialize = ""))]
+pub struct BasefoldProof<GC: IopCtx, BC: BasefoldConfig<GC>> {
     /// The univariate polynomials that are used in the sumcheck part of the BaseFold protocol.
-    pub univariate_messages: Vec<[B::EF; 2]>,
+    pub univariate_messages: Vec<[GC::EF; 2]>,
     /// The FRI parts of the proof.
     /// The commitments to the folded polynomials produced in the commit phase.
-    pub fri_commitments: Vec<<B::Tcs as TensorCs>::Commitment>,
+    pub fri_commitments: Vec<GC::Digest>,
     /// The query openings for the individual multilinear polynmomials.
     ///
     /// The vector is indexed by the batch number.
-    pub component_polynomials_query_openings: Vec<TensorCsOpening<B::Tcs>>,
+    pub component_polynomials_query_openings: Vec<MerkleTreeOpening<GC>>,
     /// The query openings and the FRI query proofs for the FRI query phase.
-    pub query_phase_openings: Vec<TensorCsOpening<B::Tcs>>,
+    pub query_phase_openings: Vec<MerkleTreeOpening<GC>>,
     /// The prover performs FRI until we reach a polynomial of degree 0, and return the constant
     /// value of this polynomial.
-    pub final_poly: B::EF,
+    pub final_poly: GC::EF,
     /// Proof-of-work witness.
-    pub pow_witness: <B::Challenger as GrindingChallenger>::Witness,
+    pub pow_witness: <GC::Challenger as GrindingChallenger>::Witness,
+    pub marker: PhantomData<BC>,
 }
 
-impl<B: BasefoldConfig> MultilinearPcsVerifier for BasefoldVerifier<B> {
-    type F = B::F;
-    type EF = B::EF;
-    type Commitment = B::Commitment;
-    type Proof = BasefoldProof<B>;
-    type Challenger = B::Challenger;
-    type VerifierError = BaseFoldVerifierError<<B::Tcs as TensorCs>::VerifierError>;
+impl<GC: IopCtx, B: BasefoldConfig<GC>> MultilinearPcsVerifier<GC> for BasefoldVerifier<GC, B>
+where
+    GC::F: TwoAdicField,
+{
+    type Proof = BasefoldProof<GC, B>;
+    type VerifierError = BaseFoldVerifierError<MerkleTreeTcsError>;
 
-    fn default_challenger(&self) -> Self::Challenger {
+    fn default_challenger(&self) -> GC::Challenger {
         B::default_challenger(self)
     }
 
     fn verify_trusted_evaluations(
         &self,
-        commitments: &[Self::Commitment],
-        point: Point<Self::EF>,
-        evaluation_claims: &[Evaluations<Self::EF>],
+        commitments: &[GC::Digest],
+        point: Point<GC::EF>,
+        evaluation_claims: &[Evaluations<GC::EF>],
         proof: &Self::Proof,
-        challenger: &mut Self::Challenger,
+        challenger: &mut GC::Challenger,
     ) -> Result<(), Self::VerifierError> {
         self.verify_mle_evaluations(commitments, point, evaluation_claims, proof, challenger)
     }
 }
 
-impl<B: BasefoldConfig> BasefoldVerifier<B> {
+impl<GC: IopCtx, B: BasefoldConfig<GC>> BasefoldVerifier<GC, B>
+where
+    GC::F: TwoAdicField,
+{
     fn verify_mle_evaluations(
         &self,
-        commitments: &[B::Commitment],
-        mut point: Point<B::EF>,
-        evaluation_claims: &[Evaluations<B::EF>],
-        proof: &BasefoldProof<B>,
-        challenger: &mut B::Challenger,
-    ) -> Result<(), BaseFoldVerifierError<<B::Tcs as TensorCs>::VerifierError>> {
+        commitments: &[GC::Digest],
+        mut point: Point<GC::EF>,
+        evaluation_claims: &[Evaluations<GC::EF>],
+        proof: &BasefoldProof<GC, B>,
+        challenger: &mut GC::Challenger,
+    ) -> Result<(), BaseFoldVerifierError<MerkleTreeTcsError>> {
         // Sample the challenge used to batch all the different polynomials.
-        let batching_challenge = challenger.sample_ext_element::<B::EF>();
+        let batching_challenge = challenger.sample_ext_element::<GC::EF>();
         // Compute the batched evaluation claim.
         let eval_claim = evaluation_claims
             .iter()
@@ -131,7 +137,7 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
             .flatten()
             .zip(batching_challenge.powers())
             .map(|(eval, batch_power)| *eval * batch_power)
-            .sum::<B::EF>();
+            .sum::<GC::EF>();
 
         if evaluation_claims.len() != commitments.len()
             || commitments.len() != proof.component_polynomials_query_openings.len()
@@ -158,8 +164,8 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
             .zip_eq(proof.univariate_messages.iter())
             .map(|(commitment, poly)| {
                 poly.iter().copied().for_each(|x| challenger.observe_ext_element(x));
-                challenger.observe(commitment.clone());
-                challenger.sample_ext_element::<B::EF>()
+                challenger.observe(*commitment);
+                challenger.sample_ext_element::<GC::EF>()
             })
             .collect::<Vec<_>>();
 
@@ -168,7 +174,7 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
         // X_{d-1}, 1)`. Given this, the claimed evaluation should be `(1 - X_d) *
         // first_poly[0] + X_d * first_poly[1]`.
         let first_poly = proof.univariate_messages[0];
-        if eval_claim != (B::EF::one() - *point[0]) * first_poly[0] + *point[0] * first_poly[1] {
+        if eval_claim != (GC::EF::one() - *point[0]) * first_poly[0] + *point[0] * first_poly[1] {
             return Err(BaseFoldVerifierError::Sumcheck);
         };
 
@@ -182,7 +188,7 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
         {
             // The check is similar to the one for `first_poly`.
             let i = i + 1;
-            if expected_eval != (B::EF::one() - *point[i]) * poly[0] + *point[i] * poly[1] {
+            if expected_eval != (GC::EF::one() - *point[i]) * poly[0] + *point[i] * poly[1] {
                 return Err(BaseFoldVerifierError::Sumcheck);
             }
 
@@ -207,8 +213,8 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
             .collect::<Vec<_>>();
 
         // Compute the batch evaluations from the openings of the component polynomials.
-        let mut batch_evals = vec![B::EF::zero(); query_indices.len()];
-        let mut batch_challenge_power = B::EF::one();
+        let mut batch_evals = vec![GC::EF::zero(); query_indices.len()];
+        let mut batch_challenge_power = GC::EF::one();
         for (round_idx, opening) in proof.component_polynomials_query_openings.iter().enumerate() {
             let values = &opening.values;
             let total_columns = evaluation_claims[round_idx]
@@ -276,13 +282,13 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
     /// only a single vector.
     fn verify_queries(
         &self,
-        commitments: &[<B::Tcs as TensorCs>::Commitment],
+        commitments: &[GC::Digest],
         indices: &[usize],
-        final_poly: B::EF,
-        reduced_openings: Vec<B::EF>,
-        query_openings: &[TensorCsOpening<B::Tcs>],
-        betas: &[B::EF],
-    ) -> Result<(), BaseFoldVerifierError<<B::Tcs as TensorCs>::VerifierError>> {
+        final_poly: GC::EF,
+        reduced_openings: Vec<GC::EF>,
+        query_openings: &[MerkleTreeOpening<GC>],
+        betas: &[GC::EF],
+    ) -> Result<(), BaseFoldVerifierError<MerkleTreeTcsError>> {
         let log_max_height = commitments.len() + self.fri_config.log_blowup();
 
         let mut folded_evals = reduced_openings;
@@ -291,7 +297,7 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
         let mut xis = indices
             .iter()
             .map(|index| {
-                B::F::two_adic_generator(log_max_height)
+                GC::F::two_adic_generator(log_max_height)
                     .exp_u64(reverse_bits_len(*index, log_max_height) as u64)
             })
             .collect::<Vec<_>>();
@@ -323,14 +329,14 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
                 let index_sibling = *index ^ 1;
                 let index_pair = *index >> 1;
 
-                if opening.total_len() != 2 * B::EF::D {
+                if opening.total_len() != 2 * GC::EF::D {
                     return Err(BaseFoldVerifierError::IncorrectShape);
                 }
 
-                let evals: [B::EF; 2] = opening
+                let evals: [GC::EF; 2] = opening
                     .as_slice()
-                    .chunks_exact(B::EF::D)
-                    .map(B::EF::from_base_slice)
+                    .chunks_exact(GC::EF::D)
+                    .map(GC::EF::from_base_slice)
                     .collect::<Vec<_>>()
                     .try_into()
                     .unwrap();
@@ -341,11 +347,11 @@ impl<B: BasefoldConfig> BasefoldVerifier<B> {
                 }
 
                 let mut xs = [*x; 2];
-                xs[index_sibling % 2] *= B::F::two_adic_generator(1);
+                xs[index_sibling % 2] *= GC::F::two_adic_generator(1);
 
                 // interpolate and evaluate at beta
-                *folded_eval =
-                    evals[0] + (*beta - xs[0]) * (evals[1] - evals[0]) / B::EF::from(xs[1] - xs[0]);
+                *folded_eval = evals[0]
+                    + (*beta - xs[0]) * (evals[1] - evals[0]) / GC::EF::from(xs[1] - xs[0]);
 
                 *index = index_pair;
                 *x = x.square();

@@ -2,19 +2,21 @@ use std::marker::PhantomData;
 
 use slop_algebra::AbstractField;
 use slop_alloc::CpuBackend;
+use slop_challenger::IopCtx;
 use slop_commit::{Message, Rounds};
-use slop_multilinear::{Evaluations, Mle, MultilinearPcsProver, Point};
+use slop_multilinear::{Evaluations, Mle, MultilinearPcsProver, MultilinearPcsVerifier, Point};
 use slop_sumcheck::{reduce_sumcheck_to_evaluation, PartialSumcheckProof};
 
 use crate::{sparse_poly::SparsePolynomial, sumcheck_polynomials::SparsePCSSumcheckPoly};
 
-pub struct SparsePCSProver<MP: MultilinearPcsProver> {
+pub struct SparsePCSProver<GC: IopCtx, MP: MultilinearPcsProver<GC>> {
     pub multilinear_prover: MP,
+    _global_config: PhantomData<GC>,
 }
 
-pub struct ProverData<MP: MultilinearPcsProver> {
+pub struct ProverData<GC: IopCtx, MP: MultilinearPcsProver<GC>> {
     pub multilinear_prover_data: MP::ProverData,
-    pub mles: Message<Mle<MP::F, MP::A>>,
+    pub mles: Message<Mle<GC::F, MP::A>>,
     _prover: PhantomData<MP>,
 }
 
@@ -24,15 +26,15 @@ pub struct Proof<EF, PCSProof> {
     pub pcs_proof: PCSProof,
 }
 
-impl<MP: MultilinearPcsProver<A = CpuBackend>> SparsePCSProver<MP> {
+impl<GC: IopCtx, MP: MultilinearPcsProver<GC, A = CpuBackend>> SparsePCSProver<GC, MP> {
     pub fn new(prover: MP) -> Self {
-        Self { multilinear_prover: prover }
+        Self { multilinear_prover: prover, _global_config: PhantomData }
     }
 
     pub async fn commit_sparse_poly(
         &self,
-        poly: &SparsePolynomial<MP::F>,
-    ) -> Result<(MP::Commitment, ProverData<MP>), MP::ProverError> {
+        poly: &SparsePolynomial<GC::F>,
+    ) -> Result<(GC::Digest, ProverData<GC, MP>), MP::ProverError> {
         // TODO: Implement batching
         // TODO: This is always done in a trusted setting, can something be optimized here?
 
@@ -53,11 +55,12 @@ impl<MP: MultilinearPcsProver<A = CpuBackend>> SparsePCSProver<MP> {
 
     pub async fn prove_evaluation(
         &self,
-        poly: &SparsePolynomial<MP::F>,
-        eval_point: &Point<MP::EF>,
-        prover_data: ProverData<MP>,
-        challenger: &mut MP::Challenger,
-    ) -> Result<Proof<MP::EF, MP::Proof>, MP::ProverError> {
+        poly: &SparsePolynomial<GC::F>,
+        eval_point: &Point<GC::EF>,
+        prover_data: ProverData<GC, MP>,
+        challenger: &mut GC::Challenger,
+    ) -> Result<Proof<GC::EF, <MP::Verifier as MultilinearPcsVerifier<GC>>::Proof>, MP::ProverError>
+    {
         // Compute the evaluation claim
         let v = poly.eval_at(eval_point);
 
@@ -68,7 +71,7 @@ impl<MP: MultilinearPcsProver<A = CpuBackend>> SparsePCSProver<MP> {
             challenger,
             vec![v],
             1,
-            <MP::EF as AbstractField>::one(),
+            <GC::EF as AbstractField>::one(),
         )
         .await;
 
@@ -104,7 +107,7 @@ impl<MP: MultilinearPcsProver<A = CpuBackend>> SparsePCSProver<MP> {
 mod tests {
     use rand::{thread_rng, Rng};
     use slop_algebra::extension::BinomialExtensionField;
-    use slop_baby_bear::BabyBear;
+    use slop_baby_bear::{baby_bear_poseidon2::BabyBearDegree4Duplex, BabyBear};
     use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
     use slop_basefold_prover::{BasefoldProver, Poseidon2BabyBear16BasefoldCpuProverComponents};
 
@@ -115,8 +118,9 @@ mod tests {
     #[tokio::test]
     async fn test_sparse_polynomial_prover() {
         type C = Poseidon2BabyBear16BasefoldConfig;
-        type BackendProver = BasefoldProver<Poseidon2BabyBear16BasefoldCpuProverComponents>;
-        type BackendVerifier = BasefoldVerifier<C>;
+        type GC = BabyBearDegree4Duplex;
+        type BackendProver = BasefoldProver<GC, Poseidon2BabyBear16BasefoldCpuProverComponents>;
+        type BackendVerifier = BasefoldVerifier<GC, C>;
         type F = BabyBear;
         type EF = BinomialExtensionField<BabyBear, 4>;
 

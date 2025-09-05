@@ -16,7 +16,7 @@ use crate::{
 
 use super::{
     prove_jagged_eval_sumcheck, sumcheck_poly::JaggedEvalSumcheckPoly, JaggedAssistSumAsPoly,
-    JaggedEvalConfig, JaggedEvalProver,
+    JaggedEvalProver,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,24 +40,18 @@ pub enum JaggedEvalSumcheckError<F: Field> {
     IncorrectEvaluation,
 }
 
-impl<F, EF, Challenger> JaggedEvalConfig<F, EF, Challenger> for JaggedEvalSumcheckConfig<F>
+impl<F> JaggedEvalSumcheckConfig<F>
 where
     F: Field,
-    EF: ExtensionField<F>,
-    Challenger: FieldChallenger<F>,
 {
-    type JaggedEvalProof = JaggedSumcheckEvalProof<EF>;
-    type JaggedEvalError = JaggedEvalSumcheckError<EF>;
-
-    fn jagged_evaluation(
-        &self,
+    pub fn jagged_evaluation<EF: ExtensionField<F>, Challenger: FieldChallenger<F>>(
         params: &JaggedLittlePolynomialVerifierParams<F>,
         z_row: &Point<EF>,
         z_col: &Point<EF>,
         z_trace: &Point<EF>,
-        proof: &Self::JaggedEvalProof,
+        proof: &JaggedSumcheckEvalProof<EF>,
         challenger: &mut Challenger,
-    ) -> Result<EF, Self::JaggedEvalError> {
+    ) -> Result<EF, JaggedEvalSumcheckError<EF>> {
         let JaggedSumcheckEvalProof { branching_program_evals, partial_sumcheck_proof } = proof;
         // Calculate the partial lagrange from z_col point.
         let z_col_partial_lagrange = Mle::blocking_partial_lagrange(z_col);
@@ -192,8 +186,6 @@ where
         + CanCopyFrom<Buffer<EF>, CpuBackend, Output = Buffer<EF, A>>
         + CanCopyFrom<Buffer<F>, CpuBackend, Output = Buffer<F, A>>,
 {
-    type EvalProof = JaggedSumcheckEvalProof<EF>;
-    type EvalConfig = JaggedEvalSumcheckConfig<F>;
     type A = A;
 
     async fn prove_jagged_evaluation(
@@ -204,7 +196,7 @@ where
         z_trace: &Point<EF>,
         challenger: &mut Challenger,
         backend: Self::A,
-    ) -> Self::EvalProof {
+    ) -> JaggedSumcheckEvalProof<EF> {
         // Create sumcheck proof for the jagged eval.
         let jagged_eval_sc_poly = JaggedEvalSumcheckPoly::<
             F,

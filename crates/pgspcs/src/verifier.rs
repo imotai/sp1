@@ -1,10 +1,14 @@
+use std::marker::PhantomData;
+
+use slop_challenger::IopCtx;
 use slop_multilinear::{Evaluations, Mle, MultilinearPcsVerifier, Point};
 use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
 
 use crate::prover::Proof;
 
-pub struct SparsePCSVerifier<MV: MultilinearPcsVerifier> {
+pub struct SparsePCSVerifier<GC: IopCtx, MV: MultilinearPcsVerifier<GC>> {
     pub multilinear_verifier: MV,
+    _global_config: PhantomData<GC>,
 }
 
 #[derive(Debug)]
@@ -15,22 +19,22 @@ pub enum VerifierError<PCSError> {
     InvalidMLEEvalClaims,
 }
 
-impl<MV: MultilinearPcsVerifier> SparsePCSVerifier<MV> {
+impl<GC: IopCtx, MV: MultilinearPcsVerifier<GC>> SparsePCSVerifier<GC, MV> {
     pub fn new(verifier: MV) -> Self {
-        Self { multilinear_verifier: verifier }
+        Self { multilinear_verifier: verifier, _global_config: PhantomData }
     }
 
-    pub fn default_challenger(&self) -> MV::Challenger {
+    pub fn default_challenger(&self) -> GC::Challenger {
         self.multilinear_verifier.default_challenger()
     }
 
     pub fn verify_trusted_evaluations(
         &self,
-        commitment: MV::Commitment,
-        eval_point: &Point<MV::EF>,
-        evaluation_claim: MV::EF,
-        proof: &Proof<MV::EF, MV::Proof>,
-        challenger: &mut MV::Challenger,
+        commitment: GC::Digest,
+        eval_point: &Point<GC::EF>,
+        evaluation_claim: GC::EF,
+        proof: &Proof<GC::EF, MV::Proof>,
+        challenger: &mut GC::Challenger,
     ) -> Result<(), VerifierError<MV::VerifierError>> {
         // Verify the sumcheck proof
         partially_verify_sumcheck_proof(

@@ -1,12 +1,14 @@
 use serde::{Deserialize, Serialize};
+use slop_challenger::IopCtx;
 use slop_commit::Rounds;
 use slop_multilinear::{Evaluations, Mle, MultilinearPcsVerifier, Point};
 use thiserror::Error;
 
 #[derive(Debug, Clone)]
-pub struct StackedPcsVerifier<P> {
+pub struct StackedPcsVerifier<GC, P> {
     pub pcs_verifier: P,
     pub log_stacking_height: u32,
+    _marker: std::marker::PhantomData<GC>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -25,23 +27,23 @@ pub struct StackedPcsProof<PcsProof, EF> {
     pub batch_evaluations: Rounds<Evaluations<EF>>,
 }
 
-impl<P: MultilinearPcsVerifier> StackedPcsVerifier<P> {
-    pub fn challenger(&self) -> P::Challenger {
+impl<GC: IopCtx, P: MultilinearPcsVerifier<GC>> StackedPcsVerifier<GC, P> {
+    pub fn challenger(&self) -> GC::Challenger {
         self.pcs_verifier.default_challenger()
     }
 
     #[inline]
     pub const fn new(pcs_verifier: P, log_stacking_height: u32) -> Self {
-        Self { pcs_verifier, log_stacking_height }
+        Self { pcs_verifier, log_stacking_height, _marker: std::marker::PhantomData }
     }
 
     pub fn verify_trusted_evaluation(
         &self,
-        commitments: &[P::Commitment],
-        point: &Point<P::EF>,
-        proof: &StackedPcsProof<P::Proof, P::EF>,
-        evaluation_claim: P::EF,
-        challenger: &mut P::Challenger,
+        commitments: &[GC::Digest],
+        point: &Point<GC::EF>,
+        proof: &StackedPcsProof<P::Proof, GC::EF>,
+        evaluation_claim: GC::EF,
+        challenger: &mut GC::Challenger,
     ) -> Result<(), StackedVerifierError<P::VerifierError>> {
         if point.dimension() < self.log_stacking_height as usize {
             return Err(StackedVerifierError::IncorrectShape);

@@ -161,7 +161,7 @@ where
 mod tests {
     use rand::thread_rng;
     use slop_algebra::extension::BinomialExtensionField;
-    use slop_baby_bear::BabyBear;
+    use slop_baby_bear::{baby_bear_poseidon2::BabyBearDegree4Duplex, BabyBear};
     use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
     use slop_challenger::CanSample;
     use slop_multilinear::Mle;
@@ -188,7 +188,7 @@ mod tests {
 
         let product = HadamardProduct { base, ext };
 
-        let verifier = BasefoldVerifier::<C>::new(1);
+        let verifier = BasefoldVerifier::<BabyBearDegree4Duplex, C>::new(1);
 
         let mut challenger = verifier.challenger();
 

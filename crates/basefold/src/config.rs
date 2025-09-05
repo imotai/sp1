@@ -2,66 +2,38 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use slop_algebra::{
-    extension::{BinomialExtensionField, BinomiallyExtendable},
-    ExtensionField, PrimeField31, TwoAdicField,
-};
+use slop_algebra::{extension::BinomialExtensionField, ExtensionField, PrimeField31, TwoAdicField};
 use slop_baby_bear::{
-    baby_bear_poseidon2::{my_bb_16_perm, Perm, Poseidon2BabyBearConfig},
+    baby_bear_poseidon2::{my_bb_16_perm, BabyBearDegree4Duplex, Perm, Poseidon2BabyBearConfig},
     BabyBear,
 };
-use slop_bn254::Bn254Fr;
-use slop_challenger::{
-    CanObserve, DuplexChallenger, FieldChallenger, GrindingChallenger, MultiField32Challenger,
+use slop_bn254::{
+    Bn254Fr, OuterPerm, Poseidon2Bn254GlobalConfig, OUTER_CHALLENGER_RATE,
+    OUTER_CHALLENGER_STATE_WIDTH,
 };
-use slop_commit::TensorCs;
-use slop_koala_bear::{my_kb_16_perm, KoalaBear, KoalaPerm, Poseidon2KoalaBearConfig};
-use slop_merkle_tree::{
-    outer_perm, MerkleTreeTcs, OuterPerm, Poseidon2Bn254Config, OUTER_CHALLENGER_RATE,
-    OUTER_CHALLENGER_STATE_WIDTH, OUTER_DIGEST_SIZE,
+use slop_challenger::{DuplexChallenger, IopCtx, MultiField32Challenger};
+use slop_koala_bear::{
+    my_kb_16_perm, KoalaBear, KoalaBearDegree4Duplex, KoalaPerm, Poseidon2KoalaBearConfig,
 };
-use slop_symmetric::Hash;
+use slop_merkle_tree::{outer_perm, MerkleTreeConfig, MerkleTreeTcs, Poseidon2Bn254Config};
 
 use crate::{BasefoldVerifier, FriConfig};
 
 /// The configuration required for a Reed-Solomon-based Basefold.
-pub trait BasefoldConfig:
+pub trait BasefoldConfig<GC: IopCtx>:
     'static + Clone + Debug + Send + Sync + Serialize + DeserializeOwned
 {
-    /// The base field.
-    ///
-    /// This is the field on which the MLEs committed to are defined over.
-    type F: TwoAdicField;
-    /// The field of random elements.
-    ///
-    /// This is an extension field of the base field which is of cryptographically secure size. The
-    /// random evaluation points of the protocol are drawn from `EF`.
-    type EF: ExtensionField<Self::F>;
-
-    type Commitment: 'static + Clone + Send + Sync + Serialize + DeserializeOwned;
-
     /// The tensor commitment scheme.
     ///
     /// The tensor commitment scheme is used to send long messages in the protocol by converting
     /// them to a tensor committment providing oracle acccess.
-    type Tcs: TensorCs<Data = Self::F, Commitment = Self::Commitment>;
-    /// The challenger type that creates the random challenges via Fiat-Shamir.
-    ///
-    /// The challenger is observing all the messages sent throughout the protocol and uses this
-    /// to create the verifier messages of the IOP.
-    type Challenger: FieldChallenger<Self::F>
-        + GrindingChallenger
-        + CanObserve<Self::Commitment>
-        + 'static
-        + Send
-        + Sync
-        + Clone;
+    type Tcs: MerkleTreeConfig<GC>;
 
-    fn default_challenger(_verifier: &BasefoldVerifier<Self>) -> Self::Challenger;
+    fn default_challenger(_verifier: &BasefoldVerifier<GC, Self>) -> GC::Challenger;
 }
 
-pub trait DefaultBasefoldConfig: BasefoldConfig + Sized {
-    fn default_verifier(log_blowup: usize) -> BasefoldVerifier<Self>;
+pub trait DefaultBasefoldConfig<GC: IopCtx>: BasefoldConfig<GC> + Sized {
+    fn default_verifier(log_blowup: usize) -> BasefoldVerifier<GC, Self>;
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -101,21 +73,21 @@ impl<F, EF, Tcs, Challenger> Default for BasefoldConfigImpl<F, EF, Tcs, Challeng
 pub type Poseidon2BabyBear16BasefoldConfig = BasefoldConfigImpl<
     BabyBear,
     BinomialExtensionField<BabyBear, 4>,
-    MerkleTreeTcs<Poseidon2BabyBearConfig>,
+    MerkleTreeTcs<BabyBearDegree4Duplex, Poseidon2BabyBearConfig>,
     DuplexChallenger<BabyBear, Perm, 16, 8>,
 >;
 
 pub type Poseidon2KoalaBear16BasefoldConfig = BasefoldConfigImpl<
     KoalaBear,
     BinomialExtensionField<KoalaBear, 4>,
-    MerkleTreeTcs<Poseidon2KoalaBearConfig>,
+    MerkleTreeTcs<KoalaBearDegree4Duplex, Poseidon2KoalaBearConfig>,
     DuplexChallenger<KoalaBear, KoalaPerm, 16, 8>,
 >;
 
-pub type Poseidon2Bn254FrBasefoldConfig<F> = BasefoldConfigImpl<
+pub type Poseidon2Bn254FrBasefoldConfig<F, EF> = BasefoldConfigImpl<
     F,
     BinomialExtensionField<F, 4>,
-    MerkleTreeTcs<Poseidon2Bn254Config<F>>,
+    MerkleTreeTcs<Poseidon2Bn254GlobalConfig<F, EF>, Poseidon2Bn254Config<F>>,
     MultiField32Challenger<
         F,
         Bn254Fr,
@@ -125,46 +97,32 @@ pub type Poseidon2Bn254FrBasefoldConfig<F> = BasefoldConfigImpl<
     >,
 >;
 
-impl BasefoldConfig for Poseidon2BabyBear16BasefoldConfig {
-    type F = BabyBear;
-    type EF = BinomialExtensionField<BabyBear, 4>;
-    type Commitment = <MerkleTreeTcs<Poseidon2BabyBearConfig> as TensorCs>::Commitment;
-    type Tcs = MerkleTreeTcs<Poseidon2BabyBearConfig>;
-    type Challenger = DuplexChallenger<BabyBear, Perm, 16, 8>;
+impl BasefoldConfig<BabyBearDegree4Duplex> for Poseidon2BabyBear16BasefoldConfig {
+    type Tcs = Poseidon2BabyBearConfig;
 
     fn default_challenger(
-        _verifier: &BasefoldVerifier<Self>,
+        _verifier: &BasefoldVerifier<BabyBearDegree4Duplex, Self>,
     ) -> DuplexChallenger<BabyBear, Perm, 16, 8> {
         let default_perm = my_bb_16_perm();
         DuplexChallenger::<BabyBear, Perm, 16, 8>::new(default_perm)
     }
 }
 
-impl DefaultBasefoldConfig for Poseidon2BabyBear16BasefoldConfig {
-    fn default_verifier(log_blowup: usize) -> BasefoldVerifier<Self> {
+impl DefaultBasefoldConfig<BabyBearDegree4Duplex> for Poseidon2BabyBear16BasefoldConfig {
+    fn default_verifier(log_blowup: usize) -> BasefoldVerifier<BabyBearDegree4Duplex, Self> {
         let fri_config = FriConfig::<BabyBear>::auto(log_blowup, 84);
-        let tcs = MerkleTreeTcs::<Poseidon2BabyBearConfig>::default();
-        BasefoldVerifier::<Self> { fri_config, tcs }
+        let tcs = MerkleTreeTcs::<BabyBearDegree4Duplex, Poseidon2BabyBearConfig>::default();
+        BasefoldVerifier { fri_config, tcs }
     }
 }
 
-impl<F: PrimeField31 + BinomiallyExtendable<4> + TwoAdicField> BasefoldConfig
-    for Poseidon2Bn254FrBasefoldConfig<F>
+impl<F: PrimeField31 + TwoAdicField, EF: ExtensionField<F>>
+    BasefoldConfig<Poseidon2Bn254GlobalConfig<F, EF>> for Poseidon2Bn254FrBasefoldConfig<F, EF>
 {
-    type F = F;
-    type EF = BinomialExtensionField<F, 4>;
-    type Commitment = Hash<F, Bn254Fr, OUTER_DIGEST_SIZE>;
-    type Tcs = MerkleTreeTcs<Poseidon2Bn254Config<F>>;
-    type Challenger = MultiField32Challenger<
-        F,
-        Bn254Fr,
-        OuterPerm,
-        OUTER_CHALLENGER_STATE_WIDTH,
-        OUTER_CHALLENGER_RATE,
-    >;
+    type Tcs = Poseidon2Bn254Config<F>;
 
     fn default_challenger(
-        _verifier: &BasefoldVerifier<Self>,
+        _verifier: &BasefoldVerifier<Poseidon2Bn254GlobalConfig<F, EF>, Self>,
     ) -> MultiField32Challenger<
         F,
         Bn254Fr,
@@ -184,33 +142,35 @@ impl<F: PrimeField31 + BinomiallyExtendable<4> + TwoAdicField> BasefoldConfig
     }
 }
 
-impl<F: PrimeField31 + BinomiallyExtendable<4> + TwoAdicField> DefaultBasefoldConfig
-    for Poseidon2Bn254FrBasefoldConfig<F>
+impl<F: PrimeField31 + TwoAdicField, EF: ExtensionField<F>>
+    DefaultBasefoldConfig<Poseidon2Bn254GlobalConfig<F, EF>>
+    for Poseidon2Bn254FrBasefoldConfig<F, EF>
 {
-    fn default_verifier(log_blowup: usize) -> BasefoldVerifier<Self> {
+    fn default_verifier(
+        log_blowup: usize,
+    ) -> BasefoldVerifier<Poseidon2Bn254GlobalConfig<F, EF>, Self> {
         let fri_config = FriConfig::<F>::auto(log_blowup, 84);
-        let tcs = MerkleTreeTcs::<Poseidon2Bn254Config<F>>::default();
-        BasefoldVerifier::<Self> { fri_config, tcs }
+        let tcs =
+            MerkleTreeTcs::<Poseidon2Bn254GlobalConfig<F, EF>, Poseidon2Bn254Config<F>>::default();
+        BasefoldVerifier { fri_config, tcs }
     }
 }
 
-impl BasefoldConfig for Poseidon2KoalaBear16BasefoldConfig {
-    type F = KoalaBear;
-    type EF = BinomialExtensionField<KoalaBear, 4>;
-    type Commitment = <MerkleTreeTcs<Poseidon2KoalaBearConfig> as TensorCs>::Commitment;
-    type Tcs = MerkleTreeTcs<Poseidon2KoalaBearConfig>;
-    type Challenger = DuplexChallenger<KoalaBear, KoalaPerm, 16, 8>;
+impl BasefoldConfig<KoalaBearDegree4Duplex> for Poseidon2KoalaBear16BasefoldConfig {
+    type Tcs = Poseidon2KoalaBearConfig;
 
-    fn default_challenger(_verifier: &BasefoldVerifier<Self>) -> Self::Challenger {
+    fn default_challenger(
+        _verifier: &BasefoldVerifier<KoalaBearDegree4Duplex, Self>,
+    ) -> <KoalaBearDegree4Duplex as IopCtx>::Challenger {
         let default_perm = my_kb_16_perm();
         DuplexChallenger::new(default_perm)
     }
 }
 
-impl DefaultBasefoldConfig for Poseidon2KoalaBear16BasefoldConfig {
-    fn default_verifier(log_blowup: usize) -> BasefoldVerifier<Self> {
+impl DefaultBasefoldConfig<KoalaBearDegree4Duplex> for Poseidon2KoalaBear16BasefoldConfig {
+    fn default_verifier(log_blowup: usize) -> BasefoldVerifier<KoalaBearDegree4Duplex, Self> {
         let fri_config = FriConfig::<KoalaBear>::auto(log_blowup, 84);
-        let tcs = MerkleTreeTcs::<Poseidon2KoalaBearConfig>::default();
-        BasefoldVerifier::<Self> { fri_config, tcs }
+        let tcs = MerkleTreeTcs::<KoalaBearDegree4Duplex, Poseidon2KoalaBearConfig>::default();
+        BasefoldVerifier { fri_config, tcs }
     }
 }

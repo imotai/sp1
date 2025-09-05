@@ -1,6 +1,7 @@
 use crate::{BabyBear, DiffusionMatrixBabyBear};
 use serde::{Deserialize, Serialize};
-use slop_algebra::AbstractField;
+use slop_algebra::{extension::BinomialExtensionField, AbstractField};
+use slop_challenger::{DuplexChallenger, IopCtx};
 use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 
 #[derive(Debug, Clone, Default, Copy, Serialize, Deserialize, Hash, PartialEq, Eq)]
@@ -25,6 +26,17 @@ pub fn my_bb_16_perm() -> Perm {
         internal_round_constants,
         DiffusionMatrixBabyBear,
     )
+}
+
+pub const BABY_BEAR_DIGEST_SIZE: usize = 8;
+#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+pub struct BabyBearDegree4Duplex;
+
+impl IopCtx for BabyBearDegree4Duplex {
+    type F = BabyBear;
+    type EF = BinomialExtensionField<BabyBear, 4>;
+    type Digest = [BabyBear; BABY_BEAR_DIGEST_SIZE];
+    type Challenger = DuplexChallenger<Self::F, Perm, 16, 8>;
 }
 
 lazy_static::lazy_static! {
