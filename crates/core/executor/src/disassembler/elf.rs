@@ -31,12 +31,11 @@ pub(crate) struct Elf {
     pub(crate) pc_start: u64,
     /// The base address of the program.
     pub(crate) pc_base: u64,
-    /// The initial memory image, useful for global constants.
-    pub(crate) memory_image: HashMap<u64, u64>,
     /// The initial page protection image, mapping page indices to protection flags.
     pub(crate) page_prot_image: HashMap<u64, u8>,
     /// Flag indicating if untrusted programs are enabled.
     pub(crate) enable_untrusted_programs: bool,
+    /// The initial memory image, useful for global constants.
     pub(crate) memory_image: Arc<HashMap<u64, u64>>,
 }
 
@@ -51,7 +50,14 @@ impl Elf {
         page_prot_image: HashMap<u64, u8>,
         enable_untrusted_programs: bool,
     ) -> Self {
-        Self { instructions, pc_start, pc_base, memory_image: Arc::new(memory_image) }
+        Self {
+            instructions,
+            pc_start,
+            pc_base,
+            memory_image: Arc::new(memory_image),
+            page_prot_image,
+            enable_untrusted_programs,
+        }
     }
 
     /// Parse the ELF file into a vector of 32-bit encoded instructions and the first memory

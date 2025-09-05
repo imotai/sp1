@@ -35,8 +35,6 @@ pub struct Program {
     pub pc_start_abs: u64,
     /// The base address of the program.
     pub pc_base: u64,
-    /// The initial memory image, useful for global constants.
-    pub memory_image: HashMap<u64, u64>,
     /// The initial page protection image, mapping page indices to protection flags.
     pub page_prot_image: HashMap<u64, u8>,
     /// The initial memory image, useful for global constants
@@ -56,7 +54,6 @@ impl Program {
             instructions_encoded: None,
             pc_start_abs,
             pc_base,
-            memory_image: HashMap::new(),
             page_prot_image: HashMap::new(),
             memory_image: Arc::new(HashMap::new()),
             preprocessed_shape: None,
