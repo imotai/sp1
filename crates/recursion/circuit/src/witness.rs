@@ -374,11 +374,13 @@ where
                 )
             })
             .collect();
+        let enable_untrusted_programs = self.enable_untrusted_programs.read(builder);
         Self::WitnessVariable {
             pc_start,
             initial_global_cumulative_sum,
             preprocessed_commit,
             preprocessed_chip_information,
+            enable_untrusted_programs,
         }
     }
 
@@ -390,5 +392,6 @@ where
             dims.height.write(witness);
             dims.num_polynomials.write(witness)
         });
+        self.enable_untrusted_programs.write(witness);
     }
 }

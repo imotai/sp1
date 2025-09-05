@@ -133,8 +133,9 @@ pub struct PublicValues<W1, W2, W3, T> {
     /// Whether or not this shard is the first shard of the proof.
     pub is_first_shard: T,
 
-    /// Whether page protect access is checked.
-    pub is_page_protect_active: T,
+    /// Whether untrusted program support is enabled.  This specifically will enable fetching
+    /// instructions from memory during runtime and checking/setting page permissions.
+    pub is_untrusted_programs_enabled: T,
 
     /// This field is here to ensure that the size of the public values struct is a multiple of 8.
     pub empty: [T; 0],
@@ -247,7 +248,7 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             commit_syscall,
             prev_commit_deferred_syscall,
             commit_deferred_syscall,
-            is_page_protect_active,
+            is_untrusted_programs_enabled,
             initial_timestamp_inv,
             last_timestamp_inv,
             is_first_shard,
@@ -357,7 +358,7 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
         let initial_timestamp_inv = F::from_canonical_u32(initial_timestamp_inv);
         let last_timestamp_inv = F::from_canonical_u32(last_timestamp_inv);
         let is_first_shard = F::from_canonical_u32(is_first_shard);
-        let is_page_protect_active = F::from_canonical_u32(is_page_protect_active);
+        let is_untrusted_programs_enabled = F::from_canonical_u32(is_untrusted_programs_enabled);
 
         Self {
             prev_committed_value_digest,
@@ -393,7 +394,7 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             commit_syscall,
             prev_commit_deferred_syscall,
             commit_deferred_syscall,
-            is_page_protect_active,
+            is_untrusted_programs_enabled,
             initial_timestamp_inv,
             last_timestamp_inv,
             is_first_shard,

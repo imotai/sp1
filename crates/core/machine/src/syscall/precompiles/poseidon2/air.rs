@@ -190,7 +190,7 @@ impl<F: PrimeField32> MachineAir<F> for Poseidon2Chip {
                             posiedon_input,
                             Some(poseidon_output),
                         );
-                    if input.public_values.is_page_protect_active == 1 {
+                    if input.public_values.is_untrusted_programs_enabled == 1 {
                         // Populate the address slice page prot access.
                         cols.address_slice_page_prot_access.populate(
                             &mut byte_lookup_events,
@@ -200,7 +200,7 @@ impl<F: PrimeField32> MachineAir<F> for Poseidon2Chip {
                             PROT_READ | PROT_WRITE,
                             &event.page_prot_records[0],
                             &event.page_prot_records.get(1).copied(),
-                            input.public_values.is_page_protect_active,
+                            input.public_values.is_untrusted_programs_enabled,
                         );
                     }
                 } else {
@@ -236,7 +236,7 @@ impl<F: PrimeField32> MachineAir<F> for Poseidon2Chip {
                     };
 
                     cols.ptr.populate(&mut blu, event.ptr, 64);
-                    if input.public_values.is_page_protect_active == 1 {
+                    if input.public_values.is_untrusted_programs_enabled == 1 {
                         cols.address_slice_page_prot_access.populate(
                             &mut blu,
                             event.ptr,
@@ -245,7 +245,7 @@ impl<F: PrimeField32> MachineAir<F> for Poseidon2Chip {
                             PROT_READ | PROT_WRITE,
                             &event.page_prot_records[0],
                             &event.page_prot_records.get(1).copied(),
-                            input.public_values.is_page_protect_active,
+                            input.public_values.is_untrusted_programs_enabled,
                         );
                     }
                     // Populate memory columns for the 8 u64 words.

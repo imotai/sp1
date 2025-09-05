@@ -84,7 +84,7 @@ impl<F: PrimeField32> MachineAir<F> for PageProtChip {
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
         let mut count = 0;
-        if input.public_values.is_page_protect_active == 1 {
+        if input.public_values.is_untrusted_programs_enabled == 1 {
             count = input.memory_load_byte_events.len()
                 + input.memory_store_byte_events.len()
                 + input.memory_load_word_events.len()
@@ -109,7 +109,7 @@ impl<F: PrimeField32> MachineAir<F> for PageProtChip {
     ) -> RowMajorMatrix<F> {
         let mut events = vec![];
 
-        if input.public_values.is_page_protect_active == 1 {
+        if input.public_values.is_untrusted_programs_enabled == 1 {
             events = input
                 .memory_load_byte_events
                 .iter()

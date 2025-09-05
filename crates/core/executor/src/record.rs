@@ -280,7 +280,7 @@ impl ExecutionRecord {
                     last_record_ref.public_values.last_finalize_page_idx = finalize_page_idx;
 
                     // Because page prot events are non empty, we set the page protect active flag
-                    last_record_ref.public_values.is_page_protect_active = true as u32;
+                    last_record_ref.public_values.is_untrusted_programs_enabled = true as u32;
 
                     init_remaining = &init_remaining[init_to_take..];
                     finalize_remaining = &finalize_remaining[finalize_to_take..];
@@ -1281,14 +1281,14 @@ impl ExecutionRecord {
         >,
         builder: &mut AB,
     ) {
-        builder.assert_bool(public_values.is_page_protect_active.into());
+        builder.assert_bool(public_values.is_untrusted_programs_enabled.into());
         builder.send(
             AirInteraction::new(
                 once(AB::Expr::zero())
                     .chain(public_values.previous_init_page_idx.into_iter().map(Into::into))
                     .chain(once(AB::Expr::one()))
                     .collect(),
-                public_values.is_page_protect_active.into(),
+                public_values.is_untrusted_programs_enabled.into(),
                 InteractionKind::PageProtGlobalInitControl,
             ),
             InteractionScope::Local,
@@ -1299,7 +1299,7 @@ impl ExecutionRecord {
                     .chain(public_values.last_init_page_idx.into_iter().map(Into::into))
                     .chain(once(AB::Expr::one()))
                     .collect(),
-                public_values.is_page_protect_active.into(),
+                public_values.is_untrusted_programs_enabled.into(),
                 InteractionKind::PageProtGlobalInitControl,
             ),
             InteractionScope::Local,
@@ -1316,14 +1316,14 @@ impl ExecutionRecord {
         >,
         builder: &mut AB,
     ) {
-        builder.assert_bool(public_values.is_page_protect_active.into());
+        builder.assert_bool(public_values.is_untrusted_programs_enabled.into());
         builder.send(
             AirInteraction::new(
                 once(AB::Expr::zero())
                     .chain(public_values.previous_finalize_page_idx.into_iter().map(Into::into))
                     .chain(once(AB::Expr::one()))
                     .collect(),
-                public_values.is_page_protect_active.into(),
+                public_values.is_untrusted_programs_enabled.into(),
                 InteractionKind::PageProtGlobalFinalizeControl,
             ),
             InteractionScope::Local,
@@ -1334,7 +1334,7 @@ impl ExecutionRecord {
                     .chain(public_values.last_finalize_page_idx.into_iter().map(Into::into))
                     .chain(once(AB::Expr::one()))
                     .collect(),
-                public_values.is_page_protect_active.into(),
+                public_values.is_untrusted_programs_enabled.into(),
                 InteractionKind::PageProtGlobalFinalizeControl,
             ),
             InteractionScope::Local,

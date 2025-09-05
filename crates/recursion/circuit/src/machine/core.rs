@@ -152,15 +152,22 @@ where
         challenger.observe_slice(builder, vk.pc_start);
         challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
         challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
+        challenger.observe(builder, vk.enable_untrusted_programs);
         // Observe the padding.
         let zero: Felt<_> = builder.eval(C::F::zero());
-        for _ in 0..7 {
+        for _ in 0..6 {
             challenger.observe(builder, zero);
         }
 
         // Verify the shard proof.
         tracing::debug_span!("verify shard")
             .in_scope(|| machine.verify_shard(builder, &vk, shard_proof, &mut challenger));
+
+        // Assert that the `is_untrusted_programs_enabled` is equal to the vkey one.
+        builder.assert_felt_eq(
+            public_values.is_untrusted_programs_enabled,
+            vk.enable_untrusted_programs,
+        );
 
         // We add the global cumulative sum of the shard.
         global_cumulative_sums.push(public_values.global_cumulative_sum);
@@ -212,7 +219,6 @@ where
             recursion_public_values.prev_commit_deferred_syscall =
                 public_values.prev_commit_deferred_syscall;
             recursion_public_values.commit_deferred_syscall = public_values.commit_deferred_syscall;
-            recursion_public_values.is_page_protect_active = public_values.is_page_protect_active;
 
             // Calculate the digest and set it in the public values.
             recursion_public_values.digest =

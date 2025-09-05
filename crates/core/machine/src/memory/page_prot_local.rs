@@ -84,7 +84,7 @@ impl<F: PrimeField32> MachineAir<F> for PageProtLocalChip {
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
         let count = input.get_local_page_prot_events().count();
 
-        if input.public_values.is_page_protect_active == 0 {
+        if input.public_values.is_untrusted_programs_enabled == 0 {
             assert!(count == 0);
         }
         let nb_rows = nb_rows(count);
@@ -140,7 +140,7 @@ impl<F: PrimeField32> MachineAir<F> for PageProtLocalChip {
         let events = input.get_local_page_prot_events();
         let events = events.collect::<Vec<_>>();
 
-        if input.public_values.is_page_protect_active == 0 {
+        if input.public_values.is_untrusted_programs_enabled == 0 {
             assert!(events.is_empty());
         }
         let nb_rows = nb_rows(events.len());

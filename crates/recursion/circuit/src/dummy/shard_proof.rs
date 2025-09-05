@@ -26,6 +26,7 @@ pub fn dummy_vk(
         initial_global_cumulative_sum: SepticDigest::zero(),
         preprocessed_commit: [SP1Field::zero(); 8],
         preprocessed_chip_information,
+        enable_untrusted_programs: SP1Field::zero(),
     }
 }
 

@@ -69,6 +69,8 @@ pub struct MachineVerifyingKey<C: MachineConfig> {
     pub preprocessed_commit: C::Commitment,
     /// The dimensions of the preprocessed polynomials.
     pub preprocessed_chip_information: BTreeMap<String, ChipDimensions<C::F>>,
+    /// Flag indicating if untrusted programs are allowed.
+    pub enable_untrusted_programs: C::F,
 }
 
 impl<C: MachineConfig> MachineVerifyingKey<C> {
@@ -78,7 +80,8 @@ impl<C: MachineConfig> MachineVerifyingKey<C> {
         challenger.observe_slice(&self.pc_start);
         challenger.observe_slice(&self.initial_global_cumulative_sum.0.x.0);
         challenger.observe_slice(&self.initial_global_cumulative_sum.0.y.0);
+        challenger.observe(self.enable_untrusted_programs);
         // Observe the padding.
-        challenger.observe_slice(&[C::F::zero(); 7]);
+        challenger.observe_slice(&[C::F::zero(); 6]);
     }
 }

@@ -299,6 +299,7 @@ impl<C: ShardProverComponents> AirProver<C::Config, C::Air> for ShardProver<C> {
     ) -> (MachineVerifyingKey<C::Config>, ShardProof<C::Config>, ProverPermit) {
         // Get the initial global cumulative sum and pc start.
         let pc_start = program.pc_start();
+        let enable_untrusted_programs = program.enable_untrusted_programs();
         let initial_global_cumulative_sum = if let Some(vk) = vk {
             vk.initial_global_cumulative_sum
         } else {
@@ -323,6 +324,7 @@ impl<C: ShardProverComponents> AirProver<C::Config, C::Air> for ShardProver<C> {
                 pc_start,
                 initial_global_cumulative_sum,
                 preprocessed_traces,
+                enable_untrusted_programs,
             )
             .instrument(tracing::debug_span!("setup_from_preprocessed_data_and_traces"))
             .await;
@@ -395,6 +397,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
         pc_start: [C::F; 3],
         initial_global_cumulative_sum: SepticDigest<C::F>,
         preprocessed_traces: Traces<C::F, C::B>,
+        enable_untrusted_programs: C::F,
     ) -> (ShardProverData<C>, MachineVerifyingKey<C::Config>) {
         // Commit to the preprocessed traces, if there are any.
         assert!(!preprocessed_traces.is_empty(), "preprocessed trace cannot be empty");
@@ -420,6 +423,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
             initial_global_cumulative_sum,
             preprocessed_commit,
             preprocessed_chip_information,
+            enable_untrusted_programs,
         };
 
         let pk = ShardProverData { preprocessed_traces, preprocessed_data };
@@ -436,6 +440,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
     ) -> (PreprocessedData<ProvingKey<C::Config, C::Air, Self>>, MachineVerifyingKey<C::Config>)
     {
         let pc_start = program.pc_start();
+        let enable_untrusted_programs = program.enable_untrusted_programs();
         let preprocessed_data = self
             .trace_generator
             .generate_preprocessed_traces(program, self.max_log_row_count(), setup_permits)
@@ -448,6 +453,7 @@ impl<C: ShardProverComponents> ShardProver<C> {
                 pc_start,
                 initial_global_cumulative_sum,
                 preprocessed_traces,
+                enable_untrusted_programs,
             )
             .await;
 

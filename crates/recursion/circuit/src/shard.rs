@@ -68,6 +68,8 @@ pub struct MachineVerifyingKeyVariable<
     pub preprocessed_commit: SC::DigestVariable,
     /// The preprocessed chip information.
     pub preprocessed_chip_information: BTreeMap<String, ChipDimensions<Felt<C::F>>>,
+    /// Flag indicating if untrusted programs are allowed.
+    pub enable_untrusted_programs: Felt<C::F>,
 }
 impl<C, SC> MachineVerifyingKeyVariable<C, SC>
 where
@@ -82,12 +84,13 @@ where
         C::F: TwoAdicField,
         SC::DigestVariable: IntoIterator<Item = Felt<C::F>>,
     {
-        let num_inputs = DIGEST_SIZE + 3 + 14;
+        let num_inputs = DIGEST_SIZE + 3 + 14 + 1;
         let mut inputs = Vec::with_capacity(num_inputs);
         inputs.extend(self.preprocessed_commit);
         inputs.extend(self.pc_start);
         inputs.extend(self.initial_global_cumulative_sum.0.x.0);
         inputs.extend(self.initial_global_cumulative_sum.0.y.0);
+        inputs.push(self.enable_untrusted_programs);
         for (name, ChipDimensions { height, num_polynomials: _ }) in
             self.preprocessed_chip_information.iter()
         {

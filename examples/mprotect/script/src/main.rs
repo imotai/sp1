@@ -1,6 +1,5 @@
 use sp1_sdk::ProverClient;
 use sp1_sdk::prelude::*;
-use sp1_core_executor::SP1CoreOpts;
 
 const ELF: Elf = include_elf!("mprotect-program");
 
@@ -13,14 +12,8 @@ async fn main() {
 
     // No stdin needed for this simple example
     let stdin = SP1Stdin::new();
-
-    // Configure SP1CoreOpts with page protection enabled
-    let opts = SP1CoreOpts {
-        page_protect: true,
-        ..Default::default()
-    };
     
-    let client = ProverClient::builder().cpu().with_opts(opts).build().await;
+    let client = ProverClient::builder().cpu().build().await;
 
     // Execute the program first
     println!("Executing program...");

@@ -6,7 +6,6 @@ use futures::{
 use slop_algebra::{AbstractField, PrimeField, PrimeField32};
 use slop_bn254::Bn254Fr;
 use slop_futures::queue::WorkerQueue;
-use slop_jagged::JaggedConfig;
 use sp1_core_executor::{
     subproof::SubproofVerifier, ExecutionError, ExecutionRecord, ExecutionReport, Executor,
     Program, SP1Context, SP1CoreOpts, SP1RecursionProof,
@@ -563,14 +562,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         deferred_proofs: &[SP1RecursionProof<InnerSC>],
         batch_size: usize,
     ) -> Vec<SP1CircuitWitness> {
-        // We arbitrarily grab the page prot value from the first shard because it should be the
-        // same for all shards.
-        let pv: &RecursionPublicValues<<CoreSC as JaggedConfig>::F> =
-            shard_proofs[0].public_values.as_slice().borrow();
-        let is_page_protect_active = pv.is_page_protect_active;
-
         let (deferred_inputs, deferred_digest) =
-            self.get_deferred_inputs(&vk.vk, deferred_proofs, batch_size, is_page_protect_active);
+            self.get_deferred_inputs(&vk.vk, deferred_proofs, batch_size);
 
         let is_complete = shard_proofs.len() == 1 && deferred_proofs.is_empty();
         let core_inputs = self.get_normalize_witnesses(
@@ -593,14 +586,12 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         vk: &'a MachineVerifyingKey<CoreSC>,
         deferred_proofs: &[SP1RecursionProof<InnerSC>],
         batch_size: usize,
-        is_page_protect_active: SP1Field,
     ) -> (Vec<SP1DeferredWitnessValues<InnerSC>>, [SP1Field; 8]) {
         self.get_deferred_inputs_with_initial_digest(
             vk,
             deferred_proofs,
             [SP1Field::zero(); 8],
             batch_size,
-            is_page_protect_active,
         )
     }
 
@@ -610,7 +601,6 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         deferred_proofs: &[SP1RecursionProof<InnerSC>],
         initial_deferred_digest: [SP1Field; 8],
         batch_size: usize,
-        is_page_protect_active: SP1Field,
     ) -> (Vec<SP1DeferredWitnessValues<InnerSC>>, [SP1Field; 8]) {
         // Prepare the inputs for the deferred proofs recursive verification.
         let mut deferred_digest = initial_deferred_digest;
@@ -629,7 +619,6 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 start_reconstruct_deferred_digest: deferred_digest,
                 sp1_vk_digest: vk.hash_koalabear(),
                 end_pc: vk.pc_start,
-                is_page_protect_active,
             });
 
             deferred_digest = SP1RecursionProver::<C>::hash_deferred_proofs(deferred_digest, batch);

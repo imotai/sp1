@@ -177,7 +177,7 @@ impl<F: PrimeField32> MachineAir<F> for Uint256OpsChip {
                             is_add,
                             is_mul,
                         );
-                        if input.public_values.is_page_protect_active == 1 {
+                        if input.public_values.is_untrusted_programs_enabled == 1 {
                             // Populate page protection operations (once per event, not per word)
                             cols.address_slice_page_prot_access_a.populate(
                                 &mut new_byte_lookup_events,
@@ -187,7 +187,7 @@ impl<F: PrimeField32> MachineAir<F> for Uint256OpsChip {
                                 PROT_READ,
                                 &event.page_prot_records.read_a_page_prot_records[0],
                                 &event.page_prot_records.read_a_page_prot_records.get(1).copied(),
-                                input.public_values.is_page_protect_active,
+                                input.public_values.is_untrusted_programs_enabled,
                             );
 
                             // Populate page protection operations (once per event, not per word)
@@ -199,7 +199,7 @@ impl<F: PrimeField32> MachineAir<F> for Uint256OpsChip {
                                 PROT_READ,
                                 &event.page_prot_records.read_b_page_prot_records[0],
                                 &event.page_prot_records.read_b_page_prot_records.get(1).copied(),
-                                input.public_values.is_page_protect_active,
+                                input.public_values.is_untrusted_programs_enabled,
                             );
 
                             // Populate page protection operations (once per event, not per word)
@@ -211,7 +211,7 @@ impl<F: PrimeField32> MachineAir<F> for Uint256OpsChip {
                                 PROT_READ,
                                 &event.page_prot_records.read_c_page_prot_records[0],
                                 &event.page_prot_records.read_c_page_prot_records.get(1).copied(),
-                                input.public_values.is_page_protect_active,
+                                input.public_values.is_untrusted_programs_enabled,
                             );
 
                             // Populate page protection operations (once per event, not per word)
@@ -223,7 +223,7 @@ impl<F: PrimeField32> MachineAir<F> for Uint256OpsChip {
                                 PROT_WRITE,
                                 &event.page_prot_records.write_d_page_prot_records[0],
                                 &event.page_prot_records.write_d_page_prot_records.get(1).copied(),
-                                input.public_values.is_page_protect_active,
+                                input.public_values.is_untrusted_programs_enabled,
                             );
 
                             // Populate page protection operations (once per event, not per word)
@@ -235,7 +235,7 @@ impl<F: PrimeField32> MachineAir<F> for Uint256OpsChip {
                                 PROT_WRITE,
                                 &event.page_prot_records.write_e_page_prot_records[0],
                                 &event.page_prot_records.write_e_page_prot_records.get(1).copied(),
-                                input.public_values.is_page_protect_active,
+                                input.public_values.is_untrusted_programs_enabled,
                             );
                         }
 

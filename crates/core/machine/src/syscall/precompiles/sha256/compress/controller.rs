@@ -107,7 +107,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressControlChip {
                 // `a, b, c, d, e, f, g, h` values - therefore, we do a subtraction here.
                 cols.final_state[i] = u32_to_half_word((value as u32).wrapping_sub(prev_value));
             }
-            if input.public_values.is_page_protect_active == 1 {
+            if input.public_values.is_untrusted_programs_enabled == 1 {
                 // Constrain page prot access for reading initial h state
                 cols.h_read_page_prot_access.populate(
                     &mut blu_events,
@@ -117,7 +117,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressControlChip {
                     PROT_READ,
                     &event.page_prot_access.h_read_page_prot_records[0],
                     &event.page_prot_access.h_read_page_prot_records.get(1).copied(),
-                    input.public_values.is_page_protect_active,
+                    input.public_values.is_untrusted_programs_enabled,
                 );
 
                 // Constrain page prot access for reading w state to feed into compress
@@ -129,7 +129,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressControlChip {
                     PROT_READ,
                     &event.page_prot_access.w_read_page_prot_records[0],
                     &event.page_prot_access.w_read_page_prot_records.get(1).copied(),
-                    input.public_values.is_page_protect_active,
+                    input.public_values.is_untrusted_programs_enabled,
                 );
 
                 // Constrain page prot access for writing final h after compress completed
@@ -141,7 +141,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressControlChip {
                     PROT_WRITE,
                     &event.page_prot_access.h_write_page_prot_records[0],
                     &event.page_prot_access.h_write_page_prot_records.get(1).copied(),
-                    input.public_values.is_page_protect_active,
+                    input.public_values.is_untrusted_programs_enabled,
                 );
             }
 

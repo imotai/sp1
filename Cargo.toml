@@ -147,6 +147,7 @@ strum_macros = "0.27.1"
 strum = "0.27.1"
 blake3 = { version = "1.6.1", default-features = false }
 deepsize2 = { version = "0.1.0", features = ["hashbrown"] }
+elf = "0.7.4"
 
 [workspace.metadata.typos]
 default.extend-ignore-re = [

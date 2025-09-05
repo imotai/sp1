@@ -158,7 +158,7 @@ impl<F: PrimeField32, E: EllipticCurve + EdwardsParameters> MachineAir<F> for Ed
                 self.event_to_row(
                     event,
                     cols,
-                    input.public_values.is_page_protect_active,
+                    input.public_values.is_untrusted_programs_enabled,
                     &mut blu,
                 );
                 row
@@ -208,7 +208,7 @@ impl<F: PrimeField32, E: EllipticCurve + EdwardsParameters> MachineAir<F> for Ed
                     self.event_to_row(
                         event,
                         cols,
-                        input.public_values.is_page_protect_active,
+                        input.public_values.is_untrusted_programs_enabled,
                         &mut blu,
                     );
                 });

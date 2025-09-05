@@ -31,8 +31,6 @@ pub struct SP1CoreOpts {
     pub sharding_threshold: ShardingThreshold,
     /// Preset collections of events to retain in a shard instead of deferring.
     pub retained_events_presets: HashSet<RetainedEventsPreset>,
-    /// Whether to enable page protection checking.
-    pub page_protect: bool,
 }
 
 impl Default for SP1CoreOpts {
@@ -55,11 +53,7 @@ impl Default for SP1CoreOpts {
         retained_events_presets.insert(RetainedEventsPreset::Poseidon2);
         retained_events_presets.insert(RetainedEventsPreset::U256Ops);
 
-        // We disable page_protect by default, to turn it on chain `with_opts` using a SP1CoreOpts
-        // that has page_protect set to true
-        let page_protect = false;
-
-        Self { shard_size, sharding_threshold, retained_events_presets, page_protect }
+        Self { shard_size, sharding_threshold, retained_events_presets }
     }
 }
 
@@ -86,7 +80,7 @@ pub struct SplitOpts {
 impl SplitOpts {
     /// Create a new [`SplitOpts`] with the given [`SP1CoreOpts`] and the program size.
     #[must_use]
-    pub fn new(opts: &SP1CoreOpts, program_size: usize) -> Self {
+    pub fn new(opts: &SP1CoreOpts, program_size: usize, page_protect_allowed: bool) -> Self {
         let costs = rv64im_costs();
 
         let mut available_trace_area = opts.sharding_threshold.element_threshold;
@@ -110,7 +104,7 @@ impl SplitOpts {
             }
 
             let (cost_per_syscall, max_height_per_syscall) =
-                cost_and_height_per_syscall(syscall_code, &costs, opts.page_protect);
+                cost_and_height_per_syscall(syscall_code, &costs, page_protect_allowed);
             let element_threshold = trunc_32(available_trace_area as usize / cost_per_syscall);
             let height_threshold = trunc_32(max_height as usize / max_height_per_syscall);
 
@@ -137,7 +131,7 @@ impl SplitOpts {
         );
 
         // If page protection is off, use the `3/10` of the trace area for `MemoryGlobal` only.
-        if !opts.page_protect {
+        if !page_protect_allowed {
             combine_memory_threshold *= 2;
             combine_page_prot_threshold = 0;
         }

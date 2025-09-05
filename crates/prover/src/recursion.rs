@@ -848,7 +848,6 @@ pub(crate) fn dummy_deferred_input<C: RecursionProverComponents>(
         start_reconstruct_deferred_digest: [SP1Field::zero(); POSEIDON_NUM_WORDS],
         sp1_vk_digest: [SP1Field::zero(); DIGEST_SIZE],
         end_pc: [SP1Field::zero(); 3],
-        is_page_protect_active: SP1Field::zero(),
     }
 }
 

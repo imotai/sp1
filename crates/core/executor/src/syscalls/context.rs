@@ -75,7 +75,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
     pub fn mr(&mut self, addr: u64) -> (MemoryReadRecord, u64) {
         let mut record =
             self.rt.mr::<E>(addr, self.external_flag, self.clk, self.local_memory_access.as_mut());
-        if self.rt.opts.page_protect {
+        if self.rt.program.enable_untrusted_programs {
             let page_prot_record = self.rt.page_prot_access::<E>(
                 addr / PAGE_SIZE as u64,
                 PROT_READ,
@@ -120,7 +120,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
         // Generate the page prot records - one per unique page
         let mut page_prot_records = Vec::with_capacity(page_accesses.len());
 
-        if self.rt.opts.page_protect {
+        if self.rt.program.enable_untrusted_programs {
             let mut page_accesses: Vec<_> = page_accesses.iter().collect();
             page_accesses.sort_by_key(|(page_idx, _)| *page_idx);
 
@@ -161,7 +161,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
             self.clk,
             self.local_memory_access.as_mut(),
         );
-        if self.rt.opts.page_protect {
+        if self.rt.program.enable_untrusted_programs {
             let page_prot_bitmap =
                 if is_read_and_write { PROT_READ | PROT_WRITE } else { PROT_WRITE };
 
@@ -208,7 +208,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
 
         // Generate the page prot records - one per unique page
         let mut page_prot_records = Vec::with_capacity(page_accesses.len());
-        if self.rt.opts.page_protect {
+        if self.rt.program.enable_untrusted_programs {
             let mut page_accesses: Vec<_> = page_accesses.iter().collect();
             page_accesses.sort_by_key(|(page_idx, _)| *page_idx);
 
@@ -246,7 +246,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
         page_prot_bitmap: u8,
     ) -> Vec<PageProtRecord> {
         let mut page_prot_records = Vec::new();
-        if self.rt.opts.page_protect {
+        if self.rt.program.enable_untrusted_programs {
             let start_page_idx = start_addr / PAGE_SIZE as u64;
             let end_page_idx = end_addr / PAGE_SIZE as u64;
             assert!(
@@ -321,7 +321,7 @@ impl<'a, 'b, E: ExecutorConfig> SyscallContext<'a, 'b, E> {
                     syscall_local_mem_events.push(event);
                 }
             }
-            if self.rt.opts.page_protect {
+            if self.rt.program.enable_untrusted_programs {
                 // Handle page protection local events similarly
                 if let Some(local_page_prot_access) = self.local_page_prot_access.as_mut() {
                     for (page_idx, event) in local_page_prot_access.drain() {

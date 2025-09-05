@@ -18,6 +18,7 @@ use sp1_hypercube::{
     shape::Shape,
     InteractionKind,
 };
+use sp1_primitives::consts::split_page_idx;
 
 /// A program that can be executed by the SP1 zkVM.
 ///
@@ -35,8 +36,12 @@ pub struct Program {
     pub pc_base: u64,
     /// The initial memory image, useful for global constants.
     pub memory_image: HashMap<u64, u64>,
+    /// The initial page protection image, mapping page indices to protection flags.
+    pub page_prot_image: HashMap<u64, u8>,
     /// The shape for the preprocessed tables.
     pub preprocessed_shape: Option<Shape<RiscvAirId>>,
+    /// Flag indicating if untrusted programs are allowed.
+    pub enable_untrusted_programs: bool,
 }
 
 impl Program {
@@ -49,7 +54,9 @@ impl Program {
             pc_start_abs,
             pc_base,
             memory_image: HashMap::new(),
+            page_prot_image: HashMap::new(),
             preprocessed_shape: None,
+            enable_untrusted_programs: false,
         }
     }
 
@@ -75,7 +82,9 @@ impl Program {
             pc_start_abs: elf.pc_start,
             pc_base: elf.pc_base,
             memory_image: elf.memory_image,
+            page_prot_image: elf.page_prot_image,
             preprocessed_shape: None,
+            enable_untrusted_programs: elf.enable_untrusted_programs,
         })
     }
 
@@ -132,7 +141,7 @@ impl<F: PrimeField32> MachineProgram<F> for Program {
     }
 
     fn initial_global_cumulative_sum(&self) -> SepticDigest<F> {
-        let mut digests: Vec<SepticCurveComplete<F>> = self
+        let mut memory_digests: Vec<SepticCurveComplete<F>> = self
             .memory_image
             .iter()
             .par_bridge()
@@ -155,9 +164,45 @@ impl<F: PrimeField32> MachineProgram<F> for Program {
                 SepticCurveComplete::Affine(point.neg())
             })
             .collect();
-        digests.push(SepticCurveComplete::Affine(SepticDigest::<F>::zero().0));
+
+        if self.enable_untrusted_programs {
+            let page_prot_digests: Vec<SepticCurveComplete<F>> = self
+                .page_prot_image
+                .iter()
+                .par_bridge()
+                .map(|(&page_idx, &page_prot)| {
+                    // Use exact same encoding as PageProtGlobalChip Initialize events
+                    let page_idx_limbs = split_page_idx(page_idx);
+                    let values = [
+                        (InteractionKind::PageProtAccess as u32) << 24,
+                        0,
+                        page_idx_limbs[0].into(),
+                        page_idx_limbs[1].into(),
+                        page_idx_limbs[2].into(),
+                        page_prot.into(),
+                        0,
+                        0,
+                    ];
+                    let (point, _, _, _) =
+                        SepticCurve::<F>::lift_x(values.map(|x| F::from_canonical_u32(x)));
+                    SepticCurveComplete::Affine(point.neg())
+                })
+                .collect();
+
+            // Combine both memory and page protection contributions.
+            memory_digests.extend(page_prot_digests);
+        }
+
+        memory_digests.push(SepticCurveComplete::Affine(SepticDigest::<F>::zero().0));
         SepticDigest(
-            digests.into_par_iter().reduce(|| SepticCurveComplete::Infinity, |a, b| a + b).point(),
+            memory_digests
+                .into_par_iter()
+                .reduce(|| SepticCurveComplete::Infinity, |a, b| a + b)
+                .point(),
         )
+    }
+
+    fn enable_untrusted_programs(&self) -> F {
+        F::from_bool(self.enable_untrusted_programs)
     }
 }

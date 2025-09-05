@@ -86,7 +86,7 @@ impl<F: PrimeField32> MachineAir<F> for MProtectChip {
         let mut blu_events = Vec::new();
 
         let mprotect_events = input.get_precompile_events(SyscallCode::MPROTECT);
-        if input.public_values.is_page_protect_active == 0 {
+        if input.public_values.is_untrusted_programs_enabled == 0 {
             assert!(
                 mprotect_events.is_empty(),
                 "Page protect is disabled, but mprotect events are present"

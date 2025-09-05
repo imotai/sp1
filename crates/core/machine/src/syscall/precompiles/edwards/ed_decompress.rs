@@ -102,7 +102,7 @@ impl<F: PrimeField32> EdDecompressCols<F> {
             self.addrs[i].populate(record, event.ptr, i as u64 * 8);
             self.read_ptrs[i].populate(record, read_ptr, i as u64 * 8);
         }
-        if record.public_values.is_page_protect_active == 1 {
+        if record.public_values.is_untrusted_programs_enabled == 1 {
             self.read_slice_page_prot_access.populate(
                 &mut new_byte_lookup_events,
                 read_ptr,
@@ -111,7 +111,7 @@ impl<F: PrimeField32> EdDecompressCols<F> {
                 PROT_READ,
                 &event.page_prot_records.read_page_prot_records[0],
                 &event.page_prot_records.read_page_prot_records.get(1).copied(),
-                record.public_values.is_page_protect_active,
+                record.public_values.is_untrusted_programs_enabled,
             );
 
             self.write_slice_page_prot_access.populate(
@@ -122,7 +122,7 @@ impl<F: PrimeField32> EdDecompressCols<F> {
                 PROT_WRITE,
                 &event.page_prot_records.write_page_prot_records[0],
                 &event.page_prot_records.write_page_prot_records.get(1).copied(),
-                record.public_values.is_page_protect_active,
+                record.public_values.is_untrusted_programs_enabled,
             );
         }
 

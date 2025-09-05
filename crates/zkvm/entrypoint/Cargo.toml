@@ -34,6 +34,7 @@ lib = ["dep:sp1-lib"]
 bump = []
 verify = ["dep:slop-koala-bear", "dep:slop-algebra", "sp1-lib/verify"]
 blake3 = ["dep:blake3"]
+untrusted_programs = []
 
 [lints]
 workspace = true

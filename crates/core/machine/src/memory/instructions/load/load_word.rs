@@ -114,8 +114,9 @@ impl<F: PrimeField32> MachineAir<F> for LoadWordChip {
                     if idx < input.memory_load_word_events.len() {
                         let event = &input.memory_load_word_events[idx];
                         self.event_to_row(&event.0, cols, &mut blu);
-                        cols.is_page_protect_active =
-                            F::from_canonical_u32(input.public_values.is_page_protect_active);
+                        cols.is_page_protect_active = F::from_canonical_u32(
+                            input.public_values.is_untrusted_programs_enabled,
+                        );
                         cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                         cols.adapter.populate(&mut blu, event.1);
                     }
@@ -226,7 +227,7 @@ where
         // Check page protect active is set correctly based on public value and is_real
         let public_values = builder.extract_public_values();
         let expected_page_protect_active =
-            public_values.is_page_protect_active.into() * is_real.clone();
+            public_values.is_untrusted_programs_enabled.into() * is_real.clone();
         builder.assert_eq(local.is_page_protect_active, expected_page_protect_active);
 
         builder.send_page_prot(

@@ -53,7 +53,6 @@ pub struct SP1DeferredWitnessValues<SC: SP1FieldFriConfig + FieldHasher<SP1Field
     pub start_reconstruct_deferred_digest: [SC::F; POSEIDON_NUM_WORDS],
     pub sp1_vk_digest: [SC::F; DIGEST_SIZE],
     pub end_pc: [SC::F; 3],
-    pub is_page_protect_active: SC::F,
 }
 
 #[allow(clippy::type_complexity)]
@@ -69,7 +68,6 @@ pub struct SP1DeferredWitnessVariable<
     pub start_reconstruct_deferred_digest: [Felt<C::F>; POSEIDON_NUM_WORDS],
     pub sp1_vk_digest: [Felt<C::F>; DIGEST_SIZE],
     pub end_pc: [Felt<C::F>; 3],
-    pub is_page_protect_active: Felt<C::F>,
 }
 
 impl<C, SC, A, JC> SP1DeferredVerifier<C, SC, A, JC>
@@ -113,7 +111,6 @@ where
             start_reconstruct_deferred_digest,
             sp1_vk_digest,
             end_pc,
-            is_page_protect_active,
         } = input;
 
         // First, verify the merkle tree proofs.
@@ -142,9 +139,10 @@ where
             challenger.observe_slice(builder, vk.pc_start);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
             challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
+            challenger.observe(builder, vk.enable_untrusted_programs);
             // Observe the padding.
             let zero: Felt<_> = builder.eval(C::F::zero());
-            for _ in 0..7 {
+            for _ in 0..6 {
                 challenger.observe(builder, zero);
             }
 
@@ -226,7 +224,6 @@ where
         deferred_public_values.end_reconstruct_deferred_digest = reconstruct_deferred_digest;
         // Set the is_complete flag.
         deferred_public_values.is_complete = zero;
-        deferred_public_values.is_page_protect_active = is_page_protect_active;
         // Set the cumulative sum to zero.
         deferred_public_values.global_cumulative_sum =
             SepticDigest(SepticCurve::convert(SepticDigest::<C::F>::zero().0, |value| {

@@ -75,7 +75,7 @@ impl<F: Field> JTypeReader<F> {
 
         // If the row is running an untrusted program, the page protection checks must be on.
         let public_values = builder.extract_public_values();
-        builder.when(is_untrusted.clone()).assert_one(public_values.is_page_protect_active);
+        builder.when(is_untrusted.clone()).assert_one(public_values.is_untrusted_programs_enabled);
 
         let instruction = InstructionCols {
             opcode: opcode.clone().into(),

@@ -128,7 +128,6 @@ where
             array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
         let mut current_exit_code: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut current_timestamp: [Felt<_>; 4] = array::from_fn(|_| builder.uninit());
-        let mut is_page_protect_active: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
 
         let mut committed_value_digest: [[Felt<_>; 4]; PV_DIGEST_NUM_WORDS] =
             array::from_fn(|_| array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() }));
@@ -164,9 +163,10 @@ where
                 challenger.observe_slice(builder, vk.pc_start);
                 challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
                 challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.y.0);
+                challenger.observe(builder, vk.enable_untrusted_programs);
                 // Observe the padding.
                 let zero: Felt<_> = builder.eval(C::F::zero());
-                for _ in 0..7 {
+                for _ in 0..6 {
                     challenger.observe(builder, zero);
                 }
                 // Verify the shard proof.
@@ -274,10 +274,6 @@ where
                 // Initialize the sp1_vk digest
                 compress_public_values.sp1_vk_digest = current_public_values.sp1_vk_digest;
                 sp1_vk_digest = current_public_values.sp1_vk_digest;
-
-                compress_public_values.is_page_protect_active =
-                    current_public_values.is_page_protect_active;
-                is_page_protect_active = current_public_values.is_page_protect_active;
             }
 
             // Assert that the current values match the accumulated values and update them.
@@ -377,12 +373,6 @@ where
             for (digest, current) in sp1_vk_digest.iter().zip(current_public_values.sp1_vk_digest) {
                 builder.assert_felt_eq(*digest, current);
             }
-
-            // Assert that the `is_page_protect_active` is equal to the current one, then update.
-            builder.assert_felt_eq(
-                is_page_protect_active,
-                current_public_values.is_page_protect_active,
-            );
         }
 
         // Range check the accumulated number of included shards.
@@ -434,8 +424,6 @@ where
         compress_public_values.commit_syscall = commit_syscall;
         // Set the `commit_deferred_syscall` flag.
         compress_public_values.commit_deferred_syscall = commit_deferred_syscall;
-        // Set the `is_page_protect_active` flag.
-        compress_public_values.is_page_protect_active = is_page_protect_active;
         // Set the digest according to the previous values.
         compress_public_values.digest = match kind {
             PublicValuesOutputDigest::Reduce => {

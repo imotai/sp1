@@ -1,4 +1,4 @@
-use crate::{EMBEDDED_RESERVED_INPUT_REGION_SIZE, EMBEDDED_RESERVED_INPUT_START};
+use crate::EMBEDDED_RESERVED_INPUT_START;
 use alloc::alloc::{GlobalAlloc, Layout};
 use critical_section::RawRestoreState;
 use embedded_alloc::TlsfHeap as Heap;

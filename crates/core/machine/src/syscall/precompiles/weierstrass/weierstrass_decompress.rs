@@ -245,7 +245,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                 cols.y_addrs[i].populate(&mut new_byte_lookup_events, event.ptr, 8 * i as u64);
             }
 
-            if input.public_values.is_page_protect_active == 1 {
+            if input.public_values.is_untrusted_programs_enabled == 1 {
                 cols.read_slice_page_prot_access.populate(
                     &mut new_byte_lookup_events,
                     event.ptr + num_limbs as u64,
@@ -254,7 +254,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                     PROT_READ,
                     &event.page_prot_records.read_page_prot_records[0],
                     &event.page_prot_records.read_page_prot_records.get(1).copied(),
-                    input.public_values.is_page_protect_active,
+                    input.public_values.is_untrusted_programs_enabled,
                 );
 
                 cols.write_slice_page_prot_access.populate(
@@ -265,7 +265,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                     PROT_WRITE,
                     &event.page_prot_records.write_page_prot_records[0],
                     &event.page_prot_records.write_page_prot_records.get(1).copied(),
-                    input.public_values.is_page_protect_active,
+                    input.public_values.is_untrusted_programs_enabled,
                 );
             }
 

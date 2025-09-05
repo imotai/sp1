@@ -73,7 +73,8 @@ pub fn generate_records<F: PrimeField32>(
     report_aggregate: Arc<Mutex<ExecutionReport>>,
     opts: SP1CoreOpts,
 ) {
-    let split_opts = SplitOpts::new(&opts, program.instructions.len());
+    let split_opts =
+        SplitOpts::new(&opts, program.instructions.len(), program.enable_untrusted_programs);
     loop {
         let received = { checkpoints_rx.lock().unwrap().blocking_recv() };
         if let Some((index, mut checkpoint, done, _)) = received {

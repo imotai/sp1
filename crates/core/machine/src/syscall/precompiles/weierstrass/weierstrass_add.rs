@@ -217,7 +217,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                         Self::populate_row(
                             event,
                             cols,
-                            input.public_values.is_page_protect_active,
+                            input.public_values.is_untrusted_programs_enabled,
                             &mut blu,
                         );
                     }
@@ -284,7 +284,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                             Self::populate_row(
                                 event,
                                 cols,
-                                input.public_values.is_page_protect_active,
+                                input.public_values.is_untrusted_programs_enabled,
                                 &mut new_byte_lookup_events,
                             );
                         }

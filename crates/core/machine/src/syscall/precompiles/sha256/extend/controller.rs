@@ -89,7 +89,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
             // Address of 64th element of W, last written element
             cols.w_64th_addr.populate(&mut blu_events, event.w_ptr, 63 * 8);
             // Constsrain page prot access for initial 16 elements of W, read only
-            if input.public_values.is_page_protect_active == 1 {
+            if input.public_values.is_untrusted_programs_enabled == 1 {
                 cols.initial_page_prot_access.populate(
                     &mut blu_events,
                     event.w_ptr,
@@ -98,7 +98,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
                     PROT_READ,
                     &event.page_prot_records.initial_page_prot_records[0],
                     &event.page_prot_records.initial_page_prot_records.get(1).copied(),
-                    input.public_values.is_page_protect_active,
+                    input.public_values.is_untrusted_programs_enabled,
                 );
                 // Constsrain page prot access for extension 48 elements of W, read and write
                 cols.extension_page_prot_access.populate(
@@ -109,7 +109,7 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
                     PROT_READ | PROT_WRITE,
                     &event.page_prot_records.extension_page_prot_records[0],
                     &event.page_prot_records.extension_page_prot_records.get(1).copied(),
-                    input.public_values.is_page_protect_active,
+                    input.public_values.is_untrusted_programs_enabled,
                 );
             }
             cols.is_real = F::one();

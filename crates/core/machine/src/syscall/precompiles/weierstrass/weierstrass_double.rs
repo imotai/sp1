@@ -224,7 +224,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                             event,
                             cols,
                             &mut blu,
-                            input.public_values.is_page_protect_active,
+                            input.public_values.is_untrusted_programs_enabled,
                         );
                     }
                     _ => unreachable!(),
@@ -292,7 +292,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                                 event,
                                 cols,
                                 &mut new_byte_lookup_events,
-                                input.public_values.is_page_protect_active,
+                                input.public_values.is_untrusted_programs_enabled,
                             );
                         }
                         _ => unreachable!(),

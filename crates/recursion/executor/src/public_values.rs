@@ -127,9 +127,6 @@ pub struct RecursionPublicValues<T> {
 
     /// The digest of all the previous public values elements.
     pub digest: [T; DIGEST_SIZE],
-
-    /// Whether page protect access is checked.
-    pub is_page_protect_active: T,
 }
 
 /// Converts the public values to an array of elements.

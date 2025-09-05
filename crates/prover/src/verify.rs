@@ -244,11 +244,6 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let mut last_finalize_addr_prev = [SP1Field::zero(); 3];
         let mut last_init_page_idx_prev = [SP1Field::zero(); 3];
         let mut last_finalize_page_idx_prev = [SP1Field::zero(); 3];
-        // Init the page protect state from the first shard proof, note page protect setting is
-        // static across shards
-        let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
-            proof.0.first().unwrap().public_values.as_slice().borrow();
-        let page_protect = public_values.is_page_protect_active;
 
         for shard_proof in proof.0.iter() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
@@ -270,9 +265,9 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 return Err(MachineVerifierError::InvalidPublicValues(
                     "previous_finalize_page_idx != last_finalize_page_idx_prev",
                 ));
-            } else if public_values.is_page_protect_active != page_protect {
+            } else if public_values.is_untrusted_programs_enabled != vk.enable_untrusted_programs {
                 return Err(MachineVerifierError::InvalidPublicValues(
-                    "is_page_protect_active != page_protect",
+                    "public_values.is_untrusted_programs_enabled != vk.enable_untrusted_programs",
                 ));
             }
             last_init_addr_prev = public_values.last_init_addr;

@@ -83,7 +83,7 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
                     .populate(MemoryRecordEnum::Write(*write_record), &mut blu_events);
                 cols.final_value[j] = Word::from(write_record.value);
             }
-            if input.public_values.is_page_protect_active == 1 {
+            if input.public_values.is_untrusted_programs_enabled == 1 {
                 cols.read_state_slice_page_prot_access.populate(
                     &mut blu_events,
                     event.state_addr,
@@ -92,7 +92,7 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
                     PROT_READ,
                     &event.page_prot_records.read_pre_state_page_prot_records[0],
                     &event.page_prot_records.read_pre_state_page_prot_records.get(1).copied(),
-                    input.public_values.is_page_protect_active,
+                    input.public_values.is_untrusted_programs_enabled,
                 );
                 cols.write_state_slice_page_prot_access.populate(
                     &mut blu_events,
@@ -102,7 +102,7 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
                     PROT_WRITE,
                     &event.page_prot_records.write_post_state_page_prot_records[0],
                     &event.page_prot_records.write_post_state_page_prot_records.get(1).copied(),
-                    input.public_values.is_page_protect_active,
+                    input.public_values.is_untrusted_programs_enabled,
                 );
             }
         }
@@ -145,7 +145,7 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
                     .populate(MemoryRecordEnum::Write(*write_record), &mut blu_events);
                 cols.final_value[j] = Word::from(write_record.value);
             }
-            if input.public_values.is_page_protect_active == 1 {
+            if input.public_values.is_untrusted_programs_enabled == 1 {
                 cols.read_state_slice_page_prot_access.populate(
                     &mut blu_events,
                     event.state_addr,
@@ -154,7 +154,7 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
                     PROT_READ,
                     &event.page_prot_records.read_pre_state_page_prot_records[0],
                     &event.page_prot_records.read_pre_state_page_prot_records.get(1).copied(),
-                    input.public_values.is_page_protect_active,
+                    input.public_values.is_untrusted_programs_enabled,
                 );
                 cols.write_state_slice_page_prot_access.populate(
                     &mut blu_events,
@@ -164,7 +164,7 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
                     PROT_WRITE,
                     &event.page_prot_records.write_post_state_page_prot_records[0],
                     &event.page_prot_records.write_post_state_page_prot_records.get(1).copied(),
-                    input.public_values.is_page_protect_active,
+                    input.public_values.is_untrusted_programs_enabled,
                 );
             }
             rows.push(row);

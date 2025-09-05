@@ -1137,7 +1137,7 @@ impl<'a> Executor<'a> {
         let mut record =
             self.mr::<E>(addr, false, self.timestamp(&MemoryAccessPosition::Memory), None);
 
-        if self.opts.page_protect {
+        if self.program.enable_untrusted_programs {
             let page_prot_record = self.page_prot_access::<E>(
                 addr / PAGE_SIZE as u64,
                 PROT_READ,
@@ -1198,7 +1198,7 @@ impl<'a> Executor<'a> {
         let mut record =
             self.mw::<E>(addr, value, false, self.timestamp(&MemoryAccessPosition::Memory), None);
 
-        if self.opts.page_protect {
+        if self.program.enable_untrusted_programs {
             let page_prot_record = self.page_prot_access::<E>(
                 addr / PAGE_SIZE as u64,
                 PROT_WRITE,
@@ -1693,7 +1693,7 @@ impl<'a> Executor<'a> {
         let program_instruction = self.program.fetch(self.state.pc);
         if let Some(instruction) = program_instruction {
             Ok(*instruction)
-        } else if self.opts.page_protect {
+        } else if self.program.enable_untrusted_programs {
             let aligned_pc = align(self.state.pc);
 
             let timestamp = self.timestamp(&MemoryAccessPosition::UntrustedInstruction);
@@ -2325,7 +2325,7 @@ impl<'a> Executor<'a> {
             for (_, event) in self.local_memory_access.drain() {
                 self.record.cpu_local_memory_access.push(event);
             }
-            if self.opts.page_protect {
+            if self.program.enable_untrusted_programs {
                 for (_, event) in self.local_page_prot_access.drain() {
                     self.record.cpu_local_page_prot_access.push(event);
                 }
@@ -2437,6 +2437,14 @@ impl<'a> Executor<'a> {
         tracing::debug!("loading memory image");
         for (&addr, value) in &self.program.memory_image {
             self.state.memory.insert(addr, MemoryEntry::init(*value));
+        }
+        if self.program.enable_untrusted_programs {
+            for (&page_idx, page_prot) in &self.program.page_prot_image {
+                self.state.page_prots.insert(
+                    page_idx,
+                    PageProtRecord { external_flag: false, timestamp: 0, page_prot: *page_prot },
+                );
+            }
         }
         self.state.memory.insert(0, MemoryEntry::init(0));
     }
@@ -2583,8 +2591,9 @@ impl<'a> Executor<'a> {
         self.record.public_values.deferred_proofs_digest = public_values.deferred_proofs_digest;
         self.record.public_values.commit_syscall = public_values.commit_syscall;
         self.record.public_values.commit_deferred_syscall = public_values.commit_deferred_syscall;
-        // Set is_page_protect_active from the page_protect option
-        self.record.public_values.is_page_protect_active = self.opts.page_protect as u32;
+        // Set is_untrusted_program_enabled from the enable_untrusted_programs option.
+        self.record.public_values.is_untrusted_programs_enabled =
+            self.program.enable_untrusted_programs as u32;
 
         if self.record.contains_cpu() {
             self.record.public_values.pc_start = self.record.pc_start.unwrap();
@@ -2701,8 +2710,9 @@ impl<'a> Executor<'a> {
                     self.report.touched_memory_addresses += 1;
                 }
 
-                // Program memory is initialized in the MemoryProgram chip and doesn't require any
-                // events, so we only send init events for other memory addresses.
+                // Program memory is initialized in the initial_global_cumulative_sum and doesn't
+                // require any events, so we only send init events for other memory
+                // addresses.
                 if !self.record.program.memory_image.contains_key(&addr) {
                     let initial_value = self.state.uninitialized_memory.get(addr).unwrap_or(&0);
                     memory_initialize_events
@@ -2713,7 +2723,7 @@ impl<'a> Executor<'a> {
                 memory_finalize_events
                     .push(MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record));
             }
-            if self.opts.page_protect {
+            if self.program.enable_untrusted_programs {
                 let page_prot_initialize_events =
                     &mut self.record.global_page_prot_initialize_events;
                 page_prot_initialize_events.reserve_exact(self.state.page_prots.len());
@@ -2724,10 +2734,16 @@ impl<'a> Executor<'a> {
                 for page_idx in self.state.page_prots.keys() {
                     let record = self.state.page_prots.get(page_idx).unwrap();
 
-                    page_prot_initialize_events.push(PageProtInitializeFinalizeEvent::initialize(
-                        *page_idx,
-                        DEFAULT_PAGE_PROT,
-                    ));
+                    // Only push initialize event if the page prot idx is not in the initial page
+                    // prot image.
+                    if !self.record.program.page_prot_image.contains_key(page_idx) {
+                        page_prot_initialize_events.push(
+                            PageProtInitializeFinalizeEvent::initialize(
+                                *page_idx,
+                                DEFAULT_PAGE_PROT,
+                            ),
+                        );
+                    }
 
                     page_prot_finalize_events.push(
                         PageProtInitializeFinalizeEvent::finalize_from_record(*page_idx, record),

@@ -1,3 +1,5 @@
+use elf::abi::{PF_NONE, PF_R, PF_W, PF_X};
+
 /// The maximum size of the memory in bytes.
 pub const MAXIMUM_MEMORY_SIZE: u64 = (1u64 << 48) - 1;
 
@@ -26,11 +28,14 @@ pub const LOG_PAGE_SIZE: usize = 12;
 pub const PAGE_SIZE: usize = 1 << LOG_PAGE_SIZE;
 
 /// MProtect flags.
-pub const PROT_NONE: u8 = 0b000;
-pub const PROT_READ: u8 = 0b001;
-pub const PROT_WRITE: u8 = 0b010;
-pub const PROT_EXEC: u8 = 0b100;
+pub const PROT_NONE: u8 = PF_NONE as u8;
+pub const PROT_READ: u8 = PF_R as u8;
+pub const PROT_WRITE: u8 = PF_W as u8;
+pub const PROT_EXEC: u8 = PF_X as u8;
 pub const DEFAULT_PAGE_PROT: u8 = PROT_READ | PROT_WRITE;
+
+/// The type for the ELF note for enabling untrusted programs.
+pub const NOTE_UNTRUSTED_PROGRAM_ENABLED: u32 = 1;
 
 /// The stack top for the 64-bit zkvm.
 pub const STACK_TOP: u64 = 0x78000000;

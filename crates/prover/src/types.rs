@@ -90,12 +90,13 @@ where
     C::Commitment: Borrow<[SP1Field; DIGEST_SIZE]>,
 {
     fn hash_koalabear(&self) -> [SP1Field; DIGEST_SIZE] {
-        let num_inputs = DIGEST_SIZE + 3 + 14;
+        let num_inputs = DIGEST_SIZE + 3 + 14 + 1;
         let mut inputs = Vec::with_capacity(num_inputs);
         inputs.extend(self.preprocessed_commit.borrow());
         inputs.extend(self.pc_start);
         inputs.extend(self.initial_global_cumulative_sum.0.x.0);
         inputs.extend(self.initial_global_cumulative_sum.0.y.0);
+        inputs.push(self.enable_untrusted_programs);
         for (name, ChipDimensions { height, num_polynomials: _ }) in
             self.preprocessed_chip_information.iter()
         {

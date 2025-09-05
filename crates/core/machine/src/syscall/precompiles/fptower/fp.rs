@@ -164,7 +164,7 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
                 cols.x_access[i].populate(record, &mut new_byte_lookup_events);
                 cols.x_addrs[i].populate(&mut new_byte_lookup_events, event.x_ptr, i as u64 * 8);
             }
-            if input.public_values.is_page_protect_active == 1 {
+            if input.public_values.is_untrusted_programs_enabled == 1 {
                 cols.read_slice_page_prot_access.populate(
                     &mut new_byte_lookup_events,
                     event.y_ptr,
@@ -173,7 +173,7 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
                     PROT_READ,
                     &event.page_prot_records.read_page_prot_records[0],
                     &event.page_prot_records.read_page_prot_records.get(1).copied(),
-                    input.public_values.is_page_protect_active,
+                    input.public_values.is_untrusted_programs_enabled,
                 );
 
                 cols.write_slice_page_prot_access.populate(
@@ -184,7 +184,7 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
                     PROT_READ | PROT_WRITE,
                     &event.page_prot_records.write_page_prot_records[0],
                     &event.page_prot_records.write_page_prot_records.get(1).copied(),
-                    input.public_values.is_page_protect_active,
+                    input.public_values.is_untrusted_programs_enabled,
                 );
             }
 

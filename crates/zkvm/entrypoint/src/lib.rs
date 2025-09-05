@@ -140,7 +140,7 @@ mod zkvm {
         }
     }
 
-    cfg_if::cfg_if! {
+    cfg_if! {
         if #[cfg(feature = "blake3")] {
             pub static mut PUBLIC_VALUES_HASHER: Option<blake3::Hasher> = None;
         }
@@ -148,6 +148,47 @@ mod zkvm {
             pub static mut PUBLIC_VALUES_HASHER: Option<Sha256> = None;
         }
     }
+
+    /// The ELF note values.
+    const NAME: [u8; 8] = *b"SUCCINCT";
+    const NAMESZ_LE: [u8; 4] = (NAME.len() as u32).to_le_bytes();
+    const DESC: [u8; 4] = [b'1', 0, 0, 0];
+    const DESCSZ_LE: [u8; 4] = (1u32).to_le_bytes();
+    const TYPE_LE: [u8; 4] =
+        (sp1_primitives::consts::NOTE_UNTRUSTED_PROGRAM_ENABLED as u32).to_le_bytes();
+
+    #[cfg(feature = "untrusted_programs")]
+    #[link_section = ".note.succinct"]
+    #[used]
+    pub static ELF_NOTE: [u8; 24] = [
+        // header
+        NAMESZ_LE[0],
+        NAMESZ_LE[1],
+        NAMESZ_LE[2],
+        NAMESZ_LE[3],
+        DESCSZ_LE[0],
+        DESCSZ_LE[1],
+        DESCSZ_LE[2],
+        DESCSZ_LE[3],
+        TYPE_LE[0],
+        TYPE_LE[1],
+        TYPE_LE[2],
+        TYPE_LE[3],
+        // name (8)
+        NAME[0],
+        NAME[1],
+        NAME[2],
+        NAME[3],
+        NAME[4],
+        NAME[5],
+        NAME[6],
+        NAME[7],
+        // desc (4)
+        DESC[0],
+        DESC[1],
+        DESC[2],
+        DESC[3],
+    ];
 
     #[no_mangle]
     unsafe extern "C" fn __start() {

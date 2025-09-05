@@ -155,7 +155,6 @@ where
             self.start_reconstruct_deferred_digest.read(builder);
         let sp1_vk_digest = self.sp1_vk_digest.read(builder);
         let end_pc = self.end_pc.read(builder);
-        let is_page_protect_active = self.is_page_protect_active.read(builder);
 
         SP1DeferredWitnessVariable {
             vks_and_proofs,
@@ -163,7 +162,6 @@ where
             start_reconstruct_deferred_digest,
             sp1_vk_digest,
             end_pc,
-            is_page_protect_active,
         }
     }
 
@@ -173,7 +171,6 @@ where
         self.start_reconstruct_deferred_digest.write(witness);
         self.sp1_vk_digest.write(witness);
         self.end_pc.write(witness);
-        self.is_page_protect_active.write(witness);
     }
 }
 

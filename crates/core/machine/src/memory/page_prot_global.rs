@@ -25,7 +25,7 @@ use sp1_hypercube::{
     air::{AirInteraction, InteractionScope, MachineAir},
     InteractionKind, Word,
 };
-use sp1_primitives::consts::split_page_idx;
+use sp1_primitives::consts::{split_page_idx, DEFAULT_PAGE_PROT};
 use std::iter::once;
 
 /// A memory chip that can initialize or finalize values in memory.
@@ -152,7 +152,7 @@ impl<F: PrimeField32> MachineAir<F> for PageProtGlobalChip {
             MemoryChipType::Initialize => &input.global_page_prot_initialize_events,
             MemoryChipType::Finalize => &input.global_page_prot_finalize_events,
         };
-        if input.public_values.is_page_protect_active == 0 {
+        if input.public_values.is_untrusted_programs_enabled == 0 {
             assert!(events.is_empty());
         }
         let nb_rows = events.len();
@@ -178,7 +178,7 @@ impl<F: PrimeField32> MachineAir<F> for PageProtGlobalChip {
         };
 
         page_prot_events.sort_by_key(|event| event.page_idx);
-        if input.public_values.is_page_protect_active == 0 {
+        if input.public_values.is_untrusted_programs_enabled == 0 {
             assert!(page_prot_events.is_empty());
         }
         let mut rows: Vec<[F; NUM_PAGE_PROT_INIT_COLS]> = page_prot_events
@@ -425,6 +425,13 @@ where
                 ),
                 InteractionScope::Local,
             );
+        }
+
+        // If it's the initialize chip, then assert that the page prot is the default page prot.
+        if self.kind == MemoryChipType::Initialize {
+            builder
+                .when(local.is_real)
+                .assert_eq(local.page_prot, AB::Expr::from_canonical_u8(DEFAULT_PAGE_PROT));
         }
 
         // Assert `prev_page_idx < page_idx` except the case `prev_page_idx = page_idx = index = 0`.

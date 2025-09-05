@@ -283,7 +283,7 @@ impl<F: Field> AddressSlicePageProtOperation<F> {
         builder.assert_bool(is_real.clone());
         let public_values = builder.extract_public_values();
         let expected_page_protect_active =
-            public_values.is_page_protect_active.into() * is_real.clone();
+            public_values.is_untrusted_programs_enabled.into() * is_real.clone();
         builder.assert_eq(cols.is_page_protect_active, expected_page_protect_active);
 
         let start_page_idx = PageOperation::<AB::F>::eval(

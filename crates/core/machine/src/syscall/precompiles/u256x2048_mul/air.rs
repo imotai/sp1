@@ -242,7 +242,7 @@ impl<F: PrimeField32> MachineAir<F> for U256x2048MulChip {
                             );
                             carries[i + 1] = carry;
                         }
-                        if input.public_values.is_page_protect_active == 1 {
+                        if input.public_values.is_untrusted_programs_enabled == 1 {
                             // Populate the address slice page prot access.
                             cols.address_slice_page_prot_access_a.populate(
                                 &mut new_byte_lookup_events,
@@ -252,7 +252,7 @@ impl<F: PrimeField32> MachineAir<F> for U256x2048MulChip {
                                 PROT_READ,
                                 &event.page_prot_records.read_a_page_prot_records[0],
                                 &event.page_prot_records.read_a_page_prot_records.get(1).copied(),
-                                input.public_values.is_page_protect_active,
+                                input.public_values.is_untrusted_programs_enabled,
                             );
 
                             cols.address_slice_page_prot_access_b.populate(
@@ -263,7 +263,7 @@ impl<F: PrimeField32> MachineAir<F> for U256x2048MulChip {
                                 PROT_READ,
                                 &event.page_prot_records.read_b_page_prot_records[0],
                                 &event.page_prot_records.read_b_page_prot_records.get(1).copied(),
-                                input.public_values.is_page_protect_active,
+                                input.public_values.is_untrusted_programs_enabled,
                             );
 
                             cols.address_slice_page_prot_access_lo.populate(
@@ -274,7 +274,7 @@ impl<F: PrimeField32> MachineAir<F> for U256x2048MulChip {
                                 PROT_WRITE,
                                 &event.page_prot_records.write_lo_page_prot_records[0],
                                 &event.page_prot_records.write_lo_page_prot_records.get(1).copied(),
-                                input.public_values.is_page_protect_active,
+                                input.public_values.is_untrusted_programs_enabled,
                             );
 
                             cols.address_slice_page_prot_access_hi.populate(
@@ -285,7 +285,7 @@ impl<F: PrimeField32> MachineAir<F> for U256x2048MulChip {
                                 PROT_WRITE,
                                 &event.page_prot_records.write_hi_page_prot_records[0],
                                 &event.page_prot_records.write_hi_page_prot_records.get(1).copied(),
-                                input.public_values.is_page_protect_active,
+                                input.public_values.is_untrusted_programs_enabled,
                             );
                         }
 

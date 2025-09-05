@@ -55,7 +55,11 @@ impl<F: PrimeField32> MachineExecutor<F> {
         // todo: memory permit this as we know the opcode counts up front.
         let mut record_worker_channels = Vec::with_capacity(self.num_record_workers);
         let mut handles = Vec::new();
-        let split_opts = SplitOpts::new(&self.opts, program.instructions.len());
+        let split_opts = SplitOpts::new(
+            &self.opts,
+            program.instructions.len(),
+            program.enable_untrusted_programs,
+        );
         for _ in 0..self.num_record_workers {
             let (tx, mut rx) = mpsc::unbounded_channel::<RecordTask>();
             record_worker_channels.push(tx);
@@ -115,7 +119,8 @@ impl<F: PrimeField32> MachineExecutor<F> {
                         let mut state = state.lock().unwrap();
 
                         state.is_execution_shard = 1;
-                        state.is_page_protect_active = record.public_values.is_page_protect_active;
+                        state.is_untrusted_programs_enabled =
+                            record.public_values.is_untrusted_programs_enabled;
                         state.pc_start = record.public_values.pc_start;
                         state.next_pc = record.public_values.next_pc;
                         state.initial_timestamp = record.public_values.initial_timestamp;

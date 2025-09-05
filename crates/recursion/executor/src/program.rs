@@ -76,6 +76,10 @@ impl<F: Field> MachineProgram<F> for RecursionProgram<F> {
     fn initial_global_cumulative_sum(&self) -> SepticDigest<F> {
         SepticDigest::<F>::zero()
     }
+
+    fn enable_untrusted_programs(&self) -> F {
+        F::zero()
+    }
 }
 
 #[cfg(any(test, feature = "program_validation"))]

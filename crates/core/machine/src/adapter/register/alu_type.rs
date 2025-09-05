@@ -97,7 +97,7 @@ impl<F: Field> ALUTypeReader<F> {
 
         // If the row is running an untrusted program, the page protection checks must be on.
         let public_values = builder.extract_public_values();
-        builder.when(is_untrusted.clone()).assert_one(public_values.is_page_protect_active);
+        builder.when(is_untrusted.clone()).assert_one(public_values.is_untrusted_programs_enabled);
 
         // Assert that `imm_c` is zero if the operation is not real.
         // This is to ensure that the `op_c` read multiplicity is zero on padding rows.

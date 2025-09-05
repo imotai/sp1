@@ -125,7 +125,7 @@ where
         self.eval_halt_unimpl(builder, local, public_values);
 
         // PAGE_PROTECT ecall instruction.
-        self.eval_page_protect(builder, local, &a, public_values.is_page_protect_active);
+        self.eval_page_protect(builder, local, &a, public_values.is_untrusted_programs_enabled);
     }
 }
 
