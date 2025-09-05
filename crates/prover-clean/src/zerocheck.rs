@@ -408,7 +408,7 @@ mod tests {
                     })
                     .sum::<Ext>();
 
-                let verifier = BasefoldVerifier::<Poseidon2KoalaBear16BasefoldConfig>::new(1);
+                let verifier = BasefoldVerifier::<_, Poseidon2KoalaBear16BasefoldConfig>::new(1);
                 let mut challenger = verifier.challenger();
                 let _lambda: Ext = challenger.sample();
 
@@ -486,7 +486,7 @@ mod tests {
                 .map(|(e_i, b_i)| zerocheck_eval(*e_i, *b_i))
                 .sum::<Ext>();
 
-            let verifier = BasefoldVerifier::<Poseidon2KoalaBear16BasefoldConfig>::new(1);
+            let verifier = BasefoldVerifier::<_, Poseidon2KoalaBear16BasefoldConfig>::new(1);
             let mut challenger = verifier.challenger();
             let _lambda: Ext = challenger.sample();
 

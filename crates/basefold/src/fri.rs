@@ -14,16 +14,20 @@ use csl_cuda::{
 };
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use slop_algebra::{extension::BinomialExtensionField, ExtensionField, TwoAdicField};
+use slop_algebra::{
+    extension::BinomialExtensionField, AbstractExtensionField, AbstractField, ExtensionField,
+    TwoAdicField,
+};
 use slop_alloc::{Buffer, HasBackend, IntoHost};
 use slop_basefold::RsCodeWord;
 use slop_basefold_prover::{
     host_fold_even_odd, BasefoldBatcher, FriIoppProver, ReedSolomonEncoder,
 };
-use slop_challenger::{CanObserve, FieldChallenger};
-use slop_commit::{Message, TensorCs, TensorCsProver};
+use slop_challenger::{CanObserve, FieldChallenger, IopCtx};
+use slop_commit::Message;
 use slop_futures::OwnedBorrow;
 use slop_koala_bear::KoalaBear;
+use slop_merkle_tree::{MerkleTreeConfig, TensorCsProver};
 use slop_multilinear::{Mle, MleEval, MleFoldBackend};
 use slop_tensor::{Tensor, TransposeBackend};
 
@@ -54,31 +58,33 @@ pub unsafe trait MleFlattenKernel<F: TwoAdicField, EF: ExtensionField<F>> {
 )]
 pub struct FriCudaProver<E, P>(pub PhantomData<(E, P)>);
 
-impl<F, EF, E, P> BasefoldBatcher<F, EF, E, TaskScope> for FriCudaProver<E, P>
+impl<GC: IopCtx, E, P> BasefoldBatcher<GC, E, TaskScope> for FriCudaProver<E, P>
 where
-    F: TwoAdicField,
-    EF: ExtensionField<F>,
-    E: ReedSolomonEncoder<F, TaskScope> + Clone,
-    P: TensorCsProver<TaskScope>,
-    TaskScope: MleBatchKernel<F, EF> + RsCodeWordBatchKernel<F, EF> + TransposeBackend<EF>,
+    GC::F: TwoAdicField,
+    GC::EF: TwoAdicField,
+    E: ReedSolomonEncoder<GC::F, TaskScope> + Clone,
+    P: TensorCsProver<GC, TaskScope>,
+    TaskScope: MleBatchKernel<GC::F, GC::EF>
+        + RsCodeWordBatchKernel<GC::F, GC::EF>
+        + TransposeBackend<GC::EF>,
 {
     async fn batch<M, Code>(
         &self,
-        batching_challenge: EF,
+        batching_challenge: GC::EF,
         mles: Message<M>,
         codewords: Message<Code>,
-        evaluation_claims: Vec<MleEval<EF, TaskScope>>,
+        evaluation_claims: Vec<MleEval<GC::EF, TaskScope>>,
         _encoder: &E,
-    ) -> (Mle<EF, TaskScope>, RsCodeWord<F, TaskScope>, EF)
+    ) -> (Mle<GC::EF, TaskScope>, RsCodeWord<GC::F, TaskScope>, GC::EF)
     where
-        M: OwnedBorrow<Mle<F, TaskScope>>,
-        Code: OwnedBorrow<RsCodeWord<F, TaskScope>>,
+        M: OwnedBorrow<Mle<GC::F, TaskScope>>,
+        Code: OwnedBorrow<RsCodeWord<GC::F, TaskScope>>,
     {
         // Compute all the batch challenge powers.
         let total_num_polynomials = mles
             .iter()
             .map(|mle| {
-                let mle: &Mle<F, TaskScope> = (**mle).borrow();
+                let mle: &Mle<GC::F, TaskScope> = (**mle).borrow();
                 mle.num_polynomials()
             })
             .sum::<usize>();
@@ -90,11 +96,13 @@ where
         let codeword_size = (codewords.first().unwrap()).borrow().data.sizes()[1];
         let scope: TaskScope = (mles.first().unwrap()).borrow().backend().clone();
         let mut batch_mle =
-            Mle::new(Tensor::<EF, TaskScope>::zeros_in([1, 1 << num_variables], scope.clone()));
-        let mut batch_codeword =
-            Tensor::<F, TaskScope>::zeros_in([EF::D, codeword_size], scope.clone());
+            Mle::new(Tensor::<GC::EF, TaskScope>::zeros_in([1, 1 << num_variables], scope.clone()));
+        let mut batch_codeword = Tensor::<GC::F, TaskScope>::zeros_in(
+            [<GC::EF as AbstractExtensionField<_>>::D, codeword_size],
+            scope.clone(),
+        );
         for (mle, codeword) in mles.iter().zip_eq(codewords.iter()) {
-            let mle: &Mle<F, TaskScope> = (**mle).borrow();
+            let mle: &Mle<GC::F, TaskScope> = (**mle).borrow();
             let batch_size = mle.num_polynomials();
             let mut powers = batch_challenge_powers;
             batch_challenge_powers = powers.split_off(batch_size);
@@ -114,7 +122,7 @@ where
                     .launch_kernel(TaskScope::batch_mle_kernel(), grid_dim, block_dim, &mle_args, 0)
                     .unwrap();
             }
-            let codeword: &RsCodeWord<F, TaskScope> = (**codeword).borrow();
+            let codeword: &RsCodeWord<GC::F, TaskScope> = (**codeword).borrow();
             let block_dim = 256;
             let grid_dim = codeword_size.div_ceil(block_dim);
             let codeword_args = args!(
@@ -138,8 +146,8 @@ where
         }
 
         // Compute the batched evaluation claim.
-        let mut batch_eval_claim = EF::zero();
-        let mut power = EF::one();
+        let mut batch_eval_claim = GC::EF::zero();
+        let mut power = GC::EF::one();
         for batch_claims in evaluation_claims {
             let claims = batch_claims.into_host().await.unwrap();
             for value in claims.evaluations().as_slice() {
@@ -153,22 +161,20 @@ where
     }
 }
 
-impl<F, EF, Tcs, Challenger, E, P> FriIoppProver<F, EF, Tcs, Challenger, E, TaskScope>
-    for FriCudaProver<E, P>
+impl<GC: IopCtx, Tcs, E, P> FriIoppProver<GC, Tcs, E, TaskScope> for FriCudaProver<E, P>
 where
-    F: TwoAdicField,
-    EF: ExtensionField<F> + TwoAdicField,
-    Tcs: TensorCs<Data = F>,
-    Challenger: FieldChallenger<F> + CanObserve<Tcs::Commitment> + 'static + Send + Sync,
-    E: ReedSolomonEncoder<F, TaskScope> + Clone,
-    P: TensorCsProver<TaskScope, Cs = Tcs>,
-    TaskScope: MleBatchKernel<F, EF>
-        + RsCodeWordBatchKernel<F, EF>
-        + MleFoldBackend<EF>
-        + TransposeBackend<F>
-        + TransposeBackend<EF>
-        + RsCodeWordTransposeKernel<F, EF>
-        + MleFlattenKernel<F, EF>,
+    GC::F: TwoAdicField,
+    GC::EF: ExtensionField<GC::F> + TwoAdicField,
+    Tcs: MerkleTreeConfig<GC>,
+    E: ReedSolomonEncoder<GC::F, TaskScope> + Clone,
+    P: TensorCsProver<GC, TaskScope, MerkleConfig = Tcs>,
+    TaskScope: MleBatchKernel<GC::F, GC::EF>
+        + RsCodeWordBatchKernel<GC::F, GC::EF>
+        + MleFoldBackend<GC::EF>
+        + TransposeBackend<GC::F>
+        + TransposeBackend<GC::EF>
+        + RsCodeWordTransposeKernel<GC::F, GC::EF>
+        + MleFlattenKernel<GC::F, GC::EF>,
 {
     type FriProverError = P::ProverError;
     type TcsProver = P;
@@ -176,19 +182,19 @@ where
 
     async fn commit_phase_round(
         &self,
-        current_mle: Mle<EF, TaskScope>,
-        current_codeword: RsCodeWord<F, TaskScope>,
+        current_mle: Mle<GC::EF, TaskScope>,
+        current_codeword: RsCodeWord<GC::F, TaskScope>,
         encoder: &Self::Encoder,
         tcs_prover: &Self::TcsProver,
-        challenger: &mut Challenger,
+        challenger: &mut GC::Challenger,
     ) -> Result<
         (
-            EF,
-            Mle<EF, TaskScope>,
-            RsCodeWord<F, TaskScope>,
-            <Tcs as TensorCs>::Commitment,
-            Arc<slop_tensor::Tensor<F, TaskScope>>,
-            <Self::TcsProver as TensorCsProver<TaskScope>>::ProverData,
+            GC::EF,
+            Mle<GC::EF, TaskScope>,
+            RsCodeWord<GC::F, TaskScope>,
+            GC::Digest,
+            Arc<slop_tensor::Tensor<GC::F, TaskScope>>,
+            <Self::TcsProver as TensorCsProver<GC, TaskScope>>::ProverData,
         ),
         Self::FriProverError,
     > {
@@ -220,12 +226,12 @@ where
                 .unwrap();
         }
 
-        let leaves = Message::<Tensor<F, TaskScope>>::from(vec![leaves]);
+        let leaves = Message::<Tensor<GC::F, TaskScope>>::from(vec![leaves]);
         let (commit, prover_data) = tcs_prover.commit_tensors(leaves.clone()).await?;
         // Observe the commitment.
-        challenger.observe(commit.clone());
+        challenger.observe(commit);
 
-        let beta: EF = challenger.sample_ext_element();
+        let beta: GC::EF = challenger.sample_ext_element();
 
         // Fold the mle.
         let folded_mle = current_mle.fold(beta).await;
@@ -234,9 +240,10 @@ where
         if folded_num_variables < 4 {
             let current_codeword_vec = current_codeword.data.transpose().into_host().await.unwrap();
             let current_codeword_vec =
-                current_codeword_vec.into_buffer().into_extension::<EF>().into_vec();
+                current_codeword_vec.into_buffer().into_extension::<GC::EF>().into_vec();
             let folded_codeword_vec = host_fold_even_odd(current_codeword_vec, beta);
-            let folded_codeword_storage = Buffer::from(folded_codeword_vec).flatten_to_base::<F>();
+            let folded_codeword_storage =
+                Buffer::from(folded_codeword_vec).flatten_to_base::<GC::F>();
             let mut new_size = current_codeword.data.sizes().to_vec();
             new_size[1] /= 2;
             let folded_codeword =
@@ -249,7 +256,7 @@ where
 
         let folded_height = 1 << folded_num_variables;
         let mut folded_mle_flattened =
-            Tensor::<F, TaskScope>::with_sizes_in([EF::D, folded_height], scope.clone());
+            Tensor::<GC::F, TaskScope>::with_sizes_in([GC::EF::D, folded_height], scope.clone());
         let block_dim = 256;
         let grid_dim = folded_height.div_ceil(block_dim);
         unsafe {
@@ -261,17 +268,17 @@ where
                 .unwrap();
         }
         let folded_mle_flattened =
-            Message::<Mle<F, TaskScope>>::from(vec![Mle::new(folded_mle_flattened)]);
+            Message::<Mle<GC::F, TaskScope>>::from(vec![Mle::new(folded_mle_flattened)]);
         let folded_codeword = encoder.encode_batch(folded_mle_flattened).await.unwrap();
 
         let folded_codeword = RsCodeWord::clone(&folded_codeword[0]);
         Ok((beta, folded_mle, folded_codeword, commit, leaves[0].clone(), prover_data))
     }
 
-    async fn final_poly(&self, final_codeword: RsCodeWord<F, TaskScope>) -> EF {
+    async fn final_poly(&self, final_codeword: RsCodeWord<GC::F, TaskScope>) -> GC::EF {
         let final_codeword_host = final_codeword.data.into_host().await.unwrap();
         let final_codeword_transposed = final_codeword_host.transpose();
-        EF::from_base_slice(&final_codeword_transposed.storage.as_slice()[0..EF::D])
+        GC::EF::from_base_slice(&final_codeword_transposed.storage.as_slice()[0..GC::EF::D])
     }
 }
 
@@ -307,6 +314,7 @@ mod tests {
     use rand::Rng;
     use slop_basefold::{BasefoldVerifier, Poseidon2KoalaBear16BasefoldConfig};
     use slop_basefold_prover::{BasefoldProver, Poseidon2KoalaBear16BasefoldCpuProverComponents};
+    use slop_koala_bear::KoalaBearDegree4Duplex;
     use slop_multilinear::Point;
 
     use crate::Poseidon2KoalaBear16BasefoldCudaProverComponents;
@@ -324,11 +332,15 @@ mod tests {
         let point = Point::<BinomialExtensionField<KoalaBear, 4>>::rand(&mut rng, num_variables);
 
         type C = Poseidon2KoalaBear16BasefoldConfig;
-        type CudaProver = BasefoldProver<Poseidon2KoalaBear16BasefoldCudaProverComponents>;
-        type HostProver = BasefoldProver<Poseidon2KoalaBear16BasefoldCpuProverComponents>;
+        type CudaProver = BasefoldProver<
+            KoalaBearDegree4Duplex,
+            Poseidon2KoalaBear16BasefoldCudaProverComponents,
+        >;
+        type HostProver =
+            BasefoldProver<KoalaBearDegree4Duplex, Poseidon2KoalaBear16BasefoldCpuProverComponents>;
         type EF = BinomialExtensionField<KoalaBear, 4>;
 
-        let verifier = BasefoldVerifier::<C>::new(log_blowup);
+        let verifier = BasefoldVerifier::<_, C>::new(log_blowup);
         let cuda_prover = CudaProver::new(&verifier);
         let host_prover = HostProver::new(&verifier);
 
@@ -428,10 +440,16 @@ mod tests {
 
             let initial_mle = Mle::<EF>::rand(&mut rng, 1, num_variables);
             type C = Poseidon2KoalaBear16BasefoldConfig;
-            type CudaProver = BasefoldProver<Poseidon2KoalaBear16BasefoldCudaProverComponents>;
-            type HostProver = BasefoldProver<Poseidon2KoalaBear16BasefoldCpuProverComponents>;
+            type CudaProver = BasefoldProver<
+                KoalaBearDegree4Duplex,
+                Poseidon2KoalaBear16BasefoldCudaProverComponents,
+            >;
+            type HostProver = BasefoldProver<
+                KoalaBearDegree4Duplex,
+                Poseidon2KoalaBear16BasefoldCpuProverComponents,
+            >;
 
-            let verifier = BasefoldVerifier::<C>::new(log_blowup);
+            let verifier = BasefoldVerifier::<_, C>::new(log_blowup);
             let cuda_prover = CudaProver::new(&verifier);
             let host_prover = HostProver::new(&verifier);
 

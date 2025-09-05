@@ -1,6 +1,5 @@
 use std::{marker::PhantomData, os::raw::c_void};
 
-use csl_cuda::DeviceCopy;
 use csl_cuda::{
     args,
     sys::{
@@ -15,16 +14,19 @@ use csl_cuda::{
     },
     CudaError, TaskScope,
 };
+use slop_algebra::extension::BinomialExtensionField;
 use slop_algebra::{AbstractField, Field};
 use slop_alloc::CpuBackend;
 use slop_alloc::{mem::CopyError, Buffer, HasBackend, IntoHost};
-use slop_bn254::Bn254Fr;
-use slop_commit::{ComputeTcsOpenings, Message, TensorCsProver};
+use slop_bn254::{Bn254Fr, BNGC};
+use slop_challenger::IopCtx;
+use slop_commit::Message;
 use slop_futures::OwnedBorrow;
-use slop_koala_bear::{KoalaBear, Poseidon2KoalaBearConfig};
+use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex, Poseidon2KoalaBearConfig};
 use slop_merkle_tree::{
-    bn254_poseidon2_rc3, MerkleTreeConfig, MerkleTreeTcs, MerkleTreeTcsProof, Poseidon2Bn254Config,
+    bn254_poseidon2_rc3, MerkleTreeConfig, MerkleTreeTcsProof, Poseidon2Bn254Config,
 };
+use slop_merkle_tree::{ComputeTcsOpenings, TensorCsProver};
 use slop_tensor::Tensor;
 use thiserror::Error;
 
@@ -35,7 +37,7 @@ use crate::MerkleTreeHasher;
 ///
 /// The implementor must make sure that the kernel signatures are the same as the ones expected
 /// by [`MerkleTreeSingleLayerProver`].
-pub unsafe trait MerkeTreeSingleLayerKernels<M: MerkleTreeConfig>:
+pub unsafe trait MerkleTreeSingleLayerKernels<GC: IopCtx, M: MerkleTreeConfig<GC>>:
     'static + Send + Sync
 {
     fn leaf_hash_kernel() -> KernelPtr;
@@ -52,8 +54,8 @@ pub trait Hasher<F: Field, const WIDTH: usize>: 'static + Send + Sync {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MerkleTreeSingleLayerProver<F: Field, K, H, M, const WIDTH: usize>(
-    PhantomData<(K, H, M, F)>,
+pub struct MerkleTreeSingleLayerProver<GC, W, K, H, M, const WIDTH: usize>(
+    PhantomData<(GC, W, K, H, M)>,
 );
 
 #[derive(Debug, Clone, Copy, Error)]
@@ -64,27 +66,24 @@ pub enum SingleLayerMerkleTreeProverError {
     Copy(#[from] CopyError),
 }
 
-impl<F: Field, K, H, M, const WIDTH: usize> TensorCsProver<TaskScope>
-    for MerkleTreeSingleLayerProver<F, K, H, M, WIDTH>
+impl<GC: IopCtx, W, K, H, M, const WIDTH: usize> TensorCsProver<GC, TaskScope>
+    for MerkleTreeSingleLayerProver<GC, W, K, H, M, WIDTH>
 where
-    M: MerkleTreeConfig,
-    M::Digest: Copy,
-    K: MerkeTreeSingleLayerKernels<M>,
-    H: Hasher<F, WIDTH>,
+    W: Field,
+    M: MerkleTreeConfig<GC>,
+    K: MerkleTreeSingleLayerKernels<GC, M>,
+    H: Hasher<W, WIDTH>,
 {
-    type Cs = MerkleTreeTcs<M>;
+    type MerkleConfig = M;
     type ProverError = SingleLayerMerkleTreeProverError;
-    type ProverData = MerkleTree<M::Digest, TaskScope>;
+    type ProverData = MerkleTree<GC::Digest, TaskScope>;
 
     async fn commit_tensors<T>(
         &self,
         tensors: Message<T>,
-    ) -> Result<
-        (<Self::Cs as slop_commit::TensorCs>::Commitment, Self::ProverData),
-        Self::ProverError,
-    >
+    ) -> Result<(GC::Digest, Self::ProverData), Self::ProverError>
     where
-        T: OwnedBorrow<Tensor<M::Data, TaskScope>>,
+        T: OwnedBorrow<Tensor<GC::F, TaskScope>>,
     {
         // assert_eq!(tensors.len(), 1, "Only one tensor is supported");
         let scope = tensors[0].borrow().backend();
@@ -107,7 +106,7 @@ where
         widths.extend_from_host_slice(&widths_host)?;
         let height = tensors[0].borrow().sizes()[1].ilog2() as usize;
         assert_eq!(1 << height, tensors[0].borrow().sizes()[1], "Height must be a power of two");
-        let mut tree = MerkleTree::<M::Digest, _>::uninit(height, scope.clone());
+        let mut tree = MerkleTree::<GC::Digest, _>::uninit(height, scope.clone());
         unsafe {
             tree.assume_init();
             // Compute the leaf hashes.
@@ -143,11 +142,11 @@ where
         &self,
         data: Self::ProverData,
         indices: &[usize],
-    ) -> Result<<Self::Cs as slop_commit::TensorCs>::Proof, Self::ProverError> {
+    ) -> Result<MerkleTreeTcsProof<GC::Digest>, Self::ProverError> {
         let paths = {
             let scope = data.backend();
             let mut paths =
-                Tensor::<M::Digest, _>::with_sizes_in([indices.len(), data.height], scope.clone());
+                Tensor::<GC::Digest, _>::with_sizes_in([indices.len(), data.height], scope.clone());
             let mut indices_buffer =
                 Buffer::<usize, _>::with_capacity_in(indices.len(), scope.clone());
             indices_buffer.extend_from_host_slice(indices)?;
@@ -174,22 +173,21 @@ where
     }
 }
 
-impl<F: Field, M, K, H, const WIDTH: usize> ComputeTcsOpenings<TaskScope>
-    for MerkleTreeSingleLayerProver<F, K, H, M, WIDTH>
+impl<GC: IopCtx, W, M, K, H, const WIDTH: usize> ComputeTcsOpenings<GC, TaskScope>
+    for MerkleTreeSingleLayerProver<GC, W, K, H, M, WIDTH>
 where
-    M: MerkleTreeConfig,
-    M::Data: DeviceCopy,
-    M::Digest: DeviceCopy,
-    K: MerkeTreeSingleLayerKernels<M>,
-    H: Hasher<F, WIDTH>,
+    W: Field,
+    M: MerkleTreeConfig<GC>,
+    K: MerkleTreeSingleLayerKernels<GC, M>,
+    H: Hasher<W, WIDTH>,
 {
     async fn compute_openings_at_indices<T>(
         &self,
         tensors: Message<T>,
         indices: &[usize],
-    ) -> Tensor<<Self::Cs as slop_commit::TensorCs>::Data>
+    ) -> Tensor<GC::F>
     where
-        T: OwnedBorrow<Tensor<M::Data, TaskScope>>,
+        T: OwnedBorrow<Tensor<GC::F, TaskScope>>,
     {
         // let mut openings
         let openings = {
@@ -213,7 +211,7 @@ where
             let tensor_height = tensors[0].borrow().sizes()[1];
 
             // Allocate tensors for the openings.
-            let mut openings = Tensor::<M::Data, _>::with_sizes_in(
+            let mut openings = Tensor::<GC::F, _>::with_sizes_in(
                 [indices.len(), num_opening_values],
                 scope.clone(),
             );
@@ -269,6 +267,7 @@ pub struct Poseidon2KoalaBear16Kernels;
 pub struct Poseidon2Bn254Kernels;
 
 pub type Poseidon2KoalaBear16CudaProver = MerkleTreeSingleLayerProver<
+    KoalaBearDegree4Duplex,
     KoalaBear,
     Poseidon2KoalaBear16Kernels,
     Poseidon2KoalaBear16Hasher,
@@ -277,6 +276,7 @@ pub type Poseidon2KoalaBear16CudaProver = MerkleTreeSingleLayerProver<
 >;
 
 pub type Poseidon2Bn254CudaProver = MerkleTreeSingleLayerProver<
+    BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>,
     Bn254Fr,
     Poseidon2Bn254Kernels,
     Poseidon2Bn254Hasher,
@@ -322,7 +322,9 @@ pub fn poseidon2_bn254_3_constants() -> (Vec<Bn254Fr>, Vec<[Bn254Fr; 3]>, Vec<Bn
     (internal_round_constants, external_round_constants, diffusion_matrix_m1)
 }
 
-unsafe impl MerkeTreeSingleLayerKernels<Poseidon2KoalaBearConfig> for Poseidon2KoalaBear16Kernels {
+unsafe impl MerkleTreeSingleLayerKernels<KoalaBearDegree4Duplex, Poseidon2KoalaBearConfig>
+    for Poseidon2KoalaBear16Kernels
+{
     #[inline]
     fn leaf_hash_kernel() -> KernelPtr {
         unsafe { leaf_hash_merkle_tree_koala_bear_16_kernel() }
@@ -344,7 +346,12 @@ unsafe impl MerkeTreeSingleLayerKernels<Poseidon2KoalaBearConfig> for Poseidon2K
     }
 }
 
-unsafe impl MerkeTreeSingleLayerKernels<Poseidon2Bn254Config<KoalaBear>> for Poseidon2Bn254Kernels {
+unsafe impl
+    MerkleTreeSingleLayerKernels<
+        BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>,
+        Poseidon2Bn254Config<KoalaBear>,
+    > for Poseidon2Bn254Kernels
+{
     #[inline]
     fn leaf_hash_kernel() -> KernelPtr {
         unsafe { leaf_hash_merkle_tree_bn254_kernel() }
@@ -370,14 +377,20 @@ unsafe impl MerkeTreeSingleLayerKernels<Poseidon2Bn254Config<KoalaBear>> for Pos
 mod tests {
     use rand::{thread_rng, Rng};
     use slop_bn254::Bn254Fr;
-    use slop_commit::{TensorCs, TensorCsOpening};
     use slop_koala_bear::{KoalaBear, Poseidon2KoalaBearConfig};
-    use slop_merkle_tree::{FieldMerkleTreeProver, Poseidon2KoalaBear16Prover};
+    use slop_merkle_tree::{
+        FieldMerkleTreeProver, MerkleTreeOpening, MerkleTreeTcs, Poseidon2KoalaBear16Prover,
+    };
 
     use super::*;
 
-    pub type Poseidon2Bn254Prover =
-        FieldMerkleTreeProver<KoalaBear, Bn254Fr, Poseidon2Bn254Config<KoalaBear>, 1>;
+    pub type Poseidon2Bn254Prover = FieldMerkleTreeProver<
+        KoalaBear,
+        Bn254Fr,
+        BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>,
+        Poseidon2Bn254Config<KoalaBear>,
+        1,
+    >;
 
     #[tokio::test]
     async fn test_merkle_proof_koala_bear() {
@@ -413,8 +426,8 @@ mod tests {
 
             assert_eq!(host_root, root);
 
-            let tcs = MerkleTreeTcs::<Poseidon2KoalaBearConfig>::default();
-            let opening = TensorCsOpening { values: openings, proof };
+            let tcs = MerkleTreeTcs::<_, Poseidon2KoalaBearConfig>::default();
+            let opening = MerkleTreeOpening { values: openings, proof };
             tcs.verify_tensor_openings(&root, &indices, &opening, merkle_height).unwrap();
         })
         .await
@@ -455,8 +468,12 @@ mod tests {
 
             assert_eq!(host_root, root);
 
-            let tcs = MerkleTreeTcs::<Poseidon2Bn254Config<KoalaBear>>::default();
-            let opening = TensorCsOpening { values: openings, proof };
+            let tcs = MerkleTreeTcs::<_, Poseidon2Bn254Config<KoalaBear>>::default();
+            let opening =
+                MerkleTreeOpening::<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>> {
+                    values: openings,
+                    proof,
+                };
             tcs.verify_tensor_openings(&root, &indices, &opening, merkle_height).unwrap();
         })
         .await

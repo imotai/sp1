@@ -387,12 +387,13 @@ mod tests {
     use rand::thread_rng;
     use serial_test::serial;
     use slop_algebra::AbstractField;
-    use slop_challenger::{CanObserve, FieldChallenger};
+    use slop_challenger::{CanObserve, FieldChallenger, IopCtx};
     use slop_commit::Rounds;
     use slop_jagged::{
-        HadamardJaggedSumcheckProver, JaggedConfig, JaggedLittlePolynomialProverParams,
-        JaggedPcsVerifier, JaggedProver, JaggedSumcheckProver, KoalaBearPoseidon2,
+        HadamardJaggedSumcheckProver, JaggedLittlePolynomialProverParams, JaggedPcsVerifier,
+        JaggedProver, JaggedSumcheckProver, KoalaBearPoseidon2,
     };
+    use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
     use slop_multilinear::{Mle, MultilinearPcsChallenger, PaddedMle};
     use slop_sumcheck::SumcheckPolyFirstRound;
 
@@ -407,9 +408,10 @@ mod tests {
         let log_blowup = 1;
 
         type JC = KoalaBearPoseidon2;
-        type Prover = JaggedProver<Poseidon2KoalaBearJaggedCudaProverComponents>;
-        type F = <JC as JaggedConfig>::F;
-        type EF = <JC as JaggedConfig>::EF;
+        type Prover =
+            JaggedProver<KoalaBearDegree4Duplex, Poseidon2KoalaBearJaggedCudaProverComponents>;
+        type F = KoalaBear;
+        type EF = <KoalaBearDegree4Duplex as IopCtx>::EF;
 
         let mut rng = thread_rng();
 
@@ -468,7 +470,7 @@ mod tests {
                 })
                 .collect::<Rounds<_>>();
 
-            let jagged_verifier = JaggedPcsVerifier::<JC>::new(
+            let jagged_verifier = JaggedPcsVerifier::<_, JC>::new(
                 log_blowup as usize,
                 log_stacking_height,
                 max_log_row_count as usize,

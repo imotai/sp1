@@ -77,7 +77,7 @@ async fn main() {
         csl_cuda::run_in_place(|t| async move {
             let mut rng = rand::thread_rng();
 
-            let verifier = BasefoldVerifier::<Poseidon2KoalaBear16BasefoldConfig>::new(1);
+            let verifier = BasefoldVerifier::<_, Poseidon2KoalaBear16BasefoldConfig>::new(1);
 
             let mut times = Vec::with_capacity(NUM_ITERATIONS);
             for i in 0..NUM_ITERATIONS + WARMUP_ITERATIONS {

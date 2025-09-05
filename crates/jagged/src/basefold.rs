@@ -6,27 +6,31 @@ use csl_challenger::{DuplexChallenger, MultiField32Challenger};
 use csl_cuda::TaskScope;
 use slop_algebra::extension::BinomialExtensionField;
 use slop_basefold::{Poseidon2Bn254FrBasefoldConfig, Poseidon2KoalaBear16BasefoldConfig};
-use slop_bn254::Bn254Fr;
+use slop_bn254::{Bn254Fr, BNGC};
 use slop_jagged::{JaggedBasefoldProverComponents, JaggedEvalSumcheckProver};
-use slop_koala_bear::KoalaBear;
+use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 
 use crate::JaggedAssistSumAsPolyGPUImpl;
 use crate::VirtualJaggedSumcheckProver;
 
-pub type Poseidon2KoalaBearJaggedCudaProverComponents = JaggedBasefoldProverComponents<
-    Poseidon2KoalaBear16BasefoldCudaProverComponents,
-    VirtualJaggedSumcheckProver,
-    JaggedEvalSumcheckProver<
-        KoalaBear,
-        JaggedAssistSumAsPolyGPUImpl<
+pub type Poseidon2KoalaBearJaggedCudaProverComponents =
+    JaggedBasefoldProverComponents<
+        Poseidon2KoalaBear16BasefoldCudaProverComponents,
+        VirtualJaggedSumcheckProver,
+        JaggedEvalSumcheckProver<
             KoalaBear,
-            BinomialExtensionField<KoalaBear, 4>,
-            <Poseidon2KoalaBear16BasefoldConfig as BasefoldCudaConfig>::DeviceChallenger,
+            JaggedAssistSumAsPolyGPUImpl<
+                KoalaBear,
+                BinomialExtensionField<KoalaBear, 4>,
+                <Poseidon2KoalaBear16BasefoldConfig as BasefoldCudaConfig<
+                    KoalaBearDegree4Duplex,
+                >>::DeviceChallenger,
+            >,
+            TaskScope,
+            DuplexChallenger<KoalaBear, TaskScope>,
         >,
-        TaskScope,
-        DuplexChallenger<KoalaBear, TaskScope>,
-    >,
->;
+        KoalaBearDegree4Duplex,
+    >;
 
 pub type Poseidon2Bn254JaggedCudaProverComponents = JaggedBasefoldProverComponents<
     Poseidon2Bn254BasefoldCudaProverComponents,
@@ -36,11 +40,12 @@ pub type Poseidon2Bn254JaggedCudaProverComponents = JaggedBasefoldProverComponen
         JaggedAssistSumAsPolyGPUImpl<
             KoalaBear,
             BinomialExtensionField<KoalaBear, 4>,
-            <Poseidon2Bn254FrBasefoldConfig<KoalaBear> as BasefoldCudaConfig>::DeviceChallenger,
+            <Poseidon2Bn254FrBasefoldConfig<KoalaBear, BinomialExtensionField<KoalaBear, 4>> as BasefoldCudaConfig<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>>>::DeviceChallenger,
         >,
         TaskScope,
         MultiField32Challenger<KoalaBear, Bn254Fr, TaskScope>,
     >,
+    BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>,
 >;
 
 #[cfg(test)]
@@ -52,12 +57,13 @@ mod tests {
     use rand::{thread_rng, Rng};
     use serial_test::serial;
     use slop_alloc::IntoHost;
-    use slop_challenger::CanObserve;
+    use slop_challenger::{CanObserve, IopCtx};
     use slop_commit::Rounds;
+    use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
     use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
 
     use slop_jagged::{
-        JaggedConfig, JaggedPcsVerifier, JaggedProver, KoalaBearPoseidon2, MachineJaggedPcsVerifier,
+        JaggedPcsVerifier, JaggedProver, KoalaBearPoseidon2, MachineJaggedPcsVerifier,
     };
 
     use crate::Poseidon2KoalaBearJaggedCudaProverComponents;
@@ -69,9 +75,10 @@ mod tests {
         let log_blowup = 1;
 
         type JC = KoalaBearPoseidon2;
-        type Prover = JaggedProver<Poseidon2KoalaBearJaggedCudaProverComponents>;
-        type F = <JC as JaggedConfig>::F;
-        type EF = <JC as JaggedConfig>::EF;
+        type Prover =
+            JaggedProver<KoalaBearDegree4Duplex, Poseidon2KoalaBearJaggedCudaProverComponents>;
+        type F = KoalaBear;
+        type EF = <KoalaBearDegree4Duplex as IopCtx>::EF;
 
         let mut rng = thread_rng();
 
@@ -132,7 +139,7 @@ mod tests {
                 })
                 .collect::<Rounds<_>>();
 
-            let jagged_verifier = JaggedPcsVerifier::<JC>::new(
+            let jagged_verifier = JaggedPcsVerifier::<_, JC>::new(
                 log_blowup as usize,
                 log_stacking_height,
                 max_log_row_count as usize,

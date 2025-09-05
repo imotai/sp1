@@ -255,7 +255,7 @@ mod tests {
                 let product = HadamardProduct { base, ext };
                 println!("product num_variables: {num_variables}");
 
-                let verifier = BasefoldVerifier::<C>::new(1);
+                let verifier = BasefoldVerifier::<_, C>::new(1);
 
                 let mut challenger = verifier.challenger();
 

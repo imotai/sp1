@@ -8,20 +8,20 @@ use slop_basefold::{
     BasefoldVerifier, Poseidon2Bn254FrBasefoldConfig, Poseidon2KoalaBear16BasefoldConfig,
 };
 use slop_basefold_prover::{BasefoldProver, BasefoldProverComponents, DefaultBasefoldProver};
-use slop_koala_bear::{KoalaBear, Poseidon2KoalaBearConfig};
-use slop_merkle_tree::{MerkleTreeTcs, Poseidon2Bn254Config};
+use slop_bn254::BNGC;
+use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex, Poseidon2KoalaBearConfig};
+use slop_merkle_tree::Poseidon2Bn254Config;
 
-use crate::{BasefoldCudaConfig, CudaDftEncoder, FriCudaProver, GrindingPowCudaProver};
+use crate::{CudaDftEncoder, FriCudaProver, GrindingPowCudaProver};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Poseidon2KoalaBear16BasefoldCudaProverComponents;
 
-impl BasefoldProverComponents for Poseidon2KoalaBear16BasefoldCudaProverComponents {
-    type F = KoalaBear;
-    type EF = BinomialExtensionField<KoalaBear, 4>;
+impl BasefoldProverComponents<KoalaBearDegree4Duplex>
+    for Poseidon2KoalaBear16BasefoldCudaProverComponents
+{
     type A = TaskScope;
-    type Tcs = MerkleTreeTcs<Poseidon2KoalaBearConfig>;
-    type Challenger = <Poseidon2KoalaBear16BasefoldConfig as BasefoldCudaConfig>::DeviceChallenger;
+    type Tcs = Poseidon2KoalaBearConfig;
     type Config = Poseidon2KoalaBear16BasefoldConfig;
     type Encoder = CudaDftEncoder<KoalaBear, SpparkDftKoalaBear>;
     type FriProver = FriCudaProver<Self::Encoder, Self::TcsProver>;
@@ -32,22 +32,24 @@ impl BasefoldProverComponents for Poseidon2KoalaBear16BasefoldCudaProverComponen
 #[derive(Debug, Clone, Copy, Default, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Poseidon2Bn254BasefoldCudaProverComponents;
 
-impl BasefoldProverComponents for Poseidon2Bn254BasefoldCudaProverComponents {
-    type F = KoalaBear;
-    type EF = BinomialExtensionField<KoalaBear, 4>;
+impl BasefoldProverComponents<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>>
+    for Poseidon2Bn254BasefoldCudaProverComponents
+{
     type A = TaskScope;
-    type Tcs = MerkleTreeTcs<Poseidon2Bn254Config<KoalaBear>>;
-    type Challenger =
-        <Poseidon2Bn254FrBasefoldConfig<KoalaBear> as BasefoldCudaConfig>::DeviceChallenger;
-    type Config = Poseidon2Bn254FrBasefoldConfig<KoalaBear>;
+    type Tcs = Poseidon2Bn254Config<KoalaBear>;
+    type Config = Poseidon2Bn254FrBasefoldConfig<KoalaBear, BinomialExtensionField<KoalaBear, 4>>;
     type Encoder = CudaDftEncoder<KoalaBear, SpparkDftKoalaBear>;
     type FriProver = FriCudaProver<Self::Encoder, Self::TcsProver>;
     type TcsProver = Poseidon2Bn254CudaProver;
     type PowProver = GrindingPowCudaProver;
 }
 
-impl DefaultBasefoldProver for Poseidon2KoalaBear16BasefoldCudaProverComponents {
-    fn default_prover(verifier: &BasefoldVerifier<Self::Config>) -> BasefoldProver<Self> {
+impl DefaultBasefoldProver<KoalaBearDegree4Duplex>
+    for Poseidon2KoalaBear16BasefoldCudaProverComponents
+{
+    fn default_prover(
+        verifier: &BasefoldVerifier<KoalaBearDegree4Duplex, Self::Config>,
+    ) -> BasefoldProver<KoalaBearDegree4Duplex, Self> {
         let dft = SpparkDftKoalaBear::default();
         let encoder = CudaDftEncoder { config: verifier.fri_config, dft };
         let fri_prover = FriCudaProver::<_, _>(PhantomData);
@@ -57,8 +59,15 @@ impl DefaultBasefoldProver for Poseidon2KoalaBear16BasefoldCudaProverComponents 
     }
 }
 
-impl DefaultBasefoldProver for Poseidon2Bn254BasefoldCudaProverComponents {
-    fn default_prover(verifier: &BasefoldVerifier<Self::Config>) -> BasefoldProver<Self> {
+impl DefaultBasefoldProver<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>>
+    for Poseidon2Bn254BasefoldCudaProverComponents
+{
+    fn default_prover(
+        verifier: &BasefoldVerifier<
+            BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>,
+            Self::Config,
+        >,
+    ) -> BasefoldProver<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>, Self> {
         let dft = SpparkDftKoalaBear::default();
         let encoder = CudaDftEncoder { config: verifier.fri_config, dft };
         let fri_prover = FriCudaProver::<_, _>(PhantomData);
@@ -87,7 +96,10 @@ mod tests {
     #[tokio::test]
     async fn test_basefold_prover_backend() {
         type C = Poseidon2KoalaBear16BasefoldConfig;
-        type Prover = BasefoldProver<Poseidon2KoalaBear16BasefoldCudaProverComponents>;
+        type Prover = BasefoldProver<
+            KoalaBearDegree4Duplex,
+            Poseidon2KoalaBear16BasefoldCudaProverComponents,
+        >;
         type EF = BinomialExtensionField<KoalaBear, 4>;
 
         let round_widths = [vec![16, 10, 14], vec![20, 78, 34], vec![10, 10]];
@@ -106,7 +118,7 @@ mod tests {
                 })
                 .collect::<Vec<_>>();
 
-            let verifier = BasefoldVerifier::<C>::new(log_blowup);
+            let verifier = BasefoldVerifier::<_, C>::new(log_blowup);
             let prover = Prover::new(&verifier);
 
             let point = Point::<EF>::rand(&mut rng, num_variables);
@@ -196,7 +208,10 @@ mod tests {
     #[tokio::test]
     async fn test_stacked_prover_with_fixed_rate_interleave() {
         type C = Poseidon2KoalaBear16BasefoldConfig;
-        type Prover = BasefoldProver<Poseidon2KoalaBear16BasefoldCudaProverComponents>;
+        type Prover = BasefoldProver<
+            KoalaBearDegree4Duplex,
+            Poseidon2KoalaBear16BasefoldCudaProverComponents,
+        >;
         type EF = BinomialExtensionField<KoalaBear, 4>;
 
         for (log_stacking_height, batch_size) in
@@ -240,7 +255,7 @@ mod tests {
                 })
                 .collect::<Rounds<_>>();
 
-            let pcs_verifier = BasefoldVerifier::<C>::new(log_blowup);
+            let pcs_verifier = BasefoldVerifier::<_, C>::new(log_blowup);
             let pcs_prover = Prover::new(&pcs_verifier);
             let stacker = FixedRateInterleave::new(batch_size);
 

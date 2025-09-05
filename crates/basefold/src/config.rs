@@ -2,12 +2,13 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use slop_algebra::{ExtensionField, TwoAdicField};
-use slop_bn254::Bn254Fr;
-use slop_challenger::{CanObserve, DuplexChallenger, FieldChallenger, MultiField32Challenger};
-use slop_commit::TensorCs;
-use slop_koala_bear::{KoalaBear, KoalaPerm};
-use slop_merkle_tree::{outer_perm, OuterPerm};
+use slop_algebra::{extension::BinomialExtensionField, ExtensionField, TwoAdicField};
+use slop_bn254::{Bn254Fr, OuterPerm, BNGC};
+use slop_challenger::{
+    CanObserve, DuplexChallenger, FieldChallenger, IopCtx, MultiField32Challenger,
+};
+use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex, KoalaPerm};
+use slop_merkle_tree::outer_perm;
 use sp1_hypercube::inner_perm;
 
 use slop_basefold::{
@@ -18,26 +19,24 @@ use slop_basefold::{
 use crate::DeviceGrindingChallenger;
 
 /// The configuration required for a Reed-Solomon-based Basefold.
-pub trait BasefoldCudaConfig:
-    BasefoldConfig + 'static + Clone + Debug + Send + Sync + Serialize + DeserializeOwned
+pub trait BasefoldCudaConfig<GC: IopCtx>:
+    BasefoldConfig<GC> + 'static + Clone + Debug + Send + Sync + Serialize + DeserializeOwned
 where
-    Self::F: TwoAdicField,
-    Self::EF: ExtensionField<Self::F>,
-    Self::Commitment: 'static + Clone + Send + Sync + Serialize + DeserializeOwned,
-    Self::Tcs: TensorCs<Data = Self::F, Commitment = Self::Commitment>,
+    GC::F: TwoAdicField,
+    GC::EF: ExtensionField<GC::F>,
 {
-    type DeviceChallenger: FieldChallenger<Self::F>
+    type DeviceChallenger: FieldChallenger<GC::F>
         + DeviceGrindingChallenger
-        + CanObserve<Self::Commitment>
+        + CanObserve<GC::Digest>
         + 'static
         + Send
         + Sync
         + Clone;
 
-    fn default_challenger(_verifier: &BasefoldVerifier<Self>) -> Self::DeviceChallenger;
+    fn default_challenger(_verifier: &BasefoldVerifier<GC, Self>) -> Self::DeviceChallenger;
 }
-pub trait DefaultBasefoldCudaConfig: BasefoldConfig + Sized {
-    fn default_verifier(log_blowup: usize) -> BasefoldVerifier<Self>;
+pub trait DefaultBasefoldCudaConfig<GC: IopCtx>: BasefoldConfig<GC> + Sized {
+    fn default_verifier(log_blowup: usize) -> BasefoldVerifier<GC, Self>;
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -55,20 +54,24 @@ impl<F, EF, Tcs, Challenger> Default for BasefoldConfigCudaImpl<F, EF, Tcs, Chal
     }
 }
 
-impl BasefoldCudaConfig for Poseidon2KoalaBear16BasefoldConfig {
+impl BasefoldCudaConfig<KoalaBearDegree4Duplex> for Poseidon2KoalaBear16BasefoldConfig {
     type DeviceChallenger = DuplexChallenger<KoalaBear, KoalaPerm, 16, 8>;
     fn default_challenger(
-        _verifier: &BasefoldVerifier<Self>,
+        _verifier: &BasefoldVerifier<KoalaBearDegree4Duplex, Self>,
     ) -> DuplexChallenger<KoalaBear, KoalaPerm, 16, 8> {
         let default_perm = inner_perm();
         DuplexChallenger::<KoalaBear, KoalaPerm, 16, 8>::new(default_perm)
     }
 }
 
-impl BasefoldCudaConfig for Poseidon2Bn254FrBasefoldConfig<KoalaBear> {
+impl BasefoldCudaConfig<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>>
+    for Poseidon2Bn254FrBasefoldConfig<KoalaBear, BinomialExtensionField<KoalaBear, 4>>
+{
     type DeviceChallenger = MultiField32Challenger<KoalaBear, Bn254Fr, OuterPerm, 3, 2>;
 
-    fn default_challenger(_verifier: &BasefoldVerifier<Self>) -> Self::DeviceChallenger {
+    fn default_challenger(
+        _verifier: &BasefoldVerifier<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>, Self>,
+    ) -> Self::DeviceChallenger {
         let default_perm = outer_perm();
 
         MultiField32Challenger::new(default_perm).expect("MultiField32Challenger::new failed")

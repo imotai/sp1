@@ -10,8 +10,9 @@ use csl_tracegen::{CudaTraceGenerator, CudaTracegenAir};
 use csl_zerocheck::ZerocheckEvalProgramProverData;
 use serde::{Deserialize, Serialize};
 use slop_algebra::extension::BinomialExtensionField;
-use slop_jagged::{DefaultJaggedProver, JaggedConfig, JaggedProver, JaggedProverComponents};
-use slop_koala_bear::KoalaBear;
+use slop_challenger::IopCtx;
+use slop_jagged::{DefaultJaggedProver, JaggedProver, JaggedProverComponents};
+use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_hypercube::{
     air::MachineAir,
@@ -20,74 +21,69 @@ use sp1_hypercube::{
     },
     GkrProverImpl, MachineConfig, ShardVerifier,
 };
-use sp1_prover::{components::SP1ProverComponents, CompressAir, InnerSC, OuterSC, WrapAir};
+use sp1_primitives::{SP1GlobalContext, SP1OuterGlobalContext};
+use sp1_prover::{components::SP1ProverComponents, CompressAir, WrapAir};
 
 pub struct CudaSP1ProverComponents;
 
 impl SP1ProverComponents for CudaSP1ProverComponents {
     type CoreComponents = CudaMachineProverComponents<
+        KoalaBearDegree4Duplex,
         Poseidon2KoalaBearJaggedCudaProverComponents,
         RiscvAir<KoalaBear>,
     >;
     type RecursionComponents = CudaMachineProverComponents<
+        KoalaBearDegree4Duplex,
         Poseidon2KoalaBearJaggedCudaProverComponents,
-        CompressAir<<InnerSC as JaggedConfig>::F>,
+        CompressAir<<SP1GlobalContext as IopCtx>::F>,
     >;
     type WrapComponents = CudaMachineProverComponents<
+        SP1OuterGlobalContext,
         Poseidon2Bn254JaggedCudaProverComponents,
-        WrapAir<<OuterSC as JaggedConfig>::F>,
+        WrapAir<<SP1OuterGlobalContext as IopCtx>::F>,
     >;
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct CudaShardProverComponents<PcsComponents, A>(PhantomData<(A, PcsComponents)>);
+pub struct CudaShardProverComponents<GC, PcsComponents, A>(PhantomData<(GC, A, PcsComponents)>);
 
-pub type CudaProver<PcsComponents, A> = ShardProver<CudaShardProverComponents<PcsComponents, A>>;
+pub type CudaProver<GC, PcsComponents, A> =
+    ShardProver<GC, CudaShardProverComponents<GC, PcsComponents, A>>;
 
-impl<JC, A> ShardProverComponents for CudaShardProverComponents<JC, A>
+impl<JC, A, GC> ShardProverComponents<GC> for CudaShardProverComponents<GC, JC, A>
 where
-    JC: JaggedProverComponents<
-        F = KoalaBear,
-        EF = BinomialExtensionField<KoalaBear, 4>,
-        A = TaskScope,
-    >,
-    A: CudaTracegenAir<JC::F> + ZerocheckAir<JC::F, JC::EF> + std::fmt::Debug,
+    GC: IopCtx<F = KoalaBear, EF = BinomialExtensionField<KoalaBear, 4>>,
+    JC: JaggedProverComponents<GC, A = TaskScope>,
+    A: CudaTracegenAir<GC::F> + ZerocheckAir<GC::F, GC::EF> + std::fmt::Debug,
 {
-    type F = JC::F;
-    type EF = JC::EF;
-    type Program = <A as MachineAir<JC::F>>::Program;
-    type Record = <A as MachineAir<JC::F>>::Record;
+    type Program = <A as MachineAir<GC::F>>::Program;
+    type Record = <A as MachineAir<GC::F>>::Record;
     type Air = A;
     type B = TaskScope;
 
-    type Commitment = JC::Commitment;
-
-    type Challenger = JC::Challenger;
-
     type Config = JC::Config;
 
-    type TraceGenerator = CudaTraceGenerator<Self::F, A>;
+    type TraceGenerator = CudaTraceGenerator<GC::F, A>;
 
-    type ZerocheckProverData = ZerocheckEvalProgramProverData<Self::F, Self::EF, A>;
+    type ZerocheckProverData = ZerocheckEvalProgramProverData<GC::F, GC::EF, A>;
 
     type PcsProverComponents = JC;
 
-    type GkrProver =
-        GkrProverImpl<LogupGkrCudaProverComponents<Self::F, Self::EF, A, Self::Challenger>>;
+    type GkrProver = GkrProverImpl<GC, LogupGkrCudaProverComponents<GC, A>>;
 }
 
-pub fn new_cuda_prover_sumcheck_eval<C, Comp, A>(
-    verifier: ShardVerifier<C, A>,
+pub fn new_cuda_prover_sumcheck_eval<GC, C, Comp, A>(
+    verifier: ShardVerifier<GC, C, A>,
     scope: TaskScope,
-) -> CudaProver<Comp, A>
+) -> CudaProver<GC, Comp, A>
 where
-    C: MachineConfig<F = KoalaBear, EF = BinomialExtensionField<KoalaBear, 4>>,
-    Comp: JaggedProverComponents<A = TaskScope, Config = C, F = C::F, EF = C::EF>
-        + DefaultJaggedProver,
-    A: MachineAir<C::F>
-        + CudaTracegenAir<C::F>
+    GC: IopCtx<F = KoalaBear, EF = BinomialExtensionField<KoalaBear, 4>>,
+    C: MachineConfig<GC>,
+    Comp: JaggedProverComponents<GC, A = TaskScope, Config = C> + DefaultJaggedProver<GC>,
+    A: MachineAir<GC::F>
+        + CudaTracegenAir<GC::F>
         + for<'a> BlockAir<SymbolicProverFolder<'a>>
-        + ZerocheckAir<C::F, C::EF>
+        + ZerocheckAir<GC::F, GC::EF>
         + std::fmt::Debug,
 {
     let ShardVerifier { pcs_verifier, machine } = verifier;
@@ -105,25 +101,20 @@ where
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct CudaMachineProverComponents<PcsComponents, A>(PhantomData<(A, PcsComponents)>);
+pub struct CudaMachineProverComponents<GC, PcsComponents, A>(PhantomData<(GC, A, PcsComponents)>);
 
-impl<JC, A> MachineProverComponents for CudaMachineProverComponents<JC, A>
+impl<GC, JC, A> MachineProverComponents<GC> for CudaMachineProverComponents<GC, JC, A>
 where
-    JC: JaggedProverComponents<
-        F = KoalaBear,
-        EF = BinomialExtensionField<KoalaBear, 4>,
-        A = TaskScope,
-    >,
-    A: CudaTracegenAir<JC::F> + ZerocheckAir<JC::F, JC::EF> + std::fmt::Debug,
+    GC: IopCtx<F = KoalaBear, EF = BinomialExtensionField<KoalaBear, 4>>,
+    JC: JaggedProverComponents<GC, A = TaskScope>,
+    A: CudaTracegenAir<GC::F> + ZerocheckAir<GC::F, GC::EF> + std::fmt::Debug,
 {
-    type F = JC::F;
-    type EF = JC::EF;
     type Config = JC::Config;
-    type Prover = ShardProver<CudaShardProverComponents<JC, A>>;
+    type Prover = ShardProver<GC, CudaShardProverComponents<GC, JC, A>>;
     type Air = A;
 
     fn preprocessed_table_heights(
-        pk: Arc<ProvingKey<Self::Config, Self::Air, Self::Prover>>,
+        pk: Arc<ProvingKey<GC, Self::Config, Self::Air, Self::Prover>>,
     ) -> BTreeMap<String, usize> {
         pk.preprocessed_data
             .preprocessed_traces

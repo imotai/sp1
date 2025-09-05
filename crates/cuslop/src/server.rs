@@ -6,6 +6,7 @@ use sp1_cuda::{
     api::{Request, Response},
     client::socket_path,
 };
+use sp1_primitives::SP1GlobalContext;
 use sp1_prover::{local::LocalProver, InnerSC, SP1CoreProof, SP1VerifyingKey};
 use std::collections::HashMap;
 
@@ -194,7 +195,7 @@ impl ConnectionCtx {
         &mut self,
         vk: SP1VerifyingKey,
         proof: SP1CoreProof,
-        deferred_proofs: Vec<SP1RecursionProof<InnerSC>>,
+        deferred_proofs: Vec<SP1RecursionProof<SP1GlobalContext, InnerSC>>,
     ) -> Response {
         tracing::info!("Proving compress");
 
@@ -204,7 +205,10 @@ impl ConnectionCtx {
         }
     }
 
-    pub async fn prove_shrink(&mut self, proof: SP1RecursionProof<InnerSC>) -> Response {
+    pub async fn prove_shrink(
+        &mut self,
+        proof: SP1RecursionProof<SP1GlobalContext, InnerSC>,
+    ) -> Response {
         tracing::info!("Proving shrink");
 
         match self.prover.shrink(proof).await {
@@ -213,7 +217,10 @@ impl ConnectionCtx {
         }
     }
 
-    pub async fn prove_wrap(&mut self, proof: SP1RecursionProof<InnerSC>) -> Response {
+    pub async fn prove_wrap(
+        &mut self,
+        proof: SP1RecursionProof<SP1GlobalContext, InnerSC>,
+    ) -> Response {
         tracing::info!("Proving wrap");
 
         match self.prover.wrap(proof).await {
