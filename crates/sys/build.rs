@@ -25,7 +25,6 @@ fn cbindgen_builder() -> cbindgen::Builder {
         ])
         .with_parse_extra_bindings(&[
             "sp1-hypercube",
-            "sp1-primitives",
             "p3-koala-bear",
             "slop-koala-bear",
             // TODO(tqn) I think this pulls in all the extern fns from this crate, which is undesirable.

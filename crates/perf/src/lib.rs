@@ -40,7 +40,6 @@ pub async fn make_measurement(
     stdin: SP1Stdin,
     stage: Stage,
     t: TaskScope,
-    with_page_protect: bool,
 ) -> Measurement {
     let recursion_cache_size = 5;
     let sp1_prover = SP1CudaProverBuilder::new(t.clone())
@@ -49,10 +48,7 @@ pub async fn make_measurement(
         .without_vk_verification()
         .build()
         .await;
-    let mut opts = local_gpu_opts();
-
-    // Set page_protect to true in core_opts
-    opts.core_opts.page_protect = with_page_protect;
+    let opts = local_gpu_opts();
 
     let prover = Arc::new(LocalProver::new(sp1_prover, opts));
 
