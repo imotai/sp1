@@ -1,1 +1,0 @@
-# Succinct Processor Library
