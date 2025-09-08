@@ -1,0 +1,34 @@
+[package]
+name = "slop-basefold-prover"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+slop-algebra = { workspace = true }
+slop-multilinear = { workspace = true }
+slop-basefold = { workspace = true }
+slop-futures = { workspace = true }
+slop-challenger = { workspace = true }
+slop-dft = { workspace = true }
+slop-commit = { workspace = true }
+slop-tensor = { workspace = true }
+slop-alloc = { workspace = true }
+slop-baby-bear = { workspace = true }
+slop-koala-bear = { workspace = true }
+slop-merkle-tree = { workspace = true }
+slop-fri = { workspace = true }
+slop-bn254 = { workspace = true }
+itertools = "0.12.0"
+rand = "0.8.5"
+serde = { version = "1.0.207", features = ["derive"] }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+derive-where = { workspace = true }
+
+
+[dev-dependencies]
+futures = { workspace = true }
