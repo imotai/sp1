@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use sp1_derive::AlignedBorrow;
-use sp1_hypercube::air::PV_DIGEST_NUM_WORDS;
+use sp1_hypercube::air::{PROOF_NONCE_NUM_WORDS, PV_DIGEST_NUM_WORDS};
 use sp1_primitives::SP1Field;
 use sp1_recursion_compiler::ir::{Builder, Felt};
 use sp1_recursion_executor::{RecursionPublicValues, DIGEST_SIZE, NUM_PV_ELMS_TO_HASH};
@@ -71,6 +71,7 @@ where
         .chain(public_values.committed_value_digest.into_iter().flat_map(|word| word.into_iter()))
         .chain(std::iter::once(public_values.exit_code))
         .chain(public_values.vk_root)
+        .chain(public_values.proof_nonce)
         .collect::<Vec<_>>();
     H::poseidon2_hash(builder, &input)
 }
@@ -103,5 +104,10 @@ impl<T> RootPublicValues<T> {
     #[inline]
     pub const fn vk_root(&self) -> &[T; DIGEST_SIZE] {
         &self.inner.vk_root
+    }
+
+    #[inline]
+    pub const fn proof_nonce(&self) -> &[T; PROOF_NONCE_NUM_WORDS] {
+        &self.inner.proof_nonce
     }
 }

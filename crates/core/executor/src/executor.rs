@@ -201,6 +201,9 @@ pub struct Executor<'a> {
 
     /// Decoded instruction events.
     decoded_instruction_events: HashMap<u32, InstructionDecodeEvent>,
+
+    /// The proof nonce.
+    proof_nonce: [u32; 4],
 }
 
 /// The configuration of the executor.
@@ -477,6 +480,7 @@ impl<'a> Executor<'a> {
             decoded_instruction_cache: HashMap::new(),
             decoded_instruction_events: HashMap::new(),
             opts,
+            proof_nonce: context.proof_nonce,
         }
     }
 
@@ -2593,6 +2597,8 @@ impl<'a> Executor<'a> {
         // Set is_untrusted_program_enabled from the enable_untrusted_programs option.
         self.record.public_values.is_untrusted_programs_enabled =
             self.program.enable_untrusted_programs as u32;
+
+        self.record.public_values.proof_nonce = self.proof_nonce;
 
         if self.record.contains_cpu() {
             self.record.public_values.pc_start = self.record.pc_start.unwrap();

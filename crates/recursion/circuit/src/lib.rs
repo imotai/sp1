@@ -36,6 +36,8 @@ pub mod zerocheck;
 pub const D: usize = 4;
 use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
 
+use crate::utils::felt_proof_nonce_to_bn254_var;
+
 pub type Digest<C, SC> = <SC as FieldHasherVariable<C>>::DigestVariable;
 
 pub type InnerSC = SP1CoreJaggedConfig;
@@ -860,5 +862,9 @@ impl<C: CircuitConfig<N = Bn254Fr, Bit = Var<Bn254Fr>>> SP1FieldConfigVariable<C
 
         let vk_root: Var<_> = felts_to_bn254_var(builder, &public_values.vk_root);
         builder.commit_vk_root_circuit(vk_root);
+
+        let proof_nonce: Var<_> =
+            felt_proof_nonce_to_bn254_var(builder, &public_values.proof_nonce);
+        builder.commit_proof_nonce_circuit(proof_nonce);
     }
 }

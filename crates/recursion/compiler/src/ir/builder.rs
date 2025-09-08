@@ -473,6 +473,10 @@ impl<C: Config> Builder<C> {
         self.push_op(DslIr::CircuitCommitExitCode(var));
     }
 
+    pub fn commit_proof_nonce_circuit(&mut self, var: Var<C::N>) {
+        self.push_op(DslIr::CircuitCommitProofNonce(var));
+    }
+
     pub fn commit_vk_root_circuit(&mut self, var: Var<C::N>) {
         self.push_op(DslIr::CircuitCommitVkRoot(var));
     }

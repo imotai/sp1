@@ -49,8 +49,9 @@ impl CudaProver {
         &self,
         key: &CudaProvingKey,
         stdin: SP1Stdin,
+        proof_nonce: [u32; 4],
     ) -> Result<SP1CoreProof, CudaClientError> {
-        self.client.core(key, stdin).await
+        self.client.core(key, stdin, proof_nonce).await
     }
 
     pub async fn compress(

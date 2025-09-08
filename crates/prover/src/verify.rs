@@ -220,6 +220,22 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             prev_exit_code = public_values.exit_code;
         }
 
+        // Proof nonce constraints.
+        //
+        // Proof nonce value should be same across all shards
+        let public_values_first_shard: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
+            proof.0.first().unwrap().public_values.as_slice().borrow();
+        let proof_nonce_first_shard = public_values_first_shard.proof_nonce;
+        for shard_proof in proof.0[1..].iter() {
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
+                shard_proof.public_values.as_slice().borrow();
+            if public_values.proof_nonce != proof_nonce_first_shard {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "proof_nonce != proof_nonce_first_shard",
+                ));
+            }
+        }
+
         // Memory initialization & finalization constraints.
         //
         // Initialization:
@@ -270,6 +286,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                     "public_values.is_untrusted_programs_enabled != vk.enable_untrusted_programs",
                 ));
             }
+
             last_init_addr_prev = public_values.last_init_addr;
             last_finalize_addr_prev = public_values.last_finalize_addr;
             last_init_page_idx_prev = public_values.last_init_page_idx;
@@ -558,6 +575,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let committed_values_digest = BigUint::from_str(&proof.public_inputs[1])?;
         let exit_code = BigUint::from_str(&proof.public_inputs[2])?;
         let vk_root = BigUint::from_str(&proof.public_inputs[3])?;
+        let proof_nonce = BigUint::from_str(&proof.public_inputs[4])?;
 
         // Verify the proof with the corresponding public inputs.
         prover.verify(
@@ -566,6 +584,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             &committed_values_digest,
             &exit_code,
             &vk_root,
+            &proof_nonce,
             build_dir,
         )?;
 
@@ -588,6 +607,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let committed_values_digest = BigUint::from_str(&proof.public_inputs[1])?;
         let exit_code = BigUint::from_str(&proof.public_inputs[2])?;
         let vk_root = BigUint::from_str(&proof.public_inputs[3])?;
+        let proof_nonce = BigUint::from_str(&proof.public_inputs[4])?;
 
         // Verify the proof with the corresponding public inputs.
         prover.verify(
@@ -596,6 +616,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             &committed_values_digest,
             &exit_code,
             &vk_root,
+            &proof_nonce,
             build_dir,
         )?;
 

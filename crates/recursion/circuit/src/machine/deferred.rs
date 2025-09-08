@@ -13,7 +13,7 @@ use crate::machine::{
 use slop_air::Air;
 use slop_algebra::AbstractField;
 use sp1_hypercube::{
-    air::{MachineAir, POSEIDON_NUM_WORDS},
+    air::{MachineAir, POSEIDON_NUM_WORDS, PROOF_NONCE_NUM_WORDS},
     septic_curve::SepticCurve,
     septic_digest::SepticDigest,
     MachineConfig, MachineVerifyingKey, ShardProof,
@@ -57,6 +57,7 @@ pub struct SP1DeferredWitnessValues<
     pub start_reconstruct_deferred_digest: [GC::F; POSEIDON_NUM_WORDS],
     pub sp1_vk_digest: [GC::F; DIGEST_SIZE],
     pub end_pc: [GC::F; 3],
+    pub proof_nonce: [GC::F; PROOF_NONCE_NUM_WORDS],
 }
 
 #[allow(clippy::type_complexity)]
@@ -72,6 +73,7 @@ pub struct SP1DeferredWitnessVariable<
     pub start_reconstruct_deferred_digest: [Felt<SP1Field>; POSEIDON_NUM_WORDS],
     pub sp1_vk_digest: [Felt<SP1Field>; DIGEST_SIZE],
     pub end_pc: [Felt<SP1Field>; 3],
+    pub proof_nonce: [Felt<SP1Field>; PROOF_NONCE_NUM_WORDS],
 }
 
 impl<GC, C, SC, A, JC> SP1DeferredVerifier<GC, C, SC, A, JC>
@@ -116,6 +118,7 @@ where
             start_reconstruct_deferred_digest,
             sp1_vk_digest,
             end_pc,
+            proof_nonce,
         } = input;
 
         // First, verify the merkle tree proofs.
@@ -229,6 +232,7 @@ where
         deferred_public_values.end_reconstruct_deferred_digest = reconstruct_deferred_digest;
         // Set the is_complete flag.
         deferred_public_values.is_complete = zero;
+        deferred_public_values.proof_nonce = proof_nonce;
         // Set the cumulative sum to zero.
         deferred_public_values.global_cumulative_sum =
             SepticDigest(SepticCurve::convert(SepticDigest::<SP1Field>::zero().0, |value| {

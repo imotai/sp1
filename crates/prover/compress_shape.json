@@ -1,7 +1,7 @@
 {
   "shape": {
     "heights": {
-      "BaseAlu": 397824,
+      "BaseAlu": 397856,
       "ExtAlu": 978816,
       "MemoryConst": 341312,
       "MemoryVar": 430624,

@@ -217,6 +217,7 @@ where
             recursion_public_values.prev_commit_deferred_syscall =
                 public_values.prev_commit_deferred_syscall;
             recursion_public_values.commit_deferred_syscall = public_values.commit_deferred_syscall;
+            recursion_public_values.proof_nonce = public_values.proof_nonce;
 
             // Calculate the digest and set it in the public values.
             recursion_public_values.digest =

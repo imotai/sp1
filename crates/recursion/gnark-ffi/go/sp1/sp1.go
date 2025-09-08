@@ -30,6 +30,7 @@ type Circuit struct {
 	CommittedValuesDigest frontend.Variable `gnark:",public"`
 	ExitCode              frontend.Variable `gnark:",public"`
 	VkRoot                frontend.Variable `gnark:",public"`
+	ProofNonce            frontend.Variable `gnark:",public"`
 	Vars                  []frontend.Variable
 	Felts                 []koalabear.Variable
 	Exts                  []koalabear.ExtensionVariable
@@ -48,10 +49,11 @@ type WitnessInput struct {
 	CommittedValuesDigest string     `json:"committed_values_digest"`
 	ExitCode              string     `json:"exit_code"`
 	VkRoot                string     `json:"vk_root"`
+	ProofNonce            string     `json:"proof_nonce"`
 }
 
 type Proof struct {
-	PublicInputs [4]string `json:"public_inputs"`
+	PublicInputs [5]string `json:"public_inputs"`
 	EncodedProof string    `json:"encoded_proof"`
 	RawProof     string    `json:"raw_proof"`
 }
@@ -226,6 +228,9 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		case "CommitExitCode":
 			element := vars[cs.Args[0][0]]
 			api.AssertIsEqual(circuit.ExitCode, element)
+		case "CommitProofNonce":
+			element := vars[cs.Args[0][0]]
+			api.AssertIsEqual(circuit.ProofNonce, element)
 		case "CommitVkRoot":
 			element := vars[cs.Args[0][0]]
 			api.AssertIsEqual(circuit.VkRoot, element)

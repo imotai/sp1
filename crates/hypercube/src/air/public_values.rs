@@ -18,6 +18,9 @@ pub const PV_DIGEST_NUM_WORDS: usize = 8;
 /// The number of field elements in the poseidon2 digest.
 pub const POSEIDON_NUM_WORDS: usize = 8;
 
+/// The number of 32 bit words in the SP1 proof's proof nonce.
+pub const PROOF_NONCE_NUM_WORDS: usize = 4;
+
 /// Stores all of a shard proof's public values.
 #[derive(Serialize, Deserialize, Clone, Copy, Default, Debug, DeepSizeOf)]
 #[repr(C)]
@@ -137,8 +140,11 @@ pub struct PublicValues<W1, W2, W3, T> {
     /// instructions from memory during runtime and checking/setting page permissions.
     pub is_untrusted_programs_enabled: T,
 
+    /// The nonce used for this proof.
+    pub proof_nonce: [T; PROOF_NONCE_NUM_WORDS],
+
     /// This field is here to ensure that the size of the public values struct is a multiple of 8.
-    pub empty: [T; 0],
+    pub empty: [T; 4],
 }
 
 impl PublicValues<u32, u64, u64, u32> {
@@ -249,6 +255,7 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             prev_commit_deferred_syscall,
             commit_deferred_syscall,
             is_untrusted_programs_enabled,
+            proof_nonce,
             initial_timestamp_inv,
             last_timestamp_inv,
             is_first_shard,
@@ -360,6 +367,9 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
         let is_first_shard = F::from_canonical_u32(is_first_shard);
         let is_untrusted_programs_enabled = F::from_canonical_u32(is_untrusted_programs_enabled);
 
+        let proof_nonce: [_; PROOF_NONCE_NUM_WORDS] =
+            core::array::from_fn(|i| F::from_canonical_u32(proof_nonce[i]));
+
         Self {
             prev_committed_value_digest,
             committed_value_digest,
@@ -398,6 +408,7 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             initial_timestamp_inv,
             last_timestamp_inv,
             is_first_shard,
+            proof_nonce,
             empty: core::array::from_fn(|_| F::zero()),
         }
     }

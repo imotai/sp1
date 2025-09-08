@@ -59,6 +59,7 @@ pub struct Witness<C: Config> {
     pub vkey_hash: C::N,
     pub committed_values_digest: C::N,
     pub exit_code: C::N,
+    pub proof_nonce: C::N,
     pub vk_root: C::N,
 }
 
@@ -85,6 +86,11 @@ impl<C: Config> Witness<C> {
     pub fn write_vk_root(&mut self, vk_root: C::N) {
         self.vars.push(vk_root);
         self.vk_root = vk_root;
+    }
+
+    pub fn write_proof_nonce(&mut self, proof_nonce: C::N) {
+        self.vars.push(proof_nonce);
+        self.proof_nonce = proof_nonce;
     }
 }
 

@@ -15,6 +15,7 @@ pub struct GnarkWitness {
     pub committed_values_digest: String,
     pub exit_code: String,
     pub vk_root: String,
+    pub proof_nonce: String,
 }
 
 impl GnarkWitness {
@@ -47,6 +48,7 @@ impl GnarkWitness {
                 .to_string(),
             exit_code: witness.exit_code.as_canonical_biguint().to_string(),
             vk_root: witness.vk_root.as_canonical_biguint().to_string(),
+            proof_nonce: witness.proof_nonce.as_canonical_biguint().to_string(),
         }
     }
 

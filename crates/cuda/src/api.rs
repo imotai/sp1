@@ -10,7 +10,7 @@ pub enum Request {
     /// Tell the server to create a new proving key.
     Setup { elf: Vec<u8> },
     /// Tell the server to create a core proof.
-    Core { key: [u8; 32], stdin: SP1Stdin },
+    Core { key: [u8; 32], stdin: SP1Stdin, proof_nonce: [u32; 4] },
     /// Tell the server to create a compress proof.
     Compress {
         vk: SP1VerifyingKey,

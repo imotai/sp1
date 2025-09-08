@@ -121,6 +121,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
                         state.is_execution_shard = 1;
                         state.is_untrusted_programs_enabled =
                             record.public_values.is_untrusted_programs_enabled;
+                        state.proof_nonce = context.proof_nonce;
                         state.pc_start = record.public_values.pc_start;
                         state.next_pc = record.public_values.next_pc;
                         state.initial_timestamp = record.public_values.initial_timestamp;
@@ -298,7 +299,12 @@ impl<F: PrimeField32> MachineExecutor<F> {
 
         // Initialize the record generation state.
         let record_gen_sync = AsyncTurn::new();
-        let state = Arc::new(Mutex::new(PublicValues::<u32, u64, u64, u32>::default().reset()));
+        let mut initial_state = PublicValues::<u32, u64, u64, u32>::default().reset();
+
+        // Set the proof nonce from the context
+        initial_state.proof_nonce = context.proof_nonce;
+
+        let state = Arc::new(Mutex::new(initial_state));
         let deferred = Arc::new(Mutex::new(ExecutionRecord::new(program.clone())));
         let record_worker_channels = Arc::new(WorkerQueue::new(record_worker_channels));
 

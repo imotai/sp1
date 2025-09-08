@@ -285,6 +285,9 @@ impl ExecutionRecord {
                     init_remaining = &init_remaining[init_to_take..];
                     finalize_remaining = &finalize_remaining[finalize_to_take..];
 
+                    // Ensure last record has same proof nonce as other shards
+                    last_record_ref.public_values.proof_nonce = self.public_values.proof_nonce;
+
                     if !pack_memory_events_into_last_record {
                         // If not packing memory events into the last record, add 'last_record_ref'
                         // to the returned records. `take` replaces `blank_program` with the

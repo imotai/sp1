@@ -386,6 +386,10 @@ impl<C: Config + Debug> ConstraintCompiler<C> {
                     opcode: ConstraintOpcode::CommitExitCode,
                     args: vec![vec![a.id()]],
                 }),
+                DslIr::CircuitCommitProofNonce(a) => constraints.push(Constraint {
+                    opcode: ConstraintOpcode::CommitProofNonce,
+                    args: vec![vec![a.id()]],
+                }),
                 DslIr::CircuitCommitVkRoot(a) => constraints.push(Constraint {
                     opcode: ConstraintOpcode::CommitVkRoot,
                     args: vec![vec![a.id()]],

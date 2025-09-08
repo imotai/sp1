@@ -47,8 +47,9 @@ impl CudaClient {
         &self,
         key: &CudaProvingKey,
         stdin: SP1Stdin,
+        proof_nonce: [u32; 4],
     ) -> Result<SP1CoreProof, CudaClientError> {
-        let request = Request::Core { key: key.id(), stdin };
+        let request = Request::Core { key: key.id(), stdin, proof_nonce };
         let response = self.send_and_recv(request).await?.into_result()?;
 
         match response {

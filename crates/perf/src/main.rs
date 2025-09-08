@@ -162,7 +162,7 @@ async fn main() {
             let cycles = report.expect("execution failed").2.total_instruction_count();
 
             let (core_proof, prove_core_duration) = time_operation_fut(|| async {
-                server.core(&cuda_pk, stdin.clone()).await.unwrap()
+                server.core(&cuda_pk, stdin.clone(), [0, 0, 0, 0]).await.unwrap()
             })
             .await;
 

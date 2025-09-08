@@ -12,7 +12,7 @@ use slop_jagged::JaggedConfig;
 use sp1_core_executor::SP1RecursionProof;
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_hypercube::{
-    air::{MachineAir, POSEIDON_NUM_WORDS},
+    air::{MachineAir, POSEIDON_NUM_WORDS, PROOF_NONCE_NUM_WORDS},
     inner_perm,
     prover::{MachineProver, MachineProverComponents, MachineProvingKey},
     Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
@@ -899,6 +899,7 @@ pub(crate) fn dummy_deferred_input<C: RecursionProverComponents>(
         start_reconstruct_deferred_digest: [SP1Field::zero(); POSEIDON_NUM_WORDS],
         sp1_vk_digest: [SP1Field::zero(); DIGEST_SIZE],
         end_pc: [SP1Field::zero(); 3],
+        proof_nonce: [SP1Field::zero(); PROOF_NONCE_NUM_WORDS],
     }
 }
 

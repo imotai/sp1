@@ -129,6 +129,7 @@ fn verify(
     committed_values_digest: &str,
     exit_code: &str,
     vk_root: &str,
+    proof_nonce: &str,
 ) -> Result<()> {
     let mut proof_file = tempfile::NamedTempFile::new()?;
     proof_file.write_all(proof.as_bytes())?;
@@ -149,6 +150,7 @@ fn verify(
             vkey_hash,
             committed_values_digest,
             exit_code,
+            proof_nonce,
             vk_root,
             "/output",
         ],
@@ -169,6 +171,7 @@ pub fn verify_plonk_bn254(
     committed_values_digest: &str,
     exit_code: &str,
     vk_root: &str,
+    proof_nonce: &str,
 ) -> Result<()> {
     verify(
         ProofSystem::Plonk,
@@ -177,6 +180,7 @@ pub fn verify_plonk_bn254(
         vkey_hash,
         committed_values_digest,
         exit_code,
+        proof_nonce,
         vk_root,
     )
 }
@@ -188,6 +192,7 @@ pub fn verify_groth16_bn254(
     committed_values_digest: &str,
     exit_code: &str,
     vk_root: &str,
+    proof_nonce: &str,
 ) -> Result<()> {
     verify(
         ProofSystem::Groth16,
@@ -197,6 +202,7 @@ pub fn verify_groth16_bn254(
         committed_values_digest,
         exit_code,
         vk_root,
+        proof_nonce,
     )
 }
 

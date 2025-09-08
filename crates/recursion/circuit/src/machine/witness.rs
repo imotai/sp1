@@ -157,6 +157,7 @@ where
             self.start_reconstruct_deferred_digest.read(builder);
         let sp1_vk_digest = self.sp1_vk_digest.read(builder);
         let end_pc = self.end_pc.read(builder);
+        let proof_nonce = self.proof_nonce.read(builder);
 
         SP1DeferredWitnessVariable {
             vks_and_proofs,
@@ -164,6 +165,7 @@ where
             start_reconstruct_deferred_digest,
             sp1_vk_digest,
             end_pc,
+            proof_nonce,
         }
     }
 
@@ -173,6 +175,7 @@ where
         self.start_reconstruct_deferred_digest.write(witness);
         self.sp1_vk_digest.write(witness);
         self.end_pc.write(witness);
+        self.proof_nonce.write(witness);
     }
 }
 

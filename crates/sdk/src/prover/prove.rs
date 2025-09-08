@@ -189,6 +189,19 @@ where
         self.base().expected_exit_code(code);
         self
     }
+
+    /// Set the proof nonce for this execution.
+    ///
+    /// The nonce ensures each proof is unique even for identical programs and inputs.
+    /// If not provided, will default to 0.
+    ///
+    /// # Arguments
+    /// * `nonce` - A 4-element array representing 128 bits of nonce data.
+    #[must_use]
+    fn with_proof_nonce(mut self, nonce: [u32; 4]) -> Self {
+        self.base().context_builder.proof_nonce(nonce);
+        self
+    }
 }
 
 /// The base prove request for a prover.
@@ -257,5 +270,9 @@ impl<'a, P: Prover> BaseProveRequest<'a, P> {
     /// See [`ProveRequest::expected_exit_code`].
     pub fn expected_exit_code(&mut self, code: StatusCode) {
         self.context_builder.expected_exit_code(code);
+    }
+
+    pub fn with_nonce(&mut self, nonce: [u32; 4]) {
+        self.context_builder.proof_nonce(nonce);
     }
 }

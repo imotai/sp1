@@ -65,7 +65,7 @@ impl CudaProver {
         &self,
         pk: &CudaProvingKey,
         stdin: SP1Stdin,
-        _context: SP1Context<'static>,
+        context: SP1Context<'static>,
         mode: SP1ProofMode,
     ) -> Result<SP1ProofWithPublicValues, CudaClientError> {
         // Collect the deferred proofs
@@ -73,7 +73,8 @@ impl CudaProver {
             stdin.proofs.iter().map(|(reduce_proof, _)| reduce_proof.clone()).collect();
 
         // Generate the core proof.
-        let proof: SP1ProofWithMetadata<SP1CoreProofData> = self.prover.core(pk, stdin).await?;
+        let proof: SP1ProofWithMetadata<SP1CoreProofData> =
+            self.prover.core(pk, stdin, context.proof_nonce).await?;
         if mode == SP1ProofMode::Core {
             return Ok(SP1ProofWithPublicValues::new(
                 SP1Proof::Core(proof.proof.0),

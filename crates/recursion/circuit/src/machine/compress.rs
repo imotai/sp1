@@ -162,6 +162,8 @@ where
         let mut commit_deferred_syscall: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut contains_first_shard: Felt<_> = builder.eval(SP1Field::zero());
         let mut num_included_shard: Felt<_> = builder.eval(SP1Field::zero());
+        let mut proof_nonce: [Felt<_>; 4] =
+            array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
 
         // Verify the shard proofs.
         // Verification of proofs can be done in parallel but the aggregation/consistency checks
@@ -288,6 +290,10 @@ where
                 // Initialize the sp1_vk digest
                 compress_public_values.sp1_vk_digest = current_public_values.sp1_vk_digest;
                 sp1_vk_digest = current_public_values.sp1_vk_digest;
+
+                // Initialize the proof nonce.
+                compress_public_values.proof_nonce = current_public_values.proof_nonce;
+                proof_nonce = current_public_values.proof_nonce;
             }
 
             // Assert that the current values match the accumulated values and update them.
@@ -387,6 +393,13 @@ where
             for (digest, current) in sp1_vk_digest.iter().zip(current_public_values.sp1_vk_digest) {
                 builder.assert_felt_eq(*digest, current);
             }
+
+            // Assert that the `proof_nonce` is equal to the current one, then update.
+            for (limb, current_limb) in
+                proof_nonce.iter().zip(current_public_values.proof_nonce.iter())
+            {
+                builder.assert_felt_eq(*limb, *current_limb);
+            }
         }
 
         // Range check the accumulated number of included shards.
@@ -438,6 +451,7 @@ where
         compress_public_values.commit_syscall = commit_syscall;
         // Set the `commit_deferred_syscall` flag.
         compress_public_values.commit_deferred_syscall = commit_deferred_syscall;
+        compress_public_values.proof_nonce = proof_nonce;
         // Set the digest according to the previous values.
         compress_public_values.digest = match kind {
             PublicValuesOutputDigest::Reduce => {

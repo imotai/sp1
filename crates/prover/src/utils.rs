@@ -5,6 +5,8 @@ use std::{
     sync::Arc,
 };
 
+use rand::{rngs::OsRng, RngCore};
+
 use itertools::Itertools;
 use slop_symmetric::CryptographicHasher;
 use sp1_core_executor::{Executor, Program, SP1CoreOpts};
@@ -32,6 +34,7 @@ pub fn root_public_values_digest(public_values: &RootPublicValues<SP1Field>) -> 
         )
         .chain(once(*public_values.exit_code()))
         .chain(*public_values.vk_root())
+        .chain(*public_values.proof_nonce())
         .collect::<Vec<_>>();
     hasher.hash_slice(&input)
 }
@@ -147,4 +150,17 @@ impl<I: Iterator> Iterator for RangedIterator<I> {
             RangedIterator::Range(range) => range.next(),
         }
     }
+}
+
+/// Generate a 128-bit nonce using OsRng.
+pub fn generate_nonce() -> [u32; 4] {
+    let mut bytes = [0u8; 16];
+    OsRng.fill_bytes(&mut bytes);
+
+    [
+        u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
+        u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+        u32::from_be_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]),
+        u32::from_be_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]),
+    ]
 }

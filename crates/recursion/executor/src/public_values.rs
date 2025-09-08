@@ -3,7 +3,11 @@ use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 use sp1_core_machine::utils::indices_arr;
 use sp1_derive::AlignedBorrow;
-use sp1_hypercube::{air::POSEIDON_NUM_WORDS, septic_digest::SepticDigest, PROOF_MAX_NUM_PVS};
+use sp1_hypercube::{
+    air::{POSEIDON_NUM_WORDS, PROOF_NONCE_NUM_WORDS},
+    septic_digest::SepticDigest,
+    PROOF_MAX_NUM_PVS,
+};
 use static_assertions::const_assert_eq;
 use std::{
     borrow::BorrowMut,
@@ -127,6 +131,9 @@ pub struct RecursionPublicValues<T> {
 
     /// The digest of all the previous public values elements.
     pub digest: [T; DIGEST_SIZE],
+
+    /// The nonce used for this proof.
+    pub proof_nonce: [T; PROOF_NONCE_NUM_WORDS],
 }
 
 /// Converts the public values to an array of elements.

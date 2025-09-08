@@ -98,6 +98,7 @@ impl PlonkBn254Prover {
 
     /// Verify a PLONK proof and verify that the supplied vkey_hash and committed_values_digest
     /// match.
+    #[allow(clippy::too_many_arguments)]
     pub fn verify(
         &self,
         proof: &PlonkBn254Proof,
@@ -105,6 +106,7 @@ impl PlonkBn254Prover {
         committed_values_digest: &BigUint,
         exit_code: &BigUint,
         vk_root: &BigUint,
+        proof_nonce: &BigUint,
         build_dir: &Path,
     ) -> Result<()> {
         if proof.plonk_vkey_hash != Self::get_vkey_hash(build_dir) {
@@ -121,6 +123,7 @@ impl PlonkBn254Prover {
             &committed_values_digest.to_string(),
             &exit_code.to_string(),
             &vk_root.to_string(),
+            &proof_nonce.to_string(),
         )
         .map_err(|e| anyhow::anyhow!("failed to verify proof: {}", e))
     }

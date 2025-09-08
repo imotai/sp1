@@ -9,7 +9,7 @@ use sp1_primitives::{SP1Field, SP1OuterGlobalContext};
 use sp1_recursion_circuit::{
     hash::FieldHasherVariable,
     machine::{SP1ShapedWitnessValues, SP1WrapVerifier},
-    utils::{koalabear_bytes_to_bn254, koalabears_to_bn254},
+    utils::{koalabear_bytes_to_bn254, koalabears_proof_nonce_to_bn254, koalabears_to_bn254},
 };
 use sp1_recursion_compiler::{
     config::OuterConfig,
@@ -141,7 +141,7 @@ pub fn build_constraints_and_witness(
     let committed_values_digest = koalabear_bytes_to_bn254(&committed_values_digest_bytes);
     let exit_code = Bn254Fr::from_canonical_u32(pv.exit_code.as_canonical_u32());
     let vk_root = koalabears_to_bn254(&pv.vk_root);
-
+    let proof_nonce = koalabears_proof_nonce_to_bn254(&pv.proof_nonce);
     tracing::info!("building template witness");
     let mut witness = OuterWitness::default();
     template_input.write(&mut witness);
@@ -149,6 +149,7 @@ pub fn build_constraints_and_witness(
     witness.write_vkey_hash(vkey_hash);
     witness.write_exit_code(exit_code);
     witness.write_vk_root(vk_root);
+    witness.write_proof_nonce(proof_nonce);
     (constraints, witness)
 }
 

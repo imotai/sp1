@@ -314,7 +314,9 @@ pub enum DslIr<C: Config> {
     /// Asserts that the inputted var is equal the circuit's vk root public input. Should only be
     /// used when target is a gnark circuit.
     CircuitCommitVkRoot(Var<C::N>),
-
+    /// Asserts that the inputted var is equal the circuit's proof nonce public input. Should only
+    /// be used when target is a gnark circuit.
+    CircuitCommitProofNonce(Var<C::N>),
     /// Adds two elliptic curve points. (sum, point_1, point_2).
     CircuitV2HintAddCurve(
         Box<(

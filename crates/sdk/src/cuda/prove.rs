@@ -35,6 +35,7 @@ impl<'a> IntoFuture for CudaProveRequest<'a> {
 
     fn into_future(self) -> Self::IntoFuture {
         let BaseProveRequest { prover, pk, stdin, mode, mut context_builder } = self.base;
+
         let context = context_builder.build();
 
         Box::pin(prover.prove_impl(pk, stdin, context, mode))

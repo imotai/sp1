@@ -18,7 +18,10 @@ use sp1_hypercube::{
 use sp1_primitives::{io::SP1PublicValues, SP1Field, SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_recursion_circuit::{
     machine::{SP1DeferredWitnessValues, SP1NormalizeWitnessValues, SP1ShapedWitnessValues},
-    utils::{koalabear_bytes_to_bn254, koalabears_to_bn254, words_to_bytes},
+    utils::{
+        koalabear_bytes_to_bn254, koalabears_proof_nonce_to_bn254, koalabears_to_bn254,
+        words_to_bytes,
+    },
     witness::{OuterWitness, Witnessable},
     InnerSC,
 };
@@ -120,6 +123,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         context.subproof_verifier = Some(self.clone());
         let opts = self.executor.opts().clone();
         let program = Arc::new(Program::from(elf).unwrap());
+
         let mut runtime = Executor::with_context(program, opts, context);
         runtime.maybe_setup_profiler(elf);
 
@@ -227,7 +231,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             Result::<_, SP1ProverError>::Ok(shard_proofs)
         }.in_current_span());
 
-        // Run the machine executor.
+        // Run the machine executor with the generated nonce.
         let prover = self.clone();
         let inputs = stdin.clone();
         let output = tokio::spawn(
@@ -485,12 +489,14 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         let committed_values_digest = koalabear_bytes_to_bn254(&committed_values_digest_bytes);
         let exit_code = Bn254Fr::from_canonical_u32(pv.exit_code.as_canonical_u32());
         let vk_root = koalabears_to_bn254(&pv.vk_root);
+        let proof_nonce = koalabears_proof_nonce_to_bn254(&pv.proof_nonce);
         let mut witness = OuterWitness::default();
         input.write(&mut witness);
         witness.write_committed_values_digest(committed_values_digest);
         witness.write_vkey_hash(vkey_hash);
         witness.write_exit_code(exit_code);
         witness.write_vk_root(vk_root);
+        witness.write_proof_nonce(proof_nonce);
         let prover = PlonkBn254Prover::new();
         let proof = prover.prove(witness, build_dir.to_path_buf());
 
@@ -502,6 +508,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 &committed_values_digest.as_canonical_biguint(),
                 &exit_code.as_canonical_biguint(),
                 &vk_root.as_canonical_biguint(),
+                &proof_nonce.as_canonical_biguint(),
                 build_dir,
             )
             .expect("Failed to verify proof");
@@ -528,6 +535,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
         let committed_values_digest = koalabear_bytes_to_bn254(&committed_values_digest_bytes);
         let exit_code = Bn254Fr::from_canonical_u32(pv.exit_code.as_canonical_u32());
+        let proof_nonce = koalabears_proof_nonce_to_bn254(&pv.proof_nonce);
         let vk_root = koalabears_to_bn254(&pv.vk_root);
         let mut witness = OuterWitness::default();
         input.write(&mut witness);
@@ -535,6 +543,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         witness.write_vkey_hash(vkey_hash);
         witness.write_exit_code(exit_code);
         witness.write_vk_root(vk_root);
+        witness.write_proof_nonce(proof_nonce);
         let prover = Groth16Bn254Prover::new();
         let proof = prover.prove(witness, build_dir.to_path_buf());
 
@@ -546,6 +555,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 &committed_values_digest.as_canonical_biguint(),
                 &exit_code.as_canonical_biguint(),
                 &vk_root.as_canonical_biguint(),
+                &proof_nonce.as_canonical_biguint(),
                 build_dir,
             )
             .expect("Failed to verify wrap proof");
@@ -562,8 +572,14 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         deferred_proofs: &[SP1RecursionProof<SP1GlobalContext, InnerSC>],
         batch_size: usize,
     ) -> Vec<SP1CircuitWitness> {
+        // We arbitrarily grab the page prot and nonce values from the first shard because it should
+        // be the same for all shards.
+        let pv: &RecursionPublicValues<SP1Field> =
+            shard_proofs[0].public_values.as_slice().borrow();
+        let proof_nonce = pv.proof_nonce;
+
         let (deferred_inputs, deferred_digest) =
-            self.get_deferred_inputs(&vk.vk, deferred_proofs, batch_size);
+            self.get_deferred_inputs(&vk.vk, deferred_proofs, batch_size, proof_nonce);
 
         let is_complete = shard_proofs.len() == 1 && deferred_proofs.is_empty();
         let core_inputs = self.get_normalize_witnesses(
@@ -586,12 +602,14 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         vk: &'a MachineVerifyingKey<SP1GlobalContext, CoreSC>,
         deferred_proofs: &[SP1RecursionProof<SP1GlobalContext, InnerSC>],
         batch_size: usize,
+        proof_nonce: [SP1Field; 4],
     ) -> (Vec<SP1DeferredWitnessValues<SP1GlobalContext, InnerSC>>, [SP1Field; 8]) {
         self.get_deferred_inputs_with_initial_digest(
             vk,
             deferred_proofs,
             [SP1Field::zero(); 8],
             batch_size,
+            proof_nonce,
         )
     }
 
@@ -601,6 +619,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         deferred_proofs: &[SP1RecursionProof<SP1GlobalContext, InnerSC>],
         initial_deferred_digest: [SP1Field; 8],
         batch_size: usize,
+        proof_nonce: [SP1Field; 4],
     ) -> (Vec<SP1DeferredWitnessValues<SP1GlobalContext, InnerSC>>, [SP1Field; 8]) {
         // Prepare the inputs for the deferred proofs recursive verification.
         let mut deferred_digest = initial_deferred_digest;
@@ -619,6 +638,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                 start_reconstruct_deferred_digest: deferred_digest,
                 sp1_vk_digest: vk.hash_koalabear(),
                 end_pc: vk.pc_start,
+                proof_nonce,
             });
 
             deferred_digest = SP1RecursionProver::<C>::hash_deferred_proofs(deferred_digest, batch);
