@@ -1,0 +1,23 @@
+# [package]
+# name = "slop-adapter-prover"
+# serde = "1.0"
+# version.workspace = true
+# edition.workspace = true
+# license.workspace = true
+# repository.workspace = true
+# keywords.workspace = true
+# categories.workspace = true
+
+# [dependencies]
+# slop-algebra = { workspace = true}
+# slop-multilinear = { workspace = true }
+# slop-utils = { workspace = true }
+# slop-multivariate-adapter = { workspace = true }
+
+# itertools = "0.12.0"
+# rand = "0.8.5"
+# rayon = "1.5.1"
+# tracing = "0.1.40"
+
+
+# [dev-dependencies]

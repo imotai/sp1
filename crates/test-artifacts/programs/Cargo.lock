@@ -2608,8 +2608,7 @@ checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 
 [[package]]
 name = "slop-algebra"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-field",
  "serde",
@@ -2617,8 +2616,7 @@ dependencies = [
 
 [[package]]
 name = "slop-bn254"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-bn254-fr",
  "serde",
@@ -2630,8 +2628,7 @@ dependencies = [
 
 [[package]]
 name = "slop-challenger"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "futures",
  "p3-challenger",
@@ -2642,8 +2639,7 @@ dependencies = [
 
 [[package]]
 name = "slop-koala-bear"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "lazy_static",
  "p3-koala-bear",
@@ -2655,16 +2651,14 @@ dependencies = [
 
 [[package]]
 name = "slop-poseidon2"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-poseidon2",
 ]
 
 [[package]]
 name = "slop-symmetric"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-symmetric",
 ]
