@@ -9,6 +9,37 @@ include = ["SP1_VERSION"]
 
 [workspace]
 members = [
+  "slop/crates/air",
+  "slop/crates/bn254",
+  "slop/crates/basefold",
+  "slop/crates/whir",
+  "slop/crates/algebra",
+  "slop/crates/basefold-prover",
+  "slop/crates/sumcheck",
+  "slop/crates/multilinear",
+  "slop/crates/utils",
+  "slop/crates/baby-bear",
+  "slop/crates/dft",
+  "slop/crates/matrix",
+  "slop/crates/symmetric",
+  "slop/crates/merkle-tree",
+  "slop/crates/poseidon2",
+  "slop/crates/commit",
+  "slop/crates/challenger",
+  "slop/crates/fri",
+  "slop/crates/maybe-rayon",
+  "slop/crates/tensor",
+  "slop/crates/alloc",
+  "slop/crates/slop",
+  "slop/crates/jagged",
+  "slop/crates/spartan",
+  "slop/crates/pgspcs",
+  "slop/crates/stacked",
+  "slop/crates/pcs-bench",
+  "slop/crates/futures",
+  "slop/crates/keccak-air",
+  "slop/crates/uni-stark",
+  "slop/crates/koala-bear",
   "crates/build",
   "crates/cli",
   "crates/core/executor",
@@ -77,56 +108,58 @@ sp1-hypercube = { path = "crates/hypercube", version = "6.0.0" }
 sp1-lib = { path = "crates/zkvm/lib", version = "6.0.0", default-features = false }
 sp1-zkvm = { path = "crates/zkvm/entrypoint", version = "6.0.0", default-features = false }
 
-# slop
-slop-algebra = { git = "https://github.com/succinctlabs/slop" }
-slop-alloc = { git = "https://github.com/succinctlabs/slop" }
-slop-basefold = { git = "https://github.com/succinctlabs/slop" }
-slop-basefold-prover = { git = "https://github.com/succinctlabs/slop" }
-slop-commit = { git = "https://github.com/succinctlabs/slop" }
-slop-jagged = { git = "https://github.com/succinctlabs/slop" }
-slop-sumcheck = { git = "https://github.com/succinctlabs/slop" }
-slop-stacked = { git = "https://github.com/succinctlabs/slop" }
-slop-tensor = { git = "https://github.com/succinctlabs/slop" }
-slop-multilinear = { git = "https://github.com/succinctlabs/slop" }
-slop-challenger = { git = "https://github.com/succinctlabs/slop" }
-slop-air = { git = "https://github.com/succinctlabs/slop" }
-slop-matrix = { git = "https://github.com/succinctlabs/slop" }
-slop-koala-bear = { git = "https://github.com/succinctlabs/slop" }
-slop-bn254 = { git = "https://github.com/succinctlabs/slop" }
-slop-symmetric = { git = "https://github.com/succinctlabs/slop" }
-slop-merkle-tree = { git = "https://github.com/succinctlabs/slop" }
-slop-futures = { git = "https://github.com/succinctlabs/slop" }
-slop-maybe-rayon = { git = "https://github.com/succinctlabs/slop" }
-slop-poseidon2 = { git = "https://github.com/succinctlabs/slop" }
-slop-uni-stark = { git = "https://github.com/succinctlabs/slop" }
-slop-keccak-air = { git = "https://github.com/succinctlabs/slop" }
-slop-whir = { git = "https://github.com/succinctlabs/slop" }
+p3-air = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
+p3-bn254-fr = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
+p3-commit = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
+p3-matrix = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
+p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6", features = [
+    "nightly-features",
+] }
+p3-util = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
+p3-challenger = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
+p3-dft = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
+p3-maybe-rayon = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6", features = [
+    "parallel",
+] }
+p3-merkle-tree = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
+p3-poseidon2 = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
+p3-symmetric = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
+p3-fri = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
+p3-uni-stark = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
+p3-keccak-air = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
+p3-koala-bear = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
 
-# For local development.
-# slop-algebra = { path = "../slop/crates/algebra" }
-# slop-alloc = { path = "../slop/crates/alloc" }
-# slop-basefold = { path = "../slop/crates/basefold" }
-# slop-bn254 = { path = "../slop/crates/bn254" }
-# slop-basefold-prover = { path = "../slop/crates/basefold-prover" }
-# slop-commit = { path = "../slop/crates/commit" }
-# slop-dft = { path = "../slop/crates/dft" }
-# slop-jagged = { path = "../slop/crates/jagged" }
-# slop-sumcheck = { path = "../slop/crates/sumcheck" }
-# slop-stacked = { path = "../slop/crates/stacked" }
-# slop-tensor = { path = "../slop/crates/tensor" }
-# slop-multilinear = { path = "../slop/crates/multilinear" }
-# slop-challenger = { path = "../slop/crates/challenger" }
-# slop-air = { path = "../slop/crates/air" }
-# slop-matrix = { path = "../slop/crates/matrix" }
-# slop-koala-bear = { path = "../slop/crates/koala-bear" }
-# slop-symmetric = { path = "../slop/crates/symmetric" }
-# slop-merkle-tree = { path = "../slop/crates/merkle-tree" }
-# slop-futures = { path = "../slop/crates/futures" }
-# slop-maybe-rayon = { path = "../slop/crates/maybe-rayon" }
-# slop-poseidon2 = { path = "../slop/crates/poseidon2" }
-# slop-uni-stark = { path = "../slop/crates/uni-stark" }
-# slop-keccak-air = { path = "../slop/crates/keccak-air" }
-# slop-whir = { path = "../slop/crates/whir" }
+
+slop-utils = { path = "./slop/crates/utils" }
+slop-baby-bear = { path = "./slop/crates/baby-bear" }
+slop-dft = { path = "./slop/crates/dft" }
+slop-fri = { path = "./slop/crates/fri" }
+slop-pgspcs = { path = "./slop/crates/pgspcs" }
+
+slop-algebra = { path = "./slop/crates/algebra" }
+slop-alloc = { path = "./slop/crates/alloc" }
+slop-basefold = { path = "./slop/crates/basefold" }
+slop-bn254 = { path = "./slop/crates/bn254" }
+slop-basefold-prover = { path = "./slop/crates/basefold-prover" }
+slop-commit = { path = "./slop/crates/commit" }
+slop-jagged = { path = "./slop/crates/jagged" }
+slop-sumcheck = { path = "./slop/crates/sumcheck" }
+slop-stacked = { path = "./slop/crates/stacked" }
+slop-tensor = { path = "./slop/crates/tensor" }
+slop-multilinear = { path = "./slop/crates/multilinear" }
+slop-challenger = { path = "./slop/crates/challenger" }
+slop-air = { path = "./slop/crates/air" }
+slop-matrix = { path = "./slop/crates/matrix" }
+slop-koala-bear = { path = "./slop/crates/koala-bear" }
+slop-symmetric = { path = "./slop/crates/symmetric" }
+slop-merkle-tree = { path = "./slop/crates/merkle-tree" }
+slop-futures = { path = "./slop/crates/futures" }
+slop-maybe-rayon = { path = "./slop/crates/maybe-rayon" }
+slop-poseidon2 = { path = "./slop/crates/poseidon2" }
+slop-uni-stark = { path = "./slop/crates/uni-stark" }
+slop-keccak-air = { path = "./slop/crates/keccak-air" }
+slop-whir = { path = "./slop/crates/whir" }
 
 # For testing.
 test-artifacts = { path = "crates/test-artifacts" }
@@ -136,18 +169,25 @@ test-artifacts = { path = "crates/test-artifacts" }
 rand = "0.8.5"
 hashbrown = "0.14.5"
 itertools = "0.13.0"
-serde = "1.0.204"
+serde = { version = "1.0.204", features = ["derive"] }
 serde_json = "1.0.132"
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 tokio = "1.42.0"
 futures = "0.3"
-derive-where = "1.2.7"
+derive-where = { version = "1.5.0", features = ["serde"] }
 strum_macros = "0.27.1"
 strum = "0.27.1"
 blake3 = { version = "1.6.1", default-features = false }
 deepsize2 = { version = "0.1.0", features = ["hashbrown"] }
 elf = "0.7.4"
+
+
+rayon = "1.10.0"
+
+# misc
+thiserror = "1.0"
+num_cpus = "1.16.0"
 
 [workspace.metadata.typos]
 default.extend-ignore-re = [
