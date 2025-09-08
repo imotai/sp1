@@ -495,7 +495,6 @@ impl<K: AbstractField + 'static> BranchingProgram<K> {
 
 #[cfg(test)]
 pub mod tests {
-    use std::iter::repeat;
 
     use rand::Rng;
     use slop_algebra::{AbstractField, PrimeField32};
@@ -537,7 +536,7 @@ pub mod tests {
                     let z_index = Point::from_usize(index, log_m + 1);
 
                     let prover_params = super::JaggedLittlePolynomialProverParams::new(
-                        repeat(1 << log_num_rows).take(1 << log_num_cols).collect(),
+                        std::iter::repeat_n(1 << log_num_rows, 1 << log_num_cols).collect(),
                         log_num_rows,
                     );
 

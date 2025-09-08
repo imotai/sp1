@@ -22,6 +22,7 @@ pub trait BasefoldBatcher<
     A: Backend = CpuBackend,
 >: 'static + Send + Sync
 {
+    #[allow(clippy::type_complexity)]
     fn batch<M, Code>(
         &self,
         batching_challenge: GC::EF,

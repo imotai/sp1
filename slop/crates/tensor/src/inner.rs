@@ -183,12 +183,12 @@ impl<T, A: Backend> Tensor<T, A> {
     }
 
     #[inline]
-    pub fn as_view(&self) -> TensorView<T, A> {
+    pub fn as_view(&'_ self) -> TensorView<'_, T, A> {
         TensorView { ptr: self.as_ptr(), dimensions: self.dimensions.clone(), _marker: PhantomData }
     }
 
     #[inline]
-    pub fn as_view_mut(&mut self) -> TensorViewMut<T, A> {
+    pub fn as_view_mut(&'_ mut self) -> TensorViewMut<'_, T, A> {
         TensorViewMut {
             ptr: self.as_mut_ptr(),
             dimensions: self.dimensions.clone(),
@@ -197,22 +197,22 @@ impl<T, A: Backend> Tensor<T, A> {
     }
 
     #[inline]
-    pub fn get(&self, index: usize) -> Option<TensorView<T, A>> {
+    pub fn get(&'_ self, index: usize) -> Option<TensorView<'_, T, A>> {
         self.as_view().get(index)
     }
 
     #[inline]
-    pub fn get_mut(&mut self, index: usize) -> Option<TensorViewMut<T, A>> {
+    pub fn get_mut(&'_ mut self, index: usize) -> Option<TensorViewMut<'_, T, A>> {
         self.as_view_mut().get(index)
     }
 
     #[inline]
-    pub fn split(&self) -> impl Iterator<Item = TensorView<T, A>> {
+    pub fn split(&'_ self) -> impl Iterator<Item = TensorView<'_, T, A>> {
         self.as_view().split()
     }
 
     #[inline]
-    pub fn split_mut(&mut self) -> impl Iterator<Item = TensorViewMut<T, A>> {
+    pub fn split_mut(&'_ mut self) -> impl Iterator<Item = TensorViewMut<'_, T, A>> {
         self.as_view_mut().split_mut()
     }
 

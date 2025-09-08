@@ -93,8 +93,7 @@ pub trait MultilinearPcsVerifier<GC: IopCtx>: 'static + Send + Sync + Clone {
 
 /// The prover of a multilinear commitment scheme.
 pub trait MultilinearPcsProver<GC: IopCtx>: 'static + Debug + Send + Sync {
-    /// The proof of a multilinear PCS evaluation.
-
+    /// The verifier associated to this prover.
     type Verifier: MultilinearPcsVerifier<GC>;
 
     /// The auxilary data for a prover.
@@ -183,7 +182,7 @@ impl<'a, F, A: Backend> IntoIterator for &'a Evaluations<F, A> {
 
 impl<F, A: Backend> Evaluations<F, A> {
     #[inline]
-    pub fn iter(&self) -> std::slice::Iter<MleEval<F, A>> {
+    pub fn iter(&'_ self) -> std::slice::Iter<'_, MleEval<F, A>> {
         self.round_evaluations.iter()
     }
 

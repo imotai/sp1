@@ -270,7 +270,7 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
                         .copied()
                         .zip(data.column_counts.iter().copied())
                         .flat_map(|(row_count, column_count)| {
-                            std::iter::repeat(row_count).take(column_count)
+                            std::iter::repeat_n(row_count, column_count)
                         })
                 })
                 .collect(),

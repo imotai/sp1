@@ -20,6 +20,7 @@ impl MerkleTreeConfig<KoalaBearDegree4Duplex> for Poseidon2KoalaBearConfig {
 }
 
 impl DefaultMerkleTreeConfig<KoalaBearDegree4Duplex> for Poseidon2KoalaBearConfig {
+    #[allow(clippy::disallowed_methods)]
     fn default_hasher_and_compressor() -> (Self::Hasher, Self::Compressor) {
         let perm = my_kb_16_perm();
         let hasher = Self::Hasher::new(perm.clone());

@@ -159,6 +159,7 @@ impl<F: PrimeField31 + TwoAdicField, EF: ExtensionField<F>>
 impl BasefoldConfig<KoalaBearDegree4Duplex> for Poseidon2KoalaBear16BasefoldConfig {
     type Tcs = Poseidon2KoalaBearConfig;
 
+    #[allow(clippy::disallowed_methods)]
     fn default_challenger(
         _verifier: &BasefoldVerifier<KoalaBearDegree4Duplex, Self>,
     ) -> <KoalaBearDegree4Duplex as IopCtx>::Challenger {
