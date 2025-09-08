@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 use std::marker::PhantomData;
 
 pub use p3_bn254_fr::*;

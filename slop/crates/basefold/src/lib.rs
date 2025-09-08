@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 mod code;
 mod config;
 mod verifier;

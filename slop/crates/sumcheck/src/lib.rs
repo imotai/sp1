@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 mod backend;
 mod mle;
 mod poly;

@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 // mod air_types;
 // mod folder;
 // mod types;

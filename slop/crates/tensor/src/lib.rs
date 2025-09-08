@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 mod dimensions;
 mod dot;
 mod inner;

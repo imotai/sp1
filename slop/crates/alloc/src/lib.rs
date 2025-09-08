@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 mod allocator;
 mod backend;
 mod buffer;

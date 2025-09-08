@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 use std::error::Error;
 
 use serde::{Deserialize, Serialize};

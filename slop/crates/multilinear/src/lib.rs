@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 mod base;
 mod eval;
 mod fold;

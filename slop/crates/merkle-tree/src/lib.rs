@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 pub use p3_merkle_tree::*;
 
 mod bn254fr_poseidon2;

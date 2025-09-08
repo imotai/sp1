@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 // use itertools::Itertools;
 // use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 // use slop_multivariate_adapter::{

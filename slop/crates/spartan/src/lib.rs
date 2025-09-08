@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 pub mod batched_lincheck_poly;
 // Deprecated in favour of batched
 //pub mod lincheck_poly;

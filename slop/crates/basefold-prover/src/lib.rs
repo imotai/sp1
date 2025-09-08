@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 mod encoder;
 mod fri;
 mod pow;

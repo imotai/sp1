@@ -36,7 +36,7 @@ pub trait HasBackend {
     fn backend(&self) -> &Self::Backend;
 }
 
-impl<'a, T> HasBackend for &'a T
+impl<T> HasBackend for &T
 where
     T: HasBackend,
 {
@@ -47,7 +47,7 @@ where
     }
 }
 
-impl<'a, T> HasBackend for &'a mut T
+impl<T> HasBackend for &mut T
 where
     T: HasBackend,
 {

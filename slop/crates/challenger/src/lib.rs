@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 mod synchronize;
 
 use std::fmt::Debug;

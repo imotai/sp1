@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 mod logger;
 
 pub use logger::setup_logger;

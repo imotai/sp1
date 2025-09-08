@@ -25,7 +25,7 @@ where
     #[inline]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        this.output_rx.poll(cx).map(|res| res.map_err(From::from)?)
+        this.output_rx.poll(cx).map(|res| res?)
     }
 }
 

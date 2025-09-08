@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 mod basefold;
 mod config;
 mod hadamard;

@@ -38,7 +38,7 @@ pub trait DeviceMemory {
     unsafe fn write_bytes(&self, dst: *mut u8, value: u8, size: usize) -> Result<(), CopyError>;
 }
 
-impl<'a, T: DeviceMemory> DeviceMemory for &'a T {
+impl<T: DeviceMemory> DeviceMemory for &T {
     #[inline]
     unsafe fn copy_nonoverlapping(
         &self,

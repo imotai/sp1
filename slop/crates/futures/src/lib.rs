@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 pub mod handle;
 pub mod queue;
 pub mod rayon;

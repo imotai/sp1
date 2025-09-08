@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_types)]
 //! API for stacked multilinear polynomial commitment schemes.
 //!
 //!
