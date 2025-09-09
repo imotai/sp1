@@ -70,6 +70,7 @@ impl Program {
         let elf = Elf::decode(input)?;
 
         assert!(elf.pc_base != 0, "elf with pc_base == 0 is not supported");
+        assert!(elf.pc_base % 4 == 0, "elf with pc_base not a multiple of 4 is not supported");
 
         // Transpile the RV64IM instructions.
         let instruction_pair = transpile(&elf.instructions);

@@ -184,7 +184,7 @@ where
             local.is_real,
         );
 
-        // Bump the memory timestamp to a multiple of 2^24, by doing an additional read.
+        // Bump the memory timestamp by doing an additional read.
         builder.eval_memory_access_read(
             local.clk_24_32 + local.clk_32_48 * AB::Expr::from_canonical_u32(1 << 8),
             local.clk_0_16 + local.clk_16_24 * AB::Expr::from_canonical_u32(1 << 16),

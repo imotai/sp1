@@ -373,7 +373,6 @@ impl SyscallInstrsChip {
         prev_a_byte: &[AB::Expr; 8],
         is_page_protect_active: AB::PublicVar,
     ) {
-        // `is_page_protect` is checked to be correct in `eval_is_halt_syscall`.
         let syscall_id = prev_a_byte[0].clone();
 
         // Compute whether this ecall is mprotect.
