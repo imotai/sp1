@@ -14,7 +14,7 @@ use sp1_core_executor::{
 };
 use sp1_hypercube::{air::PublicValues, prover::MemoryPermitting, Machine, MachineRecord};
 use thiserror::Error;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, UnboundedSender};
 use tracing::Instrument;
 
 use sp1_core_executor::{CycleResult, MinimalExecutor, SplicedMinimalTrace, TraceChunkRaw};
@@ -65,7 +65,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
 
         tracing::debug!("starting {} record worker channels", self.num_record_workers);
         let mut handles = Vec::with_capacity(self.num_record_workers);
-        for _ in 0..self.num_record_workers {
+        for i in 0..self.num_record_workers {
             let (tx, mut rx) = mpsc::unbounded_channel::<RecordTask>();
             record_worker_channels.push(tx);
             let machine = self.machine.clone();
@@ -81,6 +81,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
                 async move {
                     while let Some(task) = rx.recv().await {
                         let RecordTask { index, chunk } = task;
+                        eprintln!("tracing chunk at idx: {}, with worker: {}", index, i);
 
                         tracing::debug!("tracing chunk at idx: {}", index);
 
@@ -166,13 +167,23 @@ impl<F: PrimeField32> MachineExecutor<F> {
                 let mut idx = 0;
 
                 while let Some(chunk) = chunk_rx.recv().await {
-                    let worker = record_worker_channels.clone().pop().await.unwrap();
+                    send_full_trace(record_worker_channels.clone(), chunk.clone(), idx).await;
+                    idx += 1;
 
                     (idx, final_registers) = tokio::task::spawn_blocking({
                         let program = program.clone();
                         let touched_addresses = touched_addresses.clone();
+                        let record_worker_channels = record_worker_channels.clone();
 
-                        move || generate_chunks(program, chunk, worker, touched_addresses, idx)
+                        move || {
+                            generate_chunks(
+                                program,
+                                chunk,
+                                record_worker_channels,
+                                touched_addresses,
+                                idx,
+                            )
+                        }
                     })
                     .await
                     .expect("error: generate trace chunks task panicked")
@@ -254,26 +265,15 @@ struct RecordTask {
     chunk: SplicedMinimalTrace<TraceChunkRaw>,
 }
 
-fn generate_chunks<S>(
+fn generate_chunks(
     program: Arc<Program>,
     chunk: TraceChunkRaw,
-    tx: S,
+    record_worker_channels: Arc<WorkerQueue<UnboundedSender<RecordTask>>>,
     touched_addresses: Arc<Mutex<HashSet<u64>>>,
     mut idx: usize,
-) -> Result<(usize, [MemoryRecord; 32]), ExecutionError>
-where
-    S: std::ops::Deref<Target = mpsc::UnboundedSender<RecordTask>>,
-{
+) -> Result<(usize, [MemoryRecord; 32]), ExecutionError> {
     let mut touched_addresses = touched_addresses.lock().unwrap();
     let mut vm = SplicingVM::new(&chunk, program.clone(), &mut touched_addresses);
-
-    tracing::debug!("chunk idx is done: {}", idx);
-
-    // Note that we always send the full trace first, if everything fits into one shard,
-    // then no splicing will occur and this task will eventaully end.
-    let full_trace = SplicedMinimalTrace::new_full_trace(chunk.clone());
-    tx.send(RecordTask { index: idx, chunk: full_trace }).unwrap();
-    idx += 1;
 
     loop {
         tracing::debug!("starting new shard idx: {} at clk: {}", idx, vm.core.clk());
@@ -288,7 +288,10 @@ where
                     tracing::debug!("shard ended at global clk: {}", vm.core.global_clk());
                     tracing::debug!("shard ended with {} mem reads left ", vm.core.mem_reads.len());
 
-                    tx.send(RecordTask { index: idx, chunk: spliced }).unwrap();
+                    // Send the spliced trace to a available worker.
+                    send_spliced_trace_blocking(record_worker_channels.clone(), spliced, idx);
+
+                    // Bump the shard index.
                     idx += 1;
                 } else {
                     tracing::debug!("shard idx ran out of trace and was cut early: {}", idx);
@@ -512,4 +515,33 @@ async fn start_prove<F: PrimeField32>(
     })
     .await
     .expect("failed to send records");
+}
+
+async fn send_full_trace(
+    record_worker_channels: Arc<WorkerQueue<UnboundedSender<RecordTask>>>,
+    chunk: TraceChunkRaw,
+    idx: usize,
+) {
+    let worker = record_worker_channels.clone().pop().await.unwrap();
+    let full_trace = SplicedMinimalTrace::new_full_trace(chunk.clone());
+    worker.send(RecordTask { index: idx, chunk: full_trace }).unwrap();
+}
+
+fn send_spliced_trace_blocking(
+    record_worker_channels: Arc<WorkerQueue<UnboundedSender<RecordTask>>>,
+    chunk: SplicedMinimalTrace<TraceChunkRaw>,
+    idx: usize,
+) {
+    loop {
+        match record_worker_channels.clone().try_pop() {
+            Ok(worker) => {
+                worker.send(RecordTask { index: idx, chunk }).unwrap();
+                break;
+            }
+            // todo: patch slop to return what kind of error so we can break correctly if the channel is closed.
+            Err(_) => {
+                std::hint::spin_loop();
+            }
+        }
+    }
 }

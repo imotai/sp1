@@ -14,11 +14,12 @@ impl MinimalExecutor {
         final_registers: [MemoryRecord; 32],
         touched_addresses: &HashSet<u64>,
     ) {
-        // Initialize the registers that were touched.
         record.global_memory_initialize_events.extend(
-            (0..32)
-                .filter(|reg| final_registers[*reg as usize].timestamp != 0)
-                .map(|reg| MemoryInitializeFinalizeEvent::initialize(reg as u64, 0)),
+            final_registers
+                .iter()
+                .enumerate()
+                .filter(|(_, e)| e.timestamp != 0)
+                .map(|(i, _)| MemoryInitializeFinalizeEvent::initialize(i as u64, 0)),
         );
 
         record.global_memory_finalize_events.extend(

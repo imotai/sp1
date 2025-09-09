@@ -92,22 +92,29 @@ pub struct EcallResult {
 /// The result of a cycle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CycleResult {
+    /// The cycle has completed, and may or may not have halted.
     Done(bool),
+    /// The trace has ended at this cycle.
     TraceEnd,
+    /// The shard has overflowed at this cycle.
     ShardBoundry,
 }
 
 impl CycleResult {
     /// Returns true if the program has halted.
+    #[must_use]
     pub fn is_done(self) -> bool {
         matches!(self, CycleResult::Done(true))
     }
 
     /// Returns true if the program has hit a shard boundary.
+    #[must_use]
     pub fn is_shard_boundry(self) -> bool {
         matches!(self, CycleResult::ShardBoundry)
     }
 
+    /// Returns true if the trace has ended at this cycle.
+    #[must_use]
     pub fn is_trace_end(self) -> bool {
         matches!(self, CycleResult::TraceEnd)
     }

@@ -147,6 +147,7 @@ pub(crate) fn tracing_syscall_handler(
 
     let mut clk = rt.core.clk();
 
+    #[allow(clippy::match_same_arms)]
     let ret = match code {
         // Noop: This method just writes to uninitialized memory.
         // Since the tracing VM relies on oracled memory, this method is a no-op.

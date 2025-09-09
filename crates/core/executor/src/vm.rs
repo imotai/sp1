@@ -84,12 +84,12 @@ impl<'a> CoreVM<'a> {
             .copied()
             .collect();
 
-        tracing::debug!("start_clk: {}", start_clk);
-        tracing::debug!("start_pc: {}", start_pc);
-        tracing::debug!("trace.clk_end(): {}", trace.clk_end());
-        tracing::debug!("trace.num_mem_reads(): {}", trace.num_mem_reads());
-        tracing::debug!("trace.hint_lens(): {:?}", trace.hint_lens());
-        tracing::debug!("trace.start_registers(): {:?}", trace.start_registers());
+        tracing::trace!("start_clk: {}", start_clk);
+        tracing::trace!("start_pc: {}", start_pc);
+        tracing::trace!("trace.clk_end(): {}", trace.clk_end());
+        tracing::trace!("trace.num_mem_reads(): {}", trace.num_mem_reads());
+        tracing::trace!("trace.hint_lens(): {:?}", trace.hint_lens());
+        tracing::trace!("trace.start_registers(): {:?}", trace.start_registers());
 
         Self {
             registers,

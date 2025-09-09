@@ -137,7 +137,7 @@ impl MinimalExecutor {
         tracing: bool,
         max_cycles: Option<u64>,
     ) -> JitFunction {
-        let trace_buf_size = if tracing { 2_u64.pow(34) as usize } else { 0 };
+        let trace_buf_size = if tracing { 2_u64.pow(36) as usize } else { 0 };
 
         let mut backend = TranspilerBackend::new(
             program.instructions.len(),

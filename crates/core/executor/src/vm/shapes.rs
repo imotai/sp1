@@ -122,7 +122,9 @@ impl ShapeChecker {
             Opcode::SUBW => RiscvAirId::Subw,
             Opcode::XOR | Opcode::OR | Opcode::AND => RiscvAirId::Bitwise,
             Opcode::SLT | Opcode::SLTU => RiscvAirId::Lt,
-            Opcode::MUL | Opcode::MULH | Opcode::MULHU | Opcode::MULHSU => RiscvAirId::Mul,
+            Opcode::MUL | Opcode::MULH | Opcode::MULHU | Opcode::MULHSU | Opcode::MULW => {
+                RiscvAirId::Mul
+            }
             Opcode::DIV
             | Opcode::DIVU
             | Opcode::REM
