@@ -27,6 +27,8 @@ clap = { version = "4.5.9", features = ["derive"] }
 bincode = "1.3.3"
 time = "0.3.26"
 tokio = { workspace = true }
+hashbrown = { workspace = true }
+sp1-jit = { workspace = true }
 
 [[bin]]
 name = "sp1-perf"
