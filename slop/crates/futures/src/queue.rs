@@ -17,11 +17,11 @@ pub struct WorkerQueue<T> {
 
 #[derive(Debug, Error)]
 #[error("failed to acquire worker: {0}")]
-pub struct TryAcquireWorkerError(#[from] TryAcquireError);
+pub struct TryAcquireWorkerError(#[from] pub TryAcquireError);
 
 #[derive(Debug, Error)]
 #[error("failed to acquire worker: {0}")]
-pub struct AcquireWorkerError(#[from] AcquireError);
+pub struct AcquireWorkerError(#[from] pub AcquireError);
 
 pub struct Worker<T> {
     worker: ManuallyDrop<T>,
