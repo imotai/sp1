@@ -124,7 +124,9 @@ impl Server {
     async fn handle_request(ctx: &mut ConnectionCtx, request: Request) -> Response {
         match request {
             Request::Setup { elf } => ctx.setup(&elf).await,
-            Request::Core { key: id, stdin } => ctx.prove_core(id, stdin).await,
+            Request::Core { key: id, stdin, proof_nonce } => {
+                ctx.prove_core(id, stdin, proof_nonce).await
+            }
             Request::Compress { vk, proof, deferred } => {
                 ctx.prove_compress(vk, proof, deferred).await
             }
@@ -163,7 +165,12 @@ impl ConnectionCtx {
         Response::Setup { id: elf_hash, vk }
     }
 
-    pub async fn prove_core(&mut self, id: [u8; 32], stdin: SP1Stdin) -> Response {
+    pub async fn prove_core(
+        &mut self,
+        id: [u8; 32],
+        stdin: SP1Stdin,
+        proof_nonce: [u32; 4],
+    ) -> Response {
         tracing::info!("Proving core");
 
         let Some(cached) = self.pk_cache.get(&id) else {
@@ -180,12 +187,9 @@ impl ConnectionCtx {
             .await;
         let pk = unsafe { pk.into_inner() };
 
-        match self
-            .prover
-            .clone()
-            .prove_core(pk, cached.program.clone(), stdin, SP1Context::default())
-            .await
-        {
+        let context = SP1Context::builder().proof_nonce(proof_nonce).build();
+
+        match self.prover.clone().prove_core(pk, cached.program.clone(), stdin, context).await {
             Ok(proof) => Response::Core { proof },
             Err(e) => Response::ProverError(e.to_string()),
         }

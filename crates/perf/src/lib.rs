@@ -5,6 +5,7 @@ use csl_cuda::TaskScope;
 use csl_prover::{local_gpu_opts, SP1CudaProverBuilder};
 use sp1_core_executor::SP1Context;
 use sp1_core_machine::io::SP1Stdin;
+use sp1_prover::utils::generate_nonce;
 use sp1_prover::{local::LocalProver, shapes::DEFAULT_ARITY, SP1CoreProofData};
 use tokio::time::Instant;
 use tracing::Instrument;
@@ -64,9 +65,11 @@ pub async fn make_measurement(
     let pk = unsafe { pk.into_inner() };
 
     let time = Instant::now();
+    let context = SP1Context::builder().proof_nonce(generate_nonce()).build();
+
     let core_proof = prover
         .clone()
-        .prove_core(pk, program, stdin, SP1Context::default())
+        .prove_core(pk, program, stdin, context)
         .instrument(tracing::debug_span!("prove core"))
         .await
         .unwrap();
