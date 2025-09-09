@@ -140,16 +140,16 @@ $(LIB_DIR)/$(LIB_NAME): $(ALL_OBJECTS) | $(LIB_DIR) $(OBJ_DIR)
 # CUDA compilation rules
 $(OBJ_DIR)/cuda/%.o: $(CUDA_DIR)/%.cu | $(CUDA_OBJ_DIRS)
 	@echo "Compiling CUDA: $<"
-	@$(NVCC) $(NVCC_FLAGS) $(ARCH_FLAGS) -c $< -o $@
+	@$(NVCC) $(NVCC_FLAGS) $(ARCH_FLAGS) -MMD -MP -MT $@ -MF $(patsubst %.o,%.d,$@) -c $< -o $@
 
 # Sppark C++ compilation rules  
 $(OBJ_DIR)/sppark/lib.o: $(SPPARK_DIR)/rust/src/lib.cpp | $(SPPARK_OBJ_DIRS)
 	@echo "Compiling C++: $<"
-	@$(NVCC) $(NVCC_FLAGS) $(ARCH_FLAGS) -c $< -o $@
+	@$(NVCC) $(NVCC_FLAGS) $(ARCH_FLAGS) -MMD -MP -MT $@ -MF $(patsubst %.o,%.d,$@) -c $< -o $@
 
 $(OBJ_DIR)/sppark/all_gpus.o: $(SPPARK_DIR)/util/all_gpus.cpp | $(SPPARK_OBJ_DIRS)
 	@echo "Compiling C++: $<"
-	@$(NVCC) $(NVCC_FLAGS) $(ARCH_FLAGS) -c $< -o $@
+	@$(NVCC) $(NVCC_FLAGS) $(ARCH_FLAGS) -MMD -MP -MT $@ -MF $(patsubst %.o,%.d,$@) -c $< -o $@
 
 # Module-specific targets for convenience
 .PHONY: algebra basefold challenger jagged logup_gkr merkle mle ntt prover-clean reduce runtime scan sumcheck tracegen transpose zerocheck

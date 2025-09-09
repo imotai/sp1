@@ -2,6 +2,32 @@
 
 A cuda version of slop.
 
+## Compilation
+
+### CUDA Architecture Selection
+
+You can speed up compilation times by specifying the target CUDA architecture using the `CUDA_ARCHS` environment variable. This avoids compiling for all supported architectures.
+
+Examples:
+- **Ada Lovelace** (RTX 4090, 4080, etc.): `CUDA_ARCHS="89"`
+- **Hopper** (H100): `CUDA_ARCHS="90"`
+- **Blackwell** (B100, B200, RTX 5090): `CUDA_ARCHS="100"`
+
+Usage:
+```bash
+# Compile for Ada Lovelace (e.g., RTX 4090)
+CUDA_ARCHS="89" cargo build --release
+
+# Compile for Hopper (e.g., H100)
+CUDA_ARCHS="90" cargo build --release
+
+# Compile for multiple architectures
+CUDA_ARCHS="89,90" cargo build --release
+```
+
+If `CUDA_ARCHS` is not specified, the build will compile for all supported architectures, which takes significantly longer.
+
+
 ## Cargo profiles
 
 To use a particular profile, pass `--profile <PROFILE-NAME>` to any Cargo command. The `dev`

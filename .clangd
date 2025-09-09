@@ -3,6 +3,7 @@ CompileFlags:
     - "-x"
     - "cuda"
     - "--cuda-path=/usr/local/cuda"
+    - "-std=c++20"
   Remove:
     - "-forward-unknown-to-host-compiler"
     - "--expt-relaxed-constexpr"
