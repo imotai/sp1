@@ -766,18 +766,10 @@ mod test {
     //     let jit_handle = std::thread::spawn({
     //         let program = program.clone();
     //         move || {
-    //             let mut executor = MinimalExecutor::new(program.clone(), false, true);
+    //             let mut executor = MinimalExecutor::new(program.clone(), false, true, None);
     //             executor.execute_chunk();
-
-    //             eprintln!(
-    //                 "jit final registers={:?}",
-    //                 executor.compiled.as_ref().expect("JIT not compiled").registers
-    //             );
-
-    //             eprintln!(
-    //                 "jit final clk={}",
-    //                 executor.compiled.as_ref().expect("JIT not compiled").clk
-    //             );
+    //             eprintln!("jit final registers={:?}", executor.compiled.registers);
+    //             eprintln!("jit final clk={}", executor.compiled.clk);
     //         }
     //     });
 
@@ -803,8 +795,6 @@ mod test {
     //             eprintln!("interpreter final clk={}", interpreter.state.clk);
     //         }
     //     });
-    //     // jit_handle.join().unwrap();
-    //     // interpreter_handle.join().unwrap();
     //     eprintln!("waiting for threads to finish");
 
     //     for (cycle, (jit, interpreter)) in
@@ -850,10 +840,8 @@ mod test {
     //                 eprintln!("{},interpreter={:?}", jit_clk, interpreter);
     //                 eprintln!(
     //                     "😨  REGISTER MISMATCH at index: {}, clk = {}, jit[{i}]={:?},
-    // interpreter[{i}]={:?}",                     i,
-    //                     jit_clk,
-    //                     jit[i],
-    //                     interpreter[i]
+    // interpreter[{i}]={:?}",
+    //                     i, jit_clk, jit[i], interpreter[i]
     //                 );
     //                 panic!("😨 Register mismatch");
     //             }

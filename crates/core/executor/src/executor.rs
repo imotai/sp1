@@ -1798,16 +1798,20 @@ impl<'a> Executor<'a> {
             }
         }
 
-        // eprintln!(
-        //     "registers: {:?}",
-        //     self.state
-        //         .memory
-        //         .registers
-        //         .registers
-        //         .iter()
-        //         .map(|r| r.map(|r| r.value).unwrap_or(0))
-        //         .collect::<Vec<_>>()
-        // );
+        if let Some(sender) = DEBUG_REGISTERS.get() {
+            let registers = self
+                .state
+                .memory
+                .registers
+                .registers
+                .iter()
+                .map(|r| r.map(|r| r.value).unwrap_or(0))
+                .collect::<Vec<_>>();
+
+            sender
+                .send(Some((self.state.pc, self.state.clk, registers.try_into().unwrap())))
+                .unwrap();
+        }
 
         if instruction.is_alu_instruction() {
             (a, b, c) = self.execute_alu::<E>(instruction);
