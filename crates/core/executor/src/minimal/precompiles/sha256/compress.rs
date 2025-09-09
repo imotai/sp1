@@ -34,6 +34,8 @@ pub(crate) unsafe fn sha256_compress(ctx: &mut JitContext, arg1: u64, arg2: u64)
         hx[i] = value as u32;
     }
 
+    memory.increment_clk(1);
+
     let mut original_w = Vec::new();
     // Execute the "compress" phase.
     let mut a = hx[0];
@@ -67,6 +69,10 @@ pub(crate) unsafe fn sha256_compress(ctx: &mut JitContext, arg1: u64, arg2: u64)
         b = a;
         a = temp1.wrapping_add(temp2);
     }
+
+    // Increment the clk by 1 before writing to h, since we've already read h at the start_clk
+    // during the initialization phase.
+    memory.increment_clk(1);
 
     // Execute the "finalize" phase.
     let v = [a, b, c, d, e, f, g, h];

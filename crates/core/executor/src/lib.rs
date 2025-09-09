@@ -30,6 +30,13 @@ mod executor;
 mod hook;
 mod instruction;
 mod io;
+mod tracing;
+pub use tracing::TracingVM;
+mod vm;
+pub use vm::{results::CycleResult, CoreVM};
+mod hooks;
+mod splicing;
+pub use splicing::{SplicedMinimalTrace, SplicingVM};
 
 #[cfg(all(target_arch = "x86_64", target_endian = "little"))]
 mod minimal;

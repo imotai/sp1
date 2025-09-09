@@ -21,7 +21,7 @@ pub(crate) unsafe fn fp2_mul_syscall<P: FpOpField>(
     let num_words = <P as NumWords>::WordsCurvePoint::USIZE;
     let mut memory = ctx.memory();
 
-    let x = memory.mr_slice(x_ptr, num_words);
+    let x = memory.mr_slice_unsafe(x_ptr, num_words);
     let y = memory.mr_slice(y_ptr, num_words);
 
     let x_32 = u64_to_u32(x);
@@ -49,6 +49,11 @@ pub(crate) unsafe fn fp2_mul_syscall<P: FpOpField>(
     result.resize(num_words / 2, 0);
     result.append(&mut c1.to_u64_digits());
     result.resize(num_words, 0);
+
+    // Bump the clock before writing to memory.
+    ctx.clk += 1;
+
+    let mut memory = ctx.memory();
     memory.mw_slice(x_ptr, &result);
 
     None

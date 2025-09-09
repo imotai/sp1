@@ -1,17 +1,14 @@
 #![allow(clippy::items_after_statements)]
 
-use crate::memory::MAX_LOG_ADDR;
-use hashbrown::HashSet;
+use crate::{memory::MAX_LOG_ADDR, HALT_PC};
 use sp1_jit::{
-    DebugBackend, JitFunction, MemoryView, RiscOperand, RiscRegister, RiscvTranspiler, TraceChunk,
-    TraceChunkRaw, TranspilerBackend,
+    DebugBackend, JitFunction, MemoryView, RiscOperand, RiscRegister, RiscvTranspiler,
+    TranspilerBackend,
 };
-use std::{
-    collections::VecDeque,
-    sync::{Arc, Mutex},
-};
+use std::{collections::VecDeque, sync::Arc};
 
 use crate::{Instruction, Opcode, Program, Register};
+pub use sp1_jit::TraceChunkRaw;
 
 mod ecall;
 mod hint;
@@ -28,7 +25,6 @@ pub struct MinimalExecutor {
     program: Arc<Program>,
     compiled: JitFunction,
     input: VecDeque<Vec<u8>>,
-    tracing: bool,
 }
 
 impl MinimalExecutor {
@@ -39,7 +35,7 @@ impl MinimalExecutor {
 
         let compiled = Self::transpile(program.as_ref(), debug, tracing, max_cycles);
 
-        Self { program, compiled, input: VecDeque::new(), tracing }
+        Self { program, compiled, input: VecDeque::new() }
     }
 
     /// Create a new minimal executor with no tracing or debugging.
@@ -75,6 +71,12 @@ impl MinimalExecutor {
         unsafe { self.compiled.call() }
     }
 
+    /// Check if the program has halted.
+    #[must_use]
+    pub fn is_done(&self) -> bool {
+        self.compiled.pc == HALT_PC
+    }
+
     /// Get the current clock of the JIT function.
     ///
     /// This clock is incremented by 8 or 256 depending on the instruction.
@@ -91,10 +93,28 @@ impl MinimalExecutor {
         self.compiled.global_clk
     }
 
+    /// Get the public values stream of the JIT function.
+    #[must_use]
+    pub fn public_values_stream(&self) -> &Vec<u8> {
+        &self.compiled.public_values_stream
+    }
+
+    /// Consume self, and return the public values stream.
+    #[must_use]
+    pub fn into_public_values_stream(self) -> Vec<u8> {
+        self.compiled.public_values_stream
+    }
+
     /// Get the hints of the JIT function.
     #[must_use]
     pub fn hints(&self) -> &Vec<(u64, Vec<u8>)> {
         &self.compiled.hints
+    }
+
+    /// Get the lengths of all the hints.
+    #[must_use]
+    pub fn hint_lens(&self) -> Vec<usize> {
+        self.compiled.hints.iter().map(|(_, hint)| hint.len()).collect()
     }
 
     /// Get a view of the current memory of the JIT function.
@@ -147,11 +167,6 @@ impl MinimalExecutor {
         tracing: bool,
         max_cycles: Option<u64>,
     ) -> JitFunction {
-        if tracing {
-            backend.trace_clk_start();
-            backend.trace_pc_start();
-        }
-
         for instruction in program.instructions.iter() {
             backend.start_instr();
 
@@ -541,6 +556,33 @@ mod test {
             executor.compiled.global_clk, interpreter.state.global_clk,
             "JIT and interpreter final global_clk mismatch"
         );
+    }
+
+    #[test]
+    fn test_chunk_stops_correctly() {
+        use bincode::serialize;
+        use sp1_jit::MinimalTrace;
+        use test_artifacts::KECCAK256_ELF;
+
+        let program = Program::from(&KECCAK256_ELF).unwrap();
+        let program = Arc::new(program);
+
+        let mut executor = MinimalExecutor::new(program.clone(), true, false, Some(10));
+        // executor.debug();
+        executor.with_input(&serialize(&5_usize).unwrap());
+        for i in 0..5 {
+            executor.with_input(&serialize(&vec![i; i]).unwrap());
+        }
+        let trace = executor.execute_chunk().expect("expected a trace chunk, but got none");
+        assert_eq!(trace.clk_start(), 1);
+        assert_eq!(trace.pc_start(), program.pc_start_abs);
+
+        // The max_cycles is set to be 10, and its based on the globalk clk which incremnets by 1.
+        //
+        // We expect the clk to be 81, since the program is gonna run for 10 instructions, and each instruction
+        // is 8 cycles and the clk starts at 1.
+        let trace2 = executor.execute_chunk().expect("expected a trace chunk, but got none");
+        assert_eq!(trace2.clk_start(), 81);
     }
 
     #[test]

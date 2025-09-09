@@ -1,42 +1,64 @@
-use crate::{events::MemoryInitializeFinalizeEvent, ExecutionRecord, MinimalExecutor};
+use hashbrown::HashSet;
+
+use crate::{
+    events::{MemoryInitializeFinalizeEvent, MemoryRecord},
+    ExecutionRecord, MinimalExecutor,
+};
 
 impl MinimalExecutor {
-    #[must_use]
-    /// Postprocess the [`JitFunction`] to create an [`ExecutionRecord`],
+    /// Postprocess into an existing [`ExecutionRecord`],
     /// consisting of all the [`MemoryInitializeFinalizeEvent`]s.
-    pub fn postprocess(&self) -> ExecutionRecord {
-        // From the program, we can get the initial memory image and create those reocrds
-        // inputs / hints are considred uninit memory so those should also be considreded init
-        // memory
-        //
-        // from there we can use "touched_address" to get all the finalized memory records by
-        // looking up into the memory.
+    pub fn emit_globals(
+        &self,
+        record: &mut ExecutionRecord,
+        final_registers: [MemoryRecord; 32],
+        touched_addresses: &HashSet<u64>,
+    ) {
+        // Initialize the registers that were touched.
+        record.global_memory_initialize_events.extend(
+            (0..32)
+                .filter(|reg| final_registers[*reg as usize].timestamp != 0)
+                .map(|reg| MemoryInitializeFinalizeEvent::initialize(reg as u64, 0)),
+        );
 
-        // todo get register init and finalize.
-        // due to register refresh the init hsould all be 0,0 and the finalize should be the final
-        // value , last clk
+        record.global_memory_finalize_events.extend(
+            final_registers.iter().enumerate().filter(|(_, e)| e.timestamp != 0).map(
+                |(i, entry)| {
+                    MemoryInitializeFinalizeEvent::finalize(i as u64, entry.value, entry.timestamp)
+                },
+            ),
+        );
 
-        // Registers always 0 initzialized.
-        let _register_init_events =
-            (0..32).map(|reg| MemoryInitializeFinalizeEvent::initialize(reg as u64, 0));
-
-        let _addr_0_init_event = MemoryInitializeFinalizeEvent::initialize(0, 0);
-
-        // todo!!!!
-        let _register_finalize_events: Vec<MemoryInitializeFinalizeEvent> = vec![];
-
-        let _memory_image_init_events = self
-            .program
-            .memory_image
+        let hint_init_events = self
+            .hints()
             .iter()
-            .map(|(addr, value)| MemoryInitializeFinalizeEvent::initialize(*addr, *value));
+            .flat_map(|(addr, value)| chunked_memory_init_events(*addr, value))
+            .collect::<Vec<_>>();
+        let hint_addrs = hint_init_events.iter().map(|event| event.addr).collect::<HashSet<_>>();
 
-        let _hints_init_events =
-            self.hints().iter().flat_map(|(addr, value)| chunked_memory_init_events(*addr, value));
+        // Initialize the all the hints written during execution.
+        record.global_memory_initialize_events.extend(hint_init_events);
 
-        let memory = self.memory();
+        // Initialize the memory addresses that were touched during execution.
+        // We don't initialize the memory addresses that were in the program image, since they were
+        // initialized in the MemoryProgram chip.
+        let memory_init_events = touched_addresses
+            .iter()
+            .filter(|addr| !self.program.memory_image.contains_key(*addr))
+            .filter(|addr| !hint_addrs.contains(*addr))
+            .map(|addr| MemoryInitializeFinalizeEvent::initialize(*addr, 0));
+        record.global_memory_initialize_events.extend(memory_init_events);
 
-        todo!()
+        // Finalize the memory addresses that were touched during execution.
+        for addr in touched_addresses {
+            let entry = self.memory().get(*addr);
+
+            record.global_memory_finalize_events.push(MemoryInitializeFinalizeEvent::finalize(
+                *addr,
+                entry.value,
+                entry.clk,
+            ));
+        }
     }
 }
 

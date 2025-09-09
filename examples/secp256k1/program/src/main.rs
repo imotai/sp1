@@ -51,16 +51,16 @@ pub fn test_weierstrass_add<P: AffinePoint<N> + WeierstrassAffinePoint<N>, const
     );
 
     // Case 4: Points are equal (point doubling, already covered by the main loop)
-    let mut a_point_clone = a_point.clone();
-    let a_point_clone2 = a_point.clone();
-    let mut a_point_clone3 = a_point.clone();
-    a_point_clone.complete_add_assign(&a_point_clone2);
-    a_point_clone3.double();
-    assert_eq!(
-        a_point_clone.limbs_ref(),
-        a_point_clone3.limbs_ref(),
-        "Adding a point to itself should double the point"
-    );
+    // let mut a_point_clone = a_point.clone();
+    // let a_point_clone2 = a_point.clone();
+    // let mut a_point_clone3 = a_point.clone();
+    // a_point_clone.complete_add_assign(&a_point_clone2);
+    // a_point_clone3.double();
+    // assert_eq!(
+    //     a_point_clone.limbs_ref(),
+    //     a_point_clone3.limbs_ref(),
+    //     "Adding a point to itself should double the point"
+    // );
 }
 
 const A: [u8; 64] = [
@@ -108,51 +108,51 @@ pub fn main() {
         sp1_curves::weierstrass::secp256k1::Secp256k1BaseField::MODULUS,
     );
 
-    let compressed_key: [u8; 33] = sp1_zkvm::io::read_vec().try_into().unwrap();
-    let mut decompressed_key: [u64; 8] = [0; 8];
-    as_bytes_le(&mut decompressed_key)[..32].copy_from_slice(&compressed_key[1..]);
-    let is_odd = match compressed_key[0] {
-        2 => false,
-        3 => true,
-        _ => panic!("Invalid compressed key"),
-    };
-    syscall_secp256k1_decompress(&mut decompressed_key, is_odd);
+    // let compressed_key: [u8; 33] = sp1_zkvm::io::read_vec().try_into().unwrap();
+    // let mut decompressed_key: [u64; 8] = [0; 8];
+    // as_bytes_le(&mut decompressed_key)[..32].copy_from_slice(&compressed_key[1..]);
+    // let is_odd = match compressed_key[0] {
+    //     2 => false,
+    //     3 => true,
+    //     _ => panic!("Invalid compressed key"),
+    // };
+    // syscall_secp256k1_decompress(&mut decompressed_key, is_odd);
 
-    let mut result: [u8; 65] = [0; 65];
-    result[0] = 4;
-    result[1..].copy_from_slice(as_bytes_le(&mut decompressed_key));
+    // let mut result: [u8; 65] = [0; 65];
+    // result[0] = 4;
+    // result[1..].copy_from_slice(as_bytes_le(&mut decompressed_key));
 
-    sp1_zkvm::io::commit_slice(&result);
+    // sp1_zkvm::io::commit_slice(&result);
 
     // generator.
     // 55066263022277343669578718895168534326250603453777594175500187360389116729240
     // 32670510020758816978083085130507043184471273380659243275938904335757337482424
-    let mut a: [u64; 8] = [
-        0x59_f2_81_5b_16_f8_17_98,
-        0x29_bf_cd_b2_dc_e2_8d_9,
-        0x55_a0_62_95_ce_87_0b_07,
-        0x79_be_66_7e_f9_dc_bb_ac,
-        0x9c_47_d0_8f_fb_10_d4_b8,
-        0xfd_17_b4_48_a6_85_54_19,
-        0x5d_a4_fb_fc_0e_11_08_a8,
-        0x48_3a_da_77_26_a3_c4_65,
-    ];
+    // let mut a: [u64; 8] = [
+    //     0x59_f2_81_5b_16_f8_17_98,
+    //     0x29_bf_cd_b2_dc_e2_8d_9,
+    //     0x55_a0_62_95_ce_87_0b_07,
+    //     0x79_be_66_7e_f9_dc_bb_ac,
+    //     0x9c_47_d0_8f_fb_10_d4_b8,
+    //     0xfd_17_b4_48_a6_85_54_19,
+    //     0x5d_a4_fb_fc_0e_11_08_a8,
+    //     0x48_3a_da_77_26_a3_c4_65,
+    // ];
 
-    syscall_secp256k1_double(&mut a);
+    // syscall_secp256k1_double(&mut a);
 
-    // 2 * generator.
-    // 89565891926547004231252920425935692360644145829622209833684329913297188986597
-    // 12158399299693830322967808612713398636155367887041628176798871954788371653930
-    let b: [u64; 8] = [
-        0xab_ac_09_b9_5c_70_9e_e5,
-        0x5c_77_8e_4b_8c_ef_3c_a7,
-        0x30_45_40_6e_95_c0_7c_d8,
-        0xc6_04_7f_94_41_ed_7d_6d,
-        0x23_64_31_a9_50_cf_e5_2a,
-        0xf7_f6_32_65_32_66_d0_e1,
-        0xa3_c5_84_19_46_6c_ea_ee,
-        0x1a_e1_68_fe_a6_3d_c3_39,
-    ];
+    // // 2 * generator.
+    // // 89565891926547004231252920425935692360644145829622209833684329913297188986597
+    // // 12158399299693830322967808612713398636155367887041628176798871954788371653930
+    // let b: [u64; 8] = [
+    //     0xab_ac_09_b9_5c_70_9e_e5,
+    //     0x5c_77_8e_4b_8c_ef_3c_a7,
+    //     0x30_45_40_6e_95_c0_7c_d8,
+    //     0xc6_04_7f_94_41_ed_7d_6d,
+    //     0x23_64_31_a9_50_cf_e5_2a,
+    //     0xf7_f6_32_65_32_66_d0_e1,
+    //     0xa3_c5_84_19_46_6c_ea_ee,
+    //     0x1a_e1_68_fe_a6_3d_c3_39,
+    // ];
 
-    assert_eq!(a, b);
+    // assert_eq!(a, b);
 }

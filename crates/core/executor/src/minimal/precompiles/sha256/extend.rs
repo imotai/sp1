@@ -5,6 +5,7 @@ pub(crate) unsafe fn sha256_extend(ctx: &mut JitContext, arg1: u64, arg2: u64) -
     assert!(arg2 == 0, "arg2 must be 0");
 
     let mut memory = ctx.memory();
+    memory.increment_clk(1);
     for i in 16..64 {
         // Read w[i-15].
         let w_i_minus_15 = memory.mr(w_ptr + (i - 15) as u64 * 8);
@@ -34,6 +35,7 @@ pub(crate) unsafe fn sha256_extend(ctx: &mut JitContext, arg1: u64, arg2: u64) -
 
         // Write w[i].
         memory.mw(w_ptr + i as u64 * 8, w_i as u64);
+        memory.increment_clk(1);
     }
 
     None

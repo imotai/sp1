@@ -65,7 +65,7 @@ fn main() {
         executor.write_proof(proof.clone(), vkey.clone());
     }
 
-    let mut minimal = MinimalExecutor::new(program, true, false, None);
+    let mut minimal = MinimalExecutor::tracing(program, None);
     for input in stdin.buffer.iter() {
         minimal.with_input(input);
     }

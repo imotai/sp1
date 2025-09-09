@@ -8,7 +8,7 @@ use super::MemoryRecordEnum;
 /// Alu Instruction Event.
 ///
 /// This object encapsulated the information needed to prove a RISC-V ALU operation.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, DeepSizeOf)]
 #[repr(C)]
 pub struct AluEvent {
     /// The clock cycle.

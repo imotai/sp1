@@ -61,13 +61,16 @@ impl RiscvTranspiler for TranspilerBackend {
         // We dont want to compile without a single jumpdest, otherwise we will sigsegv.
         self.has_instructions = true;
 
+        // Push the offset of the jumpdest for this instruction.
         let offset = self.inner.offset();
         self.jump_table.push(offset.0);
 
+        // If the instruction has already started, then we are in a bad state.
         if self.instruction_started {
             panic!("start_instr called without calling end_instr");
         }
 
+        // We are now "within" an instruction.
         self.instruction_started = true;
     }
 

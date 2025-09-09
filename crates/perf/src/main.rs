@@ -95,10 +95,10 @@ fn main() {}
 //             })
 //             .await;
 
-            let machine_proof: MachineProof<_, _> =
-                MachineProof { shard_proofs: core_proof.proof.0.clone() };
-            let (_, verify_core_duration) =
-                time_operation(|| prover.prover().core().verifier().verify(&vk.vk, &machine_proof));
+// let machine_proof: MachineProof<_, _> =
+//     MachineProof { shard_proofs: core_proof.proof.0.clone() };
+// let (_, verify_core_duration) =
+//     time_operation(|| prover.prover().core().verifier().verify(&vk.vk, &machine_proof));
 
 //             let machine_proof: MachineProof<_> =
 //                 MachineProof { shard_proofs: core_proof.proof.0.clone() };
@@ -156,10 +156,10 @@ fn main() {}
 //             //             let (report, execution_duration) =
 //             //                 time_operation(|| prover.execute(&elf, &stdin, context.clone()));
 
-            let machine_proof: MachineProof<_, _> =
-                MachineProof { shard_proofs: core_proof.proof.0.clone() };
-            let (_, verify_core_duration) =
-                time_operation(|| prover.prover().core().verifier().verify(&vk.vk, &machine_proof));
+// let machine_proof: MachineProof<_, _> =
+//     MachineProof { shard_proofs: core_proof.proof.0.clone() };
+// let (_, verify_core_duration) =
+//     time_operation(|| prover.prover().core().verifier().verify(&vk.vk, &machine_proof));
 
 //             //             let (_, verify_core_duration) =
 //             //                 time_operation(|| prover.verify(&core_proof.proof, &vk));

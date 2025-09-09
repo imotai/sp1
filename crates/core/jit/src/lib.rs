@@ -151,6 +151,9 @@ pub trait TraceCollector {
 
     /// Write the start clk of the trace chunk.
     fn trace_clk_start(&mut self);
+
+    /// Write the end clk of the trace chunk.
+    fn trace_clk_end(&mut self);
 }
 
 pub trait Debuggable {
@@ -208,6 +211,8 @@ pub struct JitFunction {
     pub clk: u64,
     pub global_clk: u64,
 }
+
+unsafe impl Send for JitFunction {}
 
 #[cfg(target_os = "linux")]
 impl JitFunction {
@@ -347,6 +352,7 @@ impl JitFunction {
 
         tracing.then_some(TraceChunkRaw::new(
             trace_buf.make_read_only().expect("Failed to make trace buf read only"),
+            self.hints.iter().map(|(_, hint)| hint.len()).collect(),
         ))
     }
 

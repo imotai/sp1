@@ -4494,6 +4494,7 @@ dependencies = [
  "bincode",
  "cfg-if",
  "elliptic-curve",
+ "futures",
  "generic-array 1.1.0",
  "hashbrown 0.14.5",
  "hex",
@@ -4644,6 +4645,7 @@ dependencies = [
 name = "sp1-jit"
 version = "6.0.0"
 dependencies = [
+ "bincode",
  "dynasmrt",
  "hashbrown 0.14.5",
  "memfd",

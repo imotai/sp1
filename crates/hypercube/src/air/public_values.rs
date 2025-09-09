@@ -22,7 +22,7 @@ pub const POSEIDON_NUM_WORDS: usize = 8;
 pub const PROOF_NONCE_NUM_WORDS: usize = 4;
 
 /// Stores all of a shard proof's public values.
-#[derive(Serialize, Deserialize, Clone, Copy, Default, Debug, DeepSizeOf)]
+#[derive(Serialize, Deserialize, Clone, Copy, Default, Debug, PartialEq, Eq, DeepSizeOf)]
 #[repr(C)]
 pub struct PublicValues<W1, W2, W3, T> {
     /// The `committed_value_digest` value before this shard.

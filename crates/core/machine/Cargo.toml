@@ -29,6 +29,7 @@ sp1-primitives = { workspace = true }
 
 
 slop-futures = { workspace = true }
+futures = { workspace = true }
 
 rayon = "1.10.0"
 rayon-scan = "0.1.1"

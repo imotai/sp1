@@ -1041,22 +1041,23 @@ impl MemoryInstructions for TranspilerBackend {
             // ------------------------------------
             add Rq(TEMP_A), Rq(TEMP_B);
 
-            // ------------------------------------
-            // Load the clk into TEMP_B
-            //
-            // TEMP_B = clk
-            // TEMP_A = addr + physical_memory_pointer
-            // ------------------------------------
-            mov Rq(TEMP_B), QWORD [Rq(CONTEXT) + CLK_OFFSET];
+            // // ------------------------------------
+            // // Load the clk into TEMP_B and adjust for the memory access position.
+            // //
+            // // TEMP_B = clk
+            // // TEMP_A = addr + physical_memory_pointer
+            // // ------------------------------------
+            // mov Rq(TEMP_B), QWORD [Rq(CONTEXT) + CLK_OFFSET];
+            // add Rq(TEMP_B), 1;
 
-            // ------------------------------------
-            // 5. Store the clk into the address
-            //
-            // TEMP_B = clk
-            // TEMP_A = addr + physical_memory_pointer
-            // [addr + physical_memory_pointer] = clk
-            // ------------------------------------
-            mov [Rq(TEMP_A)], Rq(TEMP_B);
+            // // ------------------------------------
+            // // 5. Store the clk into the address
+            // //
+            // // TEMP_B = clk
+            // // TEMP_A = addr + physical_memory_pointer
+            // // [addr + physical_memory_pointer] = clk
+            // // ------------------------------------
+            // mov [Rq(TEMP_A)], Rq(TEMP_B);
 
             // ------------------------------------
             // 4. Load byte → sign-extend to 32 bits

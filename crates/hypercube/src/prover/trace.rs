@@ -155,8 +155,8 @@ where
         // Wait for the traces to be generated and copy them to the target backend.
         let (chips_and_traces, public_values) = rx.await.unwrap();
 
-        let chip_set = chips_and_traces.keys().cloned().collect::<BTreeSet<_>>();
-        let shard_chips = self.machine.smallest_cluster(&chip_set).unwrap().clone();
+        let shard_chips = chips_and_traces.keys().cloned().collect::<BTreeSet<_>>();
+        // let shard_chips = self.machine.smallest_cluster(&chip_set).unwrap().clone();
 
         // Wait for a prover to be available.
         let permit = prover_permits
@@ -291,8 +291,8 @@ where
         // Wait for the traces to be generated and copy them to the target backend.
         let (named_preprocessed_traces, chips_and_traces, public_values) = rx.await.unwrap();
 
-        let chip_set = chips_and_traces.keys().cloned().collect::<BTreeSet<_>>();
-        let shard_chips = self.machine.smallest_cluster(&chip_set).unwrap().clone();
+        let shard_chips = chips_and_traces.keys().cloned().collect::<BTreeSet<_>>();
+        // let shard_chips = self.machine.smallest_cluster(&chip_set).unwrap().clone();
 
         // Make the padded traces.
         let padded_traces = shard_chips

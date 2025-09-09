@@ -14,7 +14,7 @@ pub const NUM_PAGE_PROT_ENTRIES_PER_ROW_EXEC: usize = 4;
 ///
 /// This object encapsulates the information needed to prove a memory access operation. This
 /// includes the timestamp and the value of the memory address.
-#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, DeepSizeOf)]
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, PartialEq, Eq, DeepSizeOf)]
 #[repr(C)]
 pub struct MemoryRecord {
     /// The timestamp.
@@ -78,7 +78,7 @@ pub enum MemoryAccessPosition {
 /// This object encapsulates the information needed to prove a memory read operation. This
 /// includes the value, timestamp, and the previous timestamp.
 #[allow(clippy::manual_non_exhaustive)]
-#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, DeepSizeOf)]
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, PartialEq, Eq, DeepSizeOf)]
 #[repr(C)]
 pub struct MemoryReadRecord {
     /// The value.
@@ -96,7 +96,7 @@ pub struct MemoryReadRecord {
 /// This object encapsulates the information needed to prove a memory write operation. This
 /// includes the value, timestamp, previous value, and previous timestamp.
 #[allow(clippy::manual_non_exhaustive)]
-#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, DeepSizeOf)]
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, PartialEq, Eq, DeepSizeOf)]
 #[repr(C)]
 pub struct MemoryWriteRecord {
     /// The previous timestamp.
@@ -115,7 +115,7 @@ pub struct MemoryWriteRecord {
 ///
 /// This enum represents the different types of memory records that can be stored in the memory
 /// event such as reads and writes.
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, DeepSizeOf)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq, DeepSizeOf)]
 pub enum MemoryRecordEnum {
     /// Read.
     Read(MemoryReadRecord),
@@ -164,7 +164,7 @@ impl MemoryRecordEnum {
 ///
 /// This object encapsulates the information needed to prove a memory initialize or finalize
 /// operation. This includes the address, value, and the timestamp.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, DeepSizeOf)]
 #[repr(C)]
 pub struct MemoryInitializeFinalizeEvent {
     /// The address.
@@ -245,14 +245,16 @@ impl MemoryWriteRecord {
     }
 }
 
-impl From<MemoryRecordEnum> for MemoryWriteRecord {
-    fn from(record: MemoryRecordEnum) -> Self {
-        match record {
-            MemoryRecordEnum::Read(_) => panic!("Cannot convert a read record to a write record"),
-            MemoryRecordEnum::Write(record) => record,
-        }
-    }
-}
+// impl From<MemoryRecordEnum> for MemoryWriteRecord {
+//     fn from(record: MemoryRecordEnum) -> Self {
+//         match record {
+//             MemoryRecordEnum::Read(_) => panic!("Cannot convert a read record to a write record"),
+//             MemoryRecordEnum::Write(record) => record,
+//         }
+
+//         Self { prev_timestamp, prev_value, timestamp, value }
+//     }
+// }
 
 impl MemoryRecordEnum {
     /// Returns the value of the memory record.
@@ -311,7 +313,7 @@ impl From<MemoryWriteRecord> for MemoryRecordEnum {
 /// This object encapsulates the information needed to prove a memory access operation within a
 /// shard. This includes the address, initial memory access, and final memory access within a
 /// shard.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, DeepSizeOf)]
 #[repr(C)]
 pub struct MemoryLocalEvent {
     /// The address.
@@ -326,7 +328,7 @@ pub struct MemoryLocalEvent {
 ///
 /// This object encapsulates the information needed to prove a page prot access operation. This
 /// includes the clk and page prot value.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, DeepSizeOf)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, DeepSizeOf, PartialEq, Eq)]
 #[repr(C)]
 pub struct PageProtRecord {
     /// The external flag.
@@ -342,7 +344,7 @@ pub struct PageProtRecord {
 /// This object encapsulates the information needed to prove a page prot access operation within a
 /// shard. This includes the page, initial page access, and final page access within a
 /// shard.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, DeepSizeOf)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, DeepSizeOf)]
 #[repr(C)]
 pub struct PageProtLocalEvent {
     /// The page idx.
@@ -351,4 +353,32 @@ pub struct PageProtLocalEvent {
     pub initial_page_prot_access: PageProtRecord,
     /// The final page prot access.
     pub final_page_prot_access: PageProtRecord,
+}
+
+pub trait IntoMemoryRecord {
+    /// Get the previous record.
+    fn previous_record(&self) -> MemoryRecord;
+
+    /// Get the current record.
+    fn current_record(&self) -> MemoryRecord;
+}
+
+impl IntoMemoryRecord for MemoryReadRecord {
+    fn previous_record(&self) -> MemoryRecord {
+        MemoryRecord { timestamp: self.prev_timestamp, value: self.value }
+    }
+
+    fn current_record(&self) -> MemoryRecord {
+        MemoryRecord { timestamp: self.timestamp, value: self.value }
+    }
+}
+
+impl IntoMemoryRecord for MemoryWriteRecord {
+    fn previous_record(&self) -> MemoryRecord {
+        MemoryRecord { timestamp: self.prev_timestamp, value: self.prev_value }
+    }
+
+    fn current_record(&self) -> MemoryRecord {
+        MemoryRecord { timestamp: self.timestamp, value: self.value }
+    }
 }

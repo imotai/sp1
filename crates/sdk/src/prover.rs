@@ -179,6 +179,7 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
             if committed_value_digest_bytes != bundle.public_values.hash()
                 && committed_value_digest_bytes != bundle.public_values.blake3_hash()
             {
+                tracing::error!("committed value digest doesnt match");
                 return Err(SP1VerificationError::InvalidPublicValues);
             }
 

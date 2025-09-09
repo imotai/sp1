@@ -104,9 +104,11 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // - We include some of these checks inside the verify function for additional verification.
         let mut prev_timestamp =
             [SP1Field::zero(), SP1Field::zero(), SP1Field::zero(), SP1Field::one()];
+
         for shard_proof in proof.0.iter() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
+
             if public_values.initial_timestamp != prev_timestamp {
                 return Err(MachineVerifierError::InvalidPublicValues("invalid initial timestamp"));
             }

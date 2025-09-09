@@ -40,6 +40,8 @@ pub struct AsyncTurn {
 
 impl AsyncTurn {
     pub fn new() -> Self {
+        // Note: We could define some preconditions here and use unsafe + atomic counter here, but
+        // this works fine for now...
         Self {
             inner: Arc::new(Mutex::new(AsyncTurnInner { current_turn: 0, wakers: HashMap::new() })),
         }

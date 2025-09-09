@@ -290,11 +290,38 @@ impl<'a> ContextMemory<'a> {
         if self.tracing() {
             unsafe {
                 self.ctx.trace_mem_access(slice);
+
                 // Bump the clk on the all current entries.
                 for (i, entry) in slice.iter().enumerate() {
                     let new_entry = MemValue { value: entry.value, clk: self.ctx.clk };
                     std::ptr::write(ptr.add(i), new_entry)
                 }
+            }
+        }
+
+        slice.iter().map(|val| &val.value)
+    }
+
+    // Read a slice from memory, without bumping the clk.
+    pub fn mr_slice_unsafe(&self, addr: u64, len: usize) -> impl IntoIterator<Item = &u64> + Clone {
+        #[cfg(debug_assertions)]
+        if addr % 8 > 0 {
+            panic!("Address {addr} is not aligned to 8");
+        }
+
+        // Convert the byte address to the word address.
+        let word_address = addr / 8;
+
+        let ptr = self.ctx.memory.as_ptr() as *mut MemValue;
+        let ptr = unsafe { ptr.add(word_address as usize) };
+
+        // SAFETY: The pointer is valid to write to, as it was aligned by us during allocation.
+        // See [JitFunction::new] for more details.
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+
+        if self.tracing() {
+            unsafe {
+                self.ctx.trace_mem_access(slice);
             }
         }
 
@@ -334,32 +361,31 @@ impl<'a> ContextMemory<'a> {
         }
     }
 
-    /// Read a byte from the memory.
-    pub fn byte(&self, addr: u64) -> u8 {
-        // Convert the byte address to the word address.
-        let words = addr / 8;
+    // /// Read a byte from the memory.
+    // pub fn byte(&self, addr: u64) -> u8 {
+    //     // Convert the byte address to the word address.
+    //     let words = addr / 8;
 
-        let ptr = self.ctx.memory.as_ptr() as *mut MemValue;
-        let ptr = unsafe { ptr.add(words as usize) };
+    //     let ptr = self.ctx.memory.as_ptr() as *mut MemValue;
+    //     let ptr = unsafe { ptr.add(words as usize) };
 
-        // SAFETY: The pointer is valid to write to, as it was aligned by us during allocation.
-        // See [JitFunction::new] for more details
-        //
-        // All alignments are valid for u8, so we can read from it directly.
-        let entry = unsafe { std::ptr::read(ptr) };
+    //     // SAFETY: The pointer is valid to write to, as it was aligned by us during allocation.
+    //     // See [JitFunction::new] for more details
+    //     //
+    //     // All alignments are valid for u8, so we can read from it directly.
+    //     let entry = unsafe { std::ptr::read(ptr) };
 
-        if self.tracing() {
-            unsafe {
-                self.ctx.trace_mem_access(&[entry]);
+    //     if self.tracing() {
+    //         unsafe {
+    //             self.ctx.trace_mem_access(&[entry]);
 
-                // Bump the clk
-                let new_entry = MemValue { value: entry.value, clk: self.ctx.clk };
-                std::ptr::write(ptr, new_entry);
-            }
-        }
+    //             // Note: To match the behavior of the CoreVM, the clock is not bumped here.
+    //             // This method should probably be called "byte_no_trace"
+    //         }
+    //     }
 
-        (entry.value >> (addr % 8 * 8)) as u8
-    }
+    //     (entry.value >> (addr % 8 * 8)) as u8
+    // }
 
     /// Write a u64 to memory, without tracing and sets the clk in the entry to 1.
     pub fn mw_hint(&mut self, addr: u64, val: u64) {
@@ -370,5 +396,9 @@ impl<'a> ContextMemory<'a> {
 
         let new_entry = MemValue { value: val, clk: 0 };
         unsafe { std::ptr::write(ptr, new_entry) };
+    }
+
+    pub fn increment_clk(&mut self, amount: u64) {
+        self.ctx.clk += amount;
     }
 }

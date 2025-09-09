@@ -726,6 +726,10 @@ impl<B: RiscvTranspiler> ComputeInstructions for DebugBackend<B> {
 }
 
 impl<B: RiscvTranspiler> TraceCollector for DebugBackend<B> {
+    fn trace_clk_end(&mut self) {
+        self.backend.trace_clk_end();
+    }
+
     fn trace_clk_start(&mut self) {
         self.backend.trace_clk_start();
     }

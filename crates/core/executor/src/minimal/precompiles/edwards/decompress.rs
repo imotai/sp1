@@ -19,6 +19,7 @@ pub unsafe fn edwards_decompress_syscall(
     let y = memory.mr_slice(slice_ptr + (COMPRESSED_POINT_BYTES as u64), WORDS_FIELD_ELEMENT);
     let y_bytes: [u8; COMPRESSED_POINT_BYTES] = words_to_bytes_le(y);
 
+    memory.increment_clk(1);
     // Copy bytes into another array so we can modify the last byte and make CompressedEdwardsY,
     // which we'll use to compute the expected X.
     // Re-insert sign bit into last bit of Y for CompressedEdwardsY format

@@ -6,8 +6,10 @@ use super::{
         edwards::{edwards_add, edwards_decompress_syscall},
         fptower::{fp2_addsub_syscall, fp2_mul_syscall, fp_op_syscall},
         keccak::keccak_permute,
+        poseidon2::poseidon2,
         sha256::{sha256_compress, sha256_extend},
         uint256::uint256_mul,
+        uint256_ops::uint256_ops,
         uint256x2048::u256x2048_mul,
         weierstrass::{
             weierstrass_add_assign_syscall, weierstrass_decompress_syscall,
@@ -36,6 +38,7 @@ pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut JitContext) -> u64 {
     let arg2 = registers[11];
 
     let code = SyscallCode::from_u32(registers[5] as u32);
+    let clk = ctx.clk;
 
     let res = match code {
         SyscallCode::SHA_EXTEND => unsafe { sha256_extend(ctx, arg1, arg2) },
@@ -103,7 +106,15 @@ pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut JitContext) -> u64 {
                 enter_unconstrained(ctx, arg1, arg2).expect("Enter unconstrained failed")
             };
         }
-        SyscallCode::EXIT_UNCONSTRAINED => unsafe { exit_unconstrained(ctx, arg1, arg2) },
+        SyscallCode::EXIT_UNCONSTRAINED => {
+            // Note: The `exit_unconstrained` syscall does not fall through to the normal syscall
+            // path because this syscall directly modifies the PC and CLK.
+            let code = unsafe { exit_unconstrained(ctx, arg1, arg2) };
+            ctx.pc += 4;
+            ctx.clk += 256;
+
+            return code.expect("Exit unconstrained failed");
+        }
         SyscallCode::HINT_LEN => unsafe { hint_len(ctx, arg1, arg2) },
         SyscallCode::HINT_READ => unsafe { hint_read(ctx, arg1, arg2) },
         SyscallCode::WRITE => unsafe { write(ctx, arg1, arg2) },
@@ -112,13 +123,19 @@ pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut JitContext) -> u64 {
             ctx.clk += 256;
             return code as u64;
         }
-        SyscallCode::COMMIT | SyscallCode::COMMIT_DEFERRED_PROOFS => None,
-        _ => panic!("Unknown syscall: {code:?}"),
+        SyscallCode::UINT256_MUL_CARRY | SyscallCode::UINT256_ADD_CARRY => unsafe {
+            uint256_ops(ctx, arg1, arg2)
+        },
+        SyscallCode::POSEIDON2 => unsafe { poseidon2(ctx, arg1, arg2) },
+        SyscallCode::MPROTECT
+        | SyscallCode::VERIFY_SP1_PROOF
+        | SyscallCode::COMMIT
+        | SyscallCode::COMMIT_DEFERRED_PROOFS => None,
     };
 
     // Default syscall behavior
     ctx.pc += 4;
-    ctx.clk += 256;
+    ctx.clk = clk + 256;
 
     res.unwrap_or(code as u64)
 }

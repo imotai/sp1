@@ -16,6 +16,8 @@ pub enum RetainedEventsPreset {
     Poseidon2,
     /// Retain events for ``U256Ops`` operations.
     U256Ops,
+    /// Retain events for Secp256k1 operations.
+    Secp256k1,
 }
 
 impl RetainedEventsPreset {
@@ -32,6 +34,9 @@ impl RetainedEventsPreset {
             RetainedEventsPreset::Sha256 => &[SHA_COMPRESS, SHA_EXTEND],
             RetainedEventsPreset::Poseidon2 => &[POSEIDON2],
             RetainedEventsPreset::U256Ops => &[UINT256_ADD_CARRY, UINT256_MUL_CARRY],
+            RetainedEventsPreset::Secp256k1 => {
+                &[SECP256K1_ADD, SECP256K1_DOUBLE, SECP256K1_DECOMPRESS]
+            }
         }
     }
 }

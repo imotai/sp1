@@ -1,0 +1,310 @@
+use std::sync::Arc;
+
+use hashbrown::HashSet;
+use sp1_jit::{MemReads, MinimalTrace};
+
+use crate::{
+    syscalls::SyscallCode,
+    vm::{
+        results::{CycleResult, EcallResult, LoadResult, StoreResult},
+        syscall::{core_syscall_handler, SyscallRuntime},
+        CoreVM,
+    },
+    ExecutionError, Instruction, Opcode, Program,
+};
+
+/// A RISC-V VM that uses a [`MinimalTrace`] to create a [`ExecutionRecord`].
+pub struct SplicingVM<'a> {
+    /// The core VM.
+    pub core: CoreVM<'a>,
+    /// The addresses that have been touched.
+    pub touched_addresses: &'a mut HashSet<u64>,
+    /// The index of the hint lens the next shard will use.
+    pub hint_lens_idx: usize,
+}
+
+impl SplicingVM<'_> {
+    /// Execute the program until it halts.
+    pub fn execute(&mut self) -> Result<CycleResult, ExecutionError> {
+        debug_assert!(
+            !self.core.is_trace_end() && !self.core.is_done(),
+            "Executing a trace that has already ended"
+        );
+
+        loop {
+            match self.execute_instruction()? {
+                CycleResult::Done(false) => {}
+                CycleResult::ShardBoundry => {
+                    self.start_new_shard();
+                    return Ok(CycleResult::ShardBoundry);
+                }
+                CycleResult::TraceEnd => {
+                    return Ok(CycleResult::ShardBoundry);
+                }
+                CycleResult::Done(true) => {
+                    return Ok(CycleResult::Done(true));
+                }
+            }
+        }
+    }
+
+    /// Execute the next instruction at the current PC.
+    pub fn execute_instruction(&mut self) -> Result<CycleResult, ExecutionError> {
+        let instruction = self.core.fetch();
+        if instruction.is_none() {
+            unreachable!("Fetching the next instruction failed");
+        }
+
+        // SAFETY: The instruction is guaranteed to be valid as we checked for `is_none` above.
+        let instruction = unsafe { *instruction.unwrap_unchecked() };
+
+        match &instruction.opcode {
+            Opcode::ADD
+            | Opcode::ADDI
+            | Opcode::SUB
+            | Opcode::XOR
+            | Opcode::OR
+            | Opcode::AND
+            | Opcode::SLL
+            | Opcode::SLLW
+            | Opcode::SRL
+            | Opcode::SRA
+            | Opcode::SRLW
+            | Opcode::SRAW
+            | Opcode::SLT
+            | Opcode::SLTU
+            | Opcode::MUL
+            | Opcode::MULHU
+            | Opcode::MULHSU
+            | Opcode::MULH
+            | Opcode::MULW
+            | Opcode::DIVU
+            | Opcode::REMU
+            | Opcode::DIV
+            | Opcode::REM
+            | Opcode::DIVW
+            | Opcode::ADDW
+            | Opcode::SUBW
+            | Opcode::DIVUW
+            | Opcode::REMUW
+            | Opcode::REMW => {
+                self.execute_alu(&instruction);
+            }
+            Opcode::LB
+            | Opcode::LBU
+            | Opcode::LH
+            | Opcode::LHU
+            | Opcode::LW
+            | Opcode::LWU
+            | Opcode::LD => self.execute_load(&instruction)?,
+            Opcode::SB | Opcode::SH | Opcode::SW | Opcode::SD => {
+                self.execute_store(&instruction)?;
+            }
+            Opcode::JAL | Opcode::JALR => {
+                self.execute_jump(&instruction);
+            }
+            Opcode::BEQ | Opcode::BNE | Opcode::BLT | Opcode::BGE | Opcode::BLTU | Opcode::BGEU => {
+                self.execute_branch(&instruction);
+            }
+            Opcode::LUI | Opcode::AUIPC => {
+                self.execute_utype(&instruction);
+            }
+            Opcode::ECALL => self.execute_ecall(&instruction)?,
+            Opcode::EBREAK | Opcode::UNIMP => {
+                unreachable!("Invalid opcode for `execute_instruction`: {:?}", instruction.opcode)
+            }
+        }
+
+        Ok(self.core.advance())
+    }
+
+    /// Splice a minimal trace, outputting a minimal trace for the NEXT shard.
+    pub fn splice<T: MinimalTrace>(&self, trace: T) -> Option<SplicedMinimalTrace<T>> {
+        // If the trace has been exhausted, then the last splice is all thats needed.
+        if self.core.is_trace_end() || self.core.is_done() {
+            return None;
+        }
+
+        let total_mem_reads = trace.num_mem_reads();
+
+        Some(SplicedMinimalTrace::new(
+            trace,
+            self.core.registers().iter().map(|v| v.value).collect::<Vec<_>>().try_into().unwrap(),
+            self.core.pc(),
+            self.core.clk(),
+            total_mem_reads as usize - self.core.mem_reads.len(),
+            self.hint_lens_idx,
+        ))
+    }
+
+    // Indicate that a new shard is starting.
+    fn start_new_shard(&mut self) {
+        self.core.shape_checker.reset(self.core.clk());
+        self.core.register_refresh();
+    }
+}
+
+impl<'a> SplicingVM<'a> {
+    /// Create a new full-tracing VM from a minimal trace.
+    pub fn new<T: MinimalTrace>(
+        trace: &'a T,
+        program: Arc<Program>,
+        touched_addresses: &'a mut HashSet<u64>,
+    ) -> Self {
+        Self { core: CoreVM::new(trace, program), touched_addresses, hint_lens_idx: 0 }
+    }
+
+    /// Execute a load instruction.
+    ///
+    /// This method will update the local memory access for the memory read, the register read,
+    /// and the register write.
+    ///
+    /// It will also emit the memory instruction event and the events for the load instruction.
+    pub fn execute_load(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
+        let LoadResult { addr, .. } = self.core.execute_load(instruction)?;
+
+        // Ensure the address is aligned to 8 bytes.
+        if !self.core.is_unconstrained() {
+            self.touched_addresses.insert(addr & !0b111);
+        }
+
+        Ok(())
+    }
+
+    /// Execute a store instruction.
+    ///
+    /// This method will update the local memory access for the memory read, the register read,
+    /// and the register write.
+    ///
+    /// It will also emit the memory instruction event and the events for the store instruction.
+    pub fn execute_store(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
+        let StoreResult { addr, .. } = self.core.execute_store(instruction)?;
+
+        // Ensure the address is aligned to 8 bytes.
+        if !self.core.is_unconstrained() {
+            self.touched_addresses.insert(addr & !0b111);
+        }
+
+        Ok(())
+    }
+
+    /// Execute an ALU instruction and emit the events.
+    #[inline]
+    pub fn execute_alu(&mut self, instruction: &Instruction) {
+        let _ = self.core.execute_alu(instruction);
+    }
+
+    /// Execute a jump instruction and emit the events.
+    #[inline]
+    pub fn execute_jump(&mut self, instruction: &Instruction) {
+        let _ = self.core.execute_jump(instruction);
+    }
+
+    /// Execute a branch instruction and emit the events.
+    #[inline]
+    pub fn execute_branch(&mut self, instruction: &Instruction) {
+        let _ = self.core.execute_branch(instruction);
+    }
+
+    /// Execute a U-type instruction and emit the events.   
+    #[inline]
+    pub fn execute_utype(&mut self, instruction: &Instruction) {
+        let _ = self.core.execute_utype(instruction);
+    }
+
+    /// Execute an ecall instruction and emit the events.
+    #[inline]
+    pub fn execute_ecall(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
+        let EcallResult { code, .. } =
+            CoreVM::execute_ecall(self, instruction, core_syscall_handler)?;
+
+        if code == SyscallCode::HINT_LEN {
+            self.hint_lens_idx += 1;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> SyscallRuntime<'a> for SplicingVM<'a> {
+    fn core(&self) -> &CoreVM<'a> {
+        &self.core
+    }
+
+    fn core_mut(&mut self) -> &mut CoreVM<'a> {
+        &mut self.core
+    }
+
+    fn push_public_values(&mut self, _: &[u8]) {}
+}
+
+/// A minimal trace implentation that starts at a different point in the trace,
+/// but reuses the same memory reads and hint lens.
+#[derive(Debug, Clone)]
+pub struct SplicedMinimalTrace<T: MinimalTrace> {
+    inner: T,
+    start_registers: [u64; 32],
+    start_pc: u64,
+    start_clk: u64,
+    memory_reads_idx: usize,
+    hint_lens_idx: usize,
+}
+
+impl<T: MinimalTrace> SplicedMinimalTrace<T> {
+    /// Create a new spliced minimal trace.
+    #[tracing::instrument(name = "SplicedMinimalTrace::new", skip(inner))]
+    pub fn new(
+        inner: T,
+        start_registers: [u64; 32],
+        start_pc: u64,
+        start_clk: u64,
+        memory_reads_idx: usize,
+        hint_lens_idx: usize,
+    ) -> Self {
+        Self { inner, start_registers, start_pc, start_clk, memory_reads_idx, hint_lens_idx }
+    }
+
+    /// Create a new spliced minimal trace from a minimal trace without any splicing.
+    pub fn new_full_trace(trace: T) -> Self {
+        let start_registers = trace.start_registers();
+        let start_pc = trace.pc_start();
+        let start_clk = trace.clk_start();
+
+        Self::new(trace, start_registers, start_pc, start_clk, 0, 0)
+    }
+}
+
+impl<T: MinimalTrace> MinimalTrace for SplicedMinimalTrace<T> {
+    fn start_registers(&self) -> [u64; 32] {
+        self.start_registers
+    }
+
+    fn pc_start(&self) -> u64 {
+        self.start_pc
+    }
+
+    fn clk_start(&self) -> u64 {
+        self.start_clk
+    }
+
+    fn clk_end(&self) -> u64 {
+        self.inner.clk_end()
+    }
+
+    fn num_mem_reads(&self) -> u64 {
+        self.inner.num_mem_reads() - self.memory_reads_idx as u64
+    }
+
+    fn mem_reads(&self) -> MemReads<'_> {
+        let mut reads = self.inner.mem_reads();
+        reads.advance(self.memory_reads_idx);
+
+        reads
+    }
+
+    fn hint_lens(&self) -> &[usize] {
+        let slice = self.inner.hint_lens();
+
+        &slice[self.hint_lens_idx..]
+    }
+}

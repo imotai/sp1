@@ -7,7 +7,7 @@ use crate::syscalls::SyscallCode;
 ///
 /// This object encapsulated the information needed to prove a syscall invocation from the CPU
 /// table. This includes its shard, clk, syscall id, arguments, other relevant information.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, DeepSizeOf)]
 #[repr(C)]
 pub struct SyscallEvent {
     /// The program counter.

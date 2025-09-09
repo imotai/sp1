@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::Arc};
 
 use memmap2::Mmap;
 use serde::{Deserialize, Serialize};
@@ -123,71 +123,120 @@ pub(crate) struct TraceChunkHeader {
     pub start_registers: [u64; 32],
     pub pc_start: u64,
     pub clk_start: u64,
+    pub clk_end: u64,
     pub num_mem_reads: u64,
 }
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct TraceChunkRaw {
-    pub inner: Mmap,
+    inner: Arc<Mmap>,
+    hint_lens: Vec<usize>,
 }
 
 impl TraceChunkRaw {
-    pub(crate) fn new(inner: Mmap) -> Self {
-        Self { inner }
+    pub(crate) fn new(inner: Mmap, hint_lens: Vec<usize>) -> Self {
+        Self { inner: Arc::new(inner), hint_lens }
     }
+}
 
-    pub fn start_registers(&self) -> [u64; 32] {
+impl MinimalTrace for TraceChunkRaw {
+    fn start_registers(&self) -> [u64; 32] {
         let offset = std::mem::offset_of!(TraceChunkHeader, start_registers);
 
         unsafe { std::ptr::read_unaligned(self.inner.as_ptr().add(offset) as *const [u64; 32]) }
     }
 
-    pub fn pc_start(&self) -> u64 {
+    fn pc_start(&self) -> u64 {
         let offset = std::mem::offset_of!(TraceChunkHeader, pc_start);
 
         unsafe { std::ptr::read_unaligned(self.inner.as_ptr().add(offset) as *const u64) }
     }
 
-    pub fn clk_start(&self) -> u64 {
+    fn clk_start(&self) -> u64 {
         let offset = std::mem::offset_of!(TraceChunkHeader, clk_start);
 
         unsafe { std::ptr::read_unaligned(self.inner.as_ptr().add(offset) as *const u64) }
     }
 
-    pub fn num_mem_reads(&self) -> u64 {
+    fn clk_end(&self) -> u64 {
+        let offset = std::mem::offset_of!(TraceChunkHeader, clk_end);
+
+        unsafe { std::ptr::read_unaligned(self.inner.as_ptr().add(offset) as *const u64) }
+    }
+
+    fn num_mem_reads(&self) -> u64 {
         let offset = std::mem::offset_of!(TraceChunkHeader, num_mem_reads);
 
         unsafe { std::ptr::read_unaligned(self.inner.as_ptr().add(offset) as *const u64) }
     }
 
-    pub fn mem_reads(&self) -> MemReads<'_> {
+    fn mem_reads(&self) -> MemReads<'_> {
         let header_end = std::mem::size_of::<TraceChunkHeader>();
         let len = self.num_mem_reads() as usize;
 
         debug_assert!(self.inner.len() - header_end >= len);
 
-        MemReads::new(&self.inner[header_end..], len)
+        // SAFETY:
+        // - The memory is valid assuming num_mem_reads is correct.
+        // - The memory is technically always valid for reads since all bitpatterns are valid for
+        //   `MemValue`.
+        unsafe { MemReads::new(self.inner.as_ptr().add(header_end) as *const MemValue, len) }
+    }
+
+    fn hint_lens(&self) -> &[usize] {
+        &self.hint_lens
     }
 }
 
 pub struct MemReads<'a> {
-    pub inner: *const MemValue,
-    pub len: usize,
+    inner: *const MemValue,
+    len: usize,
     _phantom: PhantomData<&'a ()>,
 }
 
 impl<'a> MemReads<'a> {
-    pub(crate) fn new(inner: &'a [u8], len: usize) -> Self {
-        Self { inner: inner.as_ptr() as *const MemValue, len, _phantom: PhantomData }
-    }
-
-    /// Unsafely read a value from the underlying memory.
-    ///
     /// # Safety
     ///
-    /// - The underlying memory is valid a read of type [`T`].
-    pub unsafe fn read<T: Copy>(&self) -> T {
-        std::ptr::read_unaligned(self.inner as *const T)
+    /// - The underlying memory is valid and contains valid `MemValue`s.
+    /// - The length is the number of `MemValue`s in the underlying memory.
+    pub(crate) unsafe fn new(inner: *const MemValue, len: usize) -> Self {
+        Self { inner, len, _phantom: PhantomData }
+    }
+
+    // /// Unsafely read a value from the underlying memory.
+    // ///
+    // /// # Safety
+    // ///
+    // /// - The underlying memory is valid a read of type [`T`].
+    // pub unsafe fn read<T: Copy>(&self) -> T {
+    //     std::ptr::read_unaligned(self.inner as *const T)
+    // }
+
+    /// Advance the pointer by `n` elements.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `n` is greater than the purported length of the underlying buffer.
+    pub fn advance(&mut self, n: usize) {
+        if n > self.len {
+            panic!("Cannot advance by more than the length of the slice");
+        }
+
+        self.inner = unsafe { self.inner.add(n) };
+        self.len -= n;
+    }
+
+    /// The remaining length of the slice from our current position.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Check if the iterator is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
     }
 }
 
@@ -223,12 +272,16 @@ pub struct TraceChunk {
     pub start_registers: [u64; 32],
     pub pc_start: u64,
     pub clk_start: u64,
-    pub mem_reads: Vec<MemValue>,
+    pub clk_end: u64,
+    pub hint_lens: Vec<usize>,
+    #[serde(serialize_with = "ser::serialize_mem_reads")]
+    #[serde(deserialize_with = "ser::deserialize_mem_reads")]
+    pub mem_reads: Arc<[MemValue]>,
 }
 
 impl From<TraceChunkRaw> for TraceChunk {
     fn from(raw: TraceChunkRaw) -> Self {
-        TraceChunk::copy_from_bytes(raw.inner.as_ref())
+        TraceChunk::copy_from_bytes(raw.hint_lens, raw.inner.as_ref())
     }
 }
 
@@ -239,7 +292,7 @@ impl TraceChunk {
     /// # Note:
     /// This method will panic if the buffer is not large enough,
     /// or the number of reads causes an overflow.
-    pub fn copy_from_bytes(src: &[u8]) -> Self {
+    pub fn copy_from_bytes(hint_lens: Vec<usize>, src: &[u8]) -> Self {
         const HDR: usize = size_of::<TraceChunkHeader>();
 
         /* ---------- 1. header must fit ---------- */
@@ -267,7 +320,7 @@ impl TraceChunk {
         /* ---------- 4. extract tail ---------- */
         let tail = &src[HDR..total]; // only after the length check
 
-        let mut mem_reads = Vec::<MemValue>::with_capacity(n_words);
+        let mem_reads = Arc::new_uninit_slice(n_words);
 
         // SAFETY:
         // - The tail contains valid u64s, so doing a bitwise copy preserves the validity and
@@ -284,16 +337,105 @@ impl TraceChunk {
             std::ptr::copy_nonoverlapping(tail.as_ptr(), mem_reads.as_ptr() as *mut u8, n_bytes)
         };
 
-        unsafe {
-            mem_reads.set_len(n_words);
-        }
-
         Self {
             start_registers: raw.start_registers,
             pc_start: raw.pc_start,
             clk_start: raw.clk_start,
+            clk_end: raw.clk_end,
+            hint_lens,
             // SAFETY: We know the memory is initialized, so we can assume it.
-            mem_reads,
+            mem_reads: unsafe { mem_reads.assume_init() },
         }
+    }
+}
+
+pub trait MinimalTrace: Clone {
+    fn start_registers(&self) -> [u64; 32];
+
+    fn pc_start(&self) -> u64;
+
+    fn clk_start(&self) -> u64;
+
+    fn clk_end(&self) -> u64;
+
+    fn num_mem_reads(&self) -> u64;
+
+    fn mem_reads(&self) -> MemReads<'_>;
+
+    fn hint_lens(&self) -> &[usize];
+}
+
+impl MinimalTrace for TraceChunk {
+    fn start_registers(&self) -> [u64; 32] {
+        self.start_registers
+    }
+
+    fn pc_start(&self) -> u64 {
+        self.pc_start
+    }
+
+    fn clk_start(&self) -> u64 {
+        self.clk_start
+    }
+
+    fn clk_end(&self) -> u64 {
+        self.clk_end
+    }
+
+    fn num_mem_reads(&self) -> u64 {
+        self.mem_reads.len() as u64
+    }
+
+    fn mem_reads(&self) -> MemReads<'_> {
+        // SAFETY:
+        // - The memory is technically always valid for reads since all bitpatterns are valid for
+        //   `MemValue`.
+        // - the length comes directly from the Vec, which we know to be valid.
+        unsafe { MemReads::new(self.mem_reads.as_ptr(), self.mem_reads.len()) }
+    }
+
+    fn hint_lens(&self) -> &[usize] {
+        &self.hint_lens
+    }
+}
+
+mod ser {
+    use super::*;
+    use serde::{Deserializer, Serializer};
+
+    pub fn serialize_mem_reads<S: Serializer>(
+        mem_reads: &Arc<[MemValue]>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        let as_vec: Vec<MemValue> = Vec::from(&mem_reads[..]);
+
+        Vec::serialize(&as_vec, serializer)
+    }
+
+    pub fn deserialize_mem_reads<'a, D: Deserializer<'a>>(
+        deserializer: D,
+    ) -> Result<Arc<[MemValue]>, D::Error> {
+        let as_vec = Vec::deserialize(deserializer)?;
+
+        Ok(as_vec.into())
+    }
+
+    #[test]
+    #[cfg(test)]
+    fn test_mem_reads() {
+        let mem_reads = Arc::new([MemValue { clk: 0, value: 0 }, MemValue { clk: 1, value: 1 }]);
+        let trace = TraceChunk {
+            start_registers: [5; 32],
+            pc_start: 6,
+            clk_start: 7,
+            clk_end: 8,
+            hint_lens: vec![1, 2, 3],
+            mem_reads,
+        };
+
+        let serialized = bincode::serialize(&trace).unwrap();
+        let deserialized = bincode::deserialize(&serialized).unwrap();
+
+        assert_eq!(trace, deserialized);
     }
 }

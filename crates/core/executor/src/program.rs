@@ -115,11 +115,7 @@ impl Program {
     /// Fetch the instruction at the given program counter.
     pub fn fetch(&self, pc: u64) -> Option<&Instruction> {
         let idx = ((pc - self.pc_base) / 4) as usize;
-        if idx < self.instructions.len() {
-            Some(&self.instructions[idx])
-        } else {
-            None
-        }
+        self.instructions.get(idx)
     }
 
     // /// Returns `self.pc_start - self.pc_base`, that is, the relative `pc_start`.

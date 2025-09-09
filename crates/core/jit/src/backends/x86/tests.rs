@@ -1,7 +1,7 @@
 use super::TranspilerBackend;
 use crate::{
     ComputeInstructions, ControlFlowInstructions, Debuggable, JitContext, MemoryInstructions,
-    RiscOperand, RiscRegister, RiscvTranspiler, TraceChunkRaw,
+    MinimalTrace, RiscOperand, RiscRegister, RiscvTranspiler, TraceChunkRaw,
 };
 
 macro_rules! assert_register_is {
@@ -1399,7 +1399,7 @@ mod infra {
 }
 
 mod trace {
-    use crate::{MemValue, TraceChunk, TraceCollector};
+    use crate::{MemValue, TraceCollector};
 
     use super::*;
 
@@ -1465,7 +1465,7 @@ mod trace {
         // Check the clks.
         assert_eq!(mem_reads[0].clk, 0);
         assert_eq!(mem_reads[1].clk, 0);
-        assert_eq!(mem_reads[2].clk, 9);
+        assert_eq!(mem_reads[2].clk, 10);
         assert_eq!(mem_reads[3].clk, 5);
         assert_eq!(mem_reads[4].clk, 10);
     }

@@ -162,7 +162,7 @@ pub fn generate_records<F: PrimeField32>(
             deferred.append(&mut record.defer(&[]));
 
             // See if any deferred shards are ready to be committed to.
-            let mut deferred = deferred.split(done, None, split_opts);
+            let mut deferred = deferred.split(done, None, &split_opts);
             tracing::debug!("deferred {} records", deferred.len());
 
             // Update the public values & prover state for the shards which do not
@@ -285,8 +285,7 @@ where
     // TODO: get this from input
     let num_record_workers = 4;
     let num_trace_gen_workers = 4;
-    let (records_tx, mut records_rx) =
-        mpsc::unbounded_channel::<(ExecutionRecord, Option<MemoryPermit>)>();
+    let (records_tx, mut records_rx) = mpsc::unbounded_channel::<ExecutionRecord>();
 
     let machine_executor =
         MachineExecutor::<GC::F>::new(u32::MAX as u64, num_record_workers, opts.clone());
@@ -298,7 +297,7 @@ where
 
     let prover_handle = tokio::spawn(async move {
         let mut handles = Vec::new();
-        while let Some((record, _permit)) = records_rx.recv().await {
+        while let Some(record) = records_rx.recv().await {
             let handle = prover.prove_shard(pk.clone(), record);
             handles.push(handle);
         }

@@ -154,6 +154,7 @@ impl TraceCollector for TranspilerBackend {
             // Bump the current clk in the memory entry.
             // ------------------------------------
             mov Rq(TEMP_B), QWORD [Rq(CONTEXT) + CLK_OFFSET];
+            add Rq(TEMP_B), 1;
             mov [Rq(TEMP_A)], Rq(TEMP_B);
 
             // ------------------------------------
@@ -180,25 +181,42 @@ impl TraceCollector for TranspilerBackend {
             self;
             .arch x64;
 
-            mov [Rq(TRACE_BUF) + PC_START_OFFSET], Rd(TEMP_A)
+            mov [Rq(TRACE_BUF) + PC_START_OFFSET], Rq(TEMP_A)
         }
     }
 
     /// Write the start clk of the trace chunk.
     fn trace_clk_start(&mut self) {
         const CLK_START_OFFSET: i32 = offset_of!(TraceChunkHeader, clk_start) as i32;
+        const CLK_OFFSET: i32 = offset_of!(JitContext, clk) as i32;
 
         dynasm! {
             self;
             .arch x64;
 
-            mov Rq(TEMP_A), [Rq(CONTEXT) + CLK_START_OFFSET];
-            mov [Rq(TRACE_BUF) + CLK_START_OFFSET], Rd(TEMP_A)
+            mov Rq(TEMP_A), QWORD [Rq(CONTEXT) + CLK_OFFSET];
+            mov [Rq(TRACE_BUF) + CLK_START_OFFSET], Rq(TEMP_A)
+        }
+    }
+
+    fn trace_clk_end(&mut self) {
+        const CLK_END_OFFSET: i32 = offset_of!(TraceChunkHeader, clk_end) as i32;
+        const CLK_OFFSET: i32 = offset_of!(JitContext, clk) as i32;
+
+        dynasm! {
+            self;
+            .arch x64;
+            mov Rq(TEMP_A), [Rq(CONTEXT) + CLK_OFFSET];
+            mov [Rq(TRACE_BUF) + CLK_END_OFFSET], Rq(TEMP_A)
         }
     }
 }
 
 impl TranspilerBackend {
+    fn tracing(&self) -> bool {
+        self.trace_buf_size > 0
+    }
+
     /// Emit the prologue for the function.
     ///
     /// This is called before the first instruction is emitted.
@@ -235,6 +253,12 @@ impl TranspilerBackend {
         // For each register from the context, lets load it into a phyiscal register.
         self.load_registers_from_context();
 
+        if self.tracing() {
+            self.trace_pc_start();
+            self.trace_clk_start();
+            self.trace_registers();
+        }
+
         // Its possible that enter back into the function with a non-zero PC.
         self.jump_to_pc();
     }
@@ -258,6 +282,10 @@ impl TranspilerBackend {
 
             // Define the exit global label.
             ->exit:
+        }
+
+        if self.tracing() {
+            self.trace_clk_end();
         }
 
         // Ensure the registers are saved to the context.

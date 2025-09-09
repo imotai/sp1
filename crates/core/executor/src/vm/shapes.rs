@@ -1,0 +1,190 @@
+use enum_map::EnumMap;
+use hashbrown::HashMap;
+
+use crate::{
+    syscalls::SyscallCode, Instruction, Opcode, RiscvAirId, SP1CoreOpts, ShardingThreshold,
+};
+use std::str::FromStr;
+
+pub struct ShapeChecker {
+    trace_area: u64,
+    max_height: u64,
+    syscall_sent: bool,
+    // The start of the most recent shard according to the shape checking logic.
+    shard_start_clk: u64,
+    /// The maximum trace size and table height to allow.
+    sharding_threshold: ShardingThreshold,
+    /// The heights (number) of each air id seen.
+    heights: EnumMap<RiscvAirId, u64>,
+    /// The costs (trace area) of  of each air id seen.
+    costs: EnumMap<RiscvAirId, u64>,
+    // The number of local memory accesses during this cycle.
+    local_mem_counts: u64,
+}
+
+impl ShapeChecker {
+    pub(super) fn new(shard_start_clk: u64) -> Self {
+        // todo from args
+        let opts = SP1CoreOpts::default();
+
+        let costs: HashMap<String, usize> =
+            serde_json::from_str(include_str!("../artifacts/rv64im_costs.json")).unwrap();
+        let costs: EnumMap<RiscvAirId, u64> =
+            costs.into_iter().map(|(k, v)| (RiscvAirId::from_str(&k).unwrap(), v as u64)).collect();
+
+        Self {
+            trace_area: 0,
+            max_height: 0,
+            syscall_sent: false,
+
+            shard_start_clk,
+            heights: EnumMap::default(),
+            sharding_threshold: opts.sharding_threshold,
+            costs,
+            // internal_syscalls_override,
+            local_mem_counts: 0,
+        }
+    }
+
+    #[inline]
+    pub fn handle_memory_read(&mut self, last_read_clk: u64) {
+        self.local_mem_counts += (self.shard_start_clk > last_read_clk) as u64;
+    }
+
+    #[inline]
+    pub fn add_local_mem_count(&mut self, amount: u64) {
+        self.local_mem_counts += amount;
+    }
+
+    #[inline]
+    pub fn handle_retained_syscall(&mut self, syscall_code: SyscallCode) {
+        if let Some(air_id) = syscall_code.as_air_id() {
+            self.heights[air_id] += 1;
+            self.trace_area += self.costs[air_id];
+
+            // todo: rows per event
+            //     // rows per event
+            //     // control chip (if rows_per_event > 1)
+        }
+    }
+
+    #[inline]
+    pub fn syscall_sent(&mut self) {
+        self.syscall_sent = true;
+    }
+
+    /// Set the start clock of the shard.
+    #[inline]
+    pub fn reset(&mut self, clk: u64) {
+        *self = Self::new(clk);
+    }
+
+    /// Check if the shard limit has been reached.
+    ///
+    /// # Returns
+    ///
+    /// Whether the shard limit has been reached.
+    #[inline]
+    pub fn check_shard_limit(&self) -> bool {
+        self.trace_area >= self.sharding_threshold.element_threshold
+            || self.max_height >= self.sharding_threshold.height_threshold
+    }
+
+    /// Increment the trace area for the given instruction.
+    ///
+    /// # Arguments
+    ///
+    /// * `instruction`: The instruction that is being handled.
+    /// * `syscall_sent`: Whether a syscall was sent during this cycle.
+    /// * `bump_clk_high`: Whether the clk's top 24 bits incremented during this cycle.
+    /// * `is_load_x0`: Whether the instruction is a load of x0, if so the riscv air id is `LoadX0`.
+    ///
+    /// # Returns
+    ///
+    /// Whether the shard limit has been reached.
+    #[inline]
+    #[allow(clippy::fn_params_excessive_bools)]
+    pub fn handle_instruction(
+        &mut self,
+        instruction: &Instruction,
+        bump_clk_high: bool,
+        is_load_x0: bool,
+        needs_state_bump: bool,
+    ) {
+        let touched_addresses: u64 = std::mem::take(&mut self.local_mem_counts);
+        let syscall_sent = std::mem::take(&mut self.syscall_sent);
+
+        let riscv_air_id = match instruction.opcode {
+            Opcode::ADD => RiscvAirId::Add,
+            Opcode::ADDI => RiscvAirId::Addi,
+            Opcode::ADDW => RiscvAirId::Addw,
+            Opcode::SUB => RiscvAirId::Sub,
+            Opcode::SUBW => RiscvAirId::Subw,
+            Opcode::XOR | Opcode::OR | Opcode::AND => RiscvAirId::Bitwise,
+            Opcode::SLT | Opcode::SLTU => RiscvAirId::Lt,
+            Opcode::MUL | Opcode::MULH | Opcode::MULHU | Opcode::MULHSU => RiscvAirId::Mul,
+            Opcode::DIV
+            | Opcode::DIVU
+            | Opcode::REM
+            | Opcode::REMU
+            | Opcode::DIVW
+            | Opcode::DIVUW
+            | Opcode::REMW
+            | Opcode::REMUW => RiscvAirId::DivRem,
+            Opcode::SLL | Opcode::SLLW => RiscvAirId::ShiftLeft,
+            Opcode::SRLW | Opcode::SRAW | Opcode::SRL | Opcode::SRA => RiscvAirId::ShiftRight,
+            Opcode::LB | Opcode::LBU => RiscvAirId::LoadByte,
+            Opcode::LH | Opcode::LHU => RiscvAirId::LoadHalf,
+            Opcode::LW | Opcode::LWU => RiscvAirId::LoadWord,
+            Opcode::LD => RiscvAirId::LoadDouble,
+            Opcode::SB => RiscvAirId::StoreByte,
+            Opcode::SH => RiscvAirId::StoreHalf,
+            Opcode::SW => RiscvAirId::StoreWord,
+            Opcode::SD => RiscvAirId::StoreDouble,
+            Opcode::BEQ | Opcode::BNE | Opcode::BLT | Opcode::BGE | Opcode::BLTU | Opcode::BGEU => {
+                RiscvAirId::Branch
+            }
+            Opcode::AUIPC | Opcode::LUI => RiscvAirId::UType,
+            Opcode::JAL => RiscvAirId::Jal,
+            Opcode::JALR => RiscvAirId::Jalr,
+            Opcode::ECALL => RiscvAirId::SyscallInstrs,
+            _ => {
+                eprintln!("Unknown opcode: {:?}", instruction.opcode);
+                unreachable!()
+            }
+        };
+        let riscv_air_id = if is_load_x0 { RiscvAirId::LoadX0 } else { riscv_air_id };
+
+        // Increment the height and trace area for the riscv air id
+        self.heights[riscv_air_id] += 1;
+        self.max_height = self.max_height.max(self.heights[riscv_air_id]);
+        self.trace_area += self.costs[riscv_air_id];
+
+        // Increment by if bump_clk_high is needed
+        let bump_clk_high_num_events = 32 * bump_clk_high as u64;
+        self.trace_area += bump_clk_high_num_events * self.costs[RiscvAirId::MemoryBump];
+        self.heights[RiscvAirId::MemoryBump] += bump_clk_high_num_events;
+        self.max_height = self.max_height.max(self.heights[RiscvAirId::MemoryBump]);
+
+        // Increment for each touched address in memory local
+        self.trace_area += touched_addresses * self.costs[RiscvAirId::MemoryLocal];
+        self.heights[RiscvAirId::MemoryLocal] += touched_addresses;
+        self.max_height = self.max_height.max(self.heights[RiscvAirId::MemoryLocal]);
+
+        // Increment if this cycle induced a state bump.
+        self.trace_area += self.costs[RiscvAirId::StateBump] * needs_state_bump as u64;
+        self.heights[RiscvAirId::StateBump] += needs_state_bump as u64;
+        self.max_height = self.max_height.max(self.heights[RiscvAirId::StateBump]);
+
+        // Incrmenet for all the global interactions
+        self.trace_area +=
+            self.costs[RiscvAirId::Global] * 2 * touched_addresses + syscall_sent as u64;
+        self.heights[RiscvAirId::Global] += 2 * touched_addresses + syscall_sent as u64;
+        self.max_height = self.max_height.max(self.heights[RiscvAirId::Global]);
+
+        // Increment if the syscall is retained
+        self.trace_area += self.costs[RiscvAirId::SyscallCore] * syscall_sent as u64;
+        self.heights[RiscvAirId::SyscallCore] += syscall_sent as u64;
+        self.max_height = self.max_height.max(self.heights[RiscvAirId::SyscallCore]);
+    }
+}

@@ -2226,7 +2226,7 @@ impl<'a> Executor<'a> {
     /// Executes one cycle of the program, returning whether the program has finished.
     #[inline]
     #[allow(clippy::too_many_lines)]
-    fn execute_cycle<E: ExecutorConfig>(&mut self) -> Result<bool, ExecutionError> {
+    pub fn execute_cycle<E: ExecutorConfig>(&mut self) -> Result<bool, ExecutionError> {
         if E::MODE == ExecutorMode::Trace {
             self.memory_accesses = MemoryAccessRecord::default();
         }
@@ -2467,7 +2467,7 @@ impl<'a> Executor<'a> {
         Ok((checkpoint, public_values, done))
     }
 
-    fn initialize(&mut self) {
+    pub fn initialize(&mut self) {
         self.state.clk = 1;
 
         tracing::debug!("loading memory image");
@@ -2740,6 +2740,7 @@ impl<'a> Executor<'a> {
                     if !self.record.program.memory_image.contains_key(&addr) {
                         let initial_value =
                             self.state.uninitialized_memory.registers.get(addr).unwrap_or(&0);
+
                         memory_initialize_events
                             .push(MemoryInitializeFinalizeEvent::initialize(addr, *initial_value));
                     }

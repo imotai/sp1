@@ -1,41 +1,44 @@
 use std::{
-    fs::File as StdFile,
-    io::{self, SeekFrom},
+    io,
     marker::PhantomData,
     sync::{Arc, Mutex},
 };
 
+use futures::future::try_join_all;
+use hashbrown::HashSet;
 use slop_algebra::PrimeField32;
 use slop_futures::queue::WorkerQueue;
 use sp1_core_executor::{
-    subproof::NoOpSubproofVerifier, ExecutionError, ExecutionRecord, ExecutionReport,
-    ExecutionState, Executor, Program, SP1Context, SP1CoreOpts, SplitOpts,
+    events::MemoryRecord, ExecutionError, ExecutionRecord, Program, SP1Context, SP1CoreOpts,
+    SplicingVM, SplitOpts, TracingVM,
 };
-use sp1_hypercube::{
-    air::PublicValues,
-    prover::{MemoryPermit, MemoryPermitting},
-    Machine, MachineRecord,
-};
+use sp1_hypercube::{air::PublicValues, prover::MemoryPermitting, Machine, MachineRecord};
 use thiserror::Error;
-use tokio::{fs::File, io::AsyncSeekExt, sync::mpsc};
-use tracing::Span;
+use tokio::sync::mpsc;
+use tracing::Instrument;
+
+use sp1_core_executor::{CycleResult, MinimalExecutor, SplicedMinimalTrace, TraceChunkRaw};
 
 use crate::{io::SP1Stdin, riscv::RiscvAir, utils::concurrency::AsyncTurn};
-
 pub struct MachineExecutor<F: PrimeField32> {
     num_record_workers: usize,
     opts: SP1CoreOpts,
     machine: Machine<F, RiscvAir<F>>,
-    memory: MemoryPermitting,
+    _memory: MemoryPermitting,
     _marker: std::marker::PhantomData<F>,
 }
 
 impl<F: PrimeField32> MachineExecutor<F> {
     pub fn new(record_buffer_size: u64, num_record_workers: usize, opts: SP1CoreOpts) -> Self {
         let machine = RiscvAir::<F>::machine();
-        let memory = MemoryPermitting::new(record_buffer_size);
 
-        Self { num_record_workers, opts, machine, memory, _marker: PhantomData }
+        Self {
+            num_record_workers,
+            opts,
+            machine,
+            _memory: MemoryPermitting::new(record_buffer_size),
+            _marker: PhantomData,
+        }
     }
 
     /// Get a reference to the core options.
@@ -47,334 +50,180 @@ impl<F: PrimeField32> MachineExecutor<F> {
         &self,
         program: Arc<Program>,
         stdin: SP1Stdin,
-        context: SP1Context<'static>,
-        record_tx: mpsc::UnboundedSender<(ExecutionRecord, Option<MemoryPermit>)>,
+        _context: SP1Context<'static>,
+        record_tx: mpsc::UnboundedSender<ExecutionRecord>,
     ) -> Result<ExecutionOutput, MachineExecutorError> {
-        // Spawn the record generation tasks.
-        //
-        // todo: memory permit this as we know the opcode counts up front.
+        let (chunk_tx, mut chunk_rx) = mpsc::unbounded_channel::<TraceChunkRaw>();
+        let (last_record_tx, mut last_record_rx) = tokio::sync::mpsc::channel::<ExecutionRecord>(1);
+        let record_gen_sync = AsyncTurn::new();
+        let state = Arc::new(Mutex::new(PublicValues::<u32, u64, u64, u32>::default().reset()));
+        let deferred = Arc::new(Mutex::new(ExecutionRecord::new(program.clone())));
         let mut record_worker_channels = Vec::with_capacity(self.num_record_workers);
-        let mut handles = Vec::new();
-        let split_opts = SplitOpts::new(
-            &self.opts,
-            program.instructions.len(),
-            program.enable_untrusted_programs,
-        );
+
+        // todo: use page protection
+        let split_opts = SplitOpts::new(&self.opts, program.instructions.len(), false);
+
+        tracing::debug!("starting {} record worker channels", self.num_record_workers);
+        let mut handles = Vec::with_capacity(self.num_record_workers);
         for _ in 0..self.num_record_workers {
             let (tx, mut rx) = mpsc::unbounded_channel::<RecordTask>();
             record_worker_channels.push(tx);
             let machine = self.machine.clone();
             let opts = self.opts.clone();
-            let memory = self.memory.clone();
-            let handle = tokio::task::spawn(async move {
-                while let Some(task) = rx.recv().await {
-                    let RecordTask {
-                        index,
-                        checkpoint_file,
-                        done,
-                        program,
-                        record_gen_sync,
-                        report,
-                        state,
-                        deferred,
-                        record_tx,
-                        // TODO: Use the span.
-                        span: _,
-                    } = task;
+            let program = program.clone();
+            let record_gen_sync = record_gen_sync.clone();
+            let record_tx = record_tx.clone();
+            let state = state.clone();
+            let deferred: Arc<Mutex<ExecutionRecord>> = deferred.clone();
+            let last_record_tx: mpsc::Sender<ExecutionRecord> = last_record_tx.clone();
 
-                    // Acquire a memory permit for the expected size of the records.
-                    let expected_record_size = report.total_record_size();
+            handles.push(tokio::task::spawn(
+                async move {
+                    while let Some(task) = rx.recv().await {
+                        let RecordTask { index, chunk } = task;
 
-                    // todo(n): This does not properly account for deferred records.
-                    let memory_permit = memory
-                        .acquire(expected_record_size)
-                        .await
-                        .expect("failed to acquire memory permit");
+                        tracing::debug!("tracing chunk at idx: {}", index);
 
-                    let (mut record, checkpoint_file) = tokio::task::spawn_blocking({
+                        let program = program.clone();
                         let opts = opts.clone();
-                        move || {
-                            tracing::debug_span!("trace checkpoint").in_scope(|| {
-                                let (records, _) =
-                                    trace_checkpoint(program.clone(), &checkpoint_file, opts);
-                                (records, checkpoint_file)
-                            })
-                        }
-                    })
-                    .await
-                    .expect("failed to trace checkpoint");
+                        let (done, mut record) = tokio::task::spawn_blocking({
+                            let program = program.clone();
+                            let opts = opts.clone();
 
-                    let mut checkpoint_file = File::from_std(checkpoint_file);
-                    checkpoint_file
-                        .seek(SeekFrom::Start(0))
+                            move || {
+                                let _debug_span =
+                                    tracing::debug_span!("tracing chunk blocking task").entered();
+                                trace_chunk(program, opts, chunk)
+                            }
+                        })
                         .await
-                        .expect("failed to seek to start of tempfile");
+                        .expect("error: trace chunk task panicked")
+                        .expect("todo: handle error");
 
-                    // Wait for our turn to update the state.
-                    let _turn_guard = record_gen_sync.wait_for_turn(index).await;
+                        // Wait for our turn to update the state.
+                        let _turn_guard = record_gen_sync.wait_for_turn(index).await;
 
-                    // Update the public values & prover state for the shards which contain
-                    // "cpu events".
-                    let mut deferred_records = {
-                        let mut state = state.lock().unwrap();
+                        let deferred_records = if done {
+                            tracing::debug!("last record at idx: {}", index);
 
-                        state.is_execution_shard = 1;
-                        state.is_untrusted_programs_enabled =
-                            record.public_values.is_untrusted_programs_enabled;
-                        state.proof_nonce = context.proof_nonce;
-                        state.pc_start = record.public_values.pc_start;
-                        state.next_pc = record.public_values.next_pc;
-                        state.initial_timestamp = record.public_values.initial_timestamp;
-                        state.last_timestamp = record.public_values.last_timestamp;
-                        state.is_first_shard = (record.public_values.initial_timestamp == 1) as u32;
-
-                        let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
-                        let initial_timestamp_low = (state.initial_timestamp & 0xFFFFFF) as u32;
-                        let last_timestamp_high = (state.last_timestamp >> 24) as u32;
-                        let last_timestamp_low = (state.last_timestamp & 0xFFFFFF) as u32;
-
-                        state.initial_timestamp_inv = if state.initial_timestamp == 1 {
-                            0
+                            // If this is the last record, we have special handling for the memory events.
+                            last_record_tx.send(record).await.unwrap();
+                            return;
                         } else {
-                            F::from_canonical_u32(
-                                initial_timestamp_high + initial_timestamp_low - 1,
+                            tracing::debug!("defferring record at idx: {}", index);
+
+                            let mut state = state.lock().unwrap();
+                            let mut deferred = deferred.lock().unwrap();
+
+                            defer::<F>(
+                                &mut state,
+                                &mut record,
+                                &mut deferred,
+                                &split_opts,
+                                opts,
+                                done,
                             )
-                            .inverse()
-                            .as_canonical_u32()
                         };
 
-                        state.last_timestamp_inv =
-                            F::from_canonical_u32(last_timestamp_high + last_timestamp_low - 1)
-                                .inverse()
-                                .as_canonical_u32();
-
-                        if initial_timestamp_high == last_timestamp_high {
-                            state.is_timestamp_high_eq = 1;
-                        } else {
-                            state.is_timestamp_high_eq = 0;
-                            state.inv_timestamp_high = (F::from_canonical_u32(last_timestamp_high)
-                                - F::from_canonical_u32(initial_timestamp_high))
-                            .inverse()
-                            .as_canonical_u32();
-                        }
-
-                        if initial_timestamp_low == last_timestamp_low {
-                            state.is_timestamp_low_eq = 1;
-                        } else {
-                            state.is_timestamp_low_eq = 0;
-                            state.inv_timestamp_low = (F::from_canonical_u32(last_timestamp_low)
-                                - F::from_canonical_u32(initial_timestamp_low))
-                            .inverse()
-                            .as_canonical_u32();
-                        }
-
-                        if state.committed_value_digest == [0u32; 8] {
-                            state.committed_value_digest =
-                                record.public_values.committed_value_digest;
-                        }
-                        if state.deferred_proofs_digest == [0u32; 8] {
-                            state.deferred_proofs_digest =
-                                record.public_values.deferred_proofs_digest;
-                        }
-                        if state.commit_syscall == 0 {
-                            state.commit_syscall = record.public_values.commit_syscall;
-                        }
-                        if state.commit_deferred_syscall == 0 {
-                            state.commit_deferred_syscall =
-                                record.public_values.commit_deferred_syscall;
-                        }
-                        if state.exit_code == 0 {
-                            state.exit_code = record.public_values.exit_code;
-                        }
-                        record.public_values = *state;
-                        state.prev_exit_code = state.exit_code;
-                        state.prev_commit_syscall = state.commit_syscall;
-                        state.prev_commit_deferred_syscall = state.commit_deferred_syscall;
-                        state.prev_committed_value_digest = state.committed_value_digest;
-                        state.prev_deferred_proofs_digest = state.deferred_proofs_digest;
-                        state.initial_timestamp = state.last_timestamp;
-
-                        // Defer events that are too expensive to include in every shard.
-                        let mut deferred = deferred.lock().unwrap();
-                        deferred.append(&mut record.defer(&opts.retained_events_presets));
-
-                        let can_pack_global_memory = done
-                            && record.estimated_trace_area <= split_opts.pack_trace_threshold
-                            && deferred.global_memory_initialize_events.len()
-                                <= split_opts.combine_memory_threshold
-                            && deferred.global_memory_finalize_events.len()
-                                <= split_opts.combine_memory_threshold
-                            && deferred.global_page_prot_initialize_events.len()
-                                <= split_opts.combine_page_prot_threshold
-                            && deferred.global_page_prot_finalize_events.len()
-                                <= split_opts.combine_page_prot_threshold;
-
-                        // Need to see if we can pack both global memory and page prot events into
-                        // last record Else, can we pack either into last
-                        // record? Else can we pack them together into the
-                        // same shard? Else we need two separate shards.
-
-                        // See if any deferred shards are ready to be committed to.
-                        let mut deferred_records = deferred.split(
-                            done,
-                            can_pack_global_memory.then_some(&mut *record),
-                            split_opts,
-                        );
-                        tracing::debug!("deferred {} records", deferred_records.len());
-
-                        // Update the public values & prover state for the shards which do not
-                        // contain "cpu events" before committing to them.
-                        for record in deferred_records.iter_mut() {
-                            state.previous_init_addr = record.public_values.previous_init_addr;
-                            state.last_init_addr = record.public_values.last_init_addr;
-                            state.previous_finalize_addr =
-                                record.public_values.previous_finalize_addr;
-                            state.last_finalize_addr = record.public_values.last_finalize_addr;
-                            state.previous_init_page_idx =
-                                record.public_values.previous_init_page_idx;
-                            state.last_init_page_idx = record.public_values.last_init_page_idx;
-                            state.previous_finalize_page_idx =
-                                record.public_values.previous_finalize_page_idx;
-                            state.last_finalize_page_idx =
-                                record.public_values.last_finalize_page_idx;
-                            state.pc_start = state.next_pc;
-                            state.prev_exit_code = state.exit_code;
-                            state.prev_commit_syscall = state.commit_syscall;
-                            state.prev_commit_deferred_syscall = state.commit_deferred_syscall;
-                            state.prev_committed_value_digest = state.committed_value_digest;
-                            state.prev_deferred_proofs_digest = state.deferred_proofs_digest;
-                            state.last_timestamp = state.initial_timestamp;
-                            state.is_timestamp_high_eq = 1;
-                            state.is_timestamp_low_eq = 1;
-
-                            state.is_first_shard = 0;
-                            state.is_execution_shard = 0;
-
-                            let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
-                            let initial_timestamp_low = (state.initial_timestamp & 0xFFFFFF) as u32;
-                            let last_timestamp_high = (state.last_timestamp >> 24) as u32;
-                            let last_timestamp_low = (state.last_timestamp & 0xFFFFFF) as u32;
-
-                            state.is_first_shard =
-                                (record.public_values.initial_timestamp == 1) as u32;
-                            state.initial_timestamp_inv = F::from_canonical_u32(
-                                initial_timestamp_high + initial_timestamp_low - 1,
-                            )
-                            .inverse()
-                            .as_canonical_u32();
-                            state.last_timestamp_inv =
-                                F::from_canonical_u32(last_timestamp_high + last_timestamp_low - 1)
-                                    .inverse()
-                                    .as_canonical_u32();
-                            record.public_values = *state;
-                        }
-
-                        deferred_records
-                    };
-
-                    // Generate the dependencies.
-                    tokio::task::spawn_blocking({
-                        let machine = machine.clone();
-                        move || {
-                            let record_iter = std::iter::once(&mut *record);
-                            machine.generate_dependencies(record_iter, None);
-                            machine.generate_dependencies(deferred_records.iter_mut(), None);
-
-                            // Send the records to the output channel.
-                            record_tx.send((*record, Some(memory_permit))).unwrap();
-
-                            // If there are deferred records, send them to the output channel.
-                            for record in deferred_records {
-                                record_tx.send((record, None)).unwrap();
-                            }
-                        }
-                    })
-                    .await
-                    .expect("failed to send records");
+                        start_prove(machine.clone(), record_tx.clone(), record, deferred_records)
+                            .await;
+                    }
                 }
-            });
-
-            handles.push(handle);
+                .instrument(tracing::debug_span!("tracing worker")),
+            ));
         }
 
-        // Initialize the record generation state.
-        let record_gen_sync = AsyncTurn::new();
-        let mut initial_state = PublicValues::<u32, u64, u64, u32>::default().reset();
-
-        // Set the proof nonce from the context
-        initial_state.proof_nonce = context.proof_nonce;
-
-        let state = Arc::new(Mutex::new(initial_state));
-        let deferred = Arc::new(Mutex::new(ExecutionRecord::new(program.clone())));
         let record_worker_channels = Arc::new(WorkerQueue::new(record_worker_channels));
 
-        // Setup the runtime.
-        let mut runtime =
-            Box::new(Executor::with_context(program.clone(), self.opts.clone(), context));
-        runtime.write_vecs(&stdin.buffer);
-        for proof in stdin.proofs.iter() {
-            let (proof, vk) = proof.clone();
-            runtime.write_proof(proof, vk);
-        }
+        let minimal_executor_handle = tokio::task::spawn_blocking({
+            let program = program.clone();
 
-        // Generate checkpoints until the execution is done.
-        let mut index = 0;
-        let mut done = false;
-        while !done {
-            // Send and receive ownership of `runtime: Box<Executor<'_>>`.
-            // The `.unwrap()` propagates panics from `generate_checkpoint`.
-            let checkpoint_result;
-            (runtime, checkpoint_result) = tokio::task::spawn_blocking(move || {
-                let res = generate_checkpoint(&mut runtime);
-                (runtime, res)
-            })
-            .await
-            .map_err(MachineExecutorError::ExecutorPanicked)?;
+            move || {
+                let _debug_span = tracing::debug_span!("minimal executor task").entered();
+                let mut minimal_executor = MinimalExecutor::new(program.clone(), true, false, None);
 
-            match checkpoint_result {
-                Ok((checkpoint_file, report, is_done)) => {
-                    // Update the finished flag.
-                    done = is_done;
-                    // Create a new record generation task.
-                    let record_task = RecordTask {
-                        index,
-                        checkpoint_file,
-                        done,
-                        program: program.clone(),
-                        report,
-                        record_gen_sync: record_gen_sync.clone(),
-                        state: state.clone(),
-                        deferred: deferred.clone(),
-                        record_tx: record_tx.clone(),
-                        span: tracing::debug_span!("execute record"),
-                    };
-
-                    // Send the checkpoint to the record generation worker.
-                    let record_worker = record_worker_channels
-                        .clone()
-                        .pop()
-                        .await
-                        .expect("failed to pop record worker from channel");
-
-                    // Send the task to the worker.
-                    record_worker
-                        .send(record_task)
-                        .map_err(|_| MachineExecutorError::ExecutorClosed)?;
-
-                    // Increment the index.
-                    index += 1;
+                for buf in stdin.buffer {
+                    minimal_executor.with_input(&buf);
                 }
-                Err(e) => {
-                    return Err(e);
+
+                while let Some(chunk) = minimal_executor.execute_chunk() {
+                    tracing::debug!("program is done?: {}", minimal_executor.is_done());
+
+                    chunk_tx.send(chunk).unwrap();
                 }
+
+                minimal_executor
             }
-        }
+        });
 
-        // Execution is done, send the output to the sender.
-        let public_value_stream = runtime.state.public_values_stream;
-        let cycles = runtime.state.global_clk;
+        let (touched_addresses, final_registers) = tokio::task::spawn({
+            let program: Arc<Program> = program.clone();
 
-        Ok(ExecutionOutput { public_value_stream, cycles })
+            async move {
+                let touched_addresses =
+                    Arc::new(Mutex::new(HashSet::from_iter(program.memory_image.keys().copied())));
+                let mut final_registers = [MemoryRecord::default(); 32];
+                let mut idx = 0;
+
+                while let Some(chunk) = chunk_rx.recv().await {
+                    let worker = record_worker_channels.clone().pop().await.unwrap();
+
+                    (idx, final_registers) = tokio::task::spawn_blocking({
+                        let program = program.clone();
+                        let touched_addresses = touched_addresses.clone();
+
+                        move || generate_chunks(program, chunk, worker, touched_addresses, idx)
+                    })
+                    .await
+                    .expect("error: generate trace chunks task panicked")
+                    .expect("todo: handle error");
+                }
+
+                (touched_addresses, final_registers)
+            }
+            .instrument(tracing::debug_span!("splitting task"))
+        })
+        .await
+        .unwrap();
+
+        // Wait for the minimal executor to finish.
+        let minimal_executor = minimal_executor_handle.await.unwrap();
+
+        // Wait for the record workers to finish.
+        try_join_all(handles).await.unwrap();
+
+        // Wait for the last record to be traced.
+        let mut last_record = last_record_rx.recv().await.unwrap();
+        tracing::info!(
+            "last_record.public_values.committed_value_digest: {:?}",
+            last_record.public_values.committed_value_digest
+        );
+        let deferred_records = {
+            // Take the lock on the touched addresses.
+            let touched_addresses = touched_addresses.lock().unwrap();
+            // Insert the global memory events into the last record.
+            minimal_executor.emit_globals(&mut last_record, final_registers, &touched_addresses);
+
+            let mut deferred = deferred.lock().unwrap();
+            let mut state = state.lock().unwrap();
+            tracing::debug_span!("postprocessing task").in_scope(|| {
+                defer::<F>(
+                    &mut state,
+                    &mut last_record,
+                    &mut deferred,
+                    &split_opts,
+                    self.opts.clone(),
+                    true,
+                )
+            })
+        };
+
+        start_prove(self.machine.clone(), record_tx, last_record, deferred_records).await;
+
+        Ok(ExecutionOutput {
+            cycles: minimal_executor.global_clk(),
+            public_value_stream: minimal_executor.into_public_values_stream(),
+        })
     }
 }
 
@@ -402,76 +251,265 @@ pub struct ExecutionOutput {
 
 struct RecordTask {
     index: usize,
-    checkpoint_file: StdFile,
-    done: bool,
-    program: Arc<Program>,
-    report: ExecutionReport,
-    record_gen_sync: AsyncTurn,
-    state: Arc<Mutex<PublicValues<u32, u64, u64, u32>>>,
-    deferred: Arc<Mutex<ExecutionRecord>>,
-    record_tx: mpsc::UnboundedSender<(ExecutionRecord, Option<MemoryPermit>)>,
-    #[allow(unused)]
-    span: Span,
+    chunk: SplicedMinimalTrace<TraceChunkRaw>,
 }
 
-/// Trace a checkpoint.
-fn trace_checkpoint(
+fn generate_chunks<S>(
     program: Arc<Program>,
-    file: &StdFile,
-    opts: SP1CoreOpts,
-) -> (Box<ExecutionRecord>, ExecutionReport) {
-    let noop = NoOpSubproofVerifier;
+    chunk: TraceChunkRaw,
+    tx: S,
+    touched_addresses: Arc<Mutex<HashSet<u64>>>,
+    mut idx: usize,
+) -> Result<(usize, [MemoryRecord; 32]), ExecutionError>
+where
+    S: std::ops::Deref<Target = mpsc::UnboundedSender<RecordTask>>,
+{
+    let mut touched_addresses = touched_addresses.lock().unwrap();
+    let mut vm = SplicingVM::new(&chunk, program.clone(), &mut touched_addresses);
 
-    let mut reader = std::io::BufReader::new(file);
-    let state: ExecutionState =
-        bincode::deserialize_from(&mut reader).expect("failed to deserialize state");
-    let mut runtime = Executor::recover(program, state, opts);
+    tracing::debug!("chunk idx is done: {}", idx);
 
-    // We already passed the deferred proof verifier when creating checkpoints, so the proofs were
-    // already verified. So here we use a noop verifier to not print any warnings.
-    runtime.subproof_verifier = Some(Arc::new(noop));
+    // Note that we always send the full trace first, if everything fits into one shard,
+    // then no splicing will occur and this task will eventaully end.
+    let full_trace = SplicedMinimalTrace::new_full_trace(chunk.clone());
+    tx.send(RecordTask { index: idx, chunk: full_trace }).unwrap();
+    idx += 1;
 
-    // Execute from the checkpoint.
-    let (mut record, mut done) = runtime.execute_record(true).unwrap();
-    let mut pv = record.public_values;
+    loop {
+        tracing::debug!("starting new shard idx: {} at clk: {}", idx, vm.core.clk());
+
+        match vm.execute().expect("todo: handle result") {
+            CycleResult::ShardBoundry => {
+                // Note: Chunk implentations should always be cheap to clone.
+                if let Some(spliced) = vm.splice(chunk.clone()) {
+                    tracing::debug!("generated chunk for shard {}", idx);
+                    tracing::debug!("shard ended at clk: {}", vm.core.clk());
+                    tracing::debug!("shard ended at pc: {}", vm.core.pc());
+                    tracing::debug!("shard ended at global clk: {}", vm.core.global_clk());
+                    tracing::debug!("shard ended with {} mem reads left ", vm.core.mem_reads.len());
+
+                    tx.send(RecordTask { index: idx, chunk: spliced }).unwrap();
+                    idx += 1;
+                } else {
+                    tracing::debug!("shard idx ran out of trace and was cut early: {}", idx);
+                    // Since we didnt get a `done` status, we dont really need the final registers.
+                    return Ok((idx, [MemoryRecord::default(); 32]));
+                }
+            }
+            CycleResult::Done(true) => {
+                return Ok((idx, *vm.core.registers()));
+            }
+            CycleResult::Done(false) | CycleResult::TraceEnd => {
+                // Note: Trace ends get mapped to shard boundaries.
+                unreachable!("The executor should never return an imcomplete program without a shard boundary");
+            }
+        }
+    }
+}
+
+fn trace_chunk(
+    program: Arc<Program>,
+    _opts: SP1CoreOpts,
+    chunk: SplicedMinimalTrace<TraceChunkRaw>,
+) -> Result<(bool, ExecutionRecord), ExecutionError> {
+    let mut vm = TracingVM::new(&chunk, program);
+    let status = vm.execute()?;
+    tracing::debug!("chunk ended at clk: {}", vm.core.clk());
+    tracing::debug!("chunk ended at pc: {}", vm.core.pc());
+
+    let mut record = std::mem::take(&mut vm.record);
+    let pv = record.public_values;
 
     // Handle the case where `COMMIT` or `COMMIT_DEFERRED_PROOFS` happens across last two shards.
-    if !done && (pv.commit_syscall == 1 || pv.commit_deferred_syscall == 1) {
-        // We turn off the `print_report` flag to avoid modifying the report.
-        runtime.print_report = false;
+    //
+    // todo: does this actually work in the new regieme? what if the shard is stopped due to the clk limit?
+    // if so, does that mean this could be wrong? its unclear!
+    if status.is_shard_boundry() && (pv.commit_syscall == 1 || pv.commit_deferred_syscall == 1) {
+        tracing::debug!("commit syscall or commit deferred proofs across last two shards");
+
         loop {
-            runtime.record.public_values = pv;
-            let (_, next_pv, is_done) = runtime.execute_state(true).unwrap();
-            pv = next_pv;
-            done = is_done;
-            if done {
+            // Execute until we get a done status.
+            if vm.execute()?.is_done() {
+                let pv = vm.record.public_values;
+
+                // Update the record.
                 record.public_values.commit_syscall = 1;
                 record.public_values.commit_deferred_syscall = 1;
                 record.public_values.committed_value_digest = pv.committed_value_digest;
                 record.public_values.deferred_proofs_digest = pv.deferred_proofs_digest;
+
                 break;
             }
         }
     }
 
-    (record, runtime.report)
+    Ok((status.is_done(), record))
 }
 
-fn generate_checkpoint(
-    runtime: &mut Executor,
-) -> Result<(StdFile, ExecutionReport, bool), MachineExecutorError> {
-    // Ensure the report is counted.
-    runtime.print_report = true;
+#[tracing::instrument(name = "defer", skip_all)]
+fn defer<F: PrimeField32>(
+    state: &mut PublicValues<u32, u64, u64, u32>,
+    record: &mut ExecutionRecord,
+    deferred: &mut ExecutionRecord,
+    split_opts: &SplitOpts,
+    opts: SP1CoreOpts,
+    done: bool,
+) -> Vec<ExecutionRecord> {
+    state.is_execution_shard = 1;
+    state.pc_start = record.public_values.pc_start;
+    state.next_pc = record.public_values.next_pc;
+    state.initial_timestamp = record.public_values.initial_timestamp;
+    state.last_timestamp = record.public_values.last_timestamp;
+    state.is_first_shard = (record.public_values.initial_timestamp == 1) as u32;
 
-    // Execute the runtime until we reach a checkpoint.
-    let (checkpoint, _, done) =
-        runtime.execute_state(false).map_err(MachineExecutorError::ExecutionError)?;
+    let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
+    let initial_timestamp_low = (state.initial_timestamp & 0xFFFFFF) as u32;
+    let last_timestamp_high = (state.last_timestamp >> 24) as u32;
+    let last_timestamp_low = (state.last_timestamp & 0xFFFFFF) as u32;
 
-    let report = std::mem::take(&mut runtime.report);
+    state.initial_timestamp_inv = if state.initial_timestamp == 1 {
+        0
+    } else {
+        F::from_canonical_u32(initial_timestamp_high + initial_timestamp_low - 1)
+            .inverse()
+            .as_canonical_u32()
+    };
 
-    // Save the checkpoint to a temp file.
-    let mut checkpoint_file = tempfile::tempfile().map_err(MachineExecutorError::IoError)?;
-    checkpoint.save(&mut checkpoint_file).map_err(MachineExecutorError::IoError)?;
+    state.last_timestamp_inv = F::from_canonical_u32(last_timestamp_high + last_timestamp_low - 1)
+        .inverse()
+        .as_canonical_u32();
 
-    Ok((checkpoint_file, report, done))
+    if initial_timestamp_high == last_timestamp_high {
+        state.is_timestamp_high_eq = 1;
+    } else {
+        state.is_timestamp_high_eq = 0;
+        state.inv_timestamp_high = (F::from_canonical_u32(last_timestamp_high)
+            - F::from_canonical_u32(initial_timestamp_high))
+        .inverse()
+        .as_canonical_u32();
+    }
+
+    if initial_timestamp_low == last_timestamp_low {
+        state.is_timestamp_low_eq = 1;
+    } else {
+        state.is_timestamp_low_eq = 0;
+        state.inv_timestamp_low = (F::from_canonical_u32(last_timestamp_low)
+            - F::from_canonical_u32(initial_timestamp_low))
+        .inverse()
+        .as_canonical_u32();
+    }
+
+    if state.committed_value_digest == [0u32; 8] {
+        state.committed_value_digest = record.public_values.committed_value_digest;
+    }
+    if state.deferred_proofs_digest == [0u32; 8] {
+        state.deferred_proofs_digest = record.public_values.deferred_proofs_digest;
+    }
+    if state.commit_syscall == 0 {
+        state.commit_syscall = record.public_values.commit_syscall;
+    }
+    if state.commit_deferred_syscall == 0 {
+        state.commit_deferred_syscall = record.public_values.commit_deferred_syscall;
+    }
+    if state.exit_code == 0 {
+        state.exit_code = record.public_values.exit_code;
+    }
+    record.public_values = *state;
+    state.prev_exit_code = state.exit_code;
+    state.prev_commit_syscall = state.commit_syscall;
+    state.prev_commit_deferred_syscall = state.commit_deferred_syscall;
+    state.prev_committed_value_digest = state.committed_value_digest;
+    state.prev_deferred_proofs_digest = state.deferred_proofs_digest;
+    state.initial_timestamp = state.last_timestamp;
+
+    // Defer events that are too expensive to include in every shard.
+    deferred.append(&mut record.defer(&opts.retained_events_presets));
+
+    let can_pack_global_memory = done
+        && record.estimated_trace_area <= split_opts.pack_trace_threshold
+        && deferred.global_memory_initialize_events.len() <= split_opts.combine_memory_threshold
+        && deferred.global_memory_finalize_events.len() <= split_opts.combine_memory_threshold
+        && deferred.global_page_prot_initialize_events.len()
+            <= split_opts.combine_page_prot_threshold
+        && deferred.global_page_prot_finalize_events.len()
+            <= split_opts.combine_page_prot_threshold;
+
+    // See if any deferred shards are ready to be committed to.
+    let mut deferred_records =
+        deferred.split(done, can_pack_global_memory.then_some(record), split_opts);
+    tracing::debug!("split deffered into {} records", deferred_records.len());
+
+    // Update the public values & prover state for the shards which do not
+    // contain "cpu events" before committing to them.
+    for record in deferred_records.iter_mut() {
+        state.previous_init_addr = record.public_values.previous_init_addr;
+        state.last_init_addr = record.public_values.last_init_addr;
+        state.previous_finalize_addr = record.public_values.previous_finalize_addr;
+        state.last_finalize_addr = record.public_values.last_finalize_addr;
+
+        state.pc_start = state.next_pc;
+        state.prev_exit_code = state.exit_code;
+        state.prev_commit_syscall = state.commit_syscall;
+
+        state.prev_commit_deferred_syscall = state.commit_deferred_syscall;
+        state.prev_committed_value_digest = state.committed_value_digest;
+        state.prev_deferred_proofs_digest = state.deferred_proofs_digest;
+
+        state.last_timestamp = state.initial_timestamp;
+        state.is_timestamp_high_eq = 1;
+        state.is_timestamp_low_eq = 1;
+
+        state.is_first_shard = 0;
+        state.is_execution_shard = 0;
+
+        let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
+        let initial_timestamp_low = (state.initial_timestamp & 0xFFFFFF) as u32;
+        let last_timestamp_high = (state.last_timestamp >> 24) as u32;
+        let last_timestamp_low = (state.last_timestamp & 0xFFFFFF) as u32;
+
+        state.is_first_shard = (record.public_values.initial_timestamp == 1) as u32;
+        state.initial_timestamp_inv =
+            F::from_canonical_u32(initial_timestamp_high + initial_timestamp_low - 1)
+                .inverse()
+                .as_canonical_u32();
+        state.last_timestamp_inv =
+            F::from_canonical_u32(last_timestamp_high + last_timestamp_low - 1)
+                .inverse()
+                .as_canonical_u32();
+        record.public_values = *state;
+    }
+
+    deferred_records
+}
+
+#[tracing::instrument(name = "start_prove", skip_all)]
+async fn start_prove<F: PrimeField32>(
+    machine: Machine<F, RiscvAir<F>>,
+    record_tx: mpsc::UnboundedSender<ExecutionRecord>,
+    mut record: ExecutionRecord,
+    mut deferred_records: Vec<ExecutionRecord>,
+) {
+    tracing::debug!("num deferred records: {:#?}", deferred_records.len());
+
+    // Generate the dependencies.
+    tokio::task::spawn_blocking({
+        let machine = machine.clone();
+        let record_tx = record_tx.clone();
+
+        move || {
+            let record_iter = std::iter::once(&mut record);
+            machine.generate_dependencies(record_iter, None);
+            machine.generate_dependencies(deferred_records.iter_mut(), None);
+
+            // Send the records to the output channel.
+            record_tx.send(record).unwrap();
+
+            // If there are deferred records, send them to the output channel.
+            for record in deferred_records {
+                record_tx.send(record).unwrap();
+            }
+        }
+    })
+    .await
+    .expect("failed to send records");
 }
