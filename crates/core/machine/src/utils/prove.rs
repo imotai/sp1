@@ -285,7 +285,8 @@ where
     // TODO: get this from input
     let num_record_workers = 4;
     let num_trace_gen_workers = 4;
-    let (records_tx, mut records_rx) = mpsc::unbounded_channel::<ExecutionRecord>();
+    let (records_tx, mut records_rx) =
+        mpsc::unbounded_channel::<(ExecutionRecord, Option<MemoryPermit>)>();
 
     let machine_executor =
         MachineExecutor::<GC::F>::new(u32::MAX as u64, num_record_workers, opts.clone());
@@ -298,7 +299,7 @@ where
     let prover_handle = tokio::spawn(async move {
         let mut handles = Vec::new();
         while let Some(record) = records_rx.recv().await {
-            let handle = prover.prove_shard(pk.clone(), record);
+            let handle = prover.prove_shard(pk.clone(), record.0);
             handles.push(handle);
         }
         for handle in handles {

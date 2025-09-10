@@ -176,7 +176,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
 
         context.subproof_verifier = Some(Arc::new(self.clone()));
 
-        let (records_tx, mut records_rx) = mpsc::unbounded_channel::<ExecutionRecord>();
+        let (records_tx, mut records_rx) =
+            mpsc::unbounded_channel::<(ExecutionRecord, Option<MemoryPermit>)>();
 
         let prover = self.clone();
 
@@ -187,7 +188,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
             loop {
                 tokio::select! {
                     // Accquire a permit and start the exeuction.
-                    Some(record) = records_rx.recv() => {
+                    Some((record, permit)) = records_rx.recv() => {
                         let shape = prover.prover.core().core_shape_from_record(&record).unwrap();
 
                         let proof = async {
@@ -196,6 +197,8 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                                 .core()
                                 .prove_shard(pk.clone(), record)
                                 .await;
+
+                            drop(permit);
 
                             proof
                         };

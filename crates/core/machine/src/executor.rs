@@ -12,7 +12,11 @@ use sp1_core_executor::{
     events::MemoryRecord, ExecutionError, ExecutionRecord, Program, SP1Context, SP1CoreOpts,
     SplicingVM, SplitOpts, TracingVM,
 };
-use sp1_hypercube::{air::PublicValues, prover::MemoryPermitting, Machine, MachineRecord};
+use sp1_hypercube::{
+    air::PublicValues,
+    prover::{MemoryPermit, MemoryPermitting},
+    Machine, MachineRecord,
+};
 use thiserror::Error;
 use tokio::sync::mpsc::{self, UnboundedSender};
 use tracing::Instrument;
@@ -24,7 +28,7 @@ pub struct MachineExecutor<F: PrimeField32> {
     num_record_workers: usize,
     opts: SP1CoreOpts,
     machine: Machine<F, RiscvAir<F>>,
-    _memory: MemoryPermitting,
+    memory: MemoryPermitting,
     _marker: std::marker::PhantomData<F>,
 }
 
@@ -36,7 +40,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
             num_record_workers,
             opts,
             machine,
-            _memory: MemoryPermitting::new(record_buffer_size),
+            memory: MemoryPermitting::new(record_buffer_size),
             _marker: PhantomData,
         }
     }
@@ -51,7 +55,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
         program: Arc<Program>,
         stdin: SP1Stdin,
         _context: SP1Context<'static>,
-        record_tx: mpsc::UnboundedSender<ExecutionRecord>,
+        record_tx: mpsc::UnboundedSender<(ExecutionRecord, Option<MemoryPermit>)>,
     ) -> Result<ExecutionOutput, MachineExecutorError> {
         let (chunk_tx, mut chunk_rx) = mpsc::unbounded_channel::<TraceChunkRaw>();
         let (last_record_tx, mut last_record_rx) = tokio::sync::mpsc::channel::<ExecutionRecord>(1);
@@ -76,6 +80,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
             let state = state.clone();
             let deferred: Arc<Mutex<ExecutionRecord>> = deferred.clone();
             let last_record_tx: mpsc::Sender<ExecutionRecord> = last_record_tx.clone();
+            let permitting = self.memory.clone();
 
             handles.push(tokio::task::spawn(
                 async move {
@@ -84,6 +89,9 @@ impl<F: PrimeField32> MachineExecutor<F> {
                         eprintln!("tracing chunk at idx: {}, with worker: {}", index, i);
 
                         tracing::debug!("tracing chunk at idx: {}", index);
+
+                        // Assume a record is 4Gb for now.
+                        let permit = permitting.acquire(4 * 1024 * 1024 * 1024).await.unwrap();
 
                         let program = program.clone();
                         let opts = opts.clone();
@@ -126,8 +134,14 @@ impl<F: PrimeField32> MachineExecutor<F> {
                             )
                         };
 
-                        start_prove(machine.clone(), record_tx.clone(), record, deferred_records)
-                            .await;
+                        start_prove(
+                            machine.clone(),
+                            record_tx.clone(),
+                            Some(permit),
+                            record,
+                            deferred_records,
+                        )
+                        .await;
                     }
                 }
                 .instrument(tracing::debug_span!("tracing worker")),
@@ -229,7 +243,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
             })
         };
 
-        start_prove(self.machine.clone(), record_tx, last_record, deferred_records).await;
+        start_prove(self.machine.clone(), record_tx, None, last_record, deferred_records).await;
 
         Ok(ExecutionOutput {
             cycles: minimal_executor.global_clk(),
@@ -488,7 +502,8 @@ fn defer<F: PrimeField32>(
 #[tracing::instrument(name = "start_prove", skip_all)]
 async fn start_prove<F: PrimeField32>(
     machine: Machine<F, RiscvAir<F>>,
-    record_tx: mpsc::UnboundedSender<ExecutionRecord>,
+    record_tx: mpsc::UnboundedSender<(ExecutionRecord, Option<MemoryPermit>)>,
+    permit: Option<MemoryPermit>,
     mut record: ExecutionRecord,
     mut deferred_records: Vec<ExecutionRecord>,
 ) {
@@ -505,11 +520,11 @@ async fn start_prove<F: PrimeField32>(
             machine.generate_dependencies(deferred_records.iter_mut(), None);
 
             // Send the records to the output channel.
-            record_tx.send(record).unwrap();
+            record_tx.send((record, permit)).unwrap();
 
             // If there are deferred records, send them to the output channel.
             for record in deferred_records {
-                record_tx.send(record).unwrap();
+                record_tx.send((record, None)).unwrap();
             }
         }
     })
