@@ -204,15 +204,6 @@ impl<'a> MemReads<'a> {
         Self { inner, len, _phantom: PhantomData }
     }
 
-    // /// Unsafely read a value from the underlying memory.
-    // ///
-    // /// # Safety
-    // ///
-    // /// - The underlying memory is valid a read of type [`T`].
-    // pub unsafe fn read<T: Copy>(&self) -> T {
-    //     std::ptr::read_unaligned(self.inner as *const T)
-    // }
-
     /// Advance the pointer by `n` elements.
     ///
     /// # Panics

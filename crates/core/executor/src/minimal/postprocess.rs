@@ -60,6 +60,17 @@ impl MinimalExecutor {
                 entry.clk,
             ));
         }
+
+        // Its possible an address was written to by a hint, but not touched during execution.
+        for addr in hint_addrs.iter().filter(|addr| !touched_addresses.contains(*addr)) {
+            let entry = self.memory().get(*addr);
+
+            record.global_memory_finalize_events.push(MemoryInitializeFinalizeEvent::finalize(
+                *addr,
+                entry.value,
+                entry.clk,
+            ));
+        }
     }
 }
 
