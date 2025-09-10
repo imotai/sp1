@@ -12,7 +12,7 @@ impl MinimalExecutor {
         &self,
         record: &mut ExecutionRecord,
         final_registers: [MemoryRecord; 32],
-        touched_addresses: &HashSet<u64>,
+        mut touched_addresses: HashSet<u64>,
     ) {
         record.global_memory_initialize_events.extend(
             final_registers
@@ -50,23 +50,15 @@ impl MinimalExecutor {
             .map(|addr| MemoryInitializeFinalizeEvent::initialize(*addr, 0));
         record.global_memory_initialize_events.extend(memory_init_events);
 
+        // Ensure all the hinted addresses are initialized.
+        touched_addresses.extend(hint_addrs);
+
         // Finalize the memory addresses that were touched during execution.
         for addr in touched_addresses {
-            let entry = self.memory().get(*addr);
+            let entry = self.memory().get(addr);
 
             record.global_memory_finalize_events.push(MemoryInitializeFinalizeEvent::finalize(
-                *addr,
-                entry.value,
-                entry.clk,
-            ));
-        }
-
-        // Its possible an address was written to by a hint, but not touched during execution.
-        for addr in hint_addrs.iter().filter(|addr| !touched_addresses.contains(*addr)) {
-            let entry = self.memory().get(*addr);
-
-            record.global_memory_finalize_events.push(MemoryInitializeFinalizeEvent::finalize(
-                *addr,
+                addr,
                 entry.value,
                 entry.clk,
             ));

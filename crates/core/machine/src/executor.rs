@@ -24,6 +24,7 @@ use tracing::Instrument;
 use sp1_core_executor::{CycleResult, MinimalExecutor, SplicedMinimalTrace, TraceChunkRaw};
 
 use crate::{io::SP1Stdin, riscv::RiscvAir, utils::concurrency::AsyncTurn};
+
 pub struct MachineExecutor<F: PrimeField32> {
     num_record_workers: usize,
     opts: SP1CoreOpts,
@@ -225,9 +226,9 @@ impl<F: PrimeField32> MachineExecutor<F> {
         );
         let deferred_records = {
             // Take the lock on the touched addresses.
-            let touched_addresses = touched_addresses.lock().unwrap();
+            let touched_addresses = std::mem::take(&mut *touched_addresses.lock().unwrap());
             // Insert the global memory events into the last record.
-            minimal_executor.emit_globals(&mut last_record, final_registers, &touched_addresses);
+            minimal_executor.emit_globals(&mut last_record, final_registers, touched_addresses);
 
             let mut deferred = deferred.lock().unwrap();
             let mut state = state.lock().unwrap();
@@ -279,6 +280,7 @@ struct RecordTask {
     chunk: SplicedMinimalTrace<TraceChunkRaw>,
 }
 
+/// Generate the chunks (corresponding to shards) and send them to the record workers.
 fn generate_chunks(
     program: Arc<Program>,
     chunk: TraceChunkRaw,
@@ -324,6 +326,7 @@ fn generate_chunks(
     }
 }
 
+/// Trace a single [`SplicedMinimalTrace`] (corresponding to a shard) and return the execution record.
 fn trace_chunk(
     program: Arc<Program>,
     _opts: SP1CoreOpts,
@@ -499,6 +502,7 @@ fn defer<F: PrimeField32>(
     deferred_records
 }
 
+/// Generate the dependencies and send the records to the prover channel.
 #[tracing::instrument(name = "start_prove", skip_all)]
 async fn start_prove<F: PrimeField32>(
     machine: Machine<F, RiscvAir<F>>,
@@ -532,6 +536,7 @@ async fn start_prove<F: PrimeField32>(
     .expect("failed to send records");
 }
 
+/// The first thing accepted by a record worker is always the full trace.
 async fn send_full_trace(
     record_worker_channels: Arc<WorkerQueue<UnboundedSender<RecordTask>>>,
     chunk: TraceChunkRaw,
@@ -542,6 +547,7 @@ async fn send_full_trace(
     worker.send(RecordTask { index: idx, chunk: full_trace }).unwrap();
 }
 
+/// Send the splice trace to a available record worker.
 fn send_spliced_trace_blocking(
     record_worker_channels: Arc<WorkerQueue<UnboundedSender<RecordTask>>>,
     chunk: SplicedMinimalTrace<TraceChunkRaw>,

@@ -288,8 +288,10 @@ where
     let (records_tx, mut records_rx) =
         mpsc::unbounded_channel::<(ExecutionRecord, Option<MemoryPermit>)>();
 
+    let record_memory = sysinfo::System::new_all().total_memory() / 7;
+
     let machine_executor =
-        MachineExecutor::<GC::F>::new(u32::MAX as u64, num_record_workers, opts.clone());
+        MachineExecutor::<GC::F>::new(record_memory, num_record_workers, opts.clone());
 
     let prover_permits = ProverSemaphore::new(5);
     let prover = MachineProverBuilder::<GC, PC>::new(verifier, vec![prover_permits], vec![prover])
