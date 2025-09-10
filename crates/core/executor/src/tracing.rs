@@ -249,7 +249,7 @@ impl<'a> TracingVM<'a> {
                 &mem_access_record,
                 0,
             );
-            self.emit_mem_instr_event(instruction, a, b, c, mem_access_record, op_a_0);
+            self.emit_mem_instr_event(instruction, a, b, c, &mem_access_record, op_a_0);
         }
 
         Ok(())
@@ -283,7 +283,7 @@ impl<'a> TracingVM<'a> {
             self.local_memory_access.insert_record(rs1 as u64, rs1_record);
             self.local_memory_access.insert_record(rs2 as u64, rs2_record);
 
-            self.emit_mem_instr_event(instruction, a, b, c, mem_access_record, op_a_0);
+            self.emit_mem_instr_event(instruction, a, b, c, &mem_access_record, op_a_0);
             self.emit_events(
                 self.core.clk(),
                 self.core.next_pc(),
@@ -331,7 +331,7 @@ impl<'a> TracingVM<'a> {
                 &mem_access_record,
                 0,
             );
-            self.emit_alu_event(instruction, a, b, c, mem_access_record, op_a_0);
+            self.emit_alu_event(instruction, a, b, c, &mem_access_record, op_a_0);
         }
     }
 
@@ -372,7 +372,7 @@ impl<'a> TracingVM<'a> {
                     a,
                     b,
                     c,
-                    mem_access_record,
+                    &mem_access_record,
                     op_a_0,
                     self.core.next_pc(),
                 ),
@@ -381,7 +381,7 @@ impl<'a> TracingVM<'a> {
                     a,
                     b,
                     c,
-                    mem_access_record,
+                    &mem_access_record,
                     op_a_0,
                     self.core.next_pc(),
                 ),
@@ -424,7 +424,7 @@ impl<'a> TracingVM<'a> {
                 a,
                 b,
                 c,
-                mem_access_record,
+                &mem_access_record,
                 op_a_0,
                 self.core.next_pc(),
             );
@@ -458,7 +458,7 @@ impl<'a> TracingVM<'a> {
                 &mem_access_record,
                 0,
             );
-            self.emit_utype_event(instruction, a, b, c, mem_access_record, op_a_0);
+            self.emit_utype_event(instruction, a, b, c, &mem_access_record, op_a_0);
         }
     }
 
@@ -494,7 +494,7 @@ impl<'a> TracingVM<'a> {
                 code,
                 b,
                 c,
-                mem_access_record,
+                &mem_access_record,
                 op_a_0,
                 self.core.next_pc(),
                 self.core.exit_code(),
@@ -558,7 +558,7 @@ impl TracingVM<'_> {
         a: u64,
         b: u64,
         c: u64,
-        record: MemoryAccessRecord,
+        record: &MemoryAccessRecord,
         op_a_0: bool,
     ) {
         let opcode = instruction.opcode;
@@ -576,7 +576,7 @@ impl TracingVM<'_> {
             mem_access: unsafe { record.memory.unwrap_unchecked() },
         };
 
-        let record = ITypeRecord::new(&record, instruction);
+        let record = ITypeRecord::new(record, instruction);
         if matches!(
             opcode,
             Opcode::LB
@@ -615,50 +615,50 @@ impl TracingVM<'_> {
         a: u64,
         b: u64,
         c: u64,
-        record: MemoryAccessRecord,
+        record: &MemoryAccessRecord,
         op_a_0: bool,
     ) {
         let opcode = instruction.opcode;
         let event = AluEvent { clk: self.core.clk(), pc: self.core.pc(), opcode, a, b, c, op_a_0 };
         match opcode {
             Opcode::ADD => {
-                let record = RTypeRecord::new(&record, instruction);
+                let record = RTypeRecord::new(record, instruction);
                 self.record.add_events.push((event, record));
             }
             Opcode::ADDW => {
-                let record = ALUTypeRecord::new(&record, instruction);
+                let record = ALUTypeRecord::new(record, instruction);
                 self.record.addw_events.push((event, record));
             }
             Opcode::ADDI => {
-                let record = ITypeRecord::new(&record, instruction);
+                let record = ITypeRecord::new(record, instruction);
                 self.record.addi_events.push((event, record));
             }
             Opcode::SUB => {
-                let record = RTypeRecord::new(&record, instruction);
+                let record = RTypeRecord::new(record, instruction);
                 self.record.sub_events.push((event, record));
             }
             Opcode::SUBW => {
-                let record = RTypeRecord::new(&record, instruction);
+                let record = RTypeRecord::new(record, instruction);
                 self.record.subw_events.push((event, record));
             }
             Opcode::XOR | Opcode::OR | Opcode::AND => {
-                let record = ALUTypeRecord::new(&record, instruction);
+                let record = ALUTypeRecord::new(record, instruction);
                 self.record.bitwise_events.push((event, record));
             }
             Opcode::SLL | Opcode::SLLW => {
-                let record = ALUTypeRecord::new(&record, instruction);
+                let record = ALUTypeRecord::new(record, instruction);
                 self.record.shift_left_events.push((event, record));
             }
             Opcode::SRL | Opcode::SRA | Opcode::SRLW | Opcode::SRAW => {
-                let record = ALUTypeRecord::new(&record, instruction);
+                let record = ALUTypeRecord::new(record, instruction);
                 self.record.shift_right_events.push((event, record));
             }
             Opcode::SLT | Opcode::SLTU => {
-                let record = ALUTypeRecord::new(&record, instruction);
+                let record = ALUTypeRecord::new(record, instruction);
                 self.record.lt_events.push((event, record));
             }
             Opcode::MUL | Opcode::MULHU | Opcode::MULHSU | Opcode::MULH | Opcode::MULW => {
-                let record = RTypeRecord::new(&record, instruction);
+                let record = RTypeRecord::new(record, instruction);
                 self.record.mul_events.push((event, record));
             }
             Opcode::DIVU
@@ -669,7 +669,7 @@ impl TracingVM<'_> {
             | Opcode::DIVUW
             | Opcode::REMUW
             | Opcode::REMW => {
-                let record = RTypeRecord::new(&record, instruction);
+                let record = RTypeRecord::new(record, instruction);
                 self.record.divrem_events.push((event, record));
             }
             _ => unreachable!(),
@@ -685,7 +685,7 @@ impl TracingVM<'_> {
         a: u64,
         b: u64,
         c: u64,
-        record: MemoryAccessRecord,
+        record: &MemoryAccessRecord,
         op_a_0: bool,
         next_pc: u64,
     ) {
@@ -699,7 +699,7 @@ impl TracingVM<'_> {
             c,
             op_a_0,
         };
-        let record = JTypeRecord::new(&record, instruction);
+        let record = JTypeRecord::new(record, instruction);
         self.record.jal_events.push((event, record));
     }
 
@@ -712,7 +712,7 @@ impl TracingVM<'_> {
         a: u64,
         b: u64,
         c: u64,
-        record: MemoryAccessRecord,
+        record: &MemoryAccessRecord,
         op_a_0: bool,
         next_pc: u64,
     ) {
@@ -726,7 +726,7 @@ impl TracingVM<'_> {
             c,
             op_a_0,
         };
-        let record = ITypeRecord::new(&record, instruction);
+        let record = ITypeRecord::new(record, instruction);
         self.record.jalr_events.push((event, record));
     }
 
@@ -739,7 +739,7 @@ impl TracingVM<'_> {
         a: u64,
         b: u64,
         c: u64,
-        record: MemoryAccessRecord,
+        record: &MemoryAccessRecord,
         op_a_0: bool,
         next_pc: u64,
     ) {
@@ -753,7 +753,7 @@ impl TracingVM<'_> {
             c,
             op_a_0,
         };
-        let record = ITypeRecord::new(&record, instruction);
+        let record = ITypeRecord::new(record, instruction);
         self.record.branch_events.push((event, record));
     }
 
@@ -765,7 +765,7 @@ impl TracingVM<'_> {
         a: u64,
         b: u64,
         c: u64,
-        record: MemoryAccessRecord,
+        record: &MemoryAccessRecord,
         op_a_0: bool,
     ) {
         let event = UTypeEvent {
@@ -777,7 +777,7 @@ impl TracingVM<'_> {
             c,
             op_a_0,
         };
-        let record = JTypeRecord::new(&record, instruction);
+        let record = JTypeRecord::new(record, instruction);
         self.record.utype_events.push((event, record));
     }
 
@@ -820,7 +820,7 @@ impl TracingVM<'_> {
         syscall_code: SyscallCode,
         arg1: u64,
         arg2: u64,
-        record: MemoryAccessRecord,
+        record: &MemoryAccessRecord,
         op_a_0: bool,
         next_pc: u64,
         exit_code: u32,
@@ -829,7 +829,7 @@ impl TracingVM<'_> {
         let syscall_event =
             self.syscall_event(clk, syscall_code, arg1, arg2, op_a_0, next_pc, exit_code);
 
-        let record = RTypeRecord::new(&record, instruction);
+        let record = RTypeRecord::new(record, instruction);
         self.record.syscall_events.push((syscall_event, record));
     }
 }

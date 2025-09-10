@@ -766,19 +766,23 @@ impl CoreVM<'_> {
 }
 
 impl CoreVM<'_> {
+    /// Get the current timestamp for a given memory access position.
     #[inline]
     #[must_use]
     pub const fn timestamp(&self, position: MemoryAccessPosition) -> u64 {
         self.clk + position as u64
     }
 
+    /// Check if the top 24 bits have changed, which imply a `state bump` event needs to be emitted.
     #[inline]
     const fn needs_bump_clk_high(&self) -> bool {
         (self.next_clk() >> 24) ^ (self.clk() >> 24) > 0
     }
 
+    /// Check if the state needs to be bumped, which implies a `state bump` event needs to be emitted.
     #[inline]
-    fn needs_state_bump(&self, instruction: &Instruction) -> bool {
+    #[must_use]
+    pub const fn needs_state_bump(&self, instruction: &Instruction) -> bool {
         let next_pc = self.next_pc();
         let increment = self.next_clk() + 8 - self.clk();
 
@@ -835,7 +839,7 @@ impl<'a> CoreVM<'a> {
     #[inline]
     #[must_use]
     /// Get the next program counter that will be set in [`CoreVM::advance`].
-    pub fn next_pc(&self) -> u64 {
+    pub const fn next_pc(&self) -> u64 {
         self.next_pc
     }
 

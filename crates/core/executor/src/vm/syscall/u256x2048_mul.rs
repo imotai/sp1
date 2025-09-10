@@ -1,5 +1,5 @@
 use crate::{
-    events::{MemoryReadRecord, MemoryWriteRecord, PrecompileEvent, U256xU2048MulEvent},
+    events::{PrecompileEvent, U256xU2048MulEvent},
     syscalls::SyscallCode,
     vm::syscall::SyscallRuntime,
     TracingVM,

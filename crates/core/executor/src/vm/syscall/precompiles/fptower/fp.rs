@@ -5,7 +5,7 @@ use sp1_curves::{
 use typenum::Unsigned;
 
 use crate::{
-    events::{FieldOperation, FpOpEvent, PrecompileEvent},
+    events::{FpOpEvent, PrecompileEvent},
     syscalls::SyscallCode,
     vm::syscall::SyscallRuntime,
     TracingVM,

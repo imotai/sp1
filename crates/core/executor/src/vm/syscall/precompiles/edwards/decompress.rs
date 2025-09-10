@@ -1,10 +1,5 @@
-use sp1_curves::{
-    edwards::{EdwardsParameters, WORDS_FIELD_ELEMENT},
-    params::NumWords,
-    EllipticCurve, COMPRESSED_POINT_BYTES, NUM_BYTES_FIELD_ELEMENT,
-};
-use sp1_primitives::consts::{bytes_to_words_le, words_to_bytes_le};
-use typenum::Unsigned;
+use sp1_curves::{edwards::WORDS_FIELD_ELEMENT, COMPRESSED_POINT_BYTES, NUM_BYTES_FIELD_ELEMENT};
+use sp1_primitives::consts::words_to_bytes_le;
 
 use crate::{
     events::{EdDecompressEvent, MemoryReadRecord, MemoryWriteRecord, PrecompileEvent},
@@ -13,11 +8,7 @@ use crate::{
     TracingVM,
 };
 
-pub(crate) fn core_edwards_decompress<
-    'a,
-    RT: SyscallRuntime<'a>,
-    E: EllipticCurve + EdwardsParameters,
->(
+pub(crate) fn core_edwards_decompress<'a, RT: SyscallRuntime<'a>>(
     rt: &mut RT,
     _: SyscallCode,
     _: u64,
@@ -31,7 +22,7 @@ pub(crate) fn core_edwards_decompress<
     None
 }
 
-pub(crate) fn tracing_edwards_decompress<E: EllipticCurve + EdwardsParameters>(
+pub(crate) fn tracing_edwards_decompress(
     rt: &mut TracingVM<'_>,
     syscall_code: SyscallCode,
     arg1: u64,

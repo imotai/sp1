@@ -5,7 +5,7 @@ use sp1_curves::{
 use typenum::Unsigned;
 
 use crate::{
-    events::{FieldOperation, Fp2AddSubEvent, PrecompileEvent},
+    events::{Fp2AddSubEvent, PrecompileEvent},
     syscalls::SyscallCode,
     vm::syscall::SyscallRuntime,
     TracingVM,
@@ -71,11 +71,25 @@ pub fn tracing_fp2_add<P: FpOpField>(
         ..Default::default()
     };
 
-    let syscall_code_key = match syscall_code {
-        SyscallCode::BLS12381_FP2_ADD | SyscallCode::BLS12381_FP2_SUB => {
-            SyscallCode::BLS12381_FP2_ADD
-        }
-        _ => unreachable!(),
+    let (syscall_code_key, precompile_event) = match P::FIELD_TYPE {
+        FieldType::Bn254 => (
+            match syscall_code {
+                SyscallCode::BN254_FP2_ADD | SyscallCode::BN254_FP2_SUB => {
+                    SyscallCode::BN254_FP2_ADD
+                }
+                _ => unreachable!(),
+            },
+            PrecompileEvent::Bn254Fp2AddSub(event),
+        ),
+        FieldType::Bls12381 => (
+            match syscall_code {
+                SyscallCode::BLS12381_FP2_ADD | SyscallCode::BLS12381_FP2_SUB => {
+                    SyscallCode::BLS12381_FP2_ADD
+                }
+                _ => unreachable!(),
+            },
+            PrecompileEvent::Bls12381Fp2AddSub(event),
+        ),
     };
 
     let syscall_event = rt.syscall_event(
@@ -87,11 +101,7 @@ pub fn tracing_fp2_add<P: FpOpField>(
         rt.core.next_pc(),
         rt.core.exit_code(),
     );
-    rt.add_precompile_event(
-        syscall_code_key,
-        syscall_event,
-        PrecompileEvent::Bls12381Fp2AddSub(event),
-    );
+    rt.add_precompile_event(syscall_code_key, syscall_event, precompile_event);
 
     None
 }

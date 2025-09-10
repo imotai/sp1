@@ -17,7 +17,7 @@ pub(crate) unsafe fn ec_add<E: EllipticCurve>(ctx: &mut JitContext, arg1: u64, a
         panic!();
     }
 
-    let memory = ctx.memory();
+    let mut memory = ctx.memory();
     let num_words = <E::BaseField as NumWords>::WordsCurvePoint::USIZE;
 
     let p = memory.mr_slice_unsafe(p_ptr, num_words);
@@ -30,9 +30,8 @@ pub(crate) unsafe fn ec_add<E: EllipticCurve>(ctx: &mut JitContext, arg1: u64, a
     let result_words = result_affine.to_words_le();
 
     // Bump the clock before writing to memory.
-    ctx.clk += 1;
+    memory.increment_clk(1);
 
-    let mut memory = ctx.memory();
     memory.mw_slice(p_ptr, &result_words);
 }
 

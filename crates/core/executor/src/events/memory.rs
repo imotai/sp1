@@ -241,20 +241,9 @@ impl MemoryWriteRecord {
         let MemoryEntry { timestamp, value, .. } = *entry;
         let MemoryEntry { timestamp: prev_timestamp, value: prev_value, .. } = *prev_entry;
         debug_assert!(timestamp > prev_timestamp);
-        Self { value, timestamp, prev_value, prev_timestamp, prev_page_prot_record }
+        Self { prev_timestamp, prev_page_prot_record, prev_value, timestamp, value }
     }
 }
-
-// impl From<MemoryRecordEnum> for MemoryWriteRecord {
-//     fn from(record: MemoryRecordEnum) -> Self {
-//         match record {
-//             MemoryRecordEnum::Read(_) => panic!("Cannot convert a read record to a write record"),
-//             MemoryRecordEnum::Write(record) => record,
-//         }
-
-//         Self { prev_timestamp, prev_value, timestamp, value }
-//     }
-// }
 
 impl MemoryRecordEnum {
     /// Returns the value of the memory record.
@@ -355,6 +344,7 @@ pub struct PageProtLocalEvent {
     pub final_page_prot_access: PageProtRecord,
 }
 
+/// Trait to convert something into a [`MemoryRecord`].
 pub trait IntoMemoryRecord {
     /// Get the previous record.
     fn previous_record(&self) -> MemoryRecord;

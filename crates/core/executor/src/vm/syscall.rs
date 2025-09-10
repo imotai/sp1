@@ -8,7 +8,6 @@ use sp1_curves::{
         secp256r1::Secp256r1,
     },
 };
-use sp1_jit::{MemValue, RiscRegister};
 
 use super::CoreVM;
 
@@ -86,7 +85,7 @@ pub(crate) fn core_syscall_handler<'a, RT: SyscallRuntime<'a>>(
             precompiles::edwards::core_edwards_add::<RT, Ed25519>(rt, code, args1, args2)
         }
         SyscallCode::ED_DECOMPRESS => {
-            precompiles::edwards::core_edwards_decompress::<RT, Ed25519>(rt, code, args1, args2)
+            precompiles::edwards::core_edwards_decompress::<RT>(rt, code, args1, args2)
         }
         SyscallCode::UINT256_MUL => uint256::core_uint256_mul(rt, code, args1, args2),
         SyscallCode::UINT256_MUL_CARRY | SyscallCode::UINT256_ADD_CARRY => {
@@ -127,8 +126,16 @@ pub(crate) fn core_syscall_handler<'a, RT: SyscallRuntime<'a>>(
             unconstrained::exit_unconstrained(rt, code, args1, args2).1
         }
         SyscallCode::POSEIDON2 => poseidon2::core_poseidon2(rt, code, args1, args2),
-        SyscallCode::VERIFY_SP1_PROOF | SyscallCode::MPROTECT => None,
-        _ => None,
+        SyscallCode::VERIFY_SP1_PROOF
+        | SyscallCode::COMMIT
+        | SyscallCode::COMMIT_DEFERRED_PROOFS
+        | SyscallCode::HINT_READ => None,
+        code @ (SyscallCode::MPROTECT
+        | SyscallCode::SECP256K1_DECOMPRESS
+        | SyscallCode::BLS12381_DECOMPRESS
+        | SyscallCode::SECP256R1_DECOMPRESS) => {
+            unreachable!("{code} is not yet supported by the native executor.")
+        }
     }
 }
 
@@ -189,7 +196,7 @@ pub(crate) fn tracing_syscall_handler(
             precompiles::edwards::tracing_edwards_add::<Ed25519>(rt, code, args1, args2)
         }
         SyscallCode::ED_DECOMPRESS => {
-            precompiles::edwards::tracing_edwards_decompress::<Ed25519>(rt, code, args1, args2)
+            precompiles::edwards::tracing_edwards_decompress(rt, code, args1, args2)
         }
         SyscallCode::UINT256_MUL => uint256::tracing_uint256_mul(rt, code, args1, args2),
         SyscallCode::UINT256_MUL_CARRY | SyscallCode::UINT256_ADD_CARRY => {

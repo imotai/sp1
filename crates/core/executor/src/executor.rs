@@ -2471,6 +2471,7 @@ impl<'a> Executor<'a> {
         Ok((checkpoint, public_values, done))
     }
 
+    #[allow(missing_docs)]
     pub fn initialize(&mut self) {
         self.state.clk = 1;
 

@@ -1,9 +1,6 @@
 use num::BigUint;
 
-use crate::{
-    events::{PrecompileEvent, Uint256Operation, Uint256OpsEvent},
-    syscalls::SyscallCode,
-};
+use crate::{events::Uint256Operation, syscalls::SyscallCode};
 use sp1_jit::{
     JitContext,
     RiscRegister::{X12, X13, X14, X5},
@@ -32,27 +29,26 @@ pub unsafe fn uint256_ops(ctx: &mut JitContext, arg1: u64, arg2: u64) -> Option<
     let d_ptr = ctx.rr(X13);
     let e_ptr = ctx.rr(X14);
 
+    let mut memory = ctx.memory();
+
     // Read input values (8 words = 32 bytes each for uint256) and convert to BigUint
     let uint256_a = {
-        let memory = ctx.memory();
         let a = memory.mr_slice(a_ptr, U256_NUM_WORDS);
         BigUint::from_slice(
             &a.into_iter().flat_map(|&x| [x as u32, (x >> 32) as u32]).collect::<Vec<_>>(),
         )
     };
-    ctx.clk += 1;
+    memory.increment_clk(1);
 
     let uint256_b = {
-        let memory = ctx.memory();
         let b = memory.mr_slice(b_ptr, U256_NUM_WORDS);
         BigUint::from_slice(
             &b.into_iter().flat_map(|&x| [x as u32, (x >> 32) as u32]).collect::<Vec<_>>(),
         )
     };
-    ctx.clk += 1;
+    memory.increment_clk(1);
 
     let uint256_c = {
-        let memory = ctx.memory();
         let c = memory.mr_slice(c_ptr, U256_NUM_WORDS);
         BigUint::from_slice(
             &c.into_iter().flat_map(|&x| [x as u32, (x >> 32) as u32]).collect::<Vec<_>>(),
@@ -69,16 +65,11 @@ pub unsafe fn uint256_ops(ctx: &mut JitContext, arg1: u64, arg2: u64) -> Option<
     u64_result.resize(8, 0);
 
     // Write results
-    ctx.clk += 1;
-    {
-        let mut memory = ctx.memory();
-        memory.mw_slice(d_ptr, &u64_result[0..4]);
-    }
-    ctx.clk += 1;
-    {
-        let mut memory = ctx.memory();
-        memory.mw_slice(e_ptr, &u64_result[4..8]);
-    }
+    memory.increment_clk(1);
+    memory.mw_slice(d_ptr, &u64_result[0..4]);
+
+    memory.increment_clk(1);
+    memory.mw_slice(e_ptr, &u64_result[4..8]);
 
     None
 }

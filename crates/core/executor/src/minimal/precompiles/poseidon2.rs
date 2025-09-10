@@ -8,7 +8,7 @@ pub(crate) unsafe fn poseidon2(ctx: &mut JitContext, arg1: u64, _arg2: u64) -> O
     let ptr = arg1;
     assert!(ptr.is_multiple_of(8));
 
-    let memory = ctx.memory();
+    let mut memory = ctx.memory();
 
     // Read 8 u64 words (16 u32 words) from memory
     let input: Vec<u64> = memory.mr_slice_unsafe(ptr, 8).into_iter().copied().collect();
@@ -30,7 +30,6 @@ pub(crate) unsafe fn poseidon2(ctx: &mut JitContext, arg1: u64, _arg2: u64) -> O
     assert!(u64_result.len() == 8);
 
     // Write result back to memory
-    let mut memory = ctx.memory();
     memory.mw_slice(ptr, &u64_result);
 
     None

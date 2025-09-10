@@ -23,9 +23,8 @@ pub unsafe fn keccak_permute(ctx: &mut JitContext, arg1: u64, arg2: u64) -> Opti
     keccakf(&mut state);
 
     // Bump the clock before writing to memory.
-    ctx.clk += 1;
+    memory.increment_clk(1);
 
-    let mut memory = ctx.memory();
     memory.mw_slice(state_ptr, state.as_slice());
 
     None

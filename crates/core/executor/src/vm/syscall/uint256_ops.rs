@@ -1,15 +1,5 @@
-use sp1_curves::{
-    edwards::{EdwardsParameters, WORDS_FIELD_ELEMENT},
-    params::NumWords,
-    EllipticCurve, COMPRESSED_POINT_BYTES, NUM_BYTES_FIELD_ELEMENT,
-};
-use sp1_primitives::consts::{bytes_to_words_le, words_to_bytes_le, WORD_BYTE_SIZE};
-use typenum::Unsigned;
-
 use crate::{
-    events::{
-        MemoryReadRecord, MemoryWriteRecord, PrecompileEvent, Uint256MulEvent, Uint256OpsEvent,
-    },
+    events::{PrecompileEvent, Uint256OpsEvent},
     syscalls::SyscallCode,
     vm::syscall::SyscallRuntime,
     TracingVM,
@@ -32,6 +22,7 @@ pub(crate) fn core_uint256_ops<'a, RT: SyscallRuntime<'a>>(
     None
 }
 
+#[allow(clippy::many_single_char_names)]
 pub(crate) fn tracing_uint256_ops(
     rt: &mut TracingVM<'_>,
     syscall_code: SyscallCode,
@@ -66,9 +57,9 @@ pub(crate) fn tracing_uint256_ops(
 
     let d_memory_records = memory.mw_slice(d_ptr, U256_NUM_WORDS);
     let d: Vec<_> = d_memory_records.iter().map(|record| record.value).collect();
-    
+
     memory.increment_clk(1);
-    
+
     let e_memory_records = memory.mw_slice(e_ptr, U256_NUM_WORDS);
     let e: Vec<_> = e_memory_records.iter().map(|record| record.value).collect();
 

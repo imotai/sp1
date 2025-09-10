@@ -50,10 +50,8 @@ pub(crate) unsafe fn fp2_mul_syscall<P: FpOpField>(
     result.append(&mut c1.to_u64_digits());
     result.resize(num_words, 0);
 
-    // Bump the clock before writing to memory.
-    ctx.clk += 1;
-
-    let mut memory = ctx.memory();
+    // Bump the clock before writing to memory, in case x an y are the same.
+    memory.increment_clk(1);
     memory.mw_slice(x_ptr, &result);
 
     None

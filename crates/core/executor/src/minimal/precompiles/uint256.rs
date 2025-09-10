@@ -46,10 +46,8 @@ pub(crate) unsafe fn uint256_mul(ctx: &mut JitContext, arg1: u64, arg2: u64) -> 
     // Convert the result to little endian u32 words.
     let result = bytes_to_words_le::<4>(&result_bytes);
 
-    ctx.clk += 1;
-
-    let mut memory = ctx.memory();
     // Write the result to x and keep track of the memory records.
+    memory.increment_clk(1);
     memory.mw_slice(x_ptr, &result);
 
     None

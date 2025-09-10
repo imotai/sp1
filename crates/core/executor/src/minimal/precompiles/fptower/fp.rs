@@ -45,9 +45,8 @@ pub(crate) unsafe fn fp_op_syscall<P: FpOpField>(
     result.resize(num_words, 0);
 
     // Bump the clock before writing to memory.
-    ctx.clk += 1;
+    memory.increment_clk(1);
 
-    let mut memory = ctx.memory();
     memory.mw_slice(x_ptr, &result);
 
     None

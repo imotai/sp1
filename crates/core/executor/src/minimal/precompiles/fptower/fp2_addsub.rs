@@ -21,7 +21,7 @@ pub(crate) unsafe fn fp2_addsub_syscall<P: FpOpField>(
         panic!("y_ptr must be 4-byte aligned");
     }
 
-    let mut memory = ctx.memory();
+    let memory = ctx.memory();
 
     let num_words = <P as NumWords>::WordsCurvePoint::USIZE;
     let x = memory.mr_slice_unsafe(x_ptr, num_words);

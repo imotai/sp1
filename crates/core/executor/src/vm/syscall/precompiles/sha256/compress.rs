@@ -1,12 +1,9 @@
-use sp1_curves::{params::NumWords, CurveType, EllipticCurve};
-
 use crate::{
     events::{PrecompileEvent, ShaCompressEvent},
     syscalls::SyscallCode,
     vm::syscall::SyscallRuntime,
     TracingVM,
 };
-use typenum::Unsigned;
 
 pub(crate) fn core_sha256_compress<'a, RT: SyscallRuntime<'a>>(
     rt: &mut RT,

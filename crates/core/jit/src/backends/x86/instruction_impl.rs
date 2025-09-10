@@ -2,9 +2,9 @@
 
 use super::{TranspilerBackend, CONTEXT, PC_OFFSET, TEMP_A, TEMP_B};
 use crate::{
-    impl_alu32_imm_opt, impl_alu_imm_opt, impl_risc_alu, impl_shift32_imm_opt, x86::CLK_OFFSET,
-    ComputeInstructions, ControlFlowInstructions, JitContext, MemoryInstructions, RiscOperand,
-    RiscRegister, RiscvTranspiler, SystemInstructions,
+    impl_alu32_imm_opt, impl_alu_imm_opt, impl_risc_alu, impl_shift32_imm_opt, ComputeInstructions,
+    ControlFlowInstructions, JitContext, MemoryInstructions, RiscOperand, RiscRegister,
+    RiscvTranspiler, SystemInstructions,
 };
 use dynasmrt::{dynasm, x64::Rq, DynasmApi, DynasmLabelApi};
 
@@ -588,6 +588,16 @@ impl ComputeInstructions for TranspilerBackend {
             test Rd(TEMP_B), Rd(TEMP_B);
             jz >div_by_zero;
 
+            // Handle 32-bit overflow case on x86-64: INT_MIN / -1 traps (#DE)
+            cmp eax, 0x80000000u32 as i32;   // dividend == INT_MIN?
+            jne >do_div;
+            cmp Rd(TEMP_B), -1;              // divisor == -1?
+            jne >do_div;
+            mov eax, 0x80000000u32 as i32;   // result = INT_MIN
+            movsxd rax, eax;                 // sign-extend to 64-bit
+            jmp >done;
+
+            do_div:;
             // Perform signed 32-bit divide
             // dividend already in EAX (loaded directly into RAX)
             cdq;                        // sign-extend EAX into EDX
@@ -644,6 +654,16 @@ impl ComputeInstructions for TranspilerBackend {
             test Rd(TEMP_B), Rd(TEMP_B);
             jz >rem_by_zero;
 
+            // Handle 32-bit overflow case on x86-64: INT_MIN / -1 traps (#DE)
+            cmp eax, 0x80000000u32 as i32;   // dividend == INT_MIN?
+            jne >do_div;
+            cmp Rd(TEMP_B), -1;              // divisor == -1?
+            jne >do_div;
+            mov eax, 0x80000000u32 as i32;   // result = INT_MIN
+            movsxd rax, eax;                 // sign-extend to 64-bit
+            jmp >done;
+
+            do_div:;
             // Perform signed 32-bit remainder
             // dividend already in EAX (loaded directly into RAX)
             cdq;                        // sign-extend EAX into EDX
