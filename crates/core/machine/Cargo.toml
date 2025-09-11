@@ -26,6 +26,7 @@ slop-maybe-rayon = { workspace = true }
 slop-uni-stark = { workspace = true }
 sp1-derive = { workspace = true }
 sp1-primitives = { workspace = true }
+sp1-jit = { workspace = true }
 
 
 slop-futures = { workspace = true }

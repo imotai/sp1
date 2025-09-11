@@ -248,6 +248,9 @@ pub struct SplicedMinimalTrace<T: MinimalTrace> {
     start_clk: u64,
     memory_reads_idx: usize,
     hint_lens_idx: usize,
+    last_clk: u64,
+    // Normally unused but can be set for the cluster.
+    last_mem_reads_idx: usize,
 }
 
 impl<T: MinimalTrace> SplicedMinimalTrace<T> {
@@ -261,7 +264,16 @@ impl<T: MinimalTrace> SplicedMinimalTrace<T> {
         memory_reads_idx: usize,
         hint_lens_idx: usize,
     ) -> Self {
-        Self { inner, start_registers, start_pc, start_clk, memory_reads_idx, hint_lens_idx }
+        Self {
+            inner,
+            start_registers,
+            start_pc,
+            start_clk,
+            memory_reads_idx,
+            hint_lens_idx,
+            last_clk: 0,
+            last_mem_reads_idx: 0,
+        }
     }
 
     /// Create a new spliced minimal trace from a minimal trace without any splicing.
@@ -271,6 +283,16 @@ impl<T: MinimalTrace> SplicedMinimalTrace<T> {
         let start_clk = trace.clk_start();
 
         Self::new(trace, start_registers, start_pc, start_clk, 0, 0)
+    }
+
+    /// Set the last clock of the spliced minimal trace.
+    pub fn set_last_clk(&mut self, clk: u64) {
+        self.last_clk = clk;
+    }
+
+    /// Set the last memory reads index of the spliced minimal trace.
+    pub fn set_last_mem_reads_idx(&mut self, mem_reads_idx: usize) {
+        self.last_mem_reads_idx = mem_reads_idx;
     }
 }
 
@@ -288,7 +310,7 @@ impl<T: MinimalTrace> MinimalTrace for SplicedMinimalTrace<T> {
     }
 
     fn clk_end(&self) -> u64 {
-        self.inner.clk_end()
+        self.last_clk
     }
 
     fn num_mem_reads(&self) -> u64 {

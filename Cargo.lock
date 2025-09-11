@@ -4524,6 +4524,7 @@ dependencies = [
  "sp1-curves",
  "sp1-derive",
  "sp1-hypercube",
+ "sp1-jit",
  "sp1-primitives",
  "static_assertions",
  "strum",

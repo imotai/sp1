@@ -17,6 +17,7 @@ use sp1_hypercube::{
     prover::{MemoryPermit, MemoryPermitting},
     Machine, MachineRecord,
 };
+use sp1_jit::MinimalTrace;
 use thiserror::Error;
 use tokio::sync::mpsc::{self, UnboundedSender};
 use tracing::Instrument;
@@ -92,7 +93,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
                         tracing::debug!("tracing chunk at idx: {}", index);
 
                         // Assume a record is 4Gb for now.
-                        let permit = permitting.acquire(4 * 1024 * 1024 * 1024).await.unwrap();
+                        let permit = permitting.acquire(2 * 1024 * 1024 * 1024).await.unwrap();
 
                         let program = program.clone();
                         let opts = opts.clone();
@@ -156,12 +157,14 @@ impl<F: PrimeField32> MachineExecutor<F> {
 
             move || {
                 let _debug_span = tracing::debug_span!("minimal executor task").entered();
-                let mut minimal_executor = MinimalExecutor::new(program.clone(), true, false, None);
+                let mut minimal_executor = MinimalExecutor::tracing(program.clone(), None);
+                tracing::debug!("minimal executor created");
 
                 for buf in stdin.buffer {
                     minimal_executor.with_input(&buf);
                 }
 
+                tracing::debug!("Starting minimal executor");
                 while let Some(chunk) = minimal_executor.execute_chunk() {
                     tracing::debug!("program is done?: {}", minimal_executor.is_done());
 
@@ -182,9 +185,6 @@ impl<F: PrimeField32> MachineExecutor<F> {
                 let mut idx = 0;
 
                 while let Some(chunk) = chunk_rx.recv().await {
-                    send_full_trace(record_worker_channels.clone(), chunk.clone(), idx).await;
-                    idx += 1;
-
                     (idx, final_registers) = tokio::task::spawn_blocking({
                         let program = program.clone();
                         let touched_addresses = touched_addresses.clone();
@@ -291,6 +291,7 @@ fn generate_chunks(
     let mut touched_addresses = touched_addresses.lock().unwrap();
     let mut vm = SplicingVM::new(&chunk, program.clone(), &mut touched_addresses);
 
+    let mut last_splice = SplicedMinimalTrace::new_full_trace(chunk.clone());
     loop {
         tracing::debug!("starting new shard idx: {} at clk: {}", idx, vm.core.clk());
 
@@ -304,18 +305,36 @@ fn generate_chunks(
                     tracing::debug!("shard ended at global clk: {}", vm.core.global_clk());
                     tracing::debug!("shard ended with {} mem reads left ", vm.core.mem_reads.len());
 
+                    // Set the last splice clk.
+                    last_splice.set_last_clk(vm.core.clk());
+                    last_splice.set_last_mem_reads_idx(vm.core.mem_reads.len());
+
+                    let splice_to_send = std::mem::replace(&mut last_splice, spliced);
                     // Send the spliced trace to a available worker.
-                    send_spliced_trace_blocking(record_worker_channels.clone(), spliced, idx);
+                    send_spliced_trace_blocking(
+                        record_worker_channels.clone(),
+                        splice_to_send,
+                        idx,
+                    );
 
                     // Bump the shard index.
                     idx += 1;
                 } else {
                     tracing::debug!("shard idx ran out of trace and was cut early: {}", idx);
+
+                    last_splice.set_last_clk(vm.core.clk());
+                    last_splice.set_last_mem_reads_idx(chunk.num_mem_reads() as usize);
+                    send_spliced_trace_blocking(record_worker_channels.clone(), last_splice, idx);
+
                     // Since we didnt get a `done` status, we dont really need the final registers.
                     return Ok((idx, [MemoryRecord::default(); 32]));
                 }
             }
             CycleResult::Done(true) => {
+                last_splice.set_last_clk(vm.core.clk());
+                last_splice.set_last_mem_reads_idx(chunk.num_mem_reads() as usize);
+                send_spliced_trace_blocking(record_worker_channels.clone(), last_splice, idx);
+
                 return Ok((idx, *vm.core.registers()));
             }
             CycleResult::Done(false) | CycleResult::TraceEnd => {

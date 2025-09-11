@@ -342,7 +342,9 @@ impl JitFunction {
             tracing,
         };
 
-        as_fn(&mut ctx);
+        tracing::debug_span!("JIT function", pc = ctx.pc, clk = ctx.clk).in_scope(|| {
+            as_fn(&mut ctx);
+        });
 
         // Update the values we want to preserve.
         self.pc = ctx.pc;

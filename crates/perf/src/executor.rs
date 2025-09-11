@@ -54,7 +54,9 @@ pub fn time_operation<T, F: FnOnce() -> T>(operation: F) -> (T, std::time::Durat
     let duration = start.elapsed();
     (result, duration)
 }
-fn main() {
+
+#[tokio::main]
+async fn main() {
     let args = PerfArgs::parse();
 
     let elf = std::fs::read(args.program).expect("failed to read program");
@@ -197,8 +199,6 @@ fn main() {
                     unreachable!("This trace has no cycle limit, so we expect it always splice.");
                 }
             }
-            // Ensure the last shard is included.
-            splice_duration += splice_timer.elapsed();
 
             assert_eq!(minimal.global_clk(), splicing_vm.core.global_clk());
 

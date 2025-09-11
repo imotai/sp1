@@ -6400,16 +6400,14 @@ checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 
 [[package]]
 name = "slop-air"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-air",
 ]
 
 [[package]]
 name = "slop-algebra"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-field 0.1.0",
  "serde",
@@ -6417,8 +6415,7 @@ dependencies = [
 
 [[package]]
 name = "slop-alloc"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "serde",
  "slop-algebra",
@@ -6427,8 +6424,7 @@ dependencies = [
 
 [[package]]
 name = "slop-baby-bear"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "lazy_static",
  "p3-baby-bear 0.1.0",
@@ -6440,8 +6436,7 @@ dependencies = [
 
 [[package]]
 name = "slop-basefold"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "derive-where",
  "itertools 0.12.1",
@@ -6463,8 +6458,7 @@ dependencies = [
 
 [[package]]
 name = "slop-basefold-prover"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "derive-where",
  "itertools 0.12.1",
@@ -6490,8 +6484,7 @@ dependencies = [
 
 [[package]]
 name = "slop-bn254"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-bn254-fr",
  "serde",
@@ -6503,8 +6496,7 @@ dependencies = [
 
 [[package]]
 name = "slop-challenger"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "futures",
  "p3-challenger",
@@ -6515,8 +6507,7 @@ dependencies = [
 
 [[package]]
 name = "slop-commit"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-commit",
  "serde",
@@ -6528,8 +6519,7 @@ dependencies = [
 
 [[package]]
 name = "slop-dft"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-dft 0.1.0",
  "serde",
@@ -6541,16 +6531,14 @@ dependencies = [
 
 [[package]]
 name = "slop-fri"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-fri",
 ]
 
 [[package]]
 name = "slop-futures"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "crossbeam",
  "futures",
@@ -6562,8 +6550,7 @@ dependencies = [
 
 [[package]]
 name = "slop-jagged"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "derive-where",
  "futures",
@@ -6594,16 +6581,14 @@ dependencies = [
 
 [[package]]
 name = "slop-keccak-air"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-keccak-air",
 ]
 
 [[package]]
 name = "slop-koala-bear"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "lazy_static",
  "p3-koala-bear",
@@ -6615,28 +6600,25 @@ dependencies = [
 
 [[package]]
 name = "slop-matrix"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-matrix 0.1.0",
 ]
 
 [[package]]
 name = "slop-maybe-rayon"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-maybe-rayon 0.1.0",
 ]
 
 [[package]]
 name = "slop-merkle-tree"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "derive-where",
  "ff 0.13.1",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "p3-merkle-tree",
  "serde",
  "slop-algebra",
@@ -6658,8 +6640,7 @@ dependencies = [
 
 [[package]]
 name = "slop-multilinear"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "derive-where",
  "futures",
@@ -6679,16 +6660,14 @@ dependencies = [
 
 [[package]]
 name = "slop-poseidon2"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-poseidon2 0.1.0",
 ]
 
 [[package]]
 name = "slop-stacked"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "derive-where",
  "futures",
@@ -6706,11 +6685,10 @@ dependencies = [
 
 [[package]]
 name = "slop-sumcheck"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "futures",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "rayon",
  "serde",
  "slop-algebra",
@@ -6723,20 +6701,18 @@ dependencies = [
 
 [[package]]
 name = "slop-symmetric"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-symmetric 0.1.0",
 ]
 
 [[package]]
 name = "slop-tensor"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "arrayvec 0.7.6",
  "derive-where",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "rand 0.8.5",
  "rayon",
  "serde",
@@ -6751,16 +6727,14 @@ dependencies = [
 
 [[package]]
 name = "slop-uni-stark"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-uni-stark",
 ]
 
 [[package]]
 name = "slop-utils"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "p3-util 0.1.0",
  "tracing-forest",
@@ -6769,8 +6743,7 @@ dependencies = [
 
 [[package]]
 name = "slop-whir"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop#0e9766ad3f0105282677028b03ea3a900e88684d"
+version = "6.0.0"
 dependencies = [
  "derive-where",
  "itertools 0.12.1",
@@ -7123,6 +7096,7 @@ dependencies = [
  "itertools 0.13.0",
  "lru",
  "num-bigint 0.4.6",
+ "rand 0.8.5",
  "serde",
  "serde_json",
  "serial_test",
