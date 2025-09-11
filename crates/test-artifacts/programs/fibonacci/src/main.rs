@@ -13,7 +13,7 @@ pub fn main() {
     //
     // Behind the scenes, this compiles down to a system call which handles reading inputs
     // from the prover.
-    let n = 100000;
+    let n = 10;
     // Compute the n'th fibonacci number, using normal Rust code.
     let mut a = 0;
     let mut b = 1;

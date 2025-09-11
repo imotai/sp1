@@ -308,18 +308,18 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                     cols.c_neg = F::from_canonical_u8(get_msb(event.c));
                     cols.is_overflow =
                         F::from_bool(event.b as i64 == i64::MIN && event.c as i64 == -1);
-                    cols.abs_remainder = Word::from((remainder as i64).abs() as u64);
-                    cols.abs_c = Word::from((event.c as i64).abs() as u64);
-                    cols.max_abs_c_or_1 = Word::from(u64::max(1, (event.c as i64).abs() as u64));
+                    cols.abs_remainder = Word::from((remainder as i64).unsigned_abs());
+                    cols.abs_c = Word::from((event.c as i64).unsigned_abs());
+                    cols.max_abs_c_or_1 = Word::from(u64::max(1, (event.c as i64).unsigned_abs()));
                 } else if is_signed_word_operation(event.opcode) {
                     cols.rem_neg = F::from_canonical_u8(get_msb((remainder as i32) as i64 as u64));
                     cols.b_neg = F::from_canonical_u8(get_msb((event.b as i32) as i64 as u64));
                     cols.c_neg = F::from_canonical_u8(get_msb((event.c as i32) as i64 as u64));
                     cols.is_overflow =
                         F::from_bool(event.b as i32 == i32::MIN && event.c as i32 == -1);
-                    cols.abs_remainder = Word::from((remainder as i64).abs() as u64);
-                    cols.abs_c = Word::from((c as i64).abs() as u64);
-                    cols.max_abs_c_or_1 = Word::from(u64::max(1, (c as i64).abs() as u64));
+                    cols.abs_remainder = Word::from((remainder as i64).unsigned_abs());
+                    cols.abs_c = Word::from((c as i64).unsigned_abs());
+                    cols.max_abs_c_or_1 = Word::from(u64::max(1, (c as i64).unsigned_abs()));
                 } else if is_unsigned_word_operation(event.opcode) {
                     cols.abs_remainder = cols.remainder_comp;
                     cols.abs_c = Word::from(event.c as u32);

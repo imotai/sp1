@@ -1,9 +1,9 @@
 #![allow(clippy::fn_to_numeric_cast)]
 
-use super::{TranspilerBackend, CONTEXT, TEMP_A, TEMP_B};
+use super::{TranspilerBackend, CONTEXT, TEMP_A, TEMP_B, TRACE_BUF};
 use crate::{
-    DebugFn, EcallHandler, ExternFn, JitContext, JitFunction, RiscOperand, RiscRegister,
-    RiscvTranspiler,
+    DebugFn, EcallHandler, ExternFn, JitFunction, MemValue, RiscOperand, RiscRegister,
+    RiscvTranspiler, TraceChunkHeader,
 };
 use dynasmrt::{
     dynasm,
@@ -89,32 +89,38 @@ impl RiscvTranspiler for TranspilerBackend {
         self.instruction_started = false;
     }
 
-    fn exit_if_clk_exceeds(&mut self, max_cycles: u64) {
-        let clk_offset = offset_of!(JitContext, global_clk) as i32;
+    fn exit_if_trace_exceeds(&mut self, max_trace_size: u64) {
+        let num_mem_reads_offset = offset_of!(TraceChunkHeader, num_mem_reads) as i32;
+        let max_mem_reads = max_trace_size.div_ceil(size_of::<MemValue>() as u64);
+        // Be conservative - exit at 90% of max_trace_size to prevent buffer overflows
+        let threshold_mem_reads = (max_mem_reads * 9) / 10;
 
         dynasm! {
             self;
             .arch x64;
 
             // ------------------------------------
-            // 1. Load clk into TEMP_A
+            // 1. Load num_mem_reads from trace buffer
             // ------------------------------------
-            mov Rq(TEMP_A), [Rq(CONTEXT) + clk_offset];
+            mov Rq(TEMP_A), [Rq(TRACE_BUF) + num_mem_reads_offset];
 
             // ------------------------------------
-            // 2. Load max_cycles into TEMP_B
+            // 2. Check if num_mem_reads is 0 (skip exit at beginning)
             // ------------------------------------
-            mov Rq(TEMP_B), QWORD max_cycles as i64;
+            test Rq(TEMP_A), Rq(TEMP_A);
+            jz >skip_exit;  // If num_mem_reads == 0, skip the exit check
 
             // ------------------------------------
-            // 3. Check if clk >= max_cycles
+            // 3. Check if num_mem_reads >= 90% of max_mem_reads
             // ------------------------------------
-            cmp Rq(TEMP_A), Rq(TEMP_B);
+            mov Rq(TEMP_B), QWORD threshold_mem_reads as i64;  // Load threshold
+            cmp Rq(TEMP_A), Rq(TEMP_B);  // Compare num_mem_reads with threshold
 
             // ------------------------------------
-            // 4. If clk >= max_cycles, return
+            // 4. If num_mem_reads >= threshold, return
             // ------------------------------------
-            jae ->exit
+            jae ->exit;  // Jump if above or equal (unsigned comparison)
+            skip_exit:
         }
     }
 

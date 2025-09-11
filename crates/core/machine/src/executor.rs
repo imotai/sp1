@@ -117,7 +117,8 @@ impl<F: PrimeField32> MachineExecutor<F> {
                         let deferred_records = if done {
                             tracing::debug!("last record at idx: {}", index);
 
-                            // If this is the last record, we have special handling for the memory events.
+                            // If this is the last record, we have special handling for the memory
+                            // events.
                             last_record_tx.send(record).await.unwrap();
                             return;
                         } else {
@@ -345,7 +346,8 @@ fn generate_chunks(
     }
 }
 
-/// Trace a single [`SplicedMinimalTrace`] (corresponding to a shard) and return the execution record.
+/// Trace a single [`SplicedMinimalTrace`] (corresponding to a shard) and return the execution
+/// record.
 fn trace_chunk(
     program: Arc<Program>,
     _opts: SP1CoreOpts,
@@ -361,8 +363,8 @@ fn trace_chunk(
 
     // Handle the case where `COMMIT` or `COMMIT_DEFERRED_PROOFS` happens across last two shards.
     //
-    // todo: does this actually work in the new regieme? what if the shard is stopped due to the clk limit?
-    // if so, does that mean this could be wrong? its unclear!
+    // todo: does this actually work in the new regieme? what if the shard is stopped due to the clk
+    // limit? if so, does that mean this could be wrong? its unclear!
     if status.is_shard_boundry() && (pv.commit_syscall == 1 || pv.commit_deferred_syscall == 1) {
         tracing::debug!("commit syscall or commit deferred proofs across last two shards");
 
@@ -555,17 +557,6 @@ async fn start_prove<F: PrimeField32>(
     .expect("failed to send records");
 }
 
-/// The first thing accepted by a record worker is always the full trace.
-async fn send_full_trace(
-    record_worker_channels: Arc<WorkerQueue<UnboundedSender<RecordTask>>>,
-    chunk: TraceChunkRaw,
-    idx: usize,
-) {
-    let worker = record_worker_channels.clone().pop().await.unwrap();
-    let full_trace = SplicedMinimalTrace::new_full_trace(chunk.clone());
-    worker.send(RecordTask { index: idx, chunk: full_trace }).unwrap();
-}
-
 /// Send the splice trace to a available record worker.
 fn send_spliced_trace_blocking(
     record_worker_channels: Arc<WorkerQueue<UnboundedSender<RecordTask>>>,
@@ -578,7 +569,8 @@ fn send_spliced_trace_blocking(
                 worker.send(RecordTask { index: idx, chunk }).unwrap();
                 break;
             }
-            // todo: patch slop to return what kind of error so we can break correctly if the channel is closed.
+            // todo: patch slop to return what kind of error so we can break correctly if the
+            // channel is closed.
             Err(_) => {
                 std::hint::spin_loop();
             }

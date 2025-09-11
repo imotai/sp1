@@ -734,8 +734,8 @@ impl CoreVM<'_> {
             *record = MaybeUninit::new(bump_register(self, i));
         }
 
-        // SAFETY: We're transmuting a [MaybeUninit<MemoryReadRecord>; 32] to a [MemoryReadRecord; 32],
-        // which we just initialized.
+        // SAFETY: We're transmuting a [MaybeUninit<MemoryReadRecord>; 32] to a [MemoryReadRecord;
+        // 32], which we just initialized.
         //
         // These types are guaranteed to have the same representation.
         unsafe { std::mem::transmute(out) }
@@ -779,7 +779,8 @@ impl CoreVM<'_> {
         (self.next_clk() >> 24) ^ (self.clk() >> 24) > 0
     }
 
-    /// Check if the state needs to be bumped, which implies a `state bump` event needs to be emitted.
+    /// Check if the state needs to be bumped, which implies a `state bump` event needs to be
+    /// emitted.
     #[inline]
     #[must_use]
     pub const fn needs_state_bump(&self, instruction: &Instruction) -> bool {

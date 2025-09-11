@@ -59,8 +59,22 @@ impl ComputeInstructions for TranspilerBackend {
             test Rq(TEMP_B), Rq(TEMP_B);  // ZF=1 if rhs == 0
             jz   >div_by_zero;
 
+            // Check for signed overflow (i64::MIN / -1)
+            mov  rcx, -9223372036854775808i64;  // i64::MIN
+            cmp  rax, rcx;
+            jne  >no_overflow;
+            cmp  Rq(TEMP_B), -1;
+            jne  >no_overflow;
+
             // ------------------------------------
-            // 2. Perform signed divide
+            // 2. Handle overflow: i64::MIN / -1 = i64::MIN (wrapping)
+            // ------------------------------------
+            mov  rax, -9223372036854775808i64; // Result is i64::MIN
+            jmp >done;
+
+            no_overflow:;
+            // ------------------------------------
+            // 3. Perform signed divide
             // ------------------------------------
             // dividend already in RAX (loaded directly)
             cqo;                          // sign-extend RAX into RDX (64-bit)
@@ -69,21 +83,18 @@ impl ComputeInstructions for TranspilerBackend {
             jmp >done;
 
             // ------------------------------------
-            // 3. if rhs == 0
+            // 4. if rhs == 0
             // ------------------------------------
             div_by_zero:;
-            xor  rax, rax;                // quotient = 0
+            mov  rax, -1;                 // quotient = -1 (RISC-V spec for signed div by zero)
 
-            // ------------------------------------
-            // Merge branch
-            // ------------------------------------
             done:
         }
         self.emit_risc_register_store(Rq::RAX as u8, rd);
     }
 
     fn divu(&mut self, rd: RiscRegister, rs1: RiscOperand, rs2: RiscOperand) {
-        // lhs <- lhs / rhs   (unsigned 64-bit; 0 if rhs == 0)
+        // lhs <- lhs / rhs   (unsigned 64-bit; u64::MAX if rhs == 0)
         // clobbers: RAX, RDX
         self.emit_risc_operand_load(rs1, Rq::RAX as u8); // Load dividend directly into RAX
         self.emit_risc_operand_load(rs2, TEMP_B);
@@ -104,7 +115,7 @@ impl ComputeInstructions for TranspilerBackend {
 
             // ----- rhs == 0 -----
             div_by_zero:;
-            xor  rax, rax;                 // quotient = 0
+            mov  rax, -1;                  // quotient = u64::MAX (0xFFFFFFFFFFFFFFFF)
 
             done:
         }
@@ -213,13 +224,29 @@ impl ComputeInstructions for TranspilerBackend {
                 .arch x64;
 
                 // ──────────────────────────────────────────────────────────────
-                // 0. Guard: if divisor is 0, skip the IDIV and zero the result
+                // 0. Guard: if divisor is 0, skip the IDIV and return dividend
                 // ──────────────────────────────────────────────────────────────
                 test Rq(TEMP_B), Rq(TEMP_B);        // ZF = 1  ⇒  TEMP_B == 0
                 jz   >by_zero;                // jump to fix-up path
 
                 // ──────────────────────────────────────────────────────────────
-                // 1. Prepare the **signed** 64-bit dividend in EDX:EAX
+                // 1. Check for signed overflow (i64::MIN % -1)
+                // ──────────────────────────────────────────────────────────────
+                mov  rcx, -9223372036854775808i64; // Load i64::MIN into RCX
+                cmp  Rq(TEMP_A), rcx;             // Check if dividend == i64::MIN
+                jne  >no_overflow;
+                cmp  Rq(TEMP_B), -1;              // Check if divisor == -1
+                jne  >no_overflow;
+
+                // ──────────────────────────────────────────────────────────────
+                // Handle overflow: i64::MIN % -1 = 0 (wrapping)
+                // ──────────────────────────────────────────────────────────────
+                xor  Rq(TEMP_A), Rq(TEMP_A);        // TEMP_A = 0
+                jmp  >done;
+
+                no_overflow:;
+                // ──────────────────────────────────────────────────────────────
+                // 2. Prepare the **signed** 64-bit dividend in EDX:EAX
                 //    -------------------------------------------------
                 //    • EAX ← low 32 bits of TEMP_A
                 //    • CDQ  sign-extends EAX into EDX
@@ -229,7 +256,7 @@ impl ComputeInstructions for TranspilerBackend {
                 cqo;                          // RDX = sign(a)
 
                 // ──────────────────────────────────────────────────────────────
-                // 2. Signed divide:          a  /  b
+                // 3. Signed divide:          a  /  b
                 //    -------------------------------------------------
                 //    • idiv r/m32   performs  (EDX:EAX) ÷ TEMP_B
                 //      – Quotient  → EAX   (ignored)
@@ -238,16 +265,16 @@ impl ComputeInstructions for TranspilerBackend {
                 idiv Rq(TEMP_B);                 // signed divide
 
                 // ──────────────────────────────────────────────────────────────
-                // 3. Write the remainder (EDX) back to the destination register
+                // 4. Write the remainder (EDX) back to the destination register
                 // ──────────────────────────────────────────────────────────────
                 mov  Rq(TEMP_A), rdx;            // TEMP_A = remainder
                 jmp  >done;
 
                 // ──────────────────────────────────────────────────────────────
-                // Divisor == 0  →  result must be 0 (no fault)
+                // Divisor == 0  →  result must be dividend (RISC-V spec)
                 // ──────────────────────────────────────────────────────────────
                 by_zero:;
-                xor  Rq(TEMP_A), Rq(TEMP_A);        // TEMP_A = 0
+                // TEMP_A already contains the dividend, no change needed
 
                 done:
             }
@@ -261,7 +288,7 @@ impl ComputeInstructions for TranspilerBackend {
                 .arch x64;
 
                 // ──────────────────────────────────────────────────────────────
-                // 0. Guard against /0 → result = 0
+                // 0. Guard against /0 → result = dividend (TEMP_A)
                 // ──────────────────────────────────────────────────────────────
                 test Rq(TEMP_B), Rq(TEMP_B);
                 jz   >by_zero;
@@ -290,10 +317,10 @@ impl ComputeInstructions for TranspilerBackend {
                 jmp  >done;
 
                 // ──────────────────────────────────────────────────────────────
-                // Divisor == 0  →  result must be 0 (no fault)
+                // Divisor == 0  →  result must be dividend (RISC-V spec)
                 // ──────────────────────────────────────────────────────────────
                 by_zero:;
-                xor  Rq(TEMP_A), Rq(TEMP_A);
+                // TEMP_A already contains the dividend, no change needed
 
                 done:
             }
@@ -605,6 +632,11 @@ impl ComputeInstructions for TranspilerBackend {
             movsxd rax, eax;               // sign-extend result to 64 bits
             jmp >done;
 
+            // Handle overflow: i32::MIN / -1 = i32::MIN (wrapping)
+            overflow:;
+            mov rax, -2147483648;          // i32::MIN sign-extended to 64 bits
+            jmp >done;
+
             div_by_zero:;
             // For RV64I, divw by zero returns 0xFFFFFFFFFFFFFFFF (-1 sign-extended)
             mov rax, -1;
@@ -669,6 +701,11 @@ impl ComputeInstructions for TranspilerBackend {
             cdq;                        // sign-extend EAX into EDX
             idiv Rd(TEMP_B);               // remainder → EDX
             movsxd rdx, edx;               // sign-extend result to 64 bits
+            jmp >done;
+
+            // Handle overflow: i32::MIN % -1 = 0 (wrapping)
+            overflow:;
+            xor rdx, rdx;                  // remainder = 0
             jmp >done;
 
             rem_by_zero:;

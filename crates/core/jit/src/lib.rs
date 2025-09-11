@@ -108,10 +108,10 @@ pub trait RiscvTranspiler:
     /// branch destination.
     fn end_instr(&mut self);
 
-    /// Exit if the clk is greater than some value.
+    /// Exit if the trace size is exceeded.
     ///
     /// This should also set the PC to the "continution point" if exists.
-    fn exit_if_clk_exceeds(&mut self, max_cycles: u64);
+    fn exit_if_trace_exceeds(&mut self, max_trace_size: u64);
 
     /// Inspcet a [RiscRegister] using a function pointer.
     ///

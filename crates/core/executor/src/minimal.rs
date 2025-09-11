@@ -29,31 +29,59 @@ pub struct MinimalExecutor {
 
 impl MinimalExecutor {
     /// Create a new minimal executor and transpiles the program.
+    ///
+    /// If the trace size is not set, it will be set to 2^36 bytes.
     #[must_use]
-    pub fn new(program: Arc<Program>, tracing: bool, debug: bool, max_cycles: Option<u64>) -> Self {
-        eprintln!("transpiling program, tracing={tracing}, debug={debug}");
+    pub fn new(program: Arc<Program>, is_debug: bool, max_trace_size: Option<u64>) -> Self {
+        tracing::debug!("transpiling program, debug={is_debug}, max_trace_size={max_trace_size:?}");
 
-        let compiled = Self::transpile(program.as_ref(), debug, tracing, max_cycles);
+        let compiled = Self::transpile(program.as_ref(), is_debug, max_trace_size);
 
         Self { program, compiled, input: VecDeque::new() }
     }
 
+    /// Transpile the program, saving the JIT function.
+    fn transpile(program: &Program, debug: bool, max_trace_size: Option<u64>) -> JitFunction {
+        let trace_buf_size =
+            max_trace_size.map_or(0, |max_trace_size| (max_trace_size as usize * 10) / 9);
+
+        let mut backend = TranspilerBackend::new(
+            program.instructions.len(),
+            2_u64.pow(MAX_LOG_ADDR as u32) as usize,
+            trace_buf_size,
+            program.pc_start_abs,
+            program.pc_base,
+            8,
+        )
+        .expect("Failed to create transpiler backend");
+
+        backend.register_ecall_handler(ecall::sp1_ecall_handler);
+
+        if debug {
+            Self::transpile_instructions(DebugBackend::new(backend), program, max_trace_size)
+        } else {
+            Self::transpile_instructions(backend, program, max_trace_size)
+        }
+    }
+
     /// Create a new minimal executor with no tracing or debugging.
     #[must_use]
-    pub fn simple(program: Arc<Program>, max_cycles: Option<u64>) -> Self {
-        Self::new(program, false, false, max_cycles)
+    pub fn simple(program: Arc<Program>) -> Self {
+        Self::new(program, false, None)
     }
 
     /// Create a new minimal executor with tracing.
+    ///
+    /// If the trace size is not set, it will be set to 2^36.
     #[must_use]
-    pub fn tracing(program: Arc<Program>, max_cycles: Option<u64>) -> Self {
-        Self::new(program, true, false, max_cycles)
+    pub fn tracing(program: Arc<Program>, max_trace_size: Option<u64>) -> Self {
+        Self::new(program, true, max_trace_size.or(Some(2_u64.pow(35))))
     }
 
     /// Create a new minimal executor with debugging.
     #[must_use]
     pub fn debug(program: Arc<Program>) -> Self {
-        Self::new(program, false, true, None)
+        Self::new(program, true, None)
     }
 
     /// Add input to the executor.
@@ -130,43 +158,13 @@ impl MinimalExecutor {
         let _ = std::mem::take(&mut self.input);
     }
 
-    /// Transpile the program, saving the JIT function.
-    pub fn transpile(
-        program: &Program,
-        debug: bool,
-        tracing: bool,
-        max_cycles: Option<u64>,
-    ) -> JitFunction {
-        let trace_buf_size = if tracing { 2_u64.pow(36) as usize } else { 0 };
-
-        let mut backend = TranspilerBackend::new(
-            program.instructions.len(),
-            2_u64.pow(MAX_LOG_ADDR as u32) as usize,
-            // About 35GB of memory.
-            // todo: based on the cycle limit set, if any, we can use the worst case size of this
-            // buf to set this value.
-            trace_buf_size,
-            program.pc_start_abs,
-            program.pc_base,
-            8,
-        )
-        .expect("Failed to create transpiler backend");
-
-        backend.register_ecall_handler(ecall::sp1_ecall_handler);
-
-        if debug {
-            Self::transpile_instructions(DebugBackend::new(backend), program, tracing, max_cycles)
-        } else {
-            Self::transpile_instructions(backend, program, tracing, max_cycles)
-        }
-    }
-
     fn transpile_instructions<B: RiscvTranspiler>(
         mut backend: B,
         program: &Program,
-        tracing: bool,
-        max_cycles: Option<u64>,
+        max_trace_size: Option<u64>,
     ) -> JitFunction {
+        let tracing = max_trace_size.is_some();
+
         for instruction in program.instructions.iter() {
             backend.start_instr();
 
@@ -179,9 +177,15 @@ impl MinimalExecutor {
                 | Opcode::LD
                 | Opcode::LWU => {
                     Self::transpile_load_instruction(&mut backend, instruction, tracing);
+                    if let Some(max_trace_size) = max_trace_size {
+                        backend.exit_if_trace_exceeds(max_trace_size);
+                    }
                 }
                 Opcode::SB | Opcode::SH | Opcode::SW | Opcode::SD => {
                     Self::transpile_store_instruction(&mut backend, instruction, tracing);
+                    if let Some(max_trace_size) = max_trace_size {
+                        backend.exit_if_trace_exceeds(max_trace_size);
+                    }
                 }
                 Opcode::BEQ
                 | Opcode::BNE
@@ -237,15 +241,14 @@ impl MinimalExecutor {
                 }
                 Opcode::ECALL => {
                     backend.ecall();
+                    if let Some(max_trace_size) = max_trace_size {
+                        backend.exit_if_trace_exceeds(max_trace_size);
+                    }
                 }
                 Opcode::EBREAK | Opcode::UNIMP => {
                     backend.unimp();
                 }
                 _ => panic!("Invalid instruction: {:?}", instruction.opcode),
-            }
-
-            if let Some(max_cycles) = max_cycles {
-                backend.exit_if_clk_exceeds(max_cycles);
             }
 
             backend.end_instr();
@@ -439,9 +442,6 @@ mod test {
 
     #[allow(clippy::cast_precision_loss)]
     fn run_program_and_compare_end_state(program: &Elf) {
-        const TRACING: bool = true;
-        const DEBUG: bool = false;
-
         let program = Program::from(program).unwrap();
         let program = Arc::new(program);
 
@@ -451,7 +451,7 @@ mod test {
         interpreter.run_fast().expect("Interpreter failed");
         let interpreter_time = start.elapsed();
 
-        let mut executor = MinimalExecutor::new(program.clone(), TRACING, DEBUG, None);
+        let mut executor = MinimalExecutor::new(program.clone(), false, Some(2_u64.pow(35)));
         let start = std::time::Instant::now();
         executor.execute_chunk();
         let jit_time = start.elapsed();
@@ -507,7 +507,7 @@ mod test {
         let program = Program::from(&KECCAK256_ELF).unwrap();
         let program = Arc::new(program);
 
-        let mut executor = MinimalExecutor::new(program.clone(), false, false, None);
+        let mut executor = MinimalExecutor::new(program.clone(), false, None);
         // executor.debug();
         executor.with_input(&serialize(&5_usize).unwrap());
         for i in 0..5 {
@@ -561,28 +561,53 @@ mod test {
     #[test]
     fn test_chunk_stops_correctly() {
         use bincode::serialize;
-        use sp1_jit::MinimalTrace;
+        use sp1_jit::{MemValue, MinimalTrace};
         use test_artifacts::KECCAK256_ELF;
 
         let program = Program::from(&KECCAK256_ELF).unwrap();
         let program = Arc::new(program);
 
-        let mut executor = MinimalExecutor::new(program.clone(), true, false, Some(10));
-        // executor.debug();
+        // Set trace_size to allow a small number of memory reads per chunk
+        // Using a small trace size to trigger cuts based on memory reads
+        let max_mem_reads = 5;
+        let trace_size = max_mem_reads * std::mem::size_of::<MemValue>() as u64;
+
+        let mut executor = MinimalExecutor::new(program.clone(), false, Some(trace_size));
         executor.with_input(&serialize(&5_usize).unwrap());
         for i in 0..5 {
             executor.with_input(&serialize(&vec![i; i]).unwrap());
         }
+
         let trace = executor.execute_chunk().expect("expected a trace chunk, but got none");
         assert_eq!(trace.clk_start(), 1);
         assert_eq!(trace.pc_start(), program.pc_start_abs);
 
-        // The max_cycles is set to be 10, and its based on the globalk clk which incremnets by 1.
-        //
-        // We expect the clk to be 81, since the program is gonna run for 10 instructions, and each instruction
-        // is 8 cycles and the clk starts at 1.
+        // Now the cutting is based on memory reads at 90% threshold
+        // We expect the chunk to stop when num_mem_reads reaches 90% of max_mem_reads
+        let threshold_reads = (max_mem_reads * 9) / 10; // 90% of max_mem_reads
+        assert!(
+            trace.num_mem_reads() == threshold_reads,
+            "Expected first chunk to have at least {} memory reads (90% threshold), got {}",
+            threshold_reads,
+            trace.num_mem_reads()
+        );
+
+        // Execute another chunk and verify it continues from where the first left off
         let trace2 = executor.execute_chunk().expect("expected a trace chunk, but got none");
-        assert_eq!(trace2.clk_start(), 81);
+
+        // The second chunk should start from where the first chunk ended
+        assert!(
+            trace2.clk_start() > trace.clk_start(),
+            "Second chunk should start after first chunk"
+        );
+
+        // The second chunk should also cut at or above the 90% threshold
+        assert!(
+            trace2.num_mem_reads() == threshold_reads,
+            "Expected second chunk to also have at least {} memory reads (90% threshold), got {}",
+            threshold_reads,
+            trace2.num_mem_reads()
+        );
     }
 
     #[test]

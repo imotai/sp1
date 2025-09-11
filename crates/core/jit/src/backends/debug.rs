@@ -70,8 +70,8 @@ impl<B: RiscvTranspiler + Debuggable> RiscvTranspiler for DebugBackend<B> {
         self.backend.end_instr();
     }
 
-    fn exit_if_clk_exceeds(&mut self, max_cycles: u64) {
-        self.backend.exit_if_clk_exceeds(max_cycles);
+    fn exit_if_trace_exceeds(&mut self, max_trace_size: u64) {
+        self.backend.exit_if_trace_exceeds(max_trace_size);
     }
 
     fn inspect_register(&mut self, reg: RiscRegister, handler: DebugFn) {

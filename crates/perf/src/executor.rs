@@ -13,7 +13,6 @@ use sp1_core_executor::{
     CycleResult, Executor, ExecutorMode, MinimalExecutor, Program, Simple, SplicedMinimalTrace,
     SplicingVM, Trace, TracingVM,
 };
-use sp1_jit::MinimalTrace;
 use sp1_sdk::{self, SP1Stdin};
 use std::sync::Arc;
 
@@ -82,7 +81,7 @@ async fn main() {
                 executor.state.global_clk as f64 / 1_000_000.0 / execution_duration.as_secs_f64()
             );
 
-            let mut minimal = MinimalExecutor::simple(program, None);
+            let mut minimal = MinimalExecutor::simple(program);
             for input in stdin.buffer.iter() {
                 minimal.with_input(input);
             }
@@ -171,8 +170,11 @@ async fn main() {
 
             let (minimal_trace, minimal_trace_duration) =
                 time_operation(|| minimal.execute_chunk());
+            assert!(minimal.is_done());
+
             let minimal_trace = minimal_trace.expect("failed to execute chunk");
             println!("Minimal trace duration: {:?}", minimal_trace_duration);
+
             assert_eq!(minimal.global_clk(), executor.state.global_clk);
             println!(
                 "minimal executor (trace) mhz: {}",
