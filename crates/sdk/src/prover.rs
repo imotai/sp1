@@ -4,6 +4,7 @@
 
 use std::{
     borrow::Borrow,
+    fmt,
     future::{Future, IntoFuture},
     sync::Arc,
 };
@@ -40,7 +41,7 @@ pub trait Prover: Clone + Send + Sync {
     type ProvingKey: ProvingKey;
 
     /// The possible errors that can occur when proving.
-    type Error;
+    type Error: fmt::Debug + fmt::Display;
 
     /// The prove request builder.
     type ProveRequest<'a>: ProveRequest<'a, Self>
@@ -85,7 +86,7 @@ pub trait ProvingKey: Clone + Send + Sync {
     fn verifying_key(&self) -> &SP1VerifyingKey;
 
     /// Get the ELF corresponding to the proving key.
-    fn elf(&self) -> &[u8];
+    fn elf(&self) -> &Elf;
 }
 
 /// A trait for [`Future`]s that are send and return a [`Result`].

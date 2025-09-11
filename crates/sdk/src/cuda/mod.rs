@@ -51,7 +51,7 @@ impl Prover for CudaProver {
 }
 
 impl ProvingKey for CudaProvingKey {
-    fn elf(&self) -> &[u8] {
+    fn elf(&self) -> &Elf {
         self.elf()
     }
 

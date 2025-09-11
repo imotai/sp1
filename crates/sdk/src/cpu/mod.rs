@@ -77,7 +77,7 @@ impl ProvingKey for CPUProvingKey {
         &self.vk
     }
 
-    fn elf(&self) -> &[u8] {
+    fn elf(&self) -> &Elf {
         &self.elf
     }
 }

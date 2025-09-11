@@ -2,6 +2,7 @@
 
 use crate::{cpu::CPUProvingKey, ProvingKey};
 use sp1_cuda::CudaProvingKey;
+use sp1_primitives::Elf;
 use sp1_prover::SP1VerifyingKey;
 
 #[derive(Clone)]
@@ -56,7 +57,7 @@ impl ProvingKey for EnvProvingKey {
         }
     }
 
-    fn elf(&self) -> &[u8] {
+    fn elf(&self) -> &Elf {
         #[allow(clippy::match_same_arms)]
         match self {
             Self::Cpu { pk, .. } => pk.elf(),
