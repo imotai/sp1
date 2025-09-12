@@ -16,7 +16,7 @@ use crate::{
 /// A RISC-V VM that uses a [`MinimalTrace`] to create a [`ExecutionRecord`].
 pub struct SplicingVM<'a> {
     /// The core VM.
-    pub core: CoreVM<'a>,
+    pub core: CoreVM<'a, true>,
     /// The addresses that have been touched.
     pub touched_addresses: &'a mut HashSet<u64>,
     /// The index of the hint lens the next shard will use.
@@ -26,19 +26,15 @@ pub struct SplicingVM<'a> {
 impl SplicingVM<'_> {
     /// Execute the program until it halts.
     pub fn execute(&mut self) -> Result<CycleResult, ExecutionError> {
-        debug_assert!(
-            !self.core.is_trace_end() && !self.core.is_done(),
-            "Executing a trace that has already ended"
-        );
+        if self.core.is_done() {
+            return Ok(CycleResult::Done(true));
+        }
 
         loop {
             match self.execute_instruction()? {
                 CycleResult::Done(false) => {}
-                CycleResult::ShardBoundry => {
+                CycleResult::ShardBoundry | CycleResult::TraceEnd => {
                     self.start_new_shard();
-                    return Ok(CycleResult::ShardBoundry);
-                }
-                CycleResult::TraceEnd => {
                     return Ok(CycleResult::ShardBoundry);
                 }
                 CycleResult::Done(true) => {
@@ -226,16 +222,14 @@ impl<'a> SplicingVM<'a> {
     }
 }
 
-impl<'a> SyscallRuntime<'a> for SplicingVM<'a> {
-    fn core(&self) -> &CoreVM<'a> {
+impl<'a> SyscallRuntime<'a, true> for SplicingVM<'a> {
+    fn core(&self) -> &CoreVM<'a, true> {
         &self.core
     }
 
-    fn core_mut(&mut self) -> &mut CoreVM<'a> {
+    fn core_mut(&mut self) -> &mut CoreVM<'a, true> {
         &mut self.core
     }
-
-    fn push_public_values(&mut self, _: &[u8]) {}
 }
 
 /// A minimal trace implentation that starts at a different point in the trace,

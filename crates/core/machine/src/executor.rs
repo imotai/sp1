@@ -20,7 +20,7 @@ use sp1_hypercube::{
 use sp1_jit::MinimalTrace;
 use thiserror::Error;
 use tokio::sync::mpsc::{self, UnboundedSender};
-use tracing::Instrument;
+use tracing::{Instrument, Level};
 
 use sp1_core_executor::{CycleResult, MinimalExecutor, SplicedMinimalTrace, TraceChunkRaw};
 
@@ -88,9 +88,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
                 async move {
                     while let Some(task) = rx.recv().await {
                         let RecordTask { index, chunk } = task;
-                        eprintln!("tracing chunk at idx: {}, with worker: {}", index, i);
-
-                        tracing::debug!("tracing chunk at idx: {}", index);
+                        tracing::debug!("tracing chunk at idx: {}, with worker: {}", index, i);
 
                         // Assume a record is 4Gb for now.
                         let permit = permitting.acquire(2 * 1024 * 1024 * 1024).await.unwrap();
@@ -104,7 +102,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
                             move || {
                                 let _debug_span =
                                     tracing::debug_span!("tracing chunk blocking task").entered();
-                                trace_chunk(program, opts, chunk)
+                                trace_chunk(program, opts, index, chunk)
                             }
                         })
                         .await
@@ -113,6 +111,10 @@ impl<F: PrimeField32> MachineExecutor<F> {
 
                         // Wait for our turn to update the state.
                         let _turn_guard = record_gen_sync.wait_for_turn(index).await;
+
+                        tracing::debug!("ttt index: {}", index);
+                        tracing::debug!("ttt pc_start: {:?}", record.public_values.pc_start);
+                        tracing::debug!("ttt next_pc: {:?}", record.public_values.next_pc);
 
                         let deferred_records = if done {
                             tracing::debug!("last record at idx: {}", index);
@@ -282,6 +284,7 @@ struct RecordTask {
 }
 
 /// Generate the chunks (corresponding to shards) and send them to the record workers.
+#[tracing::instrument(name = "generate_chunks", skip_all)]
 fn generate_chunks(
     program: Arc<Program>,
     chunk: TraceChunkRaw,
@@ -294,7 +297,12 @@ fn generate_chunks(
 
     let mut last_splice = SplicedMinimalTrace::new_full_trace(chunk.clone());
     loop {
-        tracing::debug!("starting new shard idx: {} at clk: {}", idx, vm.core.clk());
+        tracing::debug!(
+            "starting new shard idx: {} at clk: {} at pc: {}",
+            idx,
+            vm.core.clk(),
+            vm.core.pc()
+        );
 
         match vm.execute().expect("todo: handle result") {
             CycleResult::ShardBoundry => {
@@ -348,9 +356,18 @@ fn generate_chunks(
 
 /// Trace a single [`SplicedMinimalTrace`] (corresponding to a shard) and return the execution
 /// record.
+#[tracing::instrument(
+    level = Level::DEBUG,
+    name = "trace_chunk",
+    skip_all,
+    fields(
+        index = index,
+    )
+)]
 fn trace_chunk(
     program: Arc<Program>,
     _opts: SP1CoreOpts,
+    index: usize,
     chunk: SplicedMinimalTrace<TraceChunkRaw>,
 ) -> Result<(bool, ExecutionRecord), ExecutionError> {
     let mut vm = TracingVM::new(&chunk, program);
@@ -360,6 +377,8 @@ fn trace_chunk(
 
     let mut record = std::mem::take(&mut vm.record);
     let pv = record.public_values;
+
+    assert!(record.public_values.next_pc == vm.core.pc());
 
     // Handle the case where `COMMIT` or `COMMIT_DEFERRED_PROOFS` happens across last two shards.
     //

@@ -23,30 +23,25 @@ mod uint256_ops;
 mod unconstrained;
 mod write;
 
-pub trait SyscallRuntime<'a> {
-    fn core(&self) -> &CoreVM<'a>;
-    fn core_mut(&mut self) -> &mut CoreVM<'a>;
-    fn push_public_values(&mut self, value: &[u8]);
+pub trait SyscallRuntime<'a, const TRACING: bool> {
+    fn core(&self) -> &CoreVM<'a, TRACING>;
+    fn core_mut(&mut self) -> &mut CoreVM<'a, TRACING>;
 }
 
-impl<'a> SyscallRuntime<'a> for CoreVM<'a> {
-    fn core(&self) -> &CoreVM<'a> {
+impl<'a, const TRACING: bool> SyscallRuntime<'a, TRACING> for CoreVM<'a, TRACING> {
+    fn core(&self) -> &CoreVM<'a, TRACING> {
         self
     }
 
-    fn core_mut(&mut self) -> &mut CoreVM<'a> {
+    fn core_mut(&mut self) -> &mut CoreVM<'a, TRACING> {
         self
-    }
-
-    fn push_public_values(&mut self, _: &[u8]) {
-        // no op by default.
     }
 }
 
 /// The default syscall handler for the core VM.
 ///
 /// Note that mostly syscalls actually do nothing in the core VM.
-pub(crate) fn core_syscall_handler<'a, RT: SyscallRuntime<'a>>(
+pub(crate) fn core_syscall_handler<'a, RT: SyscallRuntime<'a, true>>(
     rt: &mut RT,
     code: SyscallCode,
     args1: u64,

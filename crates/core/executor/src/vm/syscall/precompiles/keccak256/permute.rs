@@ -8,7 +8,7 @@ use crate::{
 pub(crate) const STATE_SIZE: usize = 25;
 pub const STATE_NUM_WORDS: usize = STATE_SIZE;
 
-pub fn core_keccak256_permute<'a, RT: SyscallRuntime<'a>>(
+pub fn core_keccak256_permute<'a, RT: SyscallRuntime<'a, true>>(
     rt: &mut RT,
     _: SyscallCode,
     _: u64,

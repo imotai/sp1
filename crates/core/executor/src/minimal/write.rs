@@ -16,7 +16,7 @@ pub(crate) unsafe fn write(ctx: &mut JitContext, arg1: u64, arg2: u64) -> Option
     let nwords = (head + nbytes as usize).div_ceil(8);
 
     let memory = ctx.memory();
-    let slice = memory.mr_slice_unsafe(start, nwords);
+    let slice = memory.mr_slice_no_trace(start, nwords);
     let bytes = slice
         .into_iter()
         .copied()

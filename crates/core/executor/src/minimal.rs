@@ -75,7 +75,7 @@ impl MinimalExecutor {
     /// If the trace size is not set, it will be set to 2^36.
     #[must_use]
     pub fn tracing(program: Arc<Program>, max_trace_size: Option<u64>) -> Self {
-        Self::new(program, true, max_trace_size.or(Some(2_u64.pow(35))))
+        Self::new(program, false, max_trace_size.or(Some(2_u64.pow(35))))
     }
 
     /// Create a new minimal executor with debugging.

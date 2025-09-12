@@ -117,8 +117,13 @@ async fn main() {
                 checkpoint_executor.write_proof(proof.clone(), vkey.clone());
             }
 
-            let (_, checkpoint_execution_duration) =
-                time_operation(|| checkpoint_executor.run_checkpoint(true));
+            let (_, checkpoint_execution_duration) = time_operation(|| loop {
+                let (record, _, done) = checkpoint_executor.execute_state(true).unwrap();
+                let _record = std::hint::black_box(record);
+                if done {
+                    break;
+                }
+            });
             println!("Checkpoint mode:");
             println!("checkpoint execution duration: {:?}", checkpoint_execution_duration);
             println!("cycles: {}", checkpoint_executor.state.global_clk);
@@ -170,11 +175,8 @@ async fn main() {
 
             let (minimal_trace, minimal_trace_duration) =
                 time_operation(|| minimal.execute_chunk());
-            assert!(minimal.is_done());
-
             let minimal_trace = minimal_trace.expect("failed to execute chunk");
             println!("Minimal trace duration: {:?}", minimal_trace_duration);
-
             assert_eq!(minimal.global_clk(), executor.state.global_clk);
             println!(
                 "minimal executor (trace) mhz: {}",
@@ -185,23 +187,33 @@ async fn main() {
             let mut splicing_vm =
                 SplicingVM::new(&minimal_trace, program.clone(), &mut touched_addresses);
 
-            let mut spliced_traces =
-                vec![SplicedMinimalTrace::new_full_trace(minimal_trace.clone())];
-
+            let mut spliced_traces = Vec::new();
+            let mut last_spliced_trace = SplicedMinimalTrace::new_full_trace(minimal_trace.clone());
             let mut splice_duration = Duration::ZERO;
             let mut splice_timer = Instant::now();
             while let CycleResult::ShardBoundry =
                 splicing_vm.execute().expect("failed to execute chunk")
             {
                 if let Some(spliced) = splicing_vm.splice(minimal_trace.clone()) {
-                    spliced_traces.push(spliced);
                     splice_duration += splice_timer.elapsed();
                     splice_timer = Instant::now();
+
+                    let mut last_spliced_trace =
+                        std::mem::replace(&mut last_spliced_trace, spliced);
+
+                    last_spliced_trace.set_last_clk(splicing_vm.core.clk());
+                    last_spliced_trace.set_last_mem_reads_idx(splicing_vm.core.mem_reads.len());
+
+                    spliced_traces.push(last_spliced_trace);
                 } else {
                     unreachable!("This trace has no cycle limit, so we expect it always splice.");
                 }
             }
-
+            // Handle the last spliced trace correctly.
+            splice_duration += splice_timer.elapsed();
+            last_spliced_trace.set_last_clk(splicing_vm.core.clk());
+            last_spliced_trace.set_last_mem_reads_idx(splicing_vm.core.mem_reads.len());
+            spliced_traces.push(last_spliced_trace);
             assert_eq!(minimal.global_clk(), splicing_vm.core.global_clk());
 
             println!("Spliced traces: {}", spliced_traces.len());
@@ -235,6 +247,7 @@ async fn main() {
                 "total time spent checkpoint + trace: {:?}",
                 execution_duration + checkpoint_execution_duration
             );
+            println!("time to last shard old: {:?}", checkpoint_execution_duration);
             println!(
                 "total old mhz: {}",
                 minimal.global_clk() as f64
@@ -250,6 +263,10 @@ async fn main() {
             println!(
                 "total time spent minimal trace + splicing + full tracing: {:?}",
                 total_execution_duration + splice_duration + minimal_trace_duration
+            );
+            println!(
+                "time to last shard minimal trace: {:?}",
+                splice_duration + minimal_trace_duration
             );
             println!(
                 "total new mhz: {}",

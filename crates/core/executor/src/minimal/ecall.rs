@@ -40,6 +40,13 @@ pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut JitContext) -> u64 {
     let code = SyscallCode::from_u32(registers[5] as u32);
     let clk = ctx.clk;
 
+    // Unconstrained mode is not allowed for any syscall other than WRITE and HALT.
+    if ctx.is_unconstrained == 1
+        && (code != SyscallCode::WRITE && code != SyscallCode::EXIT_UNCONSTRAINED)
+    {
+        panic!("Unconstrained mode is not allowed for this syscall: {code:?}");
+    }
+
     let res = match code {
         SyscallCode::SHA_EXTEND => unsafe { sha256_extend(ctx, arg1, arg2) },
         SyscallCode::SHA_COMPRESS => unsafe { sha256_compress(ctx, arg1, arg2) },

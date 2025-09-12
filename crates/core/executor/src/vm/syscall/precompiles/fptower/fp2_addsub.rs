@@ -11,7 +11,7 @@ use crate::{
     TracingVM,
 };
 
-pub fn core_fp2_add<'a, RT: SyscallRuntime<'a>, P: FpOpField>(
+pub fn core_fp2_add<'a, RT: SyscallRuntime<'a, true>, P: FpOpField>(
     rt: &mut RT,
     _: SyscallCode,
     _: u64,

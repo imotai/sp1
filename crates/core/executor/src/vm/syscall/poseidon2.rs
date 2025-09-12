@@ -5,7 +5,7 @@ use crate::{
     TracingVM,
 };
 
-pub(crate) fn core_poseidon2<'a, RT: SyscallRuntime<'a>>(
+pub(crate) fn core_poseidon2<'a, RT: SyscallRuntime<'a, true>>(
     rt: &mut RT,
     _: SyscallCode,
     _: u64,

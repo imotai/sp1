@@ -8,7 +8,7 @@ use crate::{
     TracingVM,
 };
 
-pub(crate) fn core_edwards_decompress<'a, RT: SyscallRuntime<'a>>(
+pub(crate) fn core_edwards_decompress<'a, RT: SyscallRuntime<'a, true>>(
     rt: &mut RT,
     _: SyscallCode,
     _: u64,

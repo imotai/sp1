@@ -160,6 +160,9 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                         "pc_start != vk.pc_start: program counter should start at vk.pc_start",
                     ));
                 } else {
+                    tracing::debug!("checking shard {}/{}", i, proof.0.len());
+                    tracing::debug!("pc_start: {:?}", public_values.pc_start);
+                    tracing::debug!("prev_next_pc: {:?}", prev_next_pc);
                     return Err(MachineVerifierError::InvalidPublicValues(
                         "pc_start != prev_next_pc: pc_start should equal prev_next_pc for all shards",
                     ));

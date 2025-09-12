@@ -22,19 +22,17 @@ use crate::{
         CoreVM,
     },
     ALUTypeRecord, ExecutionError, ExecutionRecord, ITypeRecord, Instruction, JTypeRecord,
-    MemoryAccessRecord, Opcode, Program, RTypeRecord, Register, HALT_PC,
+    MemoryAccessRecord, Opcode, Program, RTypeRecord, Register,
 };
 
 /// A RISC-V VM that uses a [`MinimalTrace`] to create a [`ExecutionRecord`].
 pub struct TracingVM<'a> {
     /// The core VM.
-    pub core: CoreVM<'a>,
+    pub core: CoreVM<'a, false>,
     /// The local memory access for the CPU.
     pub local_memory_access: LocalMemoryAccess,
     /// The local memory access for any deferred precompiles.
     pub precompile_local_memory_access: Option<LocalMemoryAccess>,
-    /// The public values stream.
-    public_values_stream: Vec<u8>,
     /// The execution record were populating.
     pub record: ExecutionRecord,
 }
@@ -42,7 +40,7 @@ pub struct TracingVM<'a> {
 impl<'a> TracingVM<'a> {
     /// Execute the program until it halts.
     pub fn execute(&mut self) -> Result<CycleResult, ExecutionError> {
-        if self.core.pc() == HALT_PC {
+        if self.core.is_done() {
             return Ok(CycleResult::Done(true));
         }
 
@@ -50,19 +48,17 @@ impl<'a> TracingVM<'a> {
             match self.execute_instruction()? {
                 // Continue executing the program.
                 CycleResult::Done(false) => {}
-                CycleResult::ShardBoundry => {
+                CycleResult::TraceEnd => {
                     self.register_refresh();
                     self.postprocess();
                     return Ok(CycleResult::ShardBoundry);
                 }
-                CycleResult::TraceEnd => {
-                    self.register_refresh();
-                    self.postprocess();
-                    return Ok(CycleResult::TraceEnd);
-                }
                 CycleResult::Done(true) => {
                     self.postprocess();
                     return Ok(CycleResult::Done(true));
+                }
+                CycleResult::ShardBoundry => {
+                    unreachable!("Shard boundary should never be returned for tracing VM")
                 }
             }
         }
@@ -210,7 +206,6 @@ impl<'a> TracingVM<'a> {
             record,
             local_memory_access: LocalMemoryAccess::default(),
             precompile_local_memory_access: None,
-            public_values_stream: Vec::new(),
         }
     }
 
@@ -465,7 +460,7 @@ impl<'a> TracingVM<'a> {
     /// Execute an ecall instruction and emit the events.
     fn execute_ecall(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
         let EcallResult { a: _, a_record, b, b_record, c, c_record, code } =
-            CoreVM::execute_ecall(self, instruction, tracing_syscall_handler)?;
+            CoreVM::<'a, false>::execute_ecall(self, instruction, tracing_syscall_handler)?;
 
         if !self.core.is_unconstrained() {
             self.local_memory_access.insert_record(Register::X11 as u64, c_record);
@@ -834,17 +829,13 @@ impl TracingVM<'_> {
     }
 }
 
-impl<'a> SyscallRuntime<'a> for TracingVM<'a> {
-    fn core(&self) -> &CoreVM<'a> {
+impl<'a> SyscallRuntime<'a, false> for TracingVM<'a> {
+    fn core(&self) -> &CoreVM<'a, false> {
         &self.core
     }
 
-    fn core_mut(&mut self) -> &mut CoreVM<'a> {
+    fn core_mut(&mut self) -> &mut CoreVM<'a, false> {
         &mut self.core
-    }
-
-    fn push_public_values(&mut self, values: &[u8]) {
-        self.public_values_stream.extend_from_slice(values);
     }
 }
 

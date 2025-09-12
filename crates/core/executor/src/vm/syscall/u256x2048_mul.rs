@@ -8,7 +8,7 @@ use crate::{
 const U256_NUM_WORDS: usize = 4;
 const U2048_NUM_WORDS: usize = 32;
 
-pub(crate) fn core_u256xu2048_mul<'a, RT: SyscallRuntime<'a>>(
+pub(crate) fn core_u256xu2048_mul<'a, RT: SyscallRuntime<'a, true>>(
     rt: &mut RT,
     _: SyscallCode,
     _: u64,

@@ -1,7 +1,7 @@
 use crate::{syscalls::SyscallCode, vm::syscall::SyscallRuntime};
 
 #[allow(clippy::unnecessary_wraps)]
-pub fn enter_unconstrained<'a, RT: SyscallRuntime<'a>>(
+pub fn enter_unconstrained<'a, const TRACING: bool, RT: SyscallRuntime<'a, TRACING>>(
     rt: &mut RT,
     _: SyscallCode,
     _: u64,
@@ -22,7 +22,7 @@ pub fn enter_unconstrained<'a, RT: SyscallRuntime<'a>>(
     Some(1)
 }
 
-pub fn exit_unconstrained<'a, RT: SyscallRuntime<'a>>(
+pub fn exit_unconstrained<'a, const TRACING: bool, RT: SyscallRuntime<'a, TRACING>>(
     rt: &mut RT,
     _: SyscallCode,
     _: u64,

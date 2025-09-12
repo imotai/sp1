@@ -387,6 +387,30 @@ impl<'a> ContextMemory<'a> {
     //     (entry.value >> (addr % 8 * 8)) as u8
     // }
 
+    // Read a slice from memory, without bumping the clk.
+    pub fn mr_slice_no_trace(
+        &self,
+        addr: u64,
+        len: usize,
+    ) -> impl IntoIterator<Item = &u64> + Clone {
+        #[cfg(debug_assertions)]
+        if addr % 8 > 0 {
+            panic!("Address {addr} is not aligned to 8");
+        }
+
+        // Convert the byte address to the word address.
+        let word_address = addr / 8;
+
+        let ptr = self.ctx.memory.as_ptr() as *mut MemValue;
+        let ptr = unsafe { ptr.add(word_address as usize) };
+
+        // SAFETY: The pointer is valid to write to, as it was aligned by us during allocation.
+        // See [JitFunction::new] for more details.
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+
+        slice.iter().map(|val| &val.value)
+    }
+
     /// Write a u64 to memory, without tracing and sets the clk in the entry to 1.
     pub fn mw_hint(&mut self, addr: u64, val: u64) {
         let words = addr / 8;
