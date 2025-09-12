@@ -1,8 +1,5 @@
 #pragma once
 
-#include "reduce.cuh"
-#include "config.cuh"
-
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
 

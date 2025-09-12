@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include "../fields/kb31_t.cuh"

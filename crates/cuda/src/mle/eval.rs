@@ -55,7 +55,8 @@ where
 {
     async fn partial_lagrange(point: &Point<F, Self>) -> Tensor<F, Self> {
         let dimension = point.dimension();
-        let mut eq = point.backend().uninit_mle(1, 1 << dimension);
+        let num_elements = 1 << dimension;
+        let mut eq = point.backend().uninit_mle(1, num_elements);
         unsafe {
             eq.assume_init();
             let block_dim = 256;

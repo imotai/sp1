@@ -18,7 +18,6 @@ members = [
     "crates/sys",
     "crates/dft",
     "crates/merkle-tree",
-    "crates/basefold",
     "crates/jagged",
     "crates/zerocheck",
     "crates/prover",
@@ -95,7 +94,7 @@ sp1-recursion-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", 
 sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-cuda = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 
-# slop local copy
+# # slop local copy
 # slop-air = { path = "../slop/crates/air" }
 # slop-koala-bear = { path = "../slop/crates/koala-bear" }
 # slop-bn254 = { path = "../slop/crates/bn254" }
@@ -117,7 +116,7 @@ sp1-cuda = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "mult
 # slop-stacked = { path = "../slop/crates/stacked" }
 # slop-jagged = { path = "../slop/crates/jagged" }
 
-# for local development
+# # for local development
 # sp1-core-executor = { path = "../sp1-wip/crates/core/executor" }
 # sp1-core-machine = { path = "../sp1-wip/crates/core/machine" }
 # sp1-hypercube = { path = "../sp1-wip/crates/hypercube" }

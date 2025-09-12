@@ -1,3 +1,6 @@
+//! This isn't a real zerocheck -- just a proxy used for benchmarking and experimenting
+//! with optimization techniques.
+
 use crate::config::{Ext, Felt};
 use csl_cuda::sys::runtime::Dim3;
 use csl_cuda::sys::runtime::KernelPtr;

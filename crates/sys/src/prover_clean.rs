@@ -31,6 +31,30 @@ extern "C" {
 
     pub fn fix_last_variable_ext_ext_kernel() -> KernelPtr;
 
+    // LogUp GKR kernels - Round operations
+    // TODO: remove the "prover_clean" prefix once the old kernels are deprecated.
+    pub fn prover_clean_logup_gkr_sum_as_poly_circuit_layer() -> KernelPtr;
+    pub fn prover_clean_logup_gkr_first_sum_as_poly_circuit_layer() -> KernelPtr;
+    pub fn prover_clean_logup_gkr_fix_last_variable_circuit_layer() -> KernelPtr;
+    pub fn prover_clean_logup_gkr_fix_last_variable_last_circuit_layer() -> KernelPtr;
+    pub fn prover_clean_logup_gkr_sum_as_poly_interactions_layer() -> KernelPtr;
+    pub fn prover_clean_logup_gkr_fix_last_variable_interactions_layer() -> KernelPtr;
+
+    // LogUp GKR kernels - First layer operations
+    pub fn prover_clean_logup_gkr_fix_last_variable_first_layer() -> KernelPtr;
+    pub fn prover_clean_logup_gkr_sum_as_poly_first_layer() -> KernelPtr;
+    pub fn prover_clean_logup_gkr_first_layer_transition() -> KernelPtr;
+
+    // LogUp GKR kernels - Execution operations
+    pub fn prover_clean_logup_gkr_circuit_transition() -> KernelPtr;
+    pub fn prover_clean_logup_gkr_populate_last_circuit_layer() -> KernelPtr;
+    pub fn prover_clean_logup_gkr_extract_output() -> KernelPtr;
+
+    // New -- Logup GKR kernels - Fused fix and sum kernels
+    pub fn logup_gkr_fix_and_sum_circuit_layer() -> KernelPtr;
+    pub fn logup_gkr_fix_and_sum_last_circuit_layer() -> KernelPtr;
+    pub fn logup_gkr_fix_and_sum_interactions_layer() -> KernelPtr;
+
     // Populate restrict eq
     pub fn populate_restrict_eq_host(
         src: *const c_void,

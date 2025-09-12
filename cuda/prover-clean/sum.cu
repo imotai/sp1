@@ -1,7 +1,8 @@
-#include "sum.cuh"
 #include "config.cuh"
+#include "sum.cuh"
 
-/// A generic sum kernel that can be used for any type that implements the `+` operator.
+/// A generic sum kernel that can be used for any type that implements the `+`
+/// operator.
 template <typename F>
 __global__ void sumKernel(F* A, F* B, F* C, size_t N) {
     // The size bounds are being checked using a "grid stride loop" instead of a simple "if"

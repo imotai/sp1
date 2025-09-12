@@ -1,0 +1,115 @@
+#include "first_layer.cuh"
+#include "execution.cuh"
+
+#include "../config.cuh"
+#include "../reduce.cuh"
+#include "../jagged.cuh"
+
+__global__ void proverCleanLogupGkrFixLastVariableFirstCircuitLayer(
+    const JaggedMle<JaggedFirstGkrLayer> inputJaggedMle,
+    JaggedMle<JaggedGkrLayer> outputJaggedMle,
+    ext_t alpha) {
+
+    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < inputJaggedMle.denseData.height;
+         i += blockDim.x * gridDim.x) {
+
+        inputJaggedMle.fixLastVariableTwoPadding(outputJaggedMle, i, alpha);
+    }
+}
+
+__global__ void proverCleanLogupGkrSumAsPolyFirstCircuitLayer(
+    ext_t* __restrict__ result,
+    const JaggedMle<JaggedFirstGkrLayer> inputJaggedMle,
+    const ext_t* __restrict__ eqRow,
+    const ext_t* __restrict__ eqInteraction,
+    const ext_t lambda) {
+
+    felt_t* inputNumerator = inputJaggedMle.denseData.numeratorValues;
+    ext_t* inputDenominator = inputJaggedMle.denseData.denominatorValues;
+    uint32_t* colIndex = inputJaggedMle.colIndex;
+    uint32_t* startIndices = inputJaggedMle.startIndices;
+    size_t height = inputJaggedMle.denseData.height;
+
+    ext_t evalZero = ext_t::zero();
+    ext_t evalHalf = ext_t::zero();
+    ext_t eqSum = ext_t::zero();
+    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < height;
+         i += blockDim.x * gridDim.x) {
+        size_t colIdx = colIndex[i];
+        size_t startIdx = startIndices[colIdx];
+        size_t rowIdx = i - startIdx;
+
+        size_t eqRowZeroIdx = rowIdx << 1;
+        size_t eqRowOneIdx = eqRowZeroIdx + 1;
+
+        ext_t eqInteractionValue = ext_t::load(eqInteraction, colIdx);
+        ext_t eqRowZeroValue = ext_t::load(eqRow, eqRowZeroIdx);
+        ext_t eqRowOneValue = ext_t::load(eqRow, eqRowOneIdx);
+
+        ext_t eqValueZero = eqRowZeroValue * eqInteractionValue;
+        ext_t eqValueOne = eqRowOneValue * eqInteractionValue;
+        ext_t eqValueHalf = eqValueZero + eqValueOne;
+
+        eqSum += eqValueHalf;
+
+        size_t zeroIdx = i << 1;
+        size_t oneIdx = zeroIdx + 1;
+
+        FirstLayerCircuitValues valuesZero =
+            FirstLayerCircuitValues::load(inputNumerator, inputDenominator, zeroIdx, height);
+        FirstLayerCircuitValues valuesOne =
+            FirstLayerCircuitValues::load(inputNumerator, inputDenominator, oneIdx, height);
+
+        // Compute the values at the point 1 /2 (times a factor of 2)
+        FirstLayerCircuitValues valuesHalf;
+        valuesHalf.numeratorZero = valuesZero.numeratorZero + valuesOne.numeratorZero;
+        valuesHalf.numeratorOne = valuesZero.numeratorOne + valuesOne.numeratorOne;
+        valuesHalf.denominatorZero = valuesZero.denominatorZero + valuesOne.denominatorZero;
+        valuesHalf.denominatorOne = valuesZero.denominatorOne + valuesOne.denominatorOne;
+
+        // Compute the sumcheck sum values and add to the running aggregate
+        evalZero += valuesZero.sumAsPoly(lambda, eqValueZero);
+        evalHalf += valuesHalf.sumAsPoly(lambda, eqValueHalf);
+    }
+
+    // Allocate shared memory
+    extern __shared__ unsigned char memory[];
+    ext_t* shared = reinterpret_cast<ext_t*>(memory);
+
+    auto block = cg::this_thread_block();
+    auto tile = cg::tiled_partition<32>(block);
+    ext_t evalZeroblockSum = partialBlockReduce(block, tile, evalZero, shared);
+    ext_t evalHalfblockSum = partialBlockReduce(block, tile, evalHalf, shared);
+    ext_t eqSumBlockSum = partialBlockReduce(block, tile, eqSum, shared);
+
+    if (threadIdx.x == 0) {
+        ext_t::store(result, blockIdx.x, evalZeroblockSum);
+        ext_t::store(result, gridDim.x + blockIdx.x, evalHalfblockSum);
+        ext_t::store(result, 2 * gridDim.x + blockIdx.x, eqSumBlockSum);
+    }
+}
+
+__global__ void proverCleanLogUpFirstLayerTransitionKernel(
+    const JaggedMle<JaggedFirstGkrLayer> inputJaggedMle,
+    JaggedMle<JaggedGkrLayer> outputJaggedMle) {
+
+    size_t height = inputJaggedMle.denseData.height;
+
+    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < height;
+         i += blockDim.x * gridDim.x) {
+
+        circuitTransitionTwoPadding(inputJaggedMle, outputJaggedMle, i);
+    }
+}
+
+extern "C" void* prover_clean_logup_gkr_fix_last_variable_first_layer() {
+    return (void*)proverCleanLogupGkrFixLastVariableFirstCircuitLayer;
+}
+
+extern "C" void* prover_clean_logup_gkr_sum_as_poly_first_layer() {
+    return (void*)proverCleanLogupGkrSumAsPolyFirstCircuitLayer;
+}
+
+extern "C" void* prover_clean_logup_gkr_first_layer_transition() {
+    return (void*)proverCleanLogUpFirstLayerTransitionKernel;
+}

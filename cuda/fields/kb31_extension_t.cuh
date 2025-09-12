@@ -1,7 +1,7 @@
 #pragma once
 
-#include "ptx.cuh"
 #include "kb31_t.cuh"
+#include "ptx.cuh"
 
 static constexpr size_t W_INT = 3; // The value of W in the bb31 field, used for multiplication
 

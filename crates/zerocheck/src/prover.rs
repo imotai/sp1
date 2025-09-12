@@ -235,7 +235,7 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
             };
 
         let grid_size = (grid_size_x, grid_size_y, 3);
-        let num_tiles = (block_size_x * block_size_y).checked_div(32).unwrap_or(1);
+        let num_tiles = (block_size_x * block_size_y).checked_div(1).unwrap_or(1);
         let shared_mem = num_tiles * std::mem::size_of::<EF>();
 
         let mut output: Tensor<EF, TaskScope> =

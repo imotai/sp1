@@ -1,5 +1,5 @@
-#include "reduce.cuh"
 #include "config.cuh"
+#include "reduce.cuh"
 #include "zerocheck.cuh"
 
 #include <cooperative_groups.h>

@@ -1,6 +1,6 @@
 #include "fixlastvariable.cuh"
 #include "config.cuh"
-
+#include "fixlastvariable.cuh"
 
 template <typename F, typename EF>
 __global__ void fixLastVariable(

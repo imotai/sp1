@@ -20,14 +20,6 @@ use slop_multilinear::MleBaseBackend;
 use slop_sumcheck::PartialSumcheckProof;
 use slop_tensor::Tensor;
 
-lazy_static::lazy_static! {
-    pub static ref START_TIME: std::time::Instant = std::time::Instant::now();
-}
-
-pub fn time_since_start() -> f64 {
-    std::time::Instant::now().duration_since(*START_TIME).as_secs_f64()
-}
-
 /// Generic helper for sum in last variable operations
 async fn sum_in_last_variable<F>(
     poly_base: &Mle<F, TaskScope>,

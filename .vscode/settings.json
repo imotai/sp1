@@ -25,6 +25,9 @@
     ],
     "C_Cpp.clang_format_fallbackStyle": "Google",
     "C_Cpp.intelliSenseEngine": "Tag Parser",
+    // "clangd.arguments": [
+    //     "-Wno-defaulted-function-deleted"
+    // ],
     "files.associations": {
         "cassert": "cpp",
         "array": "cpp",

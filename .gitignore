@@ -36,3 +36,7 @@ stdin.bin
 prover/proof-with-pis.bin
 perf/proof-with-pis.bin
 core_proof.bin
+
+# clangd
+.cache
+compile_commands.json
