@@ -116,11 +116,9 @@ pub trait RecursiveMultilinearPcsVerifier: Sized {
     ) {
         for round in evaluation_claims.iter() {
             for round_evaluations in round.iter() {
-                for evaluations in round_evaluations.iter() {
-                    for evaluation in evaluations.iter() {
-                        let evaluation_felts = Self::Circuit::ext2felt(builder, *evaluation);
-                        evaluation_felts.iter().for_each(|felt| challenger.observe(builder, *felt));
-                    }
+                for evaluation in round_evaluations.iter() {
+                    let evaluation_felts = Self::Circuit::ext2felt(builder, *evaluation);
+                    evaluation_felts.iter().for_each(|felt| challenger.observe(builder, *felt));
                 }
             }
         }
@@ -185,7 +183,6 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>>
         let eval_claim = evaluation_claims
             .iter()
             .flat_map(|batch_claims| batch_claims.iter().flat_map(|eval| eval.iter()))
-            .flatten()
             .zip(batching_challenge.powers())
             .map(|(eval, batch_power)| *eval * batch_power)
             .sum::<SymbolicExt<SP1Field, SP1ExtensionField>>();

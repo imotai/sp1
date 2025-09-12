@@ -79,10 +79,8 @@ pub trait MultilinearPcsVerifier<GC: IopCtx>: 'static + Send + Sync + Clone {
         // Observe the evaluation claims.
         for round in evaluation_claims.iter() {
             for round_evaluations in round.iter() {
-                for evaluations in round_evaluations.iter() {
-                    for evaluation in evaluations.iter() {
-                        challenger.observe_ext_element(*evaluation);
-                    }
+                for evaluation in round_evaluations.iter() {
+                    challenger.observe_ext_element(*evaluation);
                 }
             }
         }
@@ -141,11 +139,8 @@ pub trait MultilinearPcsProver<GC: IopCtx>: 'static + Debug + Send + Sync {
             for round in evaluation_claims.iter() {
                 for claim in round.iter() {
                     let host_claim = claim.to_host().await.unwrap();
-                    // let host_claim = Self::A::evaluations_to_host(claim).await.unwrap();
-                    for evaluations in host_claim.iter() {
-                        for evaluation in evaluations.iter() {
-                            challenger.observe_ext_element(*evaluation);
-                        }
+                    for evaluation in host_claim.iter() {
+                        challenger.observe_ext_element(*evaluation);
                     }
                 }
             }

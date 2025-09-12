@@ -489,10 +489,6 @@ impl<T> MleEval<T, CpuBackend> {
         self.evaluations.as_buffer().to_vec()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &[T]> + '_ {
-        self.evaluations.split().map(|t| t.as_slice())
-    }
-
     pub fn zeros(num_polynomials: usize) -> MleEval<T, CpuBackend>
     where
         T: AbstractField,

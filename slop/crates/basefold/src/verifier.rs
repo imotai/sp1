@@ -134,7 +134,6 @@ where
         let eval_claim = evaluation_claims
             .iter()
             .flat_map(|batch_claims| batch_claims.iter().flat_map(|eval| eval.iter()))
-            .flatten()
             .zip(batching_challenge.powers())
             .map(|(eval, batch_power)| *eval * batch_power)
             .sum::<GC::EF>();
