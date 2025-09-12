@@ -8,6 +8,7 @@ use crate::{
 impl MinimalExecutor {
     /// Postprocess into an existing [`ExecutionRecord`],
     /// consisting of all the [`MemoryInitializeFinalizeEvent`]s.
+    #[tracing::instrument(name = "emit globals", skip_all)]
     pub fn emit_globals(
         &self,
         record: &mut ExecutionRecord,

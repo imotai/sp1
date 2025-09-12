@@ -7,7 +7,7 @@ use std::{
 use futures::future::try_join_all;
 use hashbrown::HashSet;
 use slop_algebra::PrimeField32;
-use slop_futures::queue::WorkerQueue;
+use slop_futures::queue::{TryAcquireWorkerError, WorkerQueue};
 use sp1_core_executor::{
     events::MemoryRecord, ExecutionError, ExecutionRecord, Program, SP1Context, SP1CoreOpts,
     SplicingVM, SplitOpts, TracingVM,
@@ -19,7 +19,10 @@ use sp1_hypercube::{
 };
 use sp1_jit::MinimalTrace;
 use thiserror::Error;
-use tokio::sync::mpsc::{self, UnboundedSender};
+use tokio::sync::{
+    mpsc::{self, UnboundedSender},
+    TryAcquireError,
+};
 use tracing::{Instrument, Level};
 
 use sp1_core_executor::{CycleResult, MinimalExecutor, SplicedMinimalTrace, TraceChunkRaw};
@@ -88,7 +91,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
                 async move {
                     while let Some(task) = rx.recv().await {
                         let RecordTask { index, chunk } = task;
-                        tracing::debug!("tracing chunk at idx: {}, with worker: {}", index, i);
+                        tracing::trace!("tracing chunk at idx: {}, with worker: {}", index, i);
 
                         // Assume a record is 4Gb for now.
                         let permit = permitting.acquire(2 * 1024 * 1024 * 1024).await.unwrap();
@@ -101,7 +104,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
 
                             move || {
                                 let _debug_span =
-                                    tracing::debug_span!("tracing chunk blocking task").entered();
+                                    tracing::trace_span!("tracing chunk blocking task").entered();
                                 trace_chunk(program, opts, index, chunk)
                             }
                         })
@@ -112,19 +115,15 @@ impl<F: PrimeField32> MachineExecutor<F> {
                         // Wait for our turn to update the state.
                         let _turn_guard = record_gen_sync.wait_for_turn(index).await;
 
-                        tracing::debug!("ttt index: {}", index);
-                        tracing::debug!("ttt pc_start: {:?}", record.public_values.pc_start);
-                        tracing::debug!("ttt next_pc: {:?}", record.public_values.next_pc);
-
                         let deferred_records = if done {
-                            tracing::debug!("last record at idx: {}", index);
+                            tracing::trace!("last record at idx: {}", index);
 
                             // If this is the last record, we have special handling for the memory
                             // events.
                             last_record_tx.send(record).await.unwrap();
                             return;
                         } else {
-                            tracing::debug!("defferring record at idx: {}", index);
+                            tracing::trace!("defferring record at idx: {}", index);
 
                             let mut state = state.lock().unwrap();
                             let mut deferred = deferred.lock().unwrap();
@@ -161,15 +160,15 @@ impl<F: PrimeField32> MachineExecutor<F> {
             move || {
                 let _debug_span = tracing::debug_span!("minimal executor task").entered();
                 let mut minimal_executor = MinimalExecutor::tracing(program.clone(), None);
-                tracing::debug!("minimal executor created");
+                tracing::trace!("minimal executor created");
 
                 for buf in stdin.buffer {
                     minimal_executor.with_input(&buf);
                 }
 
-                tracing::debug!("Starting minimal executor");
+                tracing::trace!("Starting minimal executor");
                 while let Some(chunk) = minimal_executor.execute_chunk() {
-                    tracing::debug!("program is done?: {}", minimal_executor.is_done());
+                    tracing::trace!("program is done?: {}", minimal_executor.is_done());
 
                     chunk_tx.send(chunk).unwrap();
                 }
@@ -227,7 +226,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
             "last_record.public_values.committed_value_digest: {:?}",
             last_record.public_values.committed_value_digest
         );
-        let deferred_records = {
+        let deferred_records = tracing::trace_span!("emit globals").in_scope(|| {
             // Take the lock on the touched addresses.
             let touched_addresses = std::mem::take(&mut *touched_addresses.lock().unwrap());
             // Insert the global memory events into the last record.
@@ -235,7 +234,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
 
             let mut deferred = deferred.lock().unwrap();
             let mut state = state.lock().unwrap();
-            tracing::debug_span!("postprocessing task").in_scope(|| {
+            tracing::trace_span!("defer last shard").in_scope(|| {
                 defer::<F>(
                     &mut state,
                     &mut last_record,
@@ -245,7 +244,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
                     true,
                 )
             })
-        };
+        });
 
         start_prove(self.machine.clone(), record_tx, None, last_record, deferred_records).await;
 
@@ -308,11 +307,11 @@ fn generate_chunks(
             CycleResult::ShardBoundry => {
                 // Note: Chunk implentations should always be cheap to clone.
                 if let Some(spliced) = vm.splice(chunk.clone()) {
-                    tracing::debug!("generated chunk for shard {}", idx);
-                    tracing::debug!("shard ended at clk: {}", vm.core.clk());
-                    tracing::debug!("shard ended at pc: {}", vm.core.pc());
-                    tracing::debug!("shard ended at global clk: {}", vm.core.global_clk());
-                    tracing::debug!("shard ended with {} mem reads left ", vm.core.mem_reads.len());
+                    tracing::trace!("finshed executing for sahrd {}", idx);
+                    tracing::trace!("shard ended at clk: {}", vm.core.clk());
+                    tracing::trace!("shard ended at pc: {}", vm.core.pc());
+                    tracing::trace!("shard ended at global clk: {}", vm.core.global_clk());
+                    tracing::trace!("shard ended with {} mem reads left ", vm.core.mem_reads.len());
 
                     // Set the last splice clk.
                     last_splice.set_last_clk(vm.core.clk());
@@ -329,7 +328,7 @@ fn generate_chunks(
                     // Bump the shard index.
                     idx += 1;
                 } else {
-                    tracing::debug!("shard idx ran out of trace and was cut early: {}", idx);
+                    tracing::trace!("shard idx was the end of the trace: {}", idx);
 
                     last_splice.set_last_clk(vm.core.clk());
                     last_splice.set_last_mem_reads_idx(chunk.num_mem_reads() as usize);
@@ -372,20 +371,18 @@ fn trace_chunk(
 ) -> Result<(bool, ExecutionRecord), ExecutionError> {
     let mut vm = TracingVM::new(&chunk, program);
     let status = vm.execute()?;
-    tracing::debug!("chunk ended at clk: {}", vm.core.clk());
-    tracing::debug!("chunk ended at pc: {}", vm.core.pc());
+    tracing::trace!("chunk ended at clk: {}", vm.core.clk());
+    tracing::trace!("chunk ended at pc: {}", vm.core.pc());
 
     let mut record = std::mem::take(&mut vm.record);
     let pv = record.public_values;
-
-    assert!(record.public_values.next_pc == vm.core.pc());
 
     // Handle the case where `COMMIT` or `COMMIT_DEFERRED_PROOFS` happens across last two shards.
     //
     // todo: does this actually work in the new regieme? what if the shard is stopped due to the clk
     // limit? if so, does that mean this could be wrong? its unclear!
     if status.is_shard_boundry() && (pv.commit_syscall == 1 || pv.commit_deferred_syscall == 1) {
-        tracing::debug!("commit syscall or commit deferred proofs across last two shards");
+        tracing::trace!("commit syscall or commit deferred proofs across last two shards");
 
         loop {
             // Execute until we get a done status.
@@ -497,7 +494,7 @@ fn defer<F: PrimeField32>(
     // See if any deferred shards are ready to be committed to.
     let mut deferred_records =
         deferred.split(done, can_pack_global_memory.then_some(record), split_opts);
-    tracing::debug!("split deffered into {} records", deferred_records.len());
+    tracing::trace!("split deffered into {} records", deferred_records.len());
 
     // Update the public values & prover state for the shards which do not
     // contain "cpu events" before committing to them.
@@ -590,8 +587,11 @@ fn send_spliced_trace_blocking(
             }
             // todo: patch slop to return what kind of error so we can break correctly if the
             // channel is closed.
-            Err(_) => {
+            Err(TryAcquireWorkerError(TryAcquireError::NoPermits)) => {
                 std::hint::spin_loop();
+            }
+            Err(_) => {
+                panic!("failed to send spliced trace to record worker");
             }
         }
     }
