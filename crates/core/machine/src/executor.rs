@@ -585,8 +585,7 @@ fn send_spliced_trace_blocking(
                 worker.send(RecordTask { index: idx, chunk }).unwrap();
                 break;
             }
-            // todo: patch slop to return what kind of error so we can break correctly if the
-            // channel is closed.
+
             Err(TryAcquireWorkerError(TryAcquireError::NoPermits)) => {
                 std::hint::spin_loop();
             }
