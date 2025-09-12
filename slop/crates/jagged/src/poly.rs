@@ -1,25 +1,25 @@
 //! This module contains the implementation of the special multilinear polynomial appearing in the
 //! jagged sumcheck protocol.
 //!
-//! More precisely, given a collection of L tables with areas [a_1, a_2, ..., a_L] and column counts
-//! [c_1, c_2, ..., c_L], lay out those tables in a 3D array, aligning their top-left corners. Then,
-//! imagine padding all the tables with zeroes so that the have the same number of rows. On the other
-//! hand, imagine laying out all the tables (considered in RowMajor form) in a single long vector.
-//! The jagged multilinear polynomial is the multilinear extension of the function which determines,
-//! given a table, row, and column index in the 3D array, and an index in the long vector, whether
-//! the index in the long vector corresponds to the table, row, and column index in the 3D array.
-//! More explicitly, it's the function checking whether
-//!
-//! index = (a_1 + ... + a_{tab}) + row * c_{tab} + col.
+//! More precisely, given a collection of L columns with heights [a_1, a_2, ..., a_L] lay out those
+//! tables in a 2D array, aligning their first entries at the top row of the array. Then,
+//! imagine padding all the columns with zeroes so that they have the same number of rows. On the
+//! other hand, imagine laying out all the columns in a single long vector. The jagged multilinear
+//! polynomial is the multilinear extension of the function which determines, given row and column
+//! indices r and c in the 2D array, and an index i in the long vector, whether entry (r, c)
+//! in the 2D array corresponds to entry i in the long vector.
 //!
 //! Since there is an efficient algorithm to implement this "indicator" function as a branching
 //! program, following [HR18](https://eccc.weizmann.ac.il/report/2018/161/) there is a concise
 //! algorithm for the evaluation of the corresponding multilinear polynomial. The algorithm to
 //! compute the indicator uses the prefix sums [t_0=0, t_1=a_1, t_2 = a_1+a_2, ..., t_L], reads
-//! t_{tab}, t_{tab+1}, index, tab, row, and col bit-by-bit from LSB to MSB, checks the equality
-//! above, and also checks that index < t_{tab+1}. Assuming that c_{tab} is a power of 2, the
-//! multiplication `row * c_{tab}` can be done by bit-shift, and the addition is checked via the
-//! grade-school algorithm.
+//! t_{c}, t_{c+1}, i, r bit-by-bit from LSB to MSB, checks the equality
+//!
+//! i = t_c + r.
+//!
+//! and also checks that i < t_{c+1}. The addition is checked via the grade-school algorithm. This is
+//! for a fixed column c. To check over all the columns, we combine via a random linear combination
+//! with coefficients eq(z_col, _).
 use core::fmt;
 use std::iter::once;
 use std::{array, cmp::max};
@@ -212,8 +212,8 @@ impl<F: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
 
         let branching_program = BranchingProgram::new(z_row.clone(), z_index.clone());
 
-        // Iterate over all column. For each column, we need to know the total length of all the columns
-        // up to the current one, this number - 1, and the
+        // Iterate over all columns. For each column, we need to know the total length of all the
+        // columns up to the current one, this number - 1, and the
         // number of rows in the current column.
         let mut branching_program_evals = Vec::with_capacity(self.col_prefix_sums.len() - 1);
         #[allow(clippy::uninit_vec)]
@@ -230,8 +230,8 @@ impl<F: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
             .par_bridge()
             .map(|(col_num, ((prefix_sum, next_prefix_sum), branching_program_eval))| {
                 // For `z_col` on the Boolean hypercube, this is the delta function to pick out
-                // the right column count for the current table.
-                let c_tab_correction = z_col_partial_lagrange[col_num].clone();
+                // the right column for the current index.
+                let z_col_correction = z_col_partial_lagrange[col_num].clone();
 
                 let prefix_sum_ef =
                     prefix_sum.iter().map(|x| EF::from(x.clone())).collect::<Point<EF>>();
@@ -240,9 +240,7 @@ impl<F: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
                 *branching_program_eval =
                     branching_program.eval(&prefix_sum_ef, &next_prefix_sum_ef);
 
-                // Perform the multiplication outside of the main loop to avoid redundant
-                // multiplications.
-                z_row_correction.clone() * c_tab_correction.clone() * branching_program_eval.clone()
+                z_row_correction.clone() * z_col_correction.clone() * branching_program_eval.clone()
             })
             .sum::<EF>();
 
@@ -449,11 +447,11 @@ impl<K: AbstractField + 'static> BranchingProgram<K> {
             let four_var_eq: Mle<K> = Mle::blocking_partial_lagrange(&point);
 
             // For each memory state in the new layer, compute the result of the branching
-            // program that starts at that memory state and in the current layer.
-
+            // program that starts at that memory state.
             for memory_state in &self.memory_states {
                 // For each possible bit state, compute the result of the branching
-                // program transition function and modify the accumulator accordingly.
+                // program transition function and modify the weight associated to the output
+                // accordingly.
                 let mut accum_elems: [K; 4] = array::from_fn(|_| K::zero());
 
                 for (i, elem) in four_var_eq.guts().as_slice().iter().enumerate() {
