@@ -7,7 +7,6 @@ use crate::{
             MaybeImmediate, StoreResult, UTypeResult,
         },
         syscall::SyscallRuntime,
-        unconstrained::UnconstrainedState,
     },
     ExecutionError, Instruction, Opcode, Program, Register, RetainedEventsPreset, SP1CoreOpts,
     HALT_PC, M64,
@@ -19,7 +18,6 @@ use std::{mem::MaybeUninit, num::Wrapping, ptr::addr_of_mut, sync::Arc};
 pub(crate) mod results;
 mod shapes;
 pub(crate) mod syscall;
-mod unconstrained;
 
 /// The number of cycles that a single instruction takes.
 const CLK_BUMP: u64 = 8;
@@ -43,8 +41,6 @@ pub struct CoreVM<'a, const SHAPE_CHECKING: bool> {
     next_pc: u64,
     /// The next clock that will be set in [`CoreVM::advance`].
     next_clk: u64,
-    /// The unconstrained state of the VM.
-    unconstrained_state: Option<UnconstrainedState>,
     /// The hint lenghts that read from within the vm.
     hint_lens: std::slice::Iter<'a, usize>,
     /// The program that is being executed.
@@ -98,7 +94,6 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
             pc: start_pc,
             program,
             mem_reads: trace.mem_reads(),
-            unconstrained_state: None,
             next_pc: start_pc.wrapping_add(PC_BUMP),
             next_clk: start_clk.wrapping_add(CLK_BUMP),
             hint_lens: trace.hint_lens().iter(),
@@ -135,12 +130,10 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
         }
 
         // Check if the shard limit has been reached.
-        if !self.is_unconstrained() {
-            if SHAPE_CHECKING && self.shape_checker.check_shard_limit() {
-                return CycleResult::ShardBoundry;
-            } else if self.is_trace_end() {
-                return CycleResult::TraceEnd;
-            }
+        if SHAPE_CHECKING && self.shape_checker.check_shard_limit() {
+            return CycleResult::ShardBoundry;
+        } else if self.is_trace_end() {
+            return CycleResult::TraceEnd;
         }
 
         // Return that the program is still running.
@@ -207,7 +200,7 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
 
         let rw_record = self.rw(rd, a);
 
-        if SHAPE_CHECKING && !self.is_unconstrained() {
+        if SHAPE_CHECKING {
             self.shape_checker.handle_instruction(
                 instruction,
                 self.needs_bump_clk_high(),
@@ -268,7 +261,7 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
 
         let mw_record = self.mw(mr_record, memory_store_value);
 
-        if SHAPE_CHECKING && !self.is_unconstrained() {
+        if SHAPE_CHECKING {
             self.shape_checker.handle_instruction(
                 instruction,
                 self.needs_bump_clk_high(),
@@ -419,7 +412,7 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
 
         let rw_record = self.rw(rd, a);
 
-        if SHAPE_CHECKING && !self.is_unconstrained() {
+        if SHAPE_CHECKING {
             self.shape_checker.handle_instruction(
                 instruction,
                 self.needs_bump_clk_high(),
@@ -455,7 +448,7 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
 
                 self.next_pc = next_pc;
 
-                if SHAPE_CHECKING && !self.is_unconstrained() {
+                if SHAPE_CHECKING {
                     self.shape_checker.handle_instruction(
                         instruction,
                         self.needs_bump_clk_high(),
@@ -478,7 +471,7 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
 
                 self.next_pc = next_pc;
 
-                if SHAPE_CHECKING && !self.is_unconstrained() {
+                if SHAPE_CHECKING {
                     self.shape_checker.handle_instruction(
                         instruction,
                         self.needs_bump_clk_high(),
@@ -527,7 +520,7 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
             self.next_pc = self.pc.wrapping_add(c);
         }
 
-        if SHAPE_CHECKING && !self.is_unconstrained() {
+        if SHAPE_CHECKING {
             self.shape_checker.handle_instruction(
                 instruction,
                 self.needs_bump_clk_high(),
@@ -547,7 +540,7 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
         let a = if instruction.opcode == Opcode::AUIPC { self.pc.wrapping_add(imm) } else { imm };
         let a_record = self.rw(rd, a);
 
-        if !self.is_unconstrained() {
+        if SHAPE_CHECKING {
             self.shape_checker.handle_instruction(
                 instruction,
                 self.needs_bump_clk_high(),
@@ -586,49 +579,21 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
 
         // Peek at the register, we dont care about the read here.
         let syscall_id = core.registers[t0 as usize].value;
-        let mut code = SyscallCode::from_u32(syscall_id as u32);
+        let code = SyscallCode::from_u32(syscall_id as u32);
 
-        let mut c_record: MemoryReadRecord = MemoryReadRecord {
-            value: 0,
-            timestamp: 0,
-            prev_timestamp: 0,
-            prev_page_prot_record: None,
-        };
-        let mut b_record: MemoryReadRecord = MemoryReadRecord {
-            value: 0,
-            timestamp: 0,
-            prev_timestamp: 0,
-            prev_page_prot_record: None,
-        };
-        let mut c;
-        let mut b;
-        // We don't want to bump the clk if the code is ENTER_UNCONSTRAINED
-        if code == SyscallCode::ENTER_UNCONSTRAINED {
-            c = core.registers()[Register::X11 as usize].value;
-            b = core.registers()[Register::X10 as usize].value;
+        let c_record = core.rr(Register::X11, MemoryAccessPosition::C);
+        let b_record = core.rr(Register::X10, MemoryAccessPosition::B);
+        let c = c_record.value;
+        let b = b_record.value;
+
+        let a = if code == SyscallCode::ENTER_UNCONSTRAINED {
+            0
         } else {
-            c_record = core.rr(Register::X11, MemoryAccessPosition::C);
-            b_record = core.rr(Register::X10, MemoryAccessPosition::B);
-            c = c_record.value;
-            b = b_record.value;
-        }
-
-        let res = f(rt, code, b, c);
-        let a = res.unwrap_or(syscall_id);
+            f(rt, code, b, c).unwrap_or(syscall_id)
+        };
 
         // Bad borrow checker!
         let core = rt.core_mut();
-
-        // If the code is `EXIT_UNCONSTRAINED`, the memory was restored to pre-unconstrained code
-        // in the execute function, so we need to re-read from x10 and x11. Also we want to record
-        // as ENTER_UNCONSTRAINED event.
-        if code == SyscallCode::EXIT_UNCONSTRAINED {
-            code = SyscallCode::ENTER_UNCONSTRAINED;
-            c_record = core.rr(Register::X11, MemoryAccessPosition::C);
-            b_record = core.rr(Register::X10, MemoryAccessPosition::B);
-            c = c_record.value;
-            b = b_record.value;
-        }
 
         let a_record = core.rw(t0, a);
 
@@ -636,7 +601,7 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
         core.set_next_clk(core.next_clk() + 256);
 
         #[allow(clippy::collapsible_if)]
-        if SHAPE_CHECKING && !core.is_unconstrained() {
+        if SHAPE_CHECKING {
             if code.should_send() == 1 {
                 if core.is_retained_syscall(code) {
                     core.shape_checker.handle_retained_syscall(code);
@@ -671,7 +636,7 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
             }
         };
 
-        if SHAPE_CHECKING && !self.is_unconstrained() {
+        if SHAPE_CHECKING {
             self.shape_checker.handle_memory_read(record.clk);
         }
 
@@ -703,7 +668,7 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
 
         self.registers[register as usize] = new_record;
 
-        if SHAPE_CHECKING && !self.is_unconstrained() {
+        if SHAPE_CHECKING {
             self.shape_checker.handle_memory_read(prev_record.timestamp);
         }
 
@@ -758,7 +723,7 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
 
         self.registers[register as usize] = new_record;
 
-        if SHAPE_CHECKING && !self.is_unconstrained() {
+        if SHAPE_CHECKING {
             self.shape_checker.handle_memory_read(prev_record.timestamp);
         }
 
@@ -804,13 +769,6 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
 }
 
 impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
-    #[inline]
-    #[must_use]
-    /// Check if the VM is in unconstrained mode.
-    pub const fn is_unconstrained(&self) -> bool {
-        self.unconstrained_state.is_some()
-    }
-
     #[inline]
     #[must_use]
     /// Get the current clock, this clock is incremented by [`CLK_BUMP`] each cycle.

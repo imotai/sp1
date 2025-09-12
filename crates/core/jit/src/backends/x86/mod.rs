@@ -115,9 +115,9 @@ impl TraceCollector for TranspilerBackend {
             self;
             .arch x64;
 
-            // // Check if were in unconstrained mode.
-            // cmp QWORD [Rq(CONTEXT) + IS_UNCONSTRAINED_OFFSET], 1;
-            // je >done;
+            // Check if were in unconstrained mode.
+            cmp QWORD [Rq(CONTEXT) + IS_UNCONSTRAINED_OFFSET], 1;
+            je >done;
 
             // ------------------------------------
             // Compute the address to load from.

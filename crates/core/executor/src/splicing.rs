@@ -160,9 +160,7 @@ impl<'a> SplicingVM<'a> {
         let LoadResult { addr, .. } = self.core.execute_load(instruction)?;
 
         // Ensure the address is aligned to 8 bytes.
-        if !self.core.is_unconstrained() {
-            self.touched_addresses.insert(addr & !0b111);
-        }
+        self.touched_addresses.insert(addr & !0b111);
 
         Ok(())
     }
@@ -177,9 +175,7 @@ impl<'a> SplicingVM<'a> {
         let StoreResult { addr, .. } = self.core.execute_store(instruction)?;
 
         // Ensure the address is aligned to 8 bytes.
-        if !self.core.is_unconstrained() {
-            self.touched_addresses.insert(addr & !0b111);
-        }
+        self.touched_addresses.insert(addr & !0b111);
 
         Ok(())
     }

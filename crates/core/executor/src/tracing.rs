@@ -219,33 +219,25 @@ impl<'a> TracingVM<'a> {
         let LoadResult { mut a, b, c, rs1, rd, addr, rr_record, rw_record, mr_record } =
             self.core.execute_load(instruction)?;
 
-        if !self.core.is_unconstrained() {
-            let mem_access_record = MemoryAccessRecord {
-                a: Some(MemoryRecordEnum::Write(rw_record)),
-                b: Some(MemoryRecordEnum::Read(rr_record)),
-                c: None,
-                memory: Some(MemoryRecordEnum::Read(mr_record)),
-                untrusted_instruction: None,
-            };
+        let mem_access_record = MemoryAccessRecord {
+            a: Some(MemoryRecordEnum::Write(rw_record)),
+            b: Some(MemoryRecordEnum::Read(rr_record)),
+            c: None,
+            memory: Some(MemoryRecordEnum::Read(mr_record)),
+            untrusted_instruction: None,
+        };
 
-            let op_a_0 = instruction.op_a == 0;
-            if op_a_0 {
-                a = 0;
-            }
-
-            self.local_memory_access.insert_record(rd as u64, rw_record);
-            self.local_memory_access.insert_record(rs1 as u64, rr_record);
-            self.local_memory_access.insert_record(addr & !0b111, mr_record);
-
-            self.emit_events(
-                self.core.clk(),
-                self.core.next_pc(),
-                instruction,
-                &mem_access_record,
-                0,
-            );
-            self.emit_mem_instr_event(instruction, a, b, c, &mem_access_record, op_a_0);
+        let op_a_0 = instruction.op_a == 0;
+        if op_a_0 {
+            a = 0;
         }
+
+        self.local_memory_access.insert_record(rd as u64, rw_record);
+        self.local_memory_access.insert_record(rs1 as u64, rr_record);
+        self.local_memory_access.insert_record(addr & !0b111, mr_record);
+
+        self.emit_events(self.core.clk(), self.core.next_pc(), instruction, &mem_access_record, 0);
+        self.emit_mem_instr_event(instruction, a, b, c, &mem_access_record, op_a_0);
 
         Ok(())
     }
@@ -260,33 +252,25 @@ impl<'a> TracingVM<'a> {
         let StoreResult { mut a, b, c, rs1, rs2, addr, rs1_record, rs2_record, mw_record } =
             self.core.execute_store(instruction)?;
 
-        if !self.core.is_unconstrained() {
-            let mem_access_record = MemoryAccessRecord {
-                a: Some(MemoryRecordEnum::Read(rs1_record)),
-                b: Some(MemoryRecordEnum::Read(rs2_record)),
-                c: None,
-                memory: Some(MemoryRecordEnum::Write(mw_record)),
-                untrusted_instruction: None,
-            };
+        let mem_access_record = MemoryAccessRecord {
+            a: Some(MemoryRecordEnum::Read(rs1_record)),
+            b: Some(MemoryRecordEnum::Read(rs2_record)),
+            c: None,
+            memory: Some(MemoryRecordEnum::Write(mw_record)),
+            untrusted_instruction: None,
+        };
 
-            let op_a_0 = instruction.op_a == 0;
-            if op_a_0 {
-                a = 0;
-            }
-
-            self.local_memory_access.insert_record(addr & !0b111, mw_record);
-            self.local_memory_access.insert_record(rs1 as u64, rs1_record);
-            self.local_memory_access.insert_record(rs2 as u64, rs2_record);
-
-            self.emit_mem_instr_event(instruction, a, b, c, &mem_access_record, op_a_0);
-            self.emit_events(
-                self.core.clk(),
-                self.core.next_pc(),
-                instruction,
-                &mem_access_record,
-                0,
-            );
+        let op_a_0 = instruction.op_a == 0;
+        if op_a_0 {
+            a = 0;
         }
+
+        self.local_memory_access.insert_record(addr & !0b111, mw_record);
+        self.local_memory_access.insert_record(rs1 as u64, rs1_record);
+        self.local_memory_access.insert_record(rs2 as u64, rs2_record);
+
+        self.emit_mem_instr_event(instruction, a, b, c, &mem_access_record, op_a_0);
+        self.emit_events(self.core.clk(), self.core.next_pc(), instruction, &mem_access_record, 0);
 
         Ok(())
     }
@@ -295,93 +279,77 @@ impl<'a> TracingVM<'a> {
     fn execute_alu(&mut self, instruction: &Instruction) {
         let AluResult { rd, rw_record, mut a, b, c, rs1, rs2 } = self.core.execute_alu(instruction);
 
-        if !self.core.is_unconstrained() {
-            if let MaybeImmediate::Register(rs2, rs2_record) = rs2 {
-                self.local_memory_access.insert_record(rs2 as u64, rs2_record);
-            }
-
-            if let MaybeImmediate::Register(rs1, rs1_record) = rs1 {
-                self.local_memory_access.insert_record(rs1 as u64, rs1_record);
-            }
-
-            self.local_memory_access.insert_record(rd as u64, rw_record);
-
-            let mem_access_record = MemoryAccessRecord {
-                a: Some(MemoryRecordEnum::Write(rw_record)),
-                b: rs1.record().map(|r| MemoryRecordEnum::Read(*r)),
-                c: rs2.record().map(|r| MemoryRecordEnum::Read(*r)),
-                memory: None,
-                untrusted_instruction: None,
-            };
-
-            let op_a_0 = instruction.op_a == 0;
-            if op_a_0 {
-                a = 0;
-            }
-
-            self.emit_events(
-                self.core.clk(),
-                self.core.next_pc(),
-                instruction,
-                &mem_access_record,
-                0,
-            );
-            self.emit_alu_event(instruction, a, b, c, &mem_access_record, op_a_0);
+        if let MaybeImmediate::Register(rs2, rs2_record) = rs2 {
+            self.local_memory_access.insert_record(rs2 as u64, rs2_record);
         }
+
+        if let MaybeImmediate::Register(rs1, rs1_record) = rs1 {
+            self.local_memory_access.insert_record(rs1 as u64, rs1_record);
+        }
+
+        self.local_memory_access.insert_record(rd as u64, rw_record);
+
+        let mem_access_record = MemoryAccessRecord {
+            a: Some(MemoryRecordEnum::Write(rw_record)),
+            b: rs1.record().map(|r| MemoryRecordEnum::Read(*r)),
+            c: rs2.record().map(|r| MemoryRecordEnum::Read(*r)),
+            memory: None,
+            untrusted_instruction: None,
+        };
+
+        let op_a_0 = instruction.op_a == 0;
+        if op_a_0 {
+            a = 0;
+        }
+
+        self.emit_events(self.core.clk(), self.core.next_pc(), instruction, &mem_access_record, 0);
+        self.emit_alu_event(instruction, a, b, c, &mem_access_record, op_a_0);
     }
 
     /// Execute a jump instruction and emit the events.
     fn execute_jump(&mut self, instruction: &Instruction) {
         let JumpResult { mut a, b, c, rd, rd_record, rs1 } = self.core.execute_jump(instruction);
 
-        if !self.core.is_unconstrained() {
-            if let MaybeImmediate::Register(rs1, rs1_record) = rs1 {
-                self.local_memory_access.insert_record(rs1 as u64, rs1_record);
-            }
+        if let MaybeImmediate::Register(rs1, rs1_record) = rs1 {
+            self.local_memory_access.insert_record(rs1 as u64, rs1_record);
+        }
 
-            self.local_memory_access.insert_record(rd as u64, rd_record);
+        self.local_memory_access.insert_record(rd as u64, rd_record);
 
-            let mem_access_record = MemoryAccessRecord {
-                a: Some(MemoryRecordEnum::Write(rd_record)),
-                b: rs1.record().map(|r| MemoryRecordEnum::Read(*r)),
-                c: None,
-                memory: None,
-                untrusted_instruction: None,
-            };
+        let mem_access_record = MemoryAccessRecord {
+            a: Some(MemoryRecordEnum::Write(rd_record)),
+            b: rs1.record().map(|r| MemoryRecordEnum::Read(*r)),
+            c: None,
+            memory: None,
+            untrusted_instruction: None,
+        };
 
-            let op_a_0 = instruction.op_a == 0;
-            if op_a_0 {
-                a = 0;
-            }
+        let op_a_0 = instruction.op_a == 0;
+        if op_a_0 {
+            a = 0;
+        }
 
-            self.emit_events(
-                self.core.clk(),
-                self.core.next_pc(),
+        self.emit_events(self.core.clk(), self.core.next_pc(), instruction, &mem_access_record, 0);
+        match instruction.opcode {
+            Opcode::JAL => self.emit_jal_event(
                 instruction,
+                a,
+                b,
+                c,
                 &mem_access_record,
-                0,
-            );
-            match instruction.opcode {
-                Opcode::JAL => self.emit_jal_event(
-                    instruction,
-                    a,
-                    b,
-                    c,
-                    &mem_access_record,
-                    op_a_0,
-                    self.core.next_pc(),
-                ),
-                Opcode::JALR => self.emit_jalr_event(
-                    instruction,
-                    a,
-                    b,
-                    c,
-                    &mem_access_record,
-                    op_a_0,
-                    self.core.next_pc(),
-                ),
-                _ => unreachable!("Invalid opcode for `execute_jump`: {:?}", instruction.opcode),
-            }
+                op_a_0,
+                self.core.next_pc(),
+            ),
+            Opcode::JALR => self.emit_jalr_event(
+                instruction,
+                a,
+                b,
+                c,
+                &mem_access_record,
+                op_a_0,
+                self.core.next_pc(),
+            ),
+            _ => unreachable!("Invalid opcode for `execute_jump`: {:?}", instruction.opcode),
         }
     }
 
@@ -390,71 +358,55 @@ impl<'a> TracingVM<'a> {
         let BranchResult { mut a, rs1, a_record, b, rs2, b_record, c } =
             self.core.execute_branch(instruction);
 
-        if !self.core.is_unconstrained() {
-            self.local_memory_access.insert_record(rs2 as u64, b_record);
-            self.local_memory_access.insert_record(rs1 as u64, a_record);
+        self.local_memory_access.insert_record(rs2 as u64, b_record);
+        self.local_memory_access.insert_record(rs1 as u64, a_record);
 
-            let mem_access_record = MemoryAccessRecord {
-                a: Some(MemoryRecordEnum::Read(a_record)),
-                b: Some(MemoryRecordEnum::Read(b_record)),
-                c: None,
-                memory: None,
-                untrusted_instruction: None,
-            };
+        let mem_access_record = MemoryAccessRecord {
+            a: Some(MemoryRecordEnum::Read(a_record)),
+            b: Some(MemoryRecordEnum::Read(b_record)),
+            c: None,
+            memory: None,
+            untrusted_instruction: None,
+        };
 
-            let op_a_0 = instruction.op_a == 0;
-            if op_a_0 {
-                a = 0;
-            }
-
-            self.emit_events(
-                self.core.clk(),
-                self.core.next_pc(),
-                instruction,
-                &mem_access_record,
-                0,
-            );
-            self.emit_branch_event(
-                instruction,
-                a,
-                b,
-                c,
-                &mem_access_record,
-                op_a_0,
-                self.core.next_pc(),
-            );
+        let op_a_0 = instruction.op_a == 0;
+        if op_a_0 {
+            a = 0;
         }
+
+        self.emit_events(self.core.clk(), self.core.next_pc(), instruction, &mem_access_record, 0);
+        self.emit_branch_event(
+            instruction,
+            a,
+            b,
+            c,
+            &mem_access_record,
+            op_a_0,
+            self.core.next_pc(),
+        );
     }
 
     /// Execute a U-type instruction and emit the events.   
     fn execute_utype(&mut self, instruction: &Instruction) {
         let UTypeResult { mut a, b, c, rd, rw_record } = self.core.execute_utype(instruction);
 
-        if !self.core.is_unconstrained() {
-            self.local_memory_access.insert_record(rd as u64, rw_record);
+        self.local_memory_access.insert_record(rd as u64, rw_record);
 
-            let mem_access_record = MemoryAccessRecord {
-                a: Some(MemoryRecordEnum::Write(rw_record)),
-                b: None,
-                c: None,
-                memory: None,
-                untrusted_instruction: None,
-            };
+        let mem_access_record = MemoryAccessRecord {
+            a: Some(MemoryRecordEnum::Write(rw_record)),
+            b: None,
+            c: None,
+            memory: None,
+            untrusted_instruction: None,
+        };
 
-            let op_a_0 = instruction.op_a == 0;
-            if op_a_0 {
-                a = 0;
-            }
-
-            self.emit_events(
-                self.core.clk(),
-                self.core.next_pc(),
-                instruction,
-                &mem_access_record,
-                0,
-            );
-            self.emit_utype_event(instruction, a, b, c, &mem_access_record, op_a_0);
+        let op_a_0 = instruction.op_a == 0;
+        if op_a_0 {
+            a = 0;
         }
+
+        self.emit_events(self.core.clk(), self.core.next_pc(), instruction, &mem_access_record, 0);
+        self.emit_utype_event(instruction, a, b, c, &mem_access_record, op_a_0);
     }
 
     /// Execute an ecall instruction and emit the events.
@@ -462,40 +414,38 @@ impl<'a> TracingVM<'a> {
         let EcallResult { a: _, a_record, b, b_record, c, c_record, code } =
             CoreVM::<'a, false>::execute_ecall(self, instruction, tracing_syscall_handler)?;
 
-        if !self.core.is_unconstrained() {
-            self.local_memory_access.insert_record(Register::X11 as u64, c_record);
-            self.local_memory_access.insert_record(Register::X10 as u64, b_record);
-            self.local_memory_access.insert_record(Register::X5 as u64, a_record);
+        self.local_memory_access.insert_record(Register::X11 as u64, c_record);
+        self.local_memory_access.insert_record(Register::X10 as u64, b_record);
+        self.local_memory_access.insert_record(Register::X5 as u64, a_record);
 
-            let mem_access_record = MemoryAccessRecord {
-                a: Some(MemoryRecordEnum::Write(a_record)),
-                b: Some(MemoryRecordEnum::Read(b_record)),
-                c: Some(MemoryRecordEnum::Read(c_record)),
-                memory: None,
-                untrusted_instruction: None,
-            };
+        let mem_access_record = MemoryAccessRecord {
+            a: Some(MemoryRecordEnum::Write(a_record)),
+            b: Some(MemoryRecordEnum::Read(b_record)),
+            c: Some(MemoryRecordEnum::Read(c_record)),
+            memory: None,
+            untrusted_instruction: None,
+        };
 
-            let op_a_0 = instruction.op_a == 0;
-            self.emit_events(
-                self.core.clk(),
-                self.core.next_pc(),
-                instruction,
-                &mem_access_record,
-                self.core.exit_code(),
-            );
+        let op_a_0 = instruction.op_a == 0;
+        self.emit_events(
+            self.core.clk(),
+            self.core.next_pc(),
+            instruction,
+            &mem_access_record,
+            self.core.exit_code(),
+        );
 
-            self.emit_syscall_event(
-                self.core.clk(),
-                code,
-                b,
-                c,
-                &mem_access_record,
-                op_a_0,
-                self.core.next_pc(),
-                self.core.exit_code(),
-                instruction,
-            );
-        }
+        self.emit_syscall_event(
+            self.core.clk(),
+            code,
+            b,
+            c,
+            &mem_access_record,
+            op_a_0,
+            self.core.next_pc(),
+            self.core.exit_code(),
+            instruction,
+        );
 
         Ok(())
     }

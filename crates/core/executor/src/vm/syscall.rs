@@ -20,8 +20,6 @@ mod precompiles;
 mod u256x2048_mul;
 mod uint256;
 mod uint256_ops;
-mod unconstrained;
-mod write;
 
 pub trait SyscallRuntime<'a, const TRACING: bool> {
     fn core(&self) -> &CoreVM<'a, TRACING>;
@@ -50,7 +48,6 @@ pub(crate) fn core_syscall_handler<'a, RT: SyscallRuntime<'a, true>>(
     match code {
         SyscallCode::HINT_LEN => hint::hint_len_syscall(rt, code, args1, args2),
         SyscallCode::HALT => halt::halt_syscall(rt, code, args1, args2),
-        SyscallCode::WRITE => write::write_syscall(rt, code, args1, args2),
         SyscallCode::SECP256K1_ADD => {
             precompiles::weirstrass::core_weirstrass_add::<RT, Secp256k1>(rt, code, args1, args2)
         }
@@ -114,17 +111,14 @@ pub(crate) fn core_syscall_handler<'a, RT: SyscallRuntime<'a, true>>(
         SyscallCode::BN254_FP_ADD | SyscallCode::BN254_FP_SUB | SyscallCode::BN254_FP_MUL => {
             precompiles::fptower::core_fp_op::<RT, Bn254BaseField>(rt, code, args1, args2)
         }
-        SyscallCode::ENTER_UNCONSTRAINED => {
-            unconstrained::enter_unconstrained(rt, code, args1, args2)
-        }
-        SyscallCode::EXIT_UNCONSTRAINED => {
-            unconstrained::exit_unconstrained(rt, code, args1, args2).1
-        }
         SyscallCode::POSEIDON2 => poseidon2::core_poseidon2(rt, code, args1, args2),
-        SyscallCode::VERIFY_SP1_PROOF
+        SyscallCode::WRITE
+        | SyscallCode::VERIFY_SP1_PROOF
         | SyscallCode::COMMIT
         | SyscallCode::COMMIT_DEFERRED_PROOFS
-        | SyscallCode::HINT_READ => None,
+        | SyscallCode::HINT_READ
+        | SyscallCode::ENTER_UNCONSTRAINED
+        | SyscallCode::EXIT_UNCONSTRAINED => None,
         code @ (SyscallCode::MPROTECT
         | SyscallCode::SECP256K1_DECOMPRESS
         | SyscallCode::BLS12381_DECOMPRESS
@@ -147,16 +141,16 @@ pub(crate) fn tracing_syscall_handler(
         rt.precompile_local_memory_access = Some(LocalMemoryAccess::default());
     }
 
-    let mut clk = rt.core.clk();
+    // Precompiles may directly modify the clock, so we need to save the current clock
+    // and reset it after the syscall.
+    let clk = rt.core.clk();
 
     #[allow(clippy::match_same_arms)]
     let ret = match code {
         // Noop: This method just writes to uninitialized memory.
         // Since the tracing VM relies on oracled memory, this method is a no-op.
-        SyscallCode::HINT_READ => None,
         SyscallCode::HINT_LEN => hint::hint_len_syscall(rt, code, args1, args2),
         SyscallCode::HALT => halt::halt_syscall(rt, code, args1, args2),
-        SyscallCode::WRITE => write::write_syscall(rt, code, args1, args2),
         SyscallCode::COMMIT => commit::commit_syscall(rt, code, args1, args2),
         SyscallCode::COMMIT_DEFERRED_PROOFS => {
             deferred::commit_deferred_proofs_syscall(rt, code, args1, args2)
@@ -229,17 +223,18 @@ pub(crate) fn tracing_syscall_handler(
         SyscallCode::BN254_FP_ADD | SyscallCode::BN254_FP_SUB | SyscallCode::BN254_FP_MUL => {
             precompiles::fptower::tracing_fp_op::<Bn254BaseField>(rt, code, args1, args2)
         }
-        SyscallCode::ENTER_UNCONSTRAINED => {
-            unconstrained::enter_unconstrained(rt, code, args1, args2)
-        }
-        SyscallCode::EXIT_UNCONSTRAINED => {
-            let (new_clk, ret_val) = unconstrained::exit_unconstrained(rt, code, args1, args2);
-            clk = new_clk;
-            ret_val
-        }
         SyscallCode::POSEIDON2 => poseidon2::tracing_poseidon2(rt, code, args1, args2),
-        SyscallCode::VERIFY_SP1_PROOF | SyscallCode::MPROTECT => None,
-        _ => None,
+        SyscallCode::VERIFY_SP1_PROOF
+        | SyscallCode::MPROTECT
+        | SyscallCode::WRITE
+        | SyscallCode::ENTER_UNCONSTRAINED
+        | SyscallCode::EXIT_UNCONSTRAINED
+        | SyscallCode::HINT_READ => None,
+        code @ (SyscallCode::SECP256K1_DECOMPRESS
+        | SyscallCode::BLS12381_DECOMPRESS
+        | SyscallCode::SECP256R1_DECOMPRESS) => {
+            unreachable!("{code} is not yet supported by the native executor.")
+        }
     };
 
     rt.core.set_clk(clk);
