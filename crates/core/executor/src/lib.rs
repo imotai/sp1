@@ -23,6 +23,7 @@
 mod air;
 mod context;
 mod cost;
+mod debug;
 mod disassembler;
 pub mod estimator;
 pub mod events;
@@ -30,6 +31,17 @@ mod executor;
 mod hook;
 mod instruction;
 mod io;
+mod tracing;
+pub use tracing::TracingVM;
+mod vm;
+pub use vm::{memory::CompressedMemory, results::CycleResult, CoreVM};
+mod hooks;
+mod splicing;
+pub use splicing::{SplicedMinimalTrace, SplicingVM};
+
+mod minimal;
+pub use minimal::*;
+
 mod memory;
 mod opcode;
 mod opts;
@@ -52,6 +64,7 @@ pub use cost::*;
 pub use executor::*;
 pub use hook::*;
 pub use instruction::*;
+// pub use minimal::*;
 pub use opcode::*;
 pub use opts::*;
 pub use program::*;

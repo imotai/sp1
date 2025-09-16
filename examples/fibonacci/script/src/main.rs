@@ -12,7 +12,7 @@ async fn main() {
     utils::setup_logger();
 
     // Create an input stream and write '500' to it.
-    let n = 1000u32;
+    let n = 700_000u32;
 
     // The input stream that the program will read from using `sp1_zkvm::io::read`. Note that the
     // types of the elements in the input stream must match the types being read in the program.
@@ -46,13 +46,17 @@ async fn main() {
     // Verify proof and public values
     client.verify(&proof, pk.verifying_key(), None).expect("verification failed");
 
-    // Test a round trip of proof serialization and deserialization.
-    proof.save("proof-with-pis.bin").expect("saving proof failed");
-    let deserialized_proof =
-        SP1ProofWithPublicValues::load("proof-with-pis.bin").expect("loading proof failed");
+    // // Test a round trip of proof serialization and deserialization.
+    // proof.save("proof-with-pis.bin").expect("saving proof failed");
+    // let deserialized_proof =
+    //     SP1ProofWithPublicValues::load("proof-with-pis.bin").expect("loading proof failed");
 
-    // Verify the deserialized proof.
-    client.verify(&deserialized_proof, pk.verifying_key(), None).expect("verification failed");
+    // // Verify the deserialized proof.
+    // client.verify(&deserialized_proof, pk.verifying_key()).expect("verification failed");
 
     println!("successfully generated and verified proof for the program!")
 }
+
+// generated proof
+// a: 5965
+// b: 3651

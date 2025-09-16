@@ -1,5 +1,7 @@
 //! Registers for the SP1 zkVM.
 
+use sp1_jit::{RiscOperand, RiscRegister};
+
 /// The number of registers.
 pub const NUM_REGISTERS: usize = 32;
 
@@ -115,6 +117,51 @@ impl Register {
             30 => Register::X30,
             31 => Register::X31,
             _ => panic!("invalid register {value}"),
+        }
+    }
+}
+
+impl From<Register> for RiscOperand {
+    fn from(value: Register) -> Self {
+        RiscOperand::Register(value.into())
+    }
+}
+
+impl From<Register> for RiscRegister {
+    fn from(value: Register) -> Self {
+        match value {
+            Register::X0 => RiscRegister::X0,
+            Register::X1 => RiscRegister::X1,
+            Register::X2 => RiscRegister::X2,
+            Register::X3 => RiscRegister::X3,
+            Register::X4 => RiscRegister::X4,
+            Register::X5 => RiscRegister::X5,
+            Register::X6 => RiscRegister::X6,
+            Register::X7 => RiscRegister::X7,
+            Register::X8 => RiscRegister::X8,
+            Register::X9 => RiscRegister::X9,
+            Register::X10 => RiscRegister::X10,
+            Register::X11 => RiscRegister::X11,
+            Register::X12 => RiscRegister::X12,
+            Register::X13 => RiscRegister::X13,
+            Register::X14 => RiscRegister::X14,
+            Register::X15 => RiscRegister::X15,
+            Register::X16 => RiscRegister::X16,
+            Register::X17 => RiscRegister::X17,
+            Register::X18 => RiscRegister::X18,
+            Register::X19 => RiscRegister::X19,
+            Register::X20 => RiscRegister::X20,
+            Register::X21 => RiscRegister::X21,
+            Register::X22 => RiscRegister::X22,
+            Register::X23 => RiscRegister::X23,
+            Register::X24 => RiscRegister::X24,
+            Register::X25 => RiscRegister::X25,
+            Register::X26 => RiscRegister::X26,
+            Register::X27 => RiscRegister::X27,
+            Register::X28 => RiscRegister::X28,
+            Register::X29 => RiscRegister::X29,
+            Register::X30 => RiscRegister::X30,
+            Register::X31 => RiscRegister::X31,
         }
     }
 }

@@ -189,7 +189,7 @@ impl ExecutionRecord {
         &mut self,
         done: bool,
         last_record: Option<&mut ExecutionRecord>,
-        opts: SplitOpts,
+        opts: &SplitOpts,
     ) -> Vec<ExecutionRecord> {
         let mut shards = Vec::new();
 
@@ -430,7 +430,7 @@ pub struct MemoryAccessRecord {
 }
 
 /// Memory record where all three operands are registers.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, DeepSizeOf)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, DeepSizeOf)]
 pub struct RTypeRecord {
     /// The a operand.
     pub op_a: u8,

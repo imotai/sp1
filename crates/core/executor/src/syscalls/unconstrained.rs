@@ -38,6 +38,7 @@ pub fn enter_unconstrained_syscall<E: ExecutorConfig>(
     // Update the state of the runtime to match the saved state.
     ctx.rt.state.global_clk = ctx.rt.unconstrained_state.global_clk;
     ctx.rt.state.clk = ctx.rt.unconstrained_state.clk;
+
     ctx.rt.state.pc = ctx.rt.unconstrained_state.pc;
     ctx.next_pc = ctx.rt.state.pc.wrapping_add(4);
 

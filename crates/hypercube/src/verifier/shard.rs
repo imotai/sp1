@@ -458,6 +458,7 @@ where
         let max_log_row_count = self.pcs_verifier.max_log_row_count;
 
         if public_values.len() < self.machine.num_pv_elts() {
+            tracing::error!("invalid public values length: {}", public_values.len());
             return Err(ShardVerifierError::InvalidPublicValues);
         }
 

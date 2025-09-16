@@ -28,7 +28,7 @@ export RUST_LOG=info
 export SP1_ALLOW_DEPRECATED_HOOKS=true
 
 # Run sp1-perf
-cargo run -p sp1-perf --bin sp1-perf-executor --profile profiling --features bigint-rug \
+cargo +nightly run -p sp1-perf --bin sp1-perf-executor --features bigint-rug \
     -- --program program.bin --stdin stdin.bin --executor-mode $kind
 
 # Uncomment to generate flamegraphs

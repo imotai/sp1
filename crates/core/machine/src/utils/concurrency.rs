@@ -26,6 +26,14 @@ impl TurnBasedSync {
         }
     }
 
+    /// Gets the current turn
+    ///
+    /// # WARNING
+    /// Note that relying on this value can cause race conditions.
+    pub fn current_turn(&self) -> usize {
+        *self.current_turn.lock().unwrap()
+    }
+
     /// Advances the current turn.
     pub fn advance_turn(&self) {
         let mut turn: std::sync::MutexGuard<'_, usize> = self.current_turn.lock().unwrap();
@@ -40,6 +48,8 @@ pub struct AsyncTurn {
 
 impl AsyncTurn {
     pub fn new() -> Self {
+        // Note: We could define some preconditions here and use unsafe + atomic counter here, but
+        // this works fine for now...
         Self {
             inner: Arc::new(Mutex::new(AsyncTurnInner { current_turn: 0, wakers: HashMap::new() })),
         }

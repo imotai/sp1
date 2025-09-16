@@ -22,7 +22,7 @@ use crate::{
 };
 
 /// Elliptic Curve Page Prot Records.
-#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf, PartialEq, Eq)]
 pub struct EllipticCurvePageProtRecords {
     /// The page prot records for reading the address.
     pub read_page_prot_records: Vec<PageProtRecord>,
@@ -33,7 +33,7 @@ pub struct EllipticCurvePageProtRecords {
 /// Elliptic Curve Add Event.
 ///
 /// This event is emitted when an elliptic curve addition operation is performed.
-#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
+#[derive(Default, Debug, Clone, Serialize, PartialEq, Eq, Deserialize, DeepSizeOf)]
 pub struct EllipticCurveAddEvent {
     /// The clock cycle.
     pub clk: u64,
@@ -60,7 +60,7 @@ pub struct EllipticCurveAddEvent {
 /// Elliptic Curve Double Event.
 ///
 /// This event is emitted when an elliptic curve doubling operation is performed.
-#[derive(Default, Debug, Clone, Serialize, Deserialize, DeepSizeOf)]
+#[derive(Default, Debug, Clone, Serialize, PartialEq, Eq, Deserialize, DeepSizeOf)]
 pub struct EllipticCurveDoubleEvent {
     /// The clock cycle.
     pub clk: u64,

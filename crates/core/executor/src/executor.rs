@@ -13,6 +13,7 @@ use crate::{
     },
     StatusCode, NUM_REGISTERS,
 };
+use sp1_jit::debug::{self, DebugState};
 
 use clap::ValueEnum;
 use enum_map::EnumMap;
@@ -51,6 +52,9 @@ use crate::{
 pub const M64: u64 = 0xFFFFFFFFFFFFFFFF;
 
 /// The increment for the program counter.  Is used for all instructions except
+use std::sync::mpsc;
+
+/// The default increment for the program counter.  Is used for all instructions except
 /// for branches and jumps.
 pub const PC_INC: u32 = 4;
 /// The default increment for the timestamp.
@@ -204,6 +208,9 @@ pub struct Executor<'a> {
 
     /// The proof nonce.
     proof_nonce: [u32; 4],
+
+    /// Sends debug state every instruction when in debug mode.
+    debug_sender: Option<mpsc::SyncSender<Option<debug::State>>>,
 }
 
 /// The configuration of the executor.
@@ -481,6 +488,7 @@ impl<'a> Executor<'a> {
             decoded_instruction_events: HashMap::new(),
             opts,
             proof_nonce: context.proof_nonce,
+            debug_sender: None,
         }
     }
 
@@ -1759,7 +1767,6 @@ impl<'a> Executor<'a> {
         let mut exit_code = 0u32;
         let mut next_pc = self.state.pc.wrapping_add(4);
         // Will be set to a non-default value if the instruction is a syscall.
-
         let (mut a, b, c): (u64, u64, u64);
 
         // The syscall id for precompiles.  This is only used/set when opcode == ECALL.
@@ -1774,6 +1781,10 @@ impl<'a> Executor<'a> {
                 self.local_counts.event_counts[instruction.opcode] -= 1;
                 self.local_counts.load_x0_counts += 1;
             }
+        }
+
+        if let Some(sender) = &self.debug_sender {
+            sender.send(Some(self.current_state())).expect("Failed to send debug state");
         }
 
         if instruction.is_alu_instruction() {
@@ -1905,7 +1916,7 @@ impl<'a> Executor<'a> {
                     b % c
                 }
             }
-            // RISCV-64
+            // RISCV-64 word operations
             Opcode::ADDW => (Wrapping(b as i32) + Wrapping(c as i32)).0 as i64 as u64,
             Opcode::SUBW => (Wrapping(b as i32) - Wrapping(c as i32)).0 as i64 as u64,
             Opcode::MULW => (Wrapping(b as i32) * Wrapping(c as i32)).0 as i64 as u64,
@@ -1937,7 +1948,7 @@ impl<'a> Executor<'a> {
                     (((b as u32) % (c as u32)) as i32) as i64 as u64
                 }
             }
-            // RISC-V 64-bit operations
+            // RISCV-64 bit operations
             Opcode::SLLW => (((b as i64) << (c & 0x1f)) as i32) as i64 as u64,
             Opcode::SRLW => (((b as u32) >> ((c & 0x1f) as u32)) as i32) as u64,
             Opcode::SRAW => {
@@ -2193,7 +2204,7 @@ impl<'a> Executor<'a> {
     /// Executes one cycle of the program, returning whether the program has finished.
     #[inline]
     #[allow(clippy::too_many_lines)]
-    fn execute_cycle<E: ExecutorConfig>(&mut self) -> Result<bool, ExecutionError> {
+    pub fn execute_cycle<E: ExecutorConfig>(&mut self) -> Result<bool, ExecutionError> {
         if E::MODE == ExecutorMode::Trace {
             self.memory_accesses = MemoryAccessRecord::default();
         }
@@ -2434,12 +2445,13 @@ impl<'a> Executor<'a> {
         Ok((checkpoint, public_values, done))
     }
 
-    fn initialize(&mut self) {
+    #[allow(missing_docs)]
+    pub fn initialize(&mut self) {
         self.state.clk = 1;
 
         tracing::debug!("loading memory image");
-        for (&addr, value) in &self.program.memory_image {
-            self.state.memory.insert(addr, MemoryEntry::init(*value));
+        for (addr, value) in self.program.memory_image.iter() {
+            self.state.memory.insert(*addr, MemoryEntry::init(*value));
         }
         if self.program.enable_untrusted_programs {
             for (&page_idx, page_prot) in &self.program.page_prot_image {
@@ -2702,6 +2714,7 @@ impl<'a> Executor<'a> {
                     if !self.record.program.memory_image.contains_key(&addr) {
                         let initial_value =
                             self.state.uninitialized_memory.registers.get(addr).unwrap_or(&0);
+
                         memory_initialize_events
                             .push(MemoryInitializeFinalizeEvent::initialize(addr, *initial_value));
                     }
@@ -2911,6 +2924,28 @@ impl<'a> Executor<'a> {
 impl Default for ExecutorMode {
     fn default() -> Self {
         Self::Simple
+    }
+}
+impl debug::DebugState for Executor<'_> {
+    fn current_state(&self) -> debug::State {
+        let registers = self.state.memory.registers.registers.map(|r| r.map_or(0, |r| r.value));
+        debug::State {
+            pc: self.state.pc,
+            clk: self.state.clk,
+            global_clk: self.state.global_clk,
+            registers,
+        }
+    }
+
+    fn new_debug_receiver(&mut self) -> Option<mpsc::Receiver<Option<debug::State>>> {
+        self.debug_sender
+            .is_none()
+            .then(|| {
+                let (tx, rx) = mpsc::sync_channel(0);
+                self.debug_sender = Some(tx);
+                Some(rx)
+            })
+            .flatten()
     }
 }
 

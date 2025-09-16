@@ -669,7 +669,7 @@ where
         }
 
         // Check that the number of bytes matches the size of the type.
-        if len % std::mem::size_of::<T>() != 0 {
+        if !len.is_multiple_of(std::mem::size_of::<T>()) {
             align_fail(len, std::mem::size_of::<T>());
         }
 

@@ -104,9 +104,11 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // - We include some of these checks inside the verify function for additional verification.
         let mut prev_timestamp =
             [SP1Field::zero(), SP1Field::zero(), SP1Field::zero(), SP1Field::one()];
+
         for shard_proof in proof.0.iter() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
+
             if public_values.initial_timestamp != prev_timestamp {
                 return Err(MachineVerifierError::InvalidPublicValues("invalid initial timestamp"));
             }
@@ -158,6 +160,9 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                         "pc_start != vk.pc_start: program counter should start at vk.pc_start",
                     ));
                 } else {
+                    tracing::debug!("checking shard {}/{}", i, proof.0.len());
+                    tracing::debug!("pc_start: {:?}", public_values.pc_start);
+                    tracing::debug!("prev_next_pc: {:?}", prev_next_pc);
                     return Err(MachineVerifierError::InvalidPublicValues(
                         "pc_start != prev_next_pc: pc_start should equal prev_next_pc for all shards",
                     ));
@@ -407,7 +412,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
 
         // Verify the shard proofs.
         for (i, shard_proof) in proof.0.iter().enumerate() {
-            let span = tracing::debug_span!("Verify shard proof", i).entered();
+            let span = tracing::debug_span!("Verify shard proof", i, n = proof.0.len()).entered();
             let mut challenger = self.core_prover.verifier().challenger();
             vk.observe_into(&mut challenger);
             self.core_prover

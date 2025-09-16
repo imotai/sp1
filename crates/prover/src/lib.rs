@@ -62,7 +62,10 @@ pub type OuterSC = SP1OuterConfig;
 // >>::DeviceProvingKey;
 use sp1_recursion_machine::RecursionAir;
 
-use crate::components::{CoreProver, RecursionProver, WrapProver};
+use crate::{
+    components::{CoreProver, RecursionProver, WrapProver},
+    local::LocalProver,
+};
 
 const COMPRESS_DEGREE: usize = 3;
 const SHRINK_DEGREE: usize = 3;
@@ -387,4 +390,9 @@ impl SP1ProverBuilder<CpuSP1ProverComponents> {
             max_compose_arity,
         )
     }
+}
+
+pub async fn default_local_prover() -> LocalProver<CpuSP1ProverComponents> {
+    let default_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::new().build().await;
+    LocalProver::new(default_prover, Default::default())
 }

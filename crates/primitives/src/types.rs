@@ -73,6 +73,8 @@ pub enum Elf {
     Dynamic(std::sync::Arc<[u8]>),
 }
 
+// todo!(n): implement serde for the ELF type.
+
 impl From<std::sync::Arc<[u8]>> for Elf {
     fn from(elf: std::sync::Arc<[u8]>) -> Self {
         Self::Dynamic(elf)

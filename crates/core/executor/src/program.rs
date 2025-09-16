@@ -19,6 +19,7 @@ use sp1_hypercube::{
     InteractionKind,
 };
 use sp1_primitives::consts::split_page_idx;
+use std::sync::Arc;
 
 /// A program that can be executed by the SP1 zkVM.
 ///
@@ -34,10 +35,10 @@ pub struct Program {
     pub pc_start_abs: u64,
     /// The base address of the program.
     pub pc_base: u64,
-    /// The initial memory image, useful for global constants.
-    pub memory_image: HashMap<u64, u64>,
     /// The initial page protection image, mapping page indices to protection flags.
     pub page_prot_image: HashMap<u64, u8>,
+    /// The initial memory image, useful for global constants
+    pub memory_image: Arc<HashMap<u64, u64>>,
     /// The shape for the preprocessed tables.
     pub preprocessed_shape: Option<Shape<RiscvAirId>>,
     /// Flag indicating if untrusted programs are allowed.
@@ -53,8 +54,8 @@ impl Program {
             instructions_encoded: None,
             pc_start_abs,
             pc_base,
-            memory_image: HashMap::new(),
             page_prot_image: HashMap::new(),
+            memory_image: Arc::new(HashMap::new()),
             preprocessed_shape: None,
             enable_untrusted_programs: false,
         }
@@ -114,11 +115,7 @@ impl Program {
     /// Fetch the instruction at the given program counter.
     pub fn fetch(&self, pc: u64) -> Option<&Instruction> {
         let idx = ((pc - self.pc_base) / 4) as usize;
-        if idx < self.instructions.len() {
-            Some(&self.instructions[idx])
-        } else {
-            None
-        }
+        self.instructions.get(idx)
     }
 
     // /// Returns `self.pc_start - self.pc_base`, that is, the relative `pc_start`.

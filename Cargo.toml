@@ -63,6 +63,10 @@ members = [
   "crates/cli",
   "crates/core/compiler",
   "crates/perf",
+  "crates/cli", 
+  "crates/core/compiler",
+  "crates/core/jit",
+  "crates/perf"
   # "crates/verifier",
 ]
 exclude = [
@@ -89,6 +93,7 @@ sp1-build = { path = "crates/build", version = "6.0.0" }
 sp1-cli = { path = "crates/cli", version = "6.0.0", default-features = false }
 sp1-core-machine = { path = "crates/core/machine", version = "6.0.0" }
 sp1-core-executor = { path = "crates/core/executor", version = "6.0.0" }
+sp1-jit = { path = "crates/core/jit", version = "6.0.0" }
 sp1-curves = { path = "crates/curves", version = "6.0.0" }
 sp1-derive = { path = "crates/derive", version = "6.0.0" }
 sp1-eval = { path = "crates/eval", version = "6.0.0" }
