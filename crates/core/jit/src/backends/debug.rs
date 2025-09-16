@@ -1,22 +1,9 @@
 use crate::{
-    ComputeInstructions, ControlFlowInstructions, DebugFn, Debuggable, EcallHandler, ExternFn,
-    JitContext, JitFunction, MemoryInstructions, RiscOperand, RiscRegister, RiscvTranspiler,
-    SystemInstructions, TraceCollector,
+    debug, ComputeInstructions, ControlFlowInstructions, DebugFn, Debuggable, EcallHandler,
+    ExternFn, JitContext, JitFunction, MemoryInstructions, RiscOperand, RiscRegister,
+    RiscvTranspiler, SystemInstructions, TraceCollector,
 };
-use std::{
-    io,
-    sync::{mpsc, OnceLock},
-};
-
-#[allow(clippy::type_complexity)]
-static DEBUG_REGISTERS: OnceLock<mpsc::Sender<Option<(u64, u64, [u64; 32])>>> = OnceLock::new();
-
-pub fn init_debug_registers() -> mpsc::Receiver<Option<(u64, u64, [u64; 32])>> {
-    let (tx, rx) = mpsc::channel();
-    DEBUG_REGISTERS.set(tx).expect("DEBUG_REGISTERS already initialized");
-
-    rx
-}
+use std::io;
 
 pub struct DebugBackend<B: RiscvTranspiler> {
     backend: B,
@@ -32,13 +19,13 @@ impl<B: RiscvTranspiler + Debuggable> RiscvTranspiler for DebugBackend<B> {
     fn new(
         program_size: usize,
         memory_size: usize,
-        trace_buf_size: usize,
+        max_trace_size: u64,
         pc_start: u64,
         pc_base: u64,
         clk_bump: u64,
     ) -> Result<Self, std::io::Error> {
         let backend =
-            B::new(program_size, memory_size, trace_buf_size, pc_start, pc_base, clk_bump)?;
+            B::new(program_size, memory_size, max_trace_size, pc_start, pc_base, clk_bump)?;
 
         Ok(Self::new(backend))
     }
@@ -54,9 +41,15 @@ impl<B: RiscvTranspiler + Debuggable> RiscvTranspiler for DebugBackend<B> {
 
         extern "C" fn collect_registers(ctx: *mut JitContext) {
             let ctx = unsafe { &mut *ctx };
-
-            if let Some(sender) = DEBUG_REGISTERS.get() {
-                sender.send(Some((ctx.pc, ctx.clk, *ctx.registers()))).unwrap();
+            if let Some(sender) = &ctx.debug_sender {
+                sender
+                    .send(Some(debug::State {
+                        pc: ctx.pc,
+                        clk: ctx.clk,
+                        global_clk: ctx.global_clk,
+                        registers: ctx.registers,
+                    }))
+                    .expect("Failed to send debug state");
             }
         }
 
@@ -68,10 +61,6 @@ impl<B: RiscvTranspiler + Debuggable> RiscvTranspiler for DebugBackend<B> {
 
     fn end_instr(&mut self) {
         self.backend.end_instr();
-    }
-
-    fn exit_if_trace_exceeds(&mut self, max_trace_size: u64) {
-        self.backend.exit_if_trace_exceeds(max_trace_size);
     }
 
     fn inspect_register(&mut self, reg: RiscRegister, handler: DebugFn) {

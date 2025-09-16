@@ -8,10 +8,9 @@ use std::time::{Duration, Instant};
 // use sp1_hypercube::SP1ProverOpts;
 // use sp1_stark::SP1ProverOpts;
 use clap::{command, Parser};
-use hashbrown::HashSet;
 use sp1_core_executor::{
-    CycleResult, Executor, ExecutorMode, MinimalExecutor, Program, Simple, SplicedMinimalTrace,
-    SplicingVM, Trace, TracingVM,
+    CompressedMemory, CycleResult, Executor, ExecutorMode, MinimalExecutor, Program, Simple,
+    SplicedMinimalTrace, SplicingVM, Trace, TracingVM,
 };
 use sp1_sdk::{self, SP1Stdin};
 use std::sync::Arc;
@@ -65,7 +64,6 @@ async fn main() {
     let program = Program::from(&elf).expect("failed to parse program");
     let program = Arc::new(program);
     let mut executor = Executor::new(program.clone(), Default::default());
-    // executor.maximal_shapes = Some(maximal_shapes);
     executor.write_vecs(&stdin.buffer);
     for (proof, vkey) in stdin.proofs.iter() {
         executor.write_proof(proof.clone(), vkey.clone());
@@ -111,7 +109,6 @@ async fn main() {
         }
         ExecutorMode::Trace => {
             let mut checkpoint_executor = Executor::new(program.clone(), Default::default());
-            // executor.maximal_shapes = Some(maximal_shapes);
             checkpoint_executor.write_vecs(&stdin.buffer);
             for (proof, vkey) in stdin.proofs.iter() {
                 checkpoint_executor.write_proof(proof.clone(), vkey.clone());
@@ -183,7 +180,7 @@ async fn main() {
                 minimal.global_clk() as f64 / 1_000_000.0 / minimal_trace_duration.as_secs_f64()
             );
 
-            let mut touched_addresses = HashSet::new();
+            let mut touched_addresses = CompressedMemory::new();
             let mut splicing_vm =
                 SplicingVM::new(&minimal_trace, program.clone(), &mut touched_addresses);
 

@@ -398,6 +398,14 @@ impl<'a, V: Copy> Entry<'a, V> {
     }
 }
 
+impl<'a, V: Copy + Default> Entry<'a, V> {
+    /// Ensures a value is in the entry, inserting the default value if necessary.
+    /// Returns a mutable reference to the value.
+    pub fn or_default(self) -> &'a mut V {
+        self.or_insert_with(Default::default)
+    }
+}
+
 /// A vacant entry, for in-place manipulation.
 pub struct VacantEntry<'a, V: Copy> {
     entry: &'a mut Option<V>,

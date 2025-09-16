@@ -8,13 +8,18 @@ use crate::{
 pub(crate) fn core_poseidon2<'a, RT: SyscallRuntime<'a, true>>(
     rt: &mut RT,
     _: SyscallCode,
-    _: u64,
-    _: u64,
+    arg1: u64,
+    arg2: u64,
 ) -> Option<u64> {
-    // We need to advance the memory reads by:
-    // read 8 words as input
-    // write 8 words as output: 8 * 2 = 16 (write records are (old, new) pairs)
-    rt.core_mut().mem_reads().advance(24);
+    assert!(arg2 == 0, "arg2 must be 0");
+    assert!(arg1.is_multiple_of(8));
+    let ptr = arg1;
+
+    // Read the input values using unsafe read (since we'll overwrite them)
+    let _ = rt.core_mut().mr_slice_unsafe(ptr, 8);
+
+    // Write the computed results from memory records
+    let _ = rt.core_mut().mw_slice(ptr, 8);
 
     None
 }
@@ -34,7 +39,7 @@ pub(crate) fn tracing_poseidon2(
     let mut memory = rt.precompile_memory();
 
     // Read the input values using unsafe read (since we'll overwrite them)
-    memory.mr_slice_unsafe(8);
+    let _ = memory.mr_slice_unsafe(8);
 
     // Write the computed results from memory records
     let output_memory_records = memory.mw_slice(ptr, 8);

@@ -8,13 +8,25 @@ use crate::{
 pub(crate) fn core_sha256_compress<'a, RT: SyscallRuntime<'a, true>>(
     rt: &mut RT,
     _: SyscallCode,
-    _: u64,
-    _: u64,
+    arg1: u64,
+    arg2: u64,
 ) -> Option<u64> {
-    // We need to advance the memory reads by:
-    // [p, q]: num_words * 2
-    // write to [p]: num_words * 2, write records are of the form (last_entry, new_entry)
-    rt.core_mut().mem_reads().advance(88);
+    let w_ptr = arg1;
+    let h_ptr = arg2;
+    assert_ne!(w_ptr, h_ptr);
+
+    let core_mut = rt.core_mut();
+
+    // Execute the "initialize" phase where we read in the h values.
+    for i in 0..8 {
+        let _ = core_mut.mr(h_ptr + i as u64 * 8);
+    }
+
+    for i in 0..64 {
+        let _ = core_mut.mr(w_ptr + i as u64 * 8);
+    }
+
+    core_mut.mw_slice(h_ptr, 8);
 
     None
 }

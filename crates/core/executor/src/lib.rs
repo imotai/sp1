@@ -23,6 +23,7 @@
 mod air;
 mod context;
 mod cost;
+mod debug;
 mod disassembler;
 pub mod estimator;
 pub mod events;
@@ -33,14 +34,12 @@ mod io;
 mod tracing;
 pub use tracing::TracingVM;
 mod vm;
-pub use vm::{results::CycleResult, CoreVM};
+pub use vm::{memory::CompressedMemory, results::CycleResult, CoreVM};
 mod hooks;
 mod splicing;
 pub use splicing::{SplicedMinimalTrace, SplicingVM};
 
-#[cfg(all(target_arch = "x86_64", target_endian = "little"))]
 mod minimal;
-#[cfg(all(target_arch = "x86_64", target_endian = "little"))]
 pub use minimal::*;
 
 mod memory;

@@ -119,7 +119,7 @@ pub struct MemValue {
 
 /// A convience structure for getting offsets of fields in the actual [TraceChunk].
 #[repr(C)]
-pub(crate) struct TraceChunkHeader {
+pub struct TraceChunkHeader {
     pub start_registers: [u64; 32],
     pub pc_start: u64,
     pub clk_start: u64,
@@ -135,7 +135,12 @@ pub struct TraceChunkRaw {
 }
 
 impl TraceChunkRaw {
-    pub(crate) fn new(inner: Mmap, hint_lens: Vec<usize>) -> Self {
+    /// # Safety
+    ///
+    /// - The mmap must be a valid [`TraceChunkHeader`].
+    /// - The mmap must contain valid [`MemValue`]s in after the header.
+    /// - The `num_mem_reads` must be the number of [`MemValue`]s in the mmap after the header.
+    pub unsafe fn new(inner: Mmap, hint_lens: Vec<usize>) -> Self {
         Self { inner: Arc::new(inner), hint_lens }
     }
 }
@@ -192,6 +197,7 @@ impl MinimalTrace for TraceChunkRaw {
 pub struct MemReads<'a> {
     inner: *const MemValue,
     len: usize,
+    /// Capture the lifetime of the buffer for saftey reasons.
     _phantom: PhantomData<&'a ()>,
 }
 

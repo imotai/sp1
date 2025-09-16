@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use hashbrown::HashSet;
 use sp1_jit::{MemReads, MinimalTrace};
 
 use crate::{
     syscalls::SyscallCode,
     vm::{
+        memory::CompressedMemory,
         results::{CycleResult, EcallResult, LoadResult, StoreResult},
         syscall::{core_syscall_handler, SyscallRuntime},
         CoreVM,
@@ -18,7 +18,7 @@ pub struct SplicingVM<'a> {
     /// The core VM.
     pub core: CoreVM<'a, true>,
     /// The addresses that have been touched.
-    pub touched_addresses: &'a mut HashSet<u64>,
+    pub touched_addresses: &'a mut CompressedMemory,
     /// The index of the hint lens the next shard will use.
     pub hint_lens_idx: usize,
 }
@@ -142,10 +142,11 @@ impl SplicingVM<'_> {
 
 impl<'a> SplicingVM<'a> {
     /// Create a new full-tracing VM from a minimal trace.
+    #[tracing::instrument(name = "SplicingVM::new", skip_all)]
     pub fn new<T: MinimalTrace>(
         trace: &'a T,
         program: Arc<Program>,
-        touched_addresses: &'a mut HashSet<u64>,
+        touched_addresses: &'a mut CompressedMemory,
     ) -> Self {
         Self { core: CoreVM::new(trace, program), touched_addresses, hint_lens_idx: 0 }
     }
@@ -160,7 +161,7 @@ impl<'a> SplicingVM<'a> {
         let LoadResult { addr, .. } = self.core.execute_load(instruction)?;
 
         // Ensure the address is aligned to 8 bytes.
-        self.touched_addresses.insert(addr & !0b111);
+        self.touched_addresses.insert(addr & !0b111, true);
 
         Ok(())
     }
@@ -175,7 +176,7 @@ impl<'a> SplicingVM<'a> {
         let StoreResult { addr, .. } = self.core.execute_store(instruction)?;
 
         // Ensure the address is aligned to 8 bytes.
-        self.touched_addresses.insert(addr & !0b111);
+        self.touched_addresses.insert(addr & !0b111, true);
 
         Ok(())
     }
@@ -267,10 +268,16 @@ impl<T: MinimalTrace> SplicedMinimalTrace<T> {
     }
 
     /// Create a new spliced minimal trace from a minimal trace without any splicing.
+    #[tracing::instrument(name = "SplicedMinimalTrace::new_full_trace", skip(trace))]
     pub fn new_full_trace(trace: T) -> Self {
         let start_registers = trace.start_registers();
         let start_pc = trace.pc_start();
         let start_clk = trace.clk_start();
+
+        tracing::trace!("start_pc: {}", start_pc);
+        tracing::trace!("start_clk: {}", start_clk);
+        tracing::trace!("trace.num_mem_reads(): {}", trace.num_mem_reads());
+        tracing::trace!("trace.hint_lens(): {:?}", trace.hint_lens().len());
 
         Self::new(trace, start_registers, start_pc, start_clk, 0, 0)
     }

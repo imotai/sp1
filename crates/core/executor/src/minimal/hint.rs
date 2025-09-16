@@ -1,16 +1,12 @@
-use sp1_jit::JitContext;
+use sp1_jit::SyscallContext;
 
-pub unsafe fn hint_read(ctx: &mut JitContext, ptr: u64, len: u64) -> Option<u64> {
+pub unsafe fn hint_read(ctx: &mut impl SyscallContext, ptr: u64, len: u64) -> Option<u64> {
     panic_if_input_exhausted(ctx);
 
     // SAFETY: The input stream is not empty, as checked above, so the back is not None
     let vec = unsafe { ctx.input_buffer().pop_front().unwrap_unchecked() };
 
-    if ctx.tracing() {
-        ctx.trace_hint(ptr, vec.clone());
-    }
-
-    let mut memory = ctx.memory();
+    ctx.trace_hint(ptr, vec.clone());
 
     assert_eq!(vec.len() as u64, len, "hint input stream read length mismatch");
     assert_eq!(ptr % 8, 0, "hint read address not aligned to 8 bytes");
@@ -28,7 +24,7 @@ pub unsafe fn hint_read(ctx: &mut JitContext, ptr: u64, len: u64) -> Option<u64>
             chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
         ]);
 
-        memory.mw_hint(ptr + (i * 8) as u64, word);
+        ctx.mw_hint(ptr + (i * 8) as u64, word);
     }
 
     // Write the final word to the memory.
@@ -37,19 +33,19 @@ pub unsafe fn hint_read(ctx: &mut JitContext, ptr: u64, len: u64) -> Option<u64>
         buf[..remainder.len()].copy_from_slice(remainder);
         u64::from_le_bytes(buf)
     };
-    memory.mw_hint(ptr + (chunk_count * 8) as u64, final_word);
+    ctx.mw_hint(ptr + (chunk_count * 8) as u64, final_word);
 
     None
 }
 
-unsafe fn panic_if_input_exhausted(ctx: &mut JitContext) {
+unsafe fn panic_if_input_exhausted(ctx: &mut impl SyscallContext) {
     if ctx.input_buffer().is_empty() {
         panic!("hint input stream exhausted");
     }
 }
 
 #[allow(clippy::unnecessary_wraps)]
-pub unsafe fn hint_len(ctx: &mut JitContext, _op_a: u64, _op_b: u64) -> Option<u64> {
+pub unsafe fn hint_len(ctx: &mut impl SyscallContext, _op_a: u64, _op_b: u64) -> Option<u64> {
     let input_stream: &mut std::collections::VecDeque<Vec<u8>> = ctx.input_buffer();
     Some(input_stream.front().map_or(u64::MAX, |data| data.len() as u64))
 }

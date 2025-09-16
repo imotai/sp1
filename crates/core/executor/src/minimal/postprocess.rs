@@ -15,6 +15,9 @@ impl MinimalExecutor {
         final_registers: [MemoryRecord; 32],
         mut touched_addresses: HashSet<u64>,
     ) {
+        // Add all the finalize addresses to the touched addresses.
+        touched_addresses.extend(self.program().memory_image.keys().copied());
+
         record.global_memory_initialize_events.extend(
             final_registers
                 .iter()
@@ -31,7 +34,7 @@ impl MinimalExecutor {
             ),
         );
 
-        let hint_init_events = self
+        let hint_init_events: Vec<MemoryInitializeFinalizeEvent> = self
             .hints()
             .iter()
             .flat_map(|(addr, value)| chunked_memory_init_events(*addr, value))
@@ -46,7 +49,7 @@ impl MinimalExecutor {
         // initialized in the MemoryProgram chip.
         let memory_init_events = touched_addresses
             .iter()
-            .filter(|addr| !self.program.memory_image.contains_key(*addr))
+            .filter(|addr| !self.program().memory_image.contains_key(*addr))
             .filter(|addr| !hint_addrs.contains(*addr))
             .map(|addr| MemoryInitializeFinalizeEvent::initialize(*addr, 0));
         record.global_memory_initialize_events.extend(memory_init_events);
@@ -56,7 +59,7 @@ impl MinimalExecutor {
 
         // Finalize the memory addresses that were touched during execution.
         for addr in touched_addresses {
-            let entry = self.memory().get(addr);
+            let entry = self.get_memory_value(addr);
 
             record.global_memory_finalize_events.push(MemoryInitializeFinalizeEvent::finalize(
                 addr,

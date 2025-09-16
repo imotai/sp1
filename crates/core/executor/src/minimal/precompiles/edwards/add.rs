@@ -1,8 +1,8 @@
 use sp1_curves::{edwards::EdwardsParameters, EllipticCurve};
-use sp1_jit::JitContext;
+use sp1_jit::SyscallContext;
 
 pub unsafe fn edwards_add<E: EdwardsParameters + EllipticCurve>(
-    ctx: &mut JitContext,
+    ctx: &mut impl SyscallContext,
     arg1: u64,
     arg2: u64,
 ) -> Option<u64> {

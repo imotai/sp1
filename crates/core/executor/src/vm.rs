@@ -15,6 +15,7 @@ use shapes::ShapeChecker;
 use sp1_jit::{MemReads, MinimalTrace};
 use std::{mem::MaybeUninit, num::Wrapping, ptr::addr_of_mut, sync::Arc};
 
+pub(crate) mod memory;
 pub(crate) mod results;
 mod shapes;
 pub(crate) mod syscall;
@@ -87,6 +88,10 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
         tracing::trace!("trace.hint_lens(): {:?}", trace.hint_lens().len());
         tracing::trace!("trace.start_registers(): {:?}", trace.start_registers());
 
+        if trace.clk_start() == 1 {
+            assert_eq!(trace.pc_start(), program.pc_start_abs);
+        }
+
         Self {
             registers,
             global_clk: 0,
@@ -153,7 +158,7 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
 
         // Compute the address.
         let addr = b.wrapping_add(imm);
-        let mr_record = self.mr();
+        let mr_record = self.mr(addr);
         let word = mr_record.value;
 
         let a = match instruction.opcode {
@@ -227,7 +232,7 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
         let b = rs2_record.value;
         let a = rs1_record.value;
         let addr = b.wrapping_add(c);
-        let mr_record = self.mr();
+        let mr_record = self.mr(addr);
         let word = mr_record.value;
 
         let memory_store_value = match instruction.opcode {
@@ -581,11 +586,27 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
         let syscall_id = core.registers[t0 as usize].value;
         let code = SyscallCode::from_u32(syscall_id as u32);
 
+        // Mark the runtime as having sent a syscall.
+        #[allow(clippy::collapsible_if)]
+        if SHAPE_CHECKING {
+            if code.should_send() == 1 {
+                if core.is_retained_syscall(code) {
+                    core.shape_checker.handle_retained_syscall(code);
+                } else {
+                    core.shape_checker.syscall_sent();
+                }
+            }
+        }
+
         let c_record = core.rr(Register::X11, MemoryAccessPosition::C);
         let b_record = core.rr(Register::X10, MemoryAccessPosition::B);
         let c = c_record.value;
         let b = b_record.value;
 
+        // The only way unconstrained mode interacts with the parts of the program that proven is
+        // via hints, this means during tracing and splicing, we can just "skip" the whole
+        // set of unconstrained cycles, and rely on the fact that the hints are already
+        // apart of the minimal trace.
         let a = if code == SyscallCode::ENTER_UNCONSTRAINED {
             0
         } else {
@@ -600,24 +621,13 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
         // Add 256 to the next clock to account for the ecall.
         core.set_next_clk(core.next_clk() + 256);
 
-        #[allow(clippy::collapsible_if)]
         if SHAPE_CHECKING {
-            if code.should_send() == 1 {
-                if core.is_retained_syscall(code) {
-                    core.shape_checker.handle_retained_syscall(code);
-                } else {
-                    core.shape_checker.syscall_sent();
-                }
-            }
-
             core.shape_checker.handle_instruction(
                 instruction,
                 core.needs_bump_clk_high(),
                 false, // ecall instruction, no load of x0
                 core.needs_state_bump(instruction),
             );
-
-            core.shape_checker.add_local_mem_count(code.touched_addresses() as u64);
         }
 
         Ok(EcallResult { a, a_record, b, b_record, c, c_record, code })
@@ -627,17 +637,17 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
 impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
     /// Read the next required memory read from the trace.
     #[inline]
-    fn mr(&mut self) -> MemoryReadRecord {
+    fn mr(&mut self, addr: u64) -> MemoryReadRecord {
         #[allow(clippy::manual_let_else)]
         let record = match self.mem_reads.next() {
             Some(next) => next,
             None => {
-                unreachable!("memory reads unexpectdely exhausted.");
+                unreachable!("memory reads unexpectdely exhausted at {addr}, clk {}", self.clk);
             }
         };
 
         if SHAPE_CHECKING {
-            self.shape_checker.handle_memory_read(record.clk);
+            self.shape_checker.handle_mem_event(addr, record.clk);
         }
 
         MemoryReadRecord {
@@ -646,6 +656,81 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
             prev_timestamp: record.clk,
             prev_page_prot_record: None,
         }
+    }
+
+    #[inline]
+    pub(crate) fn mr_slice_unsafe(&mut self, _addr: u64, len: usize) -> Vec<MemoryReadRecord> {
+        let current_clk = self.clk();
+        let mem_reads = self.mem_reads();
+
+        let records: Vec<MemoryReadRecord> = mem_reads
+            .take(len)
+            .map(|value| MemoryReadRecord {
+                value: value.value,
+                timestamp: current_clk,
+                prev_timestamp: value.clk,
+                prev_page_prot_record: None,
+            })
+            .collect();
+
+        records
+    }
+
+    #[inline]
+    pub(crate) fn mr_slice(&mut self, addr: u64, len: usize) -> Vec<MemoryReadRecord> {
+        let current_clk = self.clk();
+        let mem_reads = self.mem_reads();
+
+        let records: Vec<MemoryReadRecord> = mem_reads
+            .take(len)
+            .map(|value| MemoryReadRecord {
+                value: value.value,
+                timestamp: current_clk,
+                prev_timestamp: value.clk,
+                prev_page_prot_record: None,
+            })
+            .collect();
+
+        if SHAPE_CHECKING {
+            for (i, record) in records.iter().enumerate() {
+                self.shape_checker.handle_mem_event(addr + i as u64 * 8, record.prev_timestamp);
+            }
+        }
+
+        records
+    }
+
+    #[inline]
+    pub(crate) fn mw_slice(&mut self, addr: u64, len: usize) -> Vec<MemoryWriteRecord> {
+        let mem_writes = self.mem_reads();
+
+        let raw_records: Vec<_> = mem_writes.take(len * 2).collect();
+        let records: Vec<MemoryWriteRecord> = raw_records
+            .chunks(2)
+            .map(|chunk| {
+                #[allow(clippy::manual_let_else)]
+                let (old, new) = match (chunk.first(), chunk.last()) {
+                    (Some(old), Some(new)) => (old, new),
+                    _ => unreachable!("Precompile memory write out of bounds"),
+                };
+
+                MemoryWriteRecord {
+                    prev_timestamp: old.clk,
+                    prev_value: old.value,
+                    timestamp: new.clk,
+                    value: new.value,
+                    prev_page_prot_record: None,
+                }
+            })
+            .collect();
+
+        if SHAPE_CHECKING {
+            for (i, record) in records.iter().enumerate() {
+                self.shape_checker.handle_mem_event(addr + i as u64 * 8, record.prev_timestamp);
+            }
+        }
+
+        records
     }
 
     #[inline]
@@ -668,9 +753,31 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
 
         self.registers[register as usize] = new_record;
 
-        if SHAPE_CHECKING {
-            self.shape_checker.handle_memory_read(prev_record.timestamp);
+        // if SHAPE_CHECKING {
+        //     self.shape_checker.handle_mem_event(register as u64, prev_record.timestamp);
+        // }
+
+        MemoryReadRecord {
+            value: new_record.value,
+            timestamp: new_record.timestamp,
+            prev_timestamp: prev_record.timestamp,
+            prev_page_prot_record: None,
         }
+    }
+
+    /// Read a value from a register, updating the register entry and returning the record.
+    #[inline]
+    fn rr_precompile(&mut self, register: usize) -> MemoryReadRecord {
+        debug_assert!(register < 32, "out of bounds register: {register}");
+
+        let prev_record = self.registers[register];
+        let new_record = MemoryRecord { timestamp: self.clk(), value: prev_record.value };
+
+        self.registers[register] = new_record;
+
+        // if SHAPE_CHECKING {
+        //     self.shape_checker.handle_mem_event(register as u64, prev_record.timestamp);
+        // }
 
         MemoryReadRecord {
             value: new_record.value,
@@ -723,9 +830,9 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
 
         self.registers[register as usize] = new_record;
 
-        if SHAPE_CHECKING {
-            self.shape_checker.handle_memory_read(prev_record.timestamp);
-        }
+        // if SHAPE_CHECKING {
+        //     self.shape_checker.handle_mem_event(register as u64, prev_record.timestamp);
+        // }
 
         MemoryWriteRecord {
             value: new_record.value,

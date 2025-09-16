@@ -11,13 +11,17 @@ use crate::{
 pub(crate) fn core_edwards_decompress<'a, RT: SyscallRuntime<'a, true>>(
     rt: &mut RT,
     _: SyscallCode,
-    _: u64,
-    _: u64,
+    arg1: u64,
+    arg2: u64,
 ) -> Option<u64> {
-    // We need to advance the memory reads by:
-    // [p, q]: num_words * 2
-    // write to [p]: num_words * 2, write records are of the form (last_entry, new_entry)
-    rt.core_mut().mem_reads().advance(WORDS_FIELD_ELEMENT * 3);
+    let slice_ptr = arg1;
+    let sign_bit = arg2;
+    assert!(slice_ptr.is_multiple_of(8), "slice_ptr must be 8-byte aligned.");
+    assert!(sign_bit <= 1, "Sign bit must be 0 or 1.");
+
+    let core_mut = rt.core_mut();
+    let _ = core_mut.mr_slice(slice_ptr + (COMPRESSED_POINT_BYTES as u64), WORDS_FIELD_ELEMENT);
+    let _ = core_mut.mw_slice(slice_ptr, WORDS_FIELD_ELEMENT);
 
     None
 }
@@ -59,8 +63,8 @@ pub(crate) fn tracing_edwards_decompress(
         sign,
         y_bytes,
         decompressed_x_bytes,
-        x_memory_records,
         y_memory_records,
+        x_memory_records,
         local_mem_access: memory.postprocess(),
         ..Default::default()
     };

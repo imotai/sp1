@@ -1,13 +1,13 @@
 use num::BigUint;
 use sp1_curves::{params::NumWords, weierstrass::FpOpField};
-use sp1_jit::JitContext;
+use sp1_jit::SyscallContext;
 use sp1_primitives::consts::u64_to_u32;
 use typenum::Unsigned;
 
 use crate::events::FieldOperation;
 
 pub(crate) unsafe fn fp2_addsub_syscall<P: FpOpField>(
-    ctx: &mut JitContext,
+    ctx: &mut impl SyscallContext,
     arg1: u64,
     arg2: u64,
     fp_op: FieldOperation,
@@ -21,14 +21,9 @@ pub(crate) unsafe fn fp2_addsub_syscall<P: FpOpField>(
         panic!("y_ptr must be 4-byte aligned");
     }
 
-    let memory = ctx.memory();
-
     let num_words = <P as NumWords>::WordsCurvePoint::USIZE;
-    let x = memory.mr_slice_unsafe(x_ptr, num_words);
-    let y = memory.mr_slice(y_ptr, num_words);
-
-    let x_32 = u64_to_u32(x);
-    let y_32 = u64_to_u32(y);
+    let x_32 = u64_to_u32(ctx.mr_slice_unsafe(x_ptr, num_words));
+    let y_32 = u64_to_u32(ctx.mr_slice(y_ptr, num_words));
 
     let (ac0, ac1) = x_32.split_at(x_32.len() / 2);
     let (bc0, bc1) = y_32.split_at(y_32.len() / 2);
@@ -53,10 +48,8 @@ pub(crate) unsafe fn fp2_addsub_syscall<P: FpOpField>(
     result.resize(num_words, 0);
 
     // Bump the clock before writing to memory.
-    ctx.clk += 1;
-
-    let mut memory = ctx.memory();
-    memory.mw_slice(x_ptr, &result);
+    ctx.bump_memory_clk();
+    ctx.mw_slice(x_ptr, &result);
 
     None
 }

@@ -11,13 +11,27 @@ use typenum::Unsigned;
 pub(crate) fn core_weirstrass_add<'a, RT: SyscallRuntime<'a, true>, E: EllipticCurve>(
     rt: &mut RT,
     _: SyscallCode,
-    _: u64,
-    _: u64,
+    arg1: u64,
+    arg2: u64,
 ) -> Option<u64> {
-    // We need to advance the memory reads by:
-    // [p, q]: num_words * 2
-    // write to [p]: num_words * 2, write records are of the form (last_entry, new_entry)
-    rt.core_mut().mem_reads().advance(<E::BaseField as NumWords>::WordsCurvePoint::USIZE * 4);
+    let p_ptr = arg1;
+    if !p_ptr.is_multiple_of(4) {
+        panic!();
+    }
+    let q_ptr = arg2;
+    if !q_ptr.is_multiple_of(4) {
+        panic!();
+    }
+
+    let core_mut = rt.core_mut();
+    let num_words = <E::BaseField as NumWords>::WordsCurvePoint::USIZE;
+
+    // Accessed via slice unsafe, so ununsed.
+    let _ = core_mut.mr_slice_unsafe(p_ptr, num_words);
+
+    let _ = core_mut.mr_slice(q_ptr, num_words);
+
+    let _ = core_mut.mw_slice(p_ptr, num_words);
 
     None
 }

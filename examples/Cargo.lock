@@ -6826,6 +6826,7 @@ version = "6.0.0"
 dependencies = [
  "bincode",
  "bytemuck",
+ "cfg-if",
  "clap",
  "deepsize2",
  "elf",
@@ -6898,6 +6899,7 @@ dependencies = [
  "sp1-curves",
  "sp1-derive",
  "sp1-hypercube",
+ "sp1-jit",
  "sp1-primitives 6.0.0",
  "static_assertions",
  "strum 0.27.2",

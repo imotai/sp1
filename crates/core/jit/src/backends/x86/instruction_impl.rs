@@ -1059,6 +1059,8 @@ impl ControlFlowInstructions for TranspilerBackend {
 
 impl MemoryInstructions for TranspilerBackend {
     fn lb(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
+        self.may_early_exit = true;
+
         // ------------------------------------
         // Load in the base address and the phy sical memory pointer.
         // ------------------------------------
@@ -1114,6 +1116,8 @@ impl MemoryInstructions for TranspilerBackend {
     }
 
     fn lbu(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
+        self.may_early_exit = true;
+
         // ------------------------------------
         // Load in the base address
         // and the physical memory pointer.
@@ -1163,6 +1167,8 @@ impl MemoryInstructions for TranspilerBackend {
     }
 
     fn lh(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
+        self.may_early_exit = true;
+
         // ------------------------------------
         // Load in the base address
         // and the physical memory pointer.
@@ -1212,6 +1218,8 @@ impl MemoryInstructions for TranspilerBackend {
     }
 
     fn lhu(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
+        self.may_early_exit = true;
+
         // ------------------------------------
         //  Load in the base address
         //  and the physical memory pointer.
@@ -1261,6 +1269,8 @@ impl MemoryInstructions for TranspilerBackend {
     }
 
     fn lw(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
+        self.may_early_exit = true;
+
         // ------------------------------------
         // Load the base address into TEMP_A
         // and physical memory pointer into TEMP_B
@@ -1313,6 +1323,8 @@ impl MemoryInstructions for TranspilerBackend {
     }
 
     fn lwu(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
+        self.may_early_exit = true;
+
         // ------------------------------------
         // Load the base address into TEMP_A
         // and physical memory pointer into TEMP_B
@@ -1365,6 +1377,8 @@ impl MemoryInstructions for TranspilerBackend {
     }
 
     fn ld(&mut self, rd: RiscRegister, rs1: RiscRegister, imm: u64) {
+        self.may_early_exit = true;
+
         // ------------------------------------
         // 1. Load the base address into TEMP_A
         // and physical memory pointer into TEMP_B
@@ -1410,6 +1424,8 @@ impl MemoryInstructions for TranspilerBackend {
     }
 
     fn sb(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64) {
+        self.may_early_exit = true;
+
         // ------------------------------------
         // Load the base address into TEMP_A
         // and physical memory pointer into TEMP_B
@@ -1463,6 +1479,8 @@ impl MemoryInstructions for TranspilerBackend {
     }
 
     fn sh(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64) {
+        self.may_early_exit = true;
+
         // ------------------------------------
         // Load the base address into TEMP_A
         // and physical memory pointer into TEMP_B
@@ -1515,6 +1533,8 @@ impl MemoryInstructions for TranspilerBackend {
     }
 
     fn sw(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64) {
+        self.may_early_exit = true;
+
         // ------------------------------------
         // Load the base address into TEMP_A
         // and physical memory pointer into TEMP_B
@@ -1567,6 +1587,8 @@ impl MemoryInstructions for TranspilerBackend {
     }
 
     fn sd(&mut self, rs1: RiscRegister, rs2: RiscRegister, imm: u64) {
+        self.may_early_exit = true;
+
         // ------------------------------------
         // Load the base address into TEMP_A
         // and physical memory pointer into TEMP_B
@@ -1617,6 +1639,7 @@ impl SystemInstructions for TranspilerBackend {
     fn ecall(&mut self) {
         // Mark that a control flow instruction has been inserted.
         self.control_flow_instruction_inserted = true;
+        self.may_early_exit = true;
 
         // Load the JitContext pointer into the argument register.
         dynasm! {

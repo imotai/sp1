@@ -16,7 +16,6 @@ use super::{
             weierstrass_double_assign_syscall,
         },
     },
-    unconstrained::{enter_unconstrained, exit_unconstrained},
     write::write,
 };
 
@@ -29,16 +28,15 @@ use sp1_curves::{
         secp256r1::Secp256r1,
     },
 };
-use sp1_jit::JitContext;
+use sp1_jit::{RiscRegister, SyscallContext};
 
-pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut JitContext) -> u64 {
+#[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut sp1_jit::JitContext) -> u64 {
     let ctx = unsafe { &mut *ctx };
-    let registers = ctx.registers();
-    let arg1 = registers[10];
-    let arg2 = registers[11];
+    let code = SyscallCode::from_u32(ctx.rr(RiscRegister::X5) as u32);
 
-    let code = SyscallCode::from_u32(registers[5] as u32);
-    let clk = ctx.clk;
+    // Store the clock from when we enter.
+    let (pc, clk) = (ctx.pc, ctx.clk);
 
     // Unconstrained mode is not allowed for any syscall other than WRITE and HALT.
     if ctx.is_unconstrained == 1
@@ -47,7 +45,38 @@ pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut JitContext) -> u64 {
         panic!("Unconstrained mode is not allowed for this syscall: {code:?}");
     }
 
-    let res = match code {
+    let result = ecall_handler(ctx);
+
+    match code {
+        SyscallCode::ENTER_UNCONSTRAINED => {
+            ctx.pc = pc.wrapping_add(4);
+            ctx.clk = clk.wrapping_sub(8);
+        }
+        SyscallCode::EXIT_UNCONSTRAINED => {
+            // The `exit_unconstrained` sets the new clock and pc into the context.
+            ctx.pc = ctx.pc.wrapping_add(4);
+            ctx.clk = ctx.clk.wrapping_add(256);
+        }
+        SyscallCode::HALT => {
+            // The `halt` sets the new clock and pc into the context.
+            ctx.pc = 1;
+            ctx.clk = clk.wrapping_add(256);
+        }
+        _ => {
+            ctx.pc = pc.wrapping_add(4);
+            ctx.clk = clk.wrapping_add(256);
+        }
+    }
+
+    result
+}
+
+pub fn ecall_handler(ctx: &mut impl SyscallContext) -> u64 {
+    let arg1 = ctx.rr(RiscRegister::X10);
+    let arg2 = ctx.rr(RiscRegister::X11);
+    let code = SyscallCode::from_u32(ctx.rr(RiscRegister::X5) as u32);
+
+    match code {
         SyscallCode::SHA_EXTEND => unsafe { sha256_extend(ctx, arg1, arg2) },
         SyscallCode::SHA_COMPRESS => unsafe { sha256_compress(ctx, arg1, arg2) },
         SyscallCode::KECCAK_PERMUTE => unsafe { keccak_permute(ctx, arg1, arg2) },
@@ -107,42 +136,24 @@ pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut JitContext) -> u64 {
         SyscallCode::UINT256_MUL => unsafe { uint256_mul(ctx, arg1, arg2) },
         SyscallCode::U256XU2048_MUL => unsafe { u256x2048_mul(ctx, arg1, arg2) },
         SyscallCode::ENTER_UNCONSTRAINED => {
-            // Note we return directly from this syscall, as it does not fall the usual syscall
-            // path, which is adding 256 to the clock.
-            return unsafe {
-                enter_unconstrained(ctx, arg1, arg2).expect("Enter unconstrained failed")
-            };
+            ctx.enter_unconstrained().expect("Failed to enter unconstrained mode");
+            Some(1)
         }
         SyscallCode::EXIT_UNCONSTRAINED => {
-            // Note: The `exit_unconstrained` syscall does not fall through to the normal syscall
-            // path because this syscall directly modifies the PC and CLK.
-            let code = unsafe { exit_unconstrained(ctx, arg1, arg2) };
-            ctx.pc += 4;
-            ctx.clk += 256;
-
-            return code.expect("Exit unconstrained failed");
+            ctx.exit_unconstrained();
+            Some(0)
         }
         SyscallCode::HINT_LEN => unsafe { hint_len(ctx, arg1, arg2) },
         SyscallCode::HINT_READ => unsafe { hint_read(ctx, arg1, arg2) },
         SyscallCode::WRITE => unsafe { write(ctx, arg1, arg2) },
-        SyscallCode::HALT => {
-            ctx.pc = 1;
-            ctx.clk += 256;
-            return code as u64;
-        }
         SyscallCode::UINT256_MUL_CARRY | SyscallCode::UINT256_ADD_CARRY => unsafe {
             uint256_ops(ctx, arg1, arg2)
         },
         SyscallCode::POSEIDON2 => unsafe { poseidon2(ctx, arg1, arg2) },
-        SyscallCode::MPROTECT
+        SyscallCode::HALT
+        | SyscallCode::MPROTECT
         | SyscallCode::VERIFY_SP1_PROOF
         | SyscallCode::COMMIT
         | SyscallCode::COMMIT_DEFERRED_PROOFS => None,
-    };
-
-    // Default syscall behavior
-    ctx.pc += 4;
-    ctx.clk = clk + 256;
-
-    res.unwrap_or(code as u64)
+    }.unwrap_or(code as u64)
 }

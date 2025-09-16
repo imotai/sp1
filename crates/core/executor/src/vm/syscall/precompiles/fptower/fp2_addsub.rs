@@ -14,16 +14,26 @@ use crate::{
 pub fn core_fp2_add<'a, RT: SyscallRuntime<'a, true>, P: FpOpField>(
     rt: &mut RT,
     _: SyscallCode,
-    _: u64,
-    _: u64,
+    arg1: u64,
+    arg2: u64,
 ) -> Option<u64> {
+    let x_ptr = arg1;
+    assert!(x_ptr.is_multiple_of(8), "x_ptr must be 8-byte aligned");
+    let y_ptr = arg2;
+    assert!(y_ptr.is_multiple_of(8), "y_ptr must be 8-byte aligned");
+
+    let core_mut = rt.core_mut();
     let num_words = <P as NumWords>::WordsCurvePoint::USIZE;
-    // BLS12381 FP2 operations use 24 words (12 words per element, 2 elements)
-    // Memory layout: [x_c0 (12 words), x_c1 (12 words)] for x
-    //                [y_c0 (12 words), y_c1 (12 words)] for y
-    // Read operations: 24 words from y_ptr
-    // Write operations: 24 words to x_ptr (2 write records per word: old value, new value)
-    rt.core_mut().mem_reads().advance(4 * num_words);
+
+    // Read x (current value that will be overwritten) using mr_slice_unsafe
+    // No pointer needed - just reads next num_words from memory
+    let _ = core_mut.mr_slice_unsafe(x_ptr, num_words);
+
+    // Read y using mr_slice - returns records
+    let _ = core_mut.mr_slice(y_ptr, num_words);
+
+    // Write result to x (we don't compute the actual result in tracing mode)
+    let _ = core_mut.mw_slice(x_ptr, num_words);
 
     None
 }

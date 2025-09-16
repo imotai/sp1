@@ -10,14 +10,27 @@ const U256_NUM_WORDS: usize = 4;
 pub(crate) fn core_uint256_ops<'a, RT: SyscallRuntime<'a, true>>(
     rt: &mut RT,
     _: SyscallCode,
-    _: u64,
-    _: u64,
+    arg1: u64,
+    arg2: u64,
 ) -> Option<u64> {
-    // We need to advance the memory reads by:
-    // [a, b, c]: U256_NUM_WORDS * 3
-    // write to [d, e]: U256_NUM_WORDS * 2 * 2, write records are of the form (last_entry,
-    // new_entry)
-    rt.core_mut().mem_reads().advance(U256_NUM_WORDS * 7);
+    let core_mut = rt.core_mut();
+
+    // Read addresses - arg1 and arg2 come from the syscall, others from registers
+    let a_ptr = arg1;
+    let b_ptr = arg2;
+    let c_ptr_memory = core_mut.registers()[12 /* X12 */];
+    let d_ptr_memory = core_mut.registers()[13 /* X13 */];
+    let e_ptr_memory = core_mut.registers()[14 /* X14 */];
+    let c_ptr = c_ptr_memory.value;
+    let d_ptr = d_ptr_memory.value;
+    let e_ptr = e_ptr_memory.value;
+
+    // Read input values (8 words = 32 bytes each for uint256) and convert to BigUint
+    let _ = core_mut.mr_slice(a_ptr, U256_NUM_WORDS);
+    let _ = core_mut.mr_slice(b_ptr, U256_NUM_WORDS);
+    let _ = core_mut.mr_slice(c_ptr, U256_NUM_WORDS);
+    let _ = core_mut.mw_slice(d_ptr, U256_NUM_WORDS);
+    let _ = core_mut.mw_slice(e_ptr, U256_NUM_WORDS);
 
     None
 }

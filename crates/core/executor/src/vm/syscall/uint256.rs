@@ -11,13 +11,30 @@ use crate::{
 pub(crate) fn core_uint256_mul<'a, const TRACING: bool, RT: SyscallRuntime<'a, TRACING>>(
     rt: &mut RT,
     _: SyscallCode,
-    _: u64,
-    _: u64,
+    arg1: u64,
+    arg2: u64,
 ) -> Option<u64> {
-    // We need to advance the memory reads by:
-    // [p, q]: num_words * 2
-    // write to [p]: num_words * 2, write records are of the form (last_entry, new_entry)
-    rt.core_mut().mem_reads().advance(WORDS_FIELD_ELEMENT * 3 + 8);
+    let x_ptr = arg1;
+    if !x_ptr.is_multiple_of(4) {
+        panic!();
+    }
+    let y_ptr = arg2;
+    if !y_ptr.is_multiple_of(4) {
+        panic!();
+    }
+
+    let core_mut = rt.core_mut();
+    let _ = core_mut.mr_slice_unsafe(x_ptr, WORDS_FIELD_ELEMENT);
+
+    // Read the y value.
+    let _ = core_mut.mr_slice(y_ptr, WORDS_FIELD_ELEMENT);
+
+    // The modulus is stored after the y value. We increment the pointer by the number of words.
+    let modulus_ptr = y_ptr + WORDS_FIELD_ELEMENT as u64 * WORD_BYTE_SIZE as u64;
+    let _ = core_mut.mr_slice(modulus_ptr, WORDS_FIELD_ELEMENT);
+
+    // Write the result to x and keep track of the memory records.
+    let _ = core_mut.mw_slice(x_ptr, 4);
 
     None
 }

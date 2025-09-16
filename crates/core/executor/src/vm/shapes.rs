@@ -2,14 +2,15 @@ use enum_map::EnumMap;
 use hashbrown::HashMap;
 
 use crate::{
-    syscalls::SyscallCode, Instruction, Opcode, RiscvAirId, SP1CoreOpts, ShardingThreshold,
+    syscalls::SyscallCode, vm::memory::CompressedMemory, Instruction, Opcode, RiscvAirId,
+    SP1CoreOpts, ShardingThreshold,
 };
 use std::str::FromStr;
 
 pub struct ShapeChecker {
     trace_area: u64,
     max_height: u64,
-    syscall_sent: bool,
+    pub(crate) syscall_sent: bool,
     // The start of the most recent shard according to the shape checking logic.
     shard_start_clk: u64,
     /// The maximum trace size and table height to allow.
@@ -19,7 +20,9 @@ pub struct ShapeChecker {
     /// The costs (trace area) of  of each air id seen.
     costs: EnumMap<RiscvAirId, u64>,
     // The number of local memory accesses during this cycle.
-    local_mem_counts: u64,
+    pub(crate) local_mem_counts: u64,
+    /// Whether the last read was external, ie: it was read from a deferred precompile.
+    is_last_read_external: CompressedMemory,
 }
 
 impl ShapeChecker {
@@ -36,35 +39,45 @@ impl ShapeChecker {
             trace_area: 0,
             max_height: 0,
             syscall_sent: false,
-
             shard_start_clk,
             heights: EnumMap::default(),
             sharding_threshold: opts.sharding_threshold,
             costs,
-            // internal_syscalls_override,
             local_mem_counts: 0,
+            is_last_read_external: CompressedMemory::new(),
         }
     }
 
     #[inline]
-    pub fn handle_memory_read(&mut self, last_read_clk: u64) {
-        self.local_mem_counts += (self.shard_start_clk > last_read_clk) as u64;
-    }
+    pub fn handle_mem_event(&mut self, addr: u64, clk: u64) {
+        // Round down to the nearest 8-byte aligned address.
+        let addr = if addr > 31 { addr & !0b111 } else { addr };
 
-    #[inline]
-    pub fn add_local_mem_count(&mut self, amount: u64) {
-        self.local_mem_counts += amount;
+        let is_external = self.syscall_sent;
+        let is_first_read_this_shard = self.shard_start_clk > clk;
+        let is_last_read_external = self.is_last_read_external.insert(addr, is_external);
+
+        self.local_mem_counts +=
+            (is_first_read_this_shard || (is_last_read_external && !is_external)) as u64;
     }
 
     #[inline]
     pub fn handle_retained_syscall(&mut self, syscall_code: SyscallCode) {
-        if let Some(air_id) = syscall_code.as_air_id() {
-            self.heights[air_id] += 1;
-            self.trace_area += self.costs[air_id];
+        if let Some(syscall_air_id) = syscall_code.as_air_id() {
+            let rows_per_event = syscall_air_id.rows_per_event() as u64;
 
-            // todo: rows per event
-            //     // rows per event
-            //     // control chip (if rows_per_event > 1)
+            self.heights[syscall_air_id] += rows_per_event;
+
+            self.trace_area += rows_per_event * self.costs[syscall_air_id];
+            self.max_height = self.max_height.max(self.heights[syscall_air_id]);
+
+            // Currently, all precompiles with `rows_per_event > 1` have the respective control
+            // chip.
+            if rows_per_event > 1 {
+                self.trace_area += self.costs[syscall_air_id
+                    .control_air_id()
+                    .expect("Controls AIRs are found for each precompile with rows_per_event > 1")];
+            }
         }
     }
 

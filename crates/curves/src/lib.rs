@@ -116,7 +116,7 @@ impl<E: EllipticCurveParameters> AffinePoint<E> {
         out
     }
 
-    pub fn from_words_le<'a>(words: impl IntoIterator<Item = &'a u64> + Clone) -> Self {
+    pub fn from_words_le<'a>(words: impl IntoIterator<Item = &'a u64>) -> Self {
         let words = words.into_iter().collect::<Vec<_>>();
 
         let x_bytes =

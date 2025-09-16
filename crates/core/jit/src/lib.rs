@@ -5,6 +5,7 @@ compile_error!("This crate is only supported on little endian targets.");
 
 pub mod backends;
 pub mod context;
+pub mod debug;
 pub mod instructions;
 mod macros;
 pub mod risc;
@@ -12,7 +13,13 @@ pub mod risc;
 use dynasmrt::ExecutableBuffer;
 use hashbrown::HashMap;
 use memmap2::{MmapMut, MmapOptions};
-use std::{collections::VecDeque, io, os::fd::AsRawFd, ptr::NonNull, sync::Arc};
+use std::{
+    collections::VecDeque,
+    io,
+    os::fd::AsRawFd,
+    ptr::NonNull,
+    sync::{mpsc, Arc},
+};
 
 pub use backends::*;
 pub use context::*;
@@ -87,7 +94,7 @@ pub trait RiscvTranspiler:
     fn new(
         program_size: usize,
         memory_size: usize,
-        trace_buf_size: usize,
+        max_trace_size: u64,
         pc_start: u64,
         pc_base: u64,
         clk_bump: u64,
@@ -107,11 +114,6 @@ pub trait RiscvTranspiler:
     /// Handle logics when finishing execution of an instruction such as bumping clk and jump to
     /// branch destination.
     fn end_instr(&mut self);
-
-    /// Exit if the trace size is exceeded.
-    ///
-    /// This should also set the PC to the "continution point" if exists.
-    fn exit_if_trace_exceeds(&mut self, max_trace_size: u64);
 
     /// Inspcet a [RiscRegister] using a function pointer.
     ///
@@ -210,6 +212,8 @@ pub struct JitFunction {
     pub registers: [u64; 32],
     pub clk: u64,
     pub global_clk: u64,
+
+    pub debug_sender: Option<mpsc::SyncSender<Option<debug::State>>>,
 }
 
 unsafe impl Send for JitFunction {}
@@ -249,6 +253,7 @@ impl JitFunction {
             input_buffer: VecDeque::new(),
             hints: Vec::new(),
             public_values_stream: Vec::new(),
+            debug_sender: None,
         })
     }
 
@@ -320,6 +325,9 @@ impl JitFunction {
         let mem_ptr = self.memory.as_mut_ptr().add(align_offset);
         let tracing = self.trace_buf_size > 0;
 
+        // We want to skip any hints that the previous chunk read.
+        let start_hint_lens = self.hints.len();
+
         // SAFETY:
         // - The jump table is valid for the duration of the function call, its owned by self.
         // - The memory is valid for the duration of the function call, its owned by self.
@@ -340,6 +348,7 @@ impl JitFunction {
             global_clk: self.global_clk,
             is_unconstrained: 0,
             tracing,
+            debug_sender: self.debug_sender.clone(),
         };
 
         tracing::debug_span!("JIT function", pc = ctx.pc, clk = ctx.clk).in_scope(|| {
@@ -354,7 +363,15 @@ impl JitFunction {
 
         tracing.then_some(TraceChunkRaw::new(
             trace_buf.make_read_only().expect("Failed to make trace buf read only"),
-            self.hints.iter().map(|(_, hint)| hint.len()).collect(),
+            // For each chunk, we only want to include the hints that the previous chunk did not
+            // read. We also include any unread hints just in case we stopped in
+            // between a hint_len and hint_read.
+            self.hints
+                .iter()
+                .skip(start_hint_lens)
+                .map(|(_, hint)| hint.len())
+                .chain(self.input_buffer.iter().map(|input| input.len()))
+                .collect(),
         ))
     }
 

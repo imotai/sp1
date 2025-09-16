@@ -7,14 +7,19 @@ use typenum::Unsigned;
 pub(crate) fn core_weirstrass_double<'a, RT: SyscallRuntime<'a, true>, E: EllipticCurve>(
     rt: &mut RT,
     _: SyscallCode,
-    _: u64,
+    arg1: u64,
     _: u64,
 ) -> Option<u64> {
-    // We need to advance the memory reads by:
-    // [p]: num_words
-    // write to [p]: num_words * 2, write records are of the form (last_clk, last_value, new_clk,
-    // new_value)
-    rt.core_mut().mem_reads().advance(<E::BaseField as NumWords>::WordsCurvePoint::USIZE * 3);
+    let p_ptr: u64 = arg1;
+    assert!(p_ptr.is_multiple_of(8), "p_ptr must be 8-byte aligned");
+
+    let core_mut = rt.core_mut();
+
+    let num_words = <E::BaseField as NumWords>::WordsCurvePoint::USIZE;
+
+    let _ = core_mut.mr_slice_unsafe(p_ptr, num_words);
+
+    let _ = core_mut.mw_slice(p_ptr, num_words);
 
     None
 }

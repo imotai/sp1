@@ -8,13 +8,31 @@ use crate::{
 pub(crate) fn core_sha256_extend<'a, RT: SyscallRuntime<'a, true>>(
     rt: &mut RT,
     _: SyscallCode,
-    _: u64,
-    _: u64,
+    arg1: u64,
+    arg2: u64,
 ) -> Option<u64> {
-    // We need to advance the memory reads by:
-    // [wptr]: 4 * 48
-    // write to [wptr]: 2 * 48, write records are of the form (last_entry, new_entry)
-    rt.core_mut().mem_reads().advance(288);
+    let w_ptr = arg1;
+    assert!(arg2 == 0, "arg2 must be 0");
+    assert!(arg1.is_multiple_of(8));
+
+    let core_mut = rt.core_mut();
+
+    for i in 16..64 {
+        // Read w[i-15].
+        let _ = core_mut.mr(w_ptr + (i - 15) * 8);
+
+        // Read w[i-2].
+        let _ = core_mut.mr(w_ptr + (i - 2) * 8);
+
+        // Read w[i-16].
+        let _ = core_mut.mr(w_ptr + (i - 16) * 8);
+
+        // Read w[i-7].
+        let _ = core_mut.mr(w_ptr + (i - 7) * 8);
+
+        // Write w[i].
+        let _ = core_mut.mw_slice(w_ptr + i * 8, 1);
+    }
 
     None
 }

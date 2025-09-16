@@ -26,6 +26,14 @@ impl TurnBasedSync {
         }
     }
 
+    /// Gets the current turn
+    ///
+    /// # WARNING
+    /// Note that relying on this value can cause race conditions.
+    pub fn current_turn(&self) -> usize {
+        *self.current_turn.lock().unwrap()
+    }
+
     /// Advances the current turn.
     pub fn advance_turn(&self) {
         let mut turn: std::sync::MutexGuard<'_, usize> = self.current_turn.lock().unwrap();

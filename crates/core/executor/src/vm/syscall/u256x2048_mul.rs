@@ -11,17 +11,25 @@ const U2048_NUM_WORDS: usize = 32;
 pub(crate) fn core_u256xu2048_mul<'a, RT: SyscallRuntime<'a, true>>(
     rt: &mut RT,
     _: SyscallCode,
-    _: u64,
-    _: u64,
+    arg1: u64,
+    arg2: u64,
 ) -> Option<u64> {
-    // We need to advance the memory reads by:
-    // read registers [lo_ptr, hi_ptr]: 2
-    // read [a, b]: U256_NUM_WORDS + U2048_NUM_WORDS
-    // write to [lo, hi]: (U2048_NUM_WORDS + U256_NUM_WORDS) * 2, write records are of the form
-    // (last_entry, new_entry)
-    rt.core_mut()
-        .mem_reads()
-        .advance(U256_NUM_WORDS + U2048_NUM_WORDS + (U2048_NUM_WORDS + U256_NUM_WORDS) * 2);
+    let a_ptr = arg1;
+    let b_ptr = arg2;
+
+    // Read lo_ptr and hi_ptr from registers X12 and X13
+    let lo_ptr_memory = rt.core_mut().rr_precompile(12 /* X12 */);
+    let hi_ptr_memory = rt.core_mut().rr_precompile(13 /* X13 */);
+    let lo_ptr = lo_ptr_memory.value;
+    let hi_ptr = hi_ptr_memory.value;
+
+    let core_mut = rt.core_mut();
+
+    // Read input values from memory records
+    let _ = core_mut.mr_slice(a_ptr, U256_NUM_WORDS);
+    let _ = core_mut.mr_slice(b_ptr, U2048_NUM_WORDS);
+    let _ = core_mut.mw_slice(lo_ptr, U2048_NUM_WORDS);
+    let _ = core_mut.mw_slice(hi_ptr, U256_NUM_WORDS);
 
     None
 }

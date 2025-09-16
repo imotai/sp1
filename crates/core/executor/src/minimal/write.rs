@@ -1,10 +1,10 @@
-use sp1_jit::{JitContext, RiscRegister};
+use sp1_jit::{RiscRegister, SyscallContext};
 use sp1_primitives::consts::fd::{
     FD_BLS12_381_INVERSE, FD_BLS12_381_SQRT, FD_ECRECOVER_HOOK, FD_EDDECOMPRESS, FD_FP_INV,
     FD_FP_SQRT, FD_HINT, FD_PUBLIC_VALUES, FD_RSA_MUL_MOD,
 };
 
-pub(crate) unsafe fn write(ctx: &mut JitContext, arg1: u64, arg2: u64) -> Option<u64> {
+pub(crate) unsafe fn write(ctx: &mut impl SyscallContext, arg1: u64, arg2: u64) -> Option<u64> {
     let a2 = RiscRegister::X12;
     // let rt = &mut ctx.rt;
     let fd = arg1;
@@ -15,8 +15,7 @@ pub(crate) unsafe fn write(ctx: &mut JitContext, arg1: u64, arg2: u64) -> Option
     let head = (buf_ptr & 7) as usize;
     let nwords = (head + nbytes as usize).div_ceil(8);
 
-    let memory = ctx.memory();
-    let slice = memory.mr_slice_no_trace(start, nwords);
+    let slice = ctx.mr_slice_no_trace(start, nwords);
     let bytes = slice
         .into_iter()
         .copied()

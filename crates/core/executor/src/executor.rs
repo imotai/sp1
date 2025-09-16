@@ -1,10 +1,6 @@
 #[cfg(feature = "profiling")]
 use std::{fs::File, io::BufWriter};
-use std::{
-    num::Wrapping,
-    str::FromStr,
-    sync::{Arc, OnceLock},
-};
+use std::{num::Wrapping, str::FromStr, sync::Arc};
 
 #[cfg(feature = "profiling")]
 use crate::profiler::Profiler;
@@ -17,6 +13,7 @@ use crate::{
     },
     StatusCode, NUM_REGISTERS,
 };
+use sp1_jit::debug::{self, DebugState};
 
 use clap::ValueEnum;
 use enum_map::EnumMap;
@@ -56,19 +53,6 @@ pub const M64: u64 = 0xFFFFFFFFFFFFFFFF;
 
 /// The increment for the program counter.  Is used for all instructions except
 use std::sync::mpsc;
-
-#[allow(clippy::type_complexity)]
-static DEBUG_REGISTERS: OnceLock<mpsc::Sender<Option<(u64, u64, [u64; 32])>>> = OnceLock::new();
-
-/// Initialize the sender for debugging registers at each timesstamp.
-///
-/// Todo: feature gate.
-pub fn init_debug_registers() -> mpsc::Receiver<Option<(u64, u64, [u64; 32])>> {
-    let (tx, rx) = mpsc::channel();
-    DEBUG_REGISTERS.set(tx).expect("DEBUG_REGISTERS already initialized");
-
-    rx
-}
 
 /// The default increment for the program counter.  Is used for all instructions except
 /// for branches and jumps.
@@ -224,6 +208,9 @@ pub struct Executor<'a> {
 
     /// The proof nonce.
     proof_nonce: [u32; 4],
+
+    /// Sends debug state every instruction when in debug mode.
+    debug_sender: Option<mpsc::SyncSender<Option<debug::State>>>,
 }
 
 /// The configuration of the executor.
@@ -501,6 +488,7 @@ impl<'a> Executor<'a> {
             decoded_instruction_events: HashMap::new(),
             opts,
             proof_nonce: context.proof_nonce,
+            debug_sender: None,
         }
     }
 
@@ -1779,9 +1767,6 @@ impl<'a> Executor<'a> {
         let mut exit_code = 0u32;
         let mut next_pc = self.state.pc.wrapping_add(4);
         // Will be set to a non-default value if the instruction is a syscall.
-
-        // eprintln!("self.state.pc={}", self.state.pc);
-
         let (mut a, b, c): (u64, u64, u64);
 
         // The syscall id for precompiles.  This is only used/set when opcode == ECALL.
@@ -1798,19 +1783,8 @@ impl<'a> Executor<'a> {
             }
         }
 
-        if let Some(sender) = DEBUG_REGISTERS.get() {
-            let registers = self
-                .state
-                .memory
-                .registers
-                .registers
-                .iter()
-                .map(|r| r.map(|r| r.value).unwrap_or(0))
-                .collect::<Vec<_>>();
-
-            sender
-                .send(Some((self.state.pc, self.state.clk, registers.try_into().unwrap())))
-                .unwrap();
+        if let Some(sender) = &self.debug_sender {
+            sender.send(Some(self.current_state())).expect("Failed to send debug state");
         }
 
         if instruction.is_alu_instruction() {
@@ -2602,11 +2576,6 @@ impl<'a> Executor<'a> {
         let public_values = self.record.public_values;
 
         if done {
-            if let Some(sender) = DEBUG_REGISTERS.get() {
-                eprintln!("finalize registers in executor");
-                sender.send(None).unwrap();
-            }
-
             self.postprocess::<E>();
 
             // Push the remaining execution record with memory initialize & finalize events.
@@ -2955,6 +2924,28 @@ impl<'a> Executor<'a> {
 impl Default for ExecutorMode {
     fn default() -> Self {
         Self::Simple
+    }
+}
+impl debug::DebugState for Executor<'_> {
+    fn current_state(&self) -> debug::State {
+        let registers = self.state.memory.registers.registers.map(|r| r.map_or(0, |r| r.value));
+        debug::State {
+            pc: self.state.pc,
+            clk: self.state.clk,
+            global_clk: self.state.global_clk,
+            registers,
+        }
+    }
+
+    fn new_debug_receiver(&mut self) -> Option<mpsc::Receiver<Option<debug::State>>> {
+        self.debug_sender
+            .is_none()
+            .then(|| {
+                let (tx, rx) = mpsc::sync_channel(0);
+                self.debug_sender = Some(tx);
+                Some(rx)
+            })
+            .flatten()
     }
 }
 

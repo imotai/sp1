@@ -4445,6 +4445,7 @@ version = "6.0.0"
 dependencies = [
  "bincode",
  "bytemuck",
+ "cfg-if",
  "clap",
  "deepsize2",
  "elf",

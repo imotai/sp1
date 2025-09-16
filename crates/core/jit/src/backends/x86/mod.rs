@@ -70,6 +70,8 @@ pub struct TranspilerBackend {
     memory_size: usize,
     /// The size of the trace buffer to allocate.
     trace_buf_size: usize,
+    /// The maximum trace size.
+    max_trace_size: u64,
     /// Has at least one instruction been inserted.
     has_instructions: bool,
     /// The pc base.
@@ -82,6 +84,8 @@ pub struct TranspilerBackend {
     control_flow_instruction_inserted: bool,
     /// Indicate that we are "within" an instruction.
     instruction_started: bool,
+    /// Indicate that instuction has been inserted that may cause us to early exit.
+    may_early_exit: bool,
     /// The amount to bump the clk by each cycle.
     clk_bump: u64,
 }
@@ -222,6 +226,39 @@ impl TraceCollector for TranspilerBackend {
 impl TranspilerBackend {
     fn tracing(&self) -> bool {
         self.trace_buf_size > 0
+    }
+
+    fn exit_if_trace_exceeds(&mut self, max_trace_size: u64) {
+        let num_mem_reads_offset = offset_of!(TraceChunkHeader, num_mem_reads) as i32;
+        let threshold_mem_reads = max_trace_size;
+
+        dynasm! {
+            self;
+            .arch x64;
+
+            // ------------------------------------
+            // 1. Load num_mem_reads from trace buffer
+            // ------------------------------------
+            mov Rq(TEMP_A), [Rq(TRACE_BUF) + num_mem_reads_offset];
+
+            // ------------------------------------
+            // 2. Check if num_mem_reads is 0 (skip exit at beginning)
+            // ------------------------------------
+            test Rq(TEMP_A), Rq(TEMP_A);
+            jz >skip_exit;  // If num_mem_reads == 0, skip the exit check
+
+            // ------------------------------------
+            // 3. Check if num_mem_reads >= 90% of max_mem_reads
+            // ------------------------------------
+            mov Rq(TEMP_B), QWORD threshold_mem_reads as i64;  // Load threshold
+            cmp Rq(TEMP_A), Rq(TEMP_B);  // Compare num_mem_reads with threshold
+
+            // ------------------------------------
+            // 4. If num_mem_reads >= threshold, return
+            // ------------------------------------
+            jae ->exit;  // Jump if above or equal (unsigned comparison)
+            skip_exit:
+        }
     }
 
     /// Emit the prologue for the function.
@@ -525,7 +562,7 @@ impl TranspilerBackend {
             self;
             .arch x64;
 
-            // If the PC we want to jump to is 0, jump to the exit label.
+            // If the PC we want to jump to is 1, jump to the exit label.
             cmp Rq(TEMP_A), 1;
             je ->exit;
 

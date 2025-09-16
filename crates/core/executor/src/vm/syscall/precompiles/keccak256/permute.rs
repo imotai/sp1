@@ -11,14 +11,17 @@ pub const STATE_NUM_WORDS: usize = STATE_SIZE;
 pub fn core_keccak256_permute<'a, RT: SyscallRuntime<'a, true>>(
     rt: &mut RT,
     _: SyscallCode,
-    _: u64,
-    _: u64,
+    arg1: u64,
+    arg2: u64,
 ) -> Option<u64> {
-    // Keccak permute operates on 25 u64 words (200 bytes total)
-    // Read operations: STATE_NUM_WORDS from state_ptr
-    // Write operations: STATE_NUM_WORDS to state_ptr (2 write records per word: old value, new
-    // value)
-    rt.core_mut().mem_reads().advance(3 * STATE_NUM_WORDS);
+    let state_ptr = arg1;
+    if arg2 != 0 {
+        panic!("Expected arg2 to be 0, got {arg2}");
+    }
+
+    let memory = rt.core_mut();
+    let _ = memory.mr_slice(state_ptr, STATE_NUM_WORDS);
+    let _ = memory.mw_slice(state_ptr, STATE_NUM_WORDS);
 
     None
 }
