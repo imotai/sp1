@@ -20,6 +20,7 @@ async fn main() {
 
     println!("generated proof");
     // Read and verify the output.
+    let _ = proof.public_values.read::<u32>();
     let a = proof.public_values.read::<u32>();
     let b = proof.public_values.read::<u32>();
     println!("a: {}, b: {}", a, b);
