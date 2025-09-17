@@ -316,6 +316,8 @@ fn generate_chunks(
     let mut maybe_lock =
         if splicer_turn.current_turn() != splicer_index { None } else { Some(idx.lock().unwrap()) };
 
+    let start_num_mem_reads = chunk.num_mem_reads();
+
     let mut last_splice = SplicedMinimalTrace::new_full_trace(chunk.clone());
     let mut splices = Vec::new();
     loop {
@@ -332,7 +334,9 @@ fn generate_chunks(
 
                     // Set the last splice clk.
                     last_splice.set_last_clk(vm.core.clk());
-                    last_splice.set_last_mem_reads_idx(vm.core.mem_reads.len());
+                    last_splice.set_last_mem_reads_idx(
+                        start_num_mem_reads as usize - vm.core.mem_reads.len(),
+                    );
 
                     let splice_to_send = std::mem::replace(&mut last_splice, spliced);
                     if let Some(ref mut lock) = maybe_lock {
@@ -352,7 +356,9 @@ fn generate_chunks(
                     tracing::trace!("trace ended with {} mem reads left ", vm.core.mem_reads.len());
 
                     last_splice.set_last_clk(vm.core.clk());
-                    last_splice.set_last_mem_reads_idx(chunk.num_mem_reads() as usize);
+                    last_splice.set_last_mem_reads_idx(
+                        start_num_mem_reads as usize - vm.core.mem_reads.len(),
+                    );
 
                     if let Some(ref mut lock) = maybe_lock {
                         send_spliced_trace_blocking(

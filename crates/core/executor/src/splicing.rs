@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use sp1_jit::{MemReads, MinimalTrace};
+use serde::Serialize;
+use sp1_jit::{MemReads, MinimalTrace, TraceChunk};
 
 use crate::{
     syscalls::SyscallCode,
@@ -231,6 +232,10 @@ impl<'a> SyscallRuntime<'a, true> for SplicingVM<'a> {
 
 /// A minimal trace implentation that starts at a different point in the trace,
 /// but reuses the same memory reads and hint lens.
+///
+/// Note: This type implements [`Serialize`] but it is serialized as a [`TraceChunk`].
+///
+/// In order to deserialize this type, you must use the [`TraceChunk`] type.
 #[derive(Debug, Clone)]
 pub struct SplicedMinimalTrace<T: MinimalTrace> {
     inner: T,
@@ -325,5 +330,64 @@ impl<T: MinimalTrace> MinimalTrace for SplicedMinimalTrace<T> {
         let slice = self.inner.hint_lens();
 
         &slice[self.hint_lens_idx..]
+    }
+}
+
+impl<T: MinimalTrace> Serialize for SplicedMinimalTrace<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mem_reads_buf = self.mem_reads().take(self.last_mem_reads_idx).collect::<Arc<[_]>>();
+
+        let trace = TraceChunk {
+            start_registers: self.start_registers,
+            pc_start: self.start_pc,
+            clk_start: self.start_clk,
+            clk_end: self.last_clk,
+            // Just copy the whole hint_lens buffer,
+            // its small enough that sending the whole buffer is fine (for now).
+            hint_lens: self.hint_lens().to_vec(),
+            mem_reads: mem_reads_buf,
+        };
+
+        trace.serialize(serializer)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use sp1_jit::MemValue;
+
+    use super::*;
+
+    #[test]
+    fn test_serialize_spliced_minimal_trace() {
+        let trace_chunk = TraceChunk {
+            start_registers: [1; 32],
+            pc_start: 2,
+            clk_start: 3,
+            clk_end: 4,
+            hint_lens: vec![5, 6, 7],
+            mem_reads: Arc::new([MemValue { clk: 8, value: 9 }, MemValue { clk: 10, value: 11 }]),
+        };
+
+        let mut trace = SplicedMinimalTrace::new(trace_chunk, [2; 32], 2, 3, 1, 1);
+        trace.set_last_mem_reads_idx(2);
+        trace.set_last_clk(2);
+
+        let serialized = bincode::serialize(&trace).unwrap();
+        let deserialized: TraceChunk = bincode::deserialize(&serialized).unwrap();
+
+        let expected = TraceChunk {
+            start_registers: [2; 32],
+            pc_start: 2,
+            clk_start: 3,
+            clk_end: 2,
+            hint_lens: vec![6, 7],
+            mem_reads: Arc::new([MemValue { clk: 10, value: 11 }]),
+        };
+
+        assert_eq!(deserialized, expected);
     }
 }
