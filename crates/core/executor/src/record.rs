@@ -702,7 +702,7 @@ impl MachineRecord for ExecutionRecord {
         }
 
         Self::eval_state(public_values, builder);
-        Self::eval_first_shard(public_values, builder);
+        Self::eval_first_execution_shard(public_values, builder);
         Self::eval_exit_code(public_values, builder);
         Self::eval_committed_value_digest(public_values, builder);
         Self::eval_deferred_proofs_digest(public_values, builder);
@@ -876,10 +876,19 @@ impl ExecutionRecord {
             AB::Expr::one() - is_execution_shard.clone(),
             public_values.is_timestamp_high_eq.into() * public_values.is_timestamp_low_eq.into(),
         );
+
+        // Check that an execution shard has `last_timestamp != 1` by providing an inverse.
+        // The `high + low` value cannot overflow, as they were range checked to be 24 bits.
+        // `high == 1, low == 0` is impossible, as `low == 1 (mod 8)` as checked in `eval_state`.
+        builder.when(is_execution_shard.clone()).assert_eq(
+            (last_timestamp_high + last_timestamp_low - AB::Expr::one())
+                * public_values.last_timestamp_inv.into(),
+            AB::Expr::one(),
+        );
     }
 
     #[allow(clippy::type_complexity)]
-    fn eval_first_shard<AB: SP1AirBuilder>(
+    fn eval_first_execution_shard<AB: SP1AirBuilder>(
         public_values: &PublicValues<
             [AB::PublicVar; 4],
             [AB::PublicVar; 3],
@@ -888,91 +897,73 @@ impl ExecutionRecord {
         >,
         builder: &mut AB,
     ) {
-        let initial_timestamp_high = public_values.initial_timestamp[1].into()
-            + public_values.initial_timestamp[0].into() * AB::Expr::from_canonical_u32(1 << 8);
-        let initial_timestamp_low = public_values.initial_timestamp[3].into()
-            + public_values.initial_timestamp[2].into() * AB::Expr::from_canonical_u32(1 << 16);
-        let last_timestamp_high = public_values.last_timestamp[1].into()
-            + public_values.last_timestamp[0].into() * AB::Expr::from_canonical_u32(1 << 8);
-        let last_timestamp_low = public_values.last_timestamp[3].into()
-            + public_values.last_timestamp[2].into() * AB::Expr::from_canonical_u32(1 << 16);
+        // Check that `is_first_execution_shard` is boolean.
+        builder.assert_bool(public_values.is_first_execution_shard.into());
 
-        // Check that `is_first_shard` is boolean.
-        builder.assert_bool(public_values.is_first_shard.into());
-
-        // Check that `last_timestamp != 1` by providing an inverse.
-        // The `high + low` value cannot overflow, as they were range checked to be 24 bits.
-        // `high == 1, low == 0` is impossible, as `low == 1 (mod 8)` as checked in `eval_state`.
-        builder.assert_eq(
-            (last_timestamp_high + last_timestamp_low - AB::Expr::one())
-                * public_values.last_timestamp_inv.into(),
-            AB::Expr::one(),
-        );
-
-        // If `is_first_shard` is false, check `initial_timestamp != 1` by providing an inverse.
-        // The logic behind this constraint is the same as the one in `last_timestamp`.
-        builder.when_not(public_values.is_first_shard.into()).assert_eq(
-            (initial_timestamp_high + initial_timestamp_low - AB::Expr::one())
-                * public_values.initial_timestamp_inv.into(),
-            AB::Expr::one(),
-        );
-
-        // If `is_first_shard` is true, check `initial_timestamp == 1`.
-        builder.when(public_values.is_first_shard.into()).assert_all_eq(
+        // Timestamp constraints.
+        //
+        // We want to assert that `is_first_execution_shard == 1` corresponds exactly to the unique
+        // execution shard with initial timestamp 1.We are assuming that there is a unique
+        // shard with `is_first_execution_shard == 1`. This is enforced in the verifier and
+        // in recursion. Given thus, it is enough to impose that for this unique shard,
+        // `initial_timestamp == 1`.
+        builder.when(public_values.is_first_execution_shard.into()).assert_all_eq(
             public_values.initial_timestamp,
             [AB::Expr::zero(), AB::Expr::zero(), AB::Expr::zero(), AB::Expr::one()],
         );
 
-        // If `is_first_shard` is true, check `is_execution_shard == 1`.
+        // If `is_first_execution_shard` is true, check `is_execution_shard == 1`.
         builder
-            .when(public_values.is_first_shard.into())
+            .when(public_values.is_first_execution_shard.into())
             .assert_one(public_values.is_execution_shard);
 
-        // If `is_first_shard` is true, assert the initial boundary conditions.
+        // If `is_first_execution_shard` is true, assert the initial boundary conditions.
 
         // Check `prev_committed_value_digest == 0`.
         for i in 0..PV_DIGEST_NUM_WORDS {
             builder
-                .when(public_values.is_first_shard.into())
+                .when(public_values.is_first_execution_shard.into())
                 .assert_all_zero(public_values.prev_committed_value_digest[i]);
         }
 
         // Check `prev_deferred_proofs_digest == 0`.
         builder
-            .when(public_values.is_first_shard.into())
+            .when(public_values.is_first_execution_shard.into())
             .assert_all_zero(public_values.prev_deferred_proofs_digest);
 
         // Check `prev_exit_code == 0`.
-        builder.when(public_values.is_first_shard.into()).assert_zero(public_values.prev_exit_code);
+        builder
+            .when(public_values.is_first_execution_shard.into())
+            .assert_zero(public_values.prev_exit_code);
 
         // Check `previous_init_addr == 0`.
         builder
-            .when(public_values.is_first_shard.into())
+            .when(public_values.is_first_execution_shard.into())
             .assert_all_zero(public_values.previous_init_addr);
 
         // Check `previous_finalize_addr == 0`.
         builder
-            .when(public_values.is_first_shard.into())
+            .when(public_values.is_first_execution_shard.into())
             .assert_all_zero(public_values.previous_finalize_addr);
 
         // Check `previous_init_page_idx == 0`
         builder
-            .when(public_values.is_first_shard.into())
+            .when(public_values.is_first_execution_shard.into())
             .assert_all_zero(public_values.previous_init_page_idx);
 
         // Check `previous_finalize_page_idx == 0`
         builder
-            .when(public_values.is_first_shard.into())
+            .when(public_values.is_first_execution_shard.into())
             .assert_all_zero(public_values.previous_finalize_page_idx);
 
         // Check `prev_commit_syscall == 0`.
         builder
-            .when(public_values.is_first_shard.into())
+            .when(public_values.is_first_execution_shard.into())
             .assert_zero(public_values.prev_commit_syscall);
 
         // Check `prev_commit_deferred_syscall == 0`.
         builder
-            .when(public_values.is_first_shard.into())
+            .when(public_values.is_first_execution_shard.into())
             .assert_zero(public_values.prev_commit_deferred_syscall);
     }
 

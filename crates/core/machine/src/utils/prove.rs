@@ -97,7 +97,7 @@ pub fn generate_records<F: PrimeField32>(
             state.next_pc = record.public_values.next_pc;
             state.initial_timestamp = record.public_values.initial_timestamp;
             state.last_timestamp = record.public_values.last_timestamp;
-            state.is_first_shard = (record.public_values.initial_timestamp == 1) as u32;
+            state.is_first_execution_shard = (record.public_values.initial_timestamp == 1) as u32;
 
             let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
             let initial_timestamp_low = (state.initial_timestamp & 0xFFFFFF) as u32;
@@ -185,7 +185,7 @@ pub fn generate_records<F: PrimeField32>(
                 state.last_timestamp = state.initial_timestamp;
                 state.is_timestamp_high_eq = 1;
                 state.is_timestamp_low_eq = 1;
-                state.is_first_shard = 0;
+                state.is_first_execution_shard = 0;
                 state.is_execution_shard = 0;
 
                 let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
@@ -193,7 +193,8 @@ pub fn generate_records<F: PrimeField32>(
                 let last_timestamp_high = (state.last_timestamp >> 24) as u32;
                 let last_timestamp_low = (state.last_timestamp & 0xFFFFFF) as u32;
 
-                state.is_first_shard = (record.public_values.initial_timestamp == 1) as u32;
+                state.is_first_execution_shard =
+                    (record.public_values.initial_timestamp == 1) as u32;
                 state.initial_timestamp_inv =
                     F::from_canonical_u32(initial_timestamp_high + initial_timestamp_low - 1)
                         .inverse()

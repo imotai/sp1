@@ -134,7 +134,7 @@ pub struct PublicValues<W1, W2, W3, T> {
     pub last_timestamp_inv: T,
 
     /// Whether or not this shard is the first shard of the proof.
-    pub is_first_shard: T,
+    pub is_first_execution_shard: T,
 
     /// Whether untrusted program support is enabled.  This specifically will enable fetching
     /// instructions from memory during runtime and checking/setting page permissions.
@@ -258,7 +258,7 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             proof_nonce,
             initial_timestamp_inv,
             last_timestamp_inv,
-            is_first_shard,
+            is_first_execution_shard,
             ..
         } = value;
 
@@ -364,7 +364,7 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
 
         let initial_timestamp_inv = F::from_canonical_u32(initial_timestamp_inv);
         let last_timestamp_inv = F::from_canonical_u32(last_timestamp_inv);
-        let is_first_shard = F::from_canonical_u32(is_first_shard);
+        let is_first_execution_shard = F::from_canonical_u32(is_first_execution_shard);
         let is_untrusted_programs_enabled = F::from_canonical_u32(is_untrusted_programs_enabled);
 
         let proof_nonce: [_; PROOF_NONCE_NUM_WORDS] =
@@ -407,7 +407,7 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             is_untrusted_programs_enabled,
             initial_timestamp_inv,
             last_timestamp_inv,
-            is_first_shard,
+            is_first_execution_shard,
             proof_nonce,
             empty: core::array::from_fn(|_| F::zero()),
         }

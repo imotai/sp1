@@ -40,7 +40,7 @@ pub trait CircuitV2Builder<C: Config> {
     ) -> SepticDigest<Felt<SP1Field>>;
     fn select_global_cumulative_sum(
         &mut self,
-        is_first_shard: Felt<SP1Field>,
+        is_first_execution_shard: Felt<SP1Field>,
         vk_digest: SepticDigest<Felt<SP1Field>>,
     ) -> SepticDigest<Felt<SP1Field>>;
     fn commit_public_values_v2(&mut self, public_values: RecursionPublicValues<Felt<SP1Field>>);
@@ -227,21 +227,27 @@ impl<C: Config> CircuitV2Builder<C> for Builder<C> {
         }
     }
 
-    /// Returns the zero digest when `is_first_shard` is zero, and returns the `vk_digest` when
-    /// `is_first_shard` is one. It is assumed that `is_first_shard` is already checked to be a
-    /// boolean.
+    /// Returns the zero digest when `is_first_execution_shard` is zero, and returns the `vk_digest`
+    /// when `is_first_execution_shard` is one. It is assumed that `is_first_execution_shard` is
+    /// already checked to be a boolean.
     fn select_global_cumulative_sum(
         &mut self,
-        is_first_shard: Felt<SP1Field>,
+        is_first_execution_shard: Felt<SP1Field>,
         vk_digest: SepticDigest<Felt<SP1Field>>,
     ) -> SepticDigest<Felt<SP1Field>> {
         let zero = SepticDigest::<SymbolicFelt<SP1Field>>::zero();
         let one: Felt<SP1Field> = self.constant(SP1Field::one());
         let x = SepticExtension(core::array::from_fn(|i| {
-            self.eval(is_first_shard * vk_digest.0.x.0[i] + (one - is_first_shard) * zero.0.x.0[i])
+            self.eval(
+                is_first_execution_shard * vk_digest.0.x.0[i]
+                    + (one - is_first_execution_shard) * zero.0.x.0[i],
+            )
         }));
         let y = SepticExtension(core::array::from_fn(|i| {
-            self.eval(is_first_shard * vk_digest.0.y.0[i] + (one - is_first_shard) * zero.0.y.0[i])
+            self.eval(
+                is_first_execution_shard * vk_digest.0.y.0[i]
+                    + (one - is_first_execution_shard) * zero.0.y.0[i],
+            )
         }));
         SepticDigest(SepticCurve { x, y })
     }

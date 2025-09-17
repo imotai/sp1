@@ -65,26 +65,33 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             return Err(MachineVerifierError::EmptyProof);
         }
 
-        // Assert that the first shard is an execution shard and has `is_first_shard == 1`.
-        // Assert that the non-first shard has `is_first_shard == 0`.
-        for (i, shard_proof) in proof.0.iter().enumerate() {
+        // Assert that the `is_first_execution_shard` flag is boolean and is set to one only for a
+        // unique shard.
+        let mut is_first_execution_shard_set = false;
+        for shard_proof in proof.0.iter() {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
-            if i == 0 && public_values.is_execution_shard != SP1Field::one() {
-                return Err(MachineVerifierError::InvalidPublicValues(
-                    "first shard does not contain RISCV cycles",
-                ));
+            match public_values.is_first_execution_shard {
+                x if x == SP1Field::one() => {
+                    if is_first_execution_shard_set {
+                        return Err(MachineVerifierError::InvalidPublicValues(
+                            "is_first_execution_shard is set to one for multiple shards",
+                        ));
+                    }
+                    is_first_execution_shard_set = true;
+                }
+                x if x == SP1Field::zero() => {}
+                _ => {
+                    return Err(MachineVerifierError::InvalidPublicValues(
+                        "is_first_execution_shard is not boolean",
+                    ));
+                }
             }
-            if i == 0 && public_values.is_first_shard != SP1Field::one() {
-                return Err(MachineVerifierError::InvalidPublicValues(
-                    "first shard should have is_first_shard == 1",
-                ));
-            }
-            if i != 0 && public_values.is_first_shard != SP1Field::zero() {
-                return Err(MachineVerifierError::InvalidPublicValues(
-                    "non-first shard should have is_first_shard == 0",
-                ));
-            }
+        }
+        if !is_first_execution_shard_set {
+            return Err(MachineVerifierError::InvalidPublicValues(
+                "first execution shard is not set",
+            ));
         }
 
         // Execution shard and timestamp constraints.

@@ -132,13 +132,16 @@ where
 
         // If it's the first shard, then the `pc_start` should be vk.pc_start.
         for (pc, vk_pc) in public_values.pc_start.iter().zip_eq(vk.pc_start.iter()) {
-            builder.assert_felt_eq(public_values.is_first_shard * (*pc - *vk_pc), SP1Field::zero());
+            builder.assert_felt_eq(
+                public_values.is_first_execution_shard * (*pc - *vk_pc),
+                SP1Field::zero(),
+            );
         }
 
         // If it's the first shard, we add the vk's `initial_global_cumulative_sum` to the
         // digest. If it's not the first shard, we add the zero digest to the digest.
         global_cumulative_sums.push(builder.select_global_cumulative_sum(
-            public_values.is_first_shard,
+            public_values.is_first_execution_shard,
             vk.initial_global_cumulative_sum,
         ));
 
@@ -207,7 +210,7 @@ where
             recursion_public_values.sp1_vk_digest = vk_digest;
             recursion_public_values.vk_root = vk_root;
             recursion_public_values.global_cumulative_sum = global_cumulative_sum;
-            recursion_public_values.contains_first_shard = public_values.is_first_shard;
+            recursion_public_values.contains_first_shard = public_values.is_first_execution_shard;
             recursion_public_values.num_included_shard = builder.eval(SP1Field::one());
             recursion_public_values.is_complete = is_complete;
             recursion_public_values.prev_exit_code = public_values.prev_exit_code;
