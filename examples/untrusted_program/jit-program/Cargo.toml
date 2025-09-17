@@ -6,6 +6,9 @@ publish = false
 
 [dependencies]
 
+[profile.dev]
+panic = "abort"
+
 [profile.release]
 codegen-units = 1
 lto = true

@@ -48,7 +48,7 @@ async fn main() {
     println!("Final account state: {}", serde_json::to_string(&account_state).unwrap());
 
     // Verify proof.
-    client.verify(&proof, pk.verifying_key()).expect("verification failed");
+    client.verify(&proof, pk.verifying_key(), None).expect("verification failed");;
 
     // Test a round trip of proof serialization and deserialization.
     proof.save("proof-with-io.bin").expect("saving proof failed");
@@ -56,7 +56,7 @@ async fn main() {
         SP1ProofWithPublicValues::load("proof-with-io.bin").expect("loading proof failed");
 
     // Verify the deserialized proof.
-    client.verify(&deserialized_proof, pk.verifying_key()).expect("verification failed");
+    client.verify(&deserialized_proof, pk.verifying_key(), None).expect("verification failed");;
 
     println!("successfully generated and verified proof for the program!")
 }
