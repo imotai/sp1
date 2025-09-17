@@ -227,6 +227,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
+name = "elf"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4445909572dbd556c457c849c4ca58623d84b27c8fff1e74b0b4227d8b90d17b"
+
+[[package]]
 name = "elliptic-curve"
 version = "0.13.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -919,8 +925,7 @@ checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 
 [[package]]
 name = "slop-algebra"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fconfig_refactor#4fed410d67c4eebde29f18866ede261197cafacf"
+version = "6.0.0"
 dependencies = [
  "p3-field",
  "serde",
@@ -928,8 +933,7 @@ dependencies = [
 
 [[package]]
 name = "slop-bn254"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fconfig_refactor#4fed410d67c4eebde29f18866ede261197cafacf"
+version = "6.0.0"
 dependencies = [
  "p3-bn254-fr",
  "serde",
@@ -941,8 +945,7 @@ dependencies = [
 
 [[package]]
 name = "slop-challenger"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fconfig_refactor#4fed410d67c4eebde29f18866ede261197cafacf"
+version = "6.0.0"
 dependencies = [
  "futures",
  "p3-challenger",
@@ -953,8 +956,7 @@ dependencies = [
 
 [[package]]
 name = "slop-koala-bear"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fconfig_refactor#4fed410d67c4eebde29f18866ede261197cafacf"
+version = "6.0.0"
 dependencies = [
  "lazy_static",
  "p3-koala-bear",
@@ -966,16 +968,14 @@ dependencies = [
 
 [[package]]
 name = "slop-poseidon2"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fconfig_refactor#4fed410d67c4eebde29f18866ede261197cafacf"
+version = "6.0.0"
 dependencies = [
  "p3-poseidon2",
 ]
 
 [[package]]
 name = "slop-symmetric"
-version = "1.2.0"
-source = "git+https://github.com/succinctlabs/slop?branch=erabinov%2Fconfig_refactor#4fed410d67c4eebde29f18866ede261197cafacf"
+version = "6.0.0"
 dependencies = [
  "p3-symmetric",
 ]
@@ -996,6 +996,7 @@ version = "6.0.0"
 dependencies = [
  "bincode",
  "blake3",
+ "elf",
  "hex",
  "itertools 0.13.0",
  "lazy_static",
