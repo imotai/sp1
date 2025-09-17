@@ -31,7 +31,7 @@ extern "C" {
 
     pub fn fix_last_variable_ext_ext_kernel() -> KernelPtr;
 
-    // LogUp GKR kernels - Round operations
+    // ******** LogUp GKR kernels - Round operations ********
     // TODO: remove the "prover_clean" prefix once the old kernels are deprecated.
     pub fn prover_clean_logup_gkr_sum_as_poly_circuit_layer() -> KernelPtr;
     pub fn prover_clean_logup_gkr_first_sum_as_poly_circuit_layer() -> KernelPtr;
@@ -50,10 +50,15 @@ extern "C" {
     pub fn prover_clean_logup_gkr_populate_last_circuit_layer() -> KernelPtr;
     pub fn prover_clean_logup_gkr_extract_output() -> KernelPtr;
 
-    // New -- Logup GKR kernels - Fused fix and sum kernels
+    // Logup GKR kernels - Fused fix and sum kernels
     pub fn logup_gkr_fix_and_sum_circuit_layer() -> KernelPtr;
     pub fn logup_gkr_fix_and_sum_last_circuit_layer() -> KernelPtr;
     pub fn logup_gkr_fix_and_sum_interactions_layer() -> KernelPtr;
+
+    // ******** Jagged sumcheck kernels ********
+    pub fn prover_clean_jagged_sum_as_poly() -> KernelPtr;
+    pub fn prover_clean_jagged_fix_and_sum() -> KernelPtr;
+    pub fn padded_hadamard_fix_and_sum() -> KernelPtr;
 
     // Populate restrict eq
     pub fn populate_restrict_eq_host(
@@ -67,6 +72,7 @@ extern "C" {
         stream: CudaStreamHandle,
     ) -> CudaRustError;
 
+    // ******** Hadamard look ahead kernels ********
     // Look ahead kernels - FIX_TILE=32
     pub fn round_kernel_1_32_2_2_false() -> KernelPtr;
     pub fn round_kernel_2_32_2_2_true() -> KernelPtr;

@@ -5,3 +5,8 @@
 
 using felt_t = kb31_t;
 using ext_t = kb31_extension_t;
+
+struct Pair {
+    ext_t p;
+    ext_t q;
+};

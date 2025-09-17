@@ -95,26 +95,26 @@ sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "mu
 sp1-cuda = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 
 # # slop local copy
-# slop-air = { path = "../slop/crates/air" }
-# slop-koala-bear = { path = "../slop/crates/koala-bear" }
-# slop-bn254 = { path = "../slop/crates/bn254" }
-# slop-basefold = { path = "../slop/crates/basefold" }
-# slop-basefold-prover = { path = "../slop/crates/basefold-prover" }
-# slop-dft = { path = "../slop/crates/dft" }
-# slop-matrix = { path = "../slop/crates/matrix" }
-# slop-algebra = { path = "../slop/crates/algebra" }
-# slop-symmetric = { path = "../slop/crates/symmetric" }
-# slop-merkle-tree = { path = "../slop/crates/merkle-tree" }
-# slop-poseidon2 = { path = "../slop/crates/poseidon2" }
-# slop-commit = { path = "../slop/crates/commit" }
-# slop-challenger = { path = "../slop/crates/challenger" }
-# slop-multilinear = { path = "../slop/crates/multilinear" }
-# slop-alloc = { path = "../slop/crates/alloc" }
-# slop-tensor = { path = "../slop/crates/tensor" }
-# slop-sumcheck = { path = "../slop/crates/sumcheck" }
-# slop-futures = { path = "../slop/crates/futures" }
-# slop-stacked = { path = "../slop/crates/stacked" }
-# slop-jagged = { path = "../slop/crates/jagged" }
+# slop-air = { path = "../sp1-wip/slop/crates/air" }
+# slop-koala-bear = { path = "../sp1-wip/slop/crates/koala-bear" }
+# slop-bn254 = { path = "../sp1-wip/slop/crates/bn254" }
+# slop-basefold = { path = "../sp1-wip/slop/crates/basefold" }
+# slop-basefold-prover = { path = "../sp1-wip/slop/crates/basefold-prover" }
+# slop-dft = { path = "../sp1-wip/slop/crates/dft" }
+# slop-matrix = { path = "../sp1-wip/slop/crates/matrix" }
+# slop-algebra = { path = "../sp1-wip/slop/crates/algebra" }
+# slop-symmetric = { path = "../sp1-wip/slop/crates/symmetric" }
+# slop-merkle-tree = { path = "../sp1-wip/slop/crates/merkle-tree" }
+# slop-poseidon2 = { path = "../sp1-wip/slop/crates/poseidon2" }
+# slop-commit = { path = "../sp1-wip/slop/crates/commit" }
+# slop-challenger = { path = "../sp1-wip/slop/crates/challenger" }
+# slop-multilinear = { path = "../sp1-wip/slop/crates/multilinear" }
+# slop-alloc = { path = "../sp1-wip/slop/crates/alloc" }
+# slop-tensor = { path = "../sp1-wip/slop/crates/tensor" }
+# slop-sumcheck = { path = "../sp1-wip/slop/crates/sumcheck" }
+# slop-futures = { path = "../sp1-wip/slop/crates/futures" }
+# slop-stacked = { path = "../sp1-wip/slop/crates/stacked" }
+# slop-jagged = { path = "../sp1-wip/slop/crates/jagged" }
 
 # # for local development
 # sp1-core-executor = { path = "../sp1-wip/crates/core/executor" }

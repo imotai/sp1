@@ -959,6 +959,7 @@ dependencies = [
  "slop-alloc",
  "slop-basefold",
  "slop-challenger",
+ "slop-commit",
  "slop-futures",
  "slop-jagged",
  "slop-koala-bear",

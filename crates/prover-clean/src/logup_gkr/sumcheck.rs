@@ -4,19 +4,16 @@ use std::iter::once;
 
 use csl_cuda::{
     args,
-    sys::{
-        prover_clean::{
-            logup_gkr_fix_and_sum_circuit_layer as fix_and_sum_circuit_layer_kernel,
-            logup_gkr_fix_and_sum_interactions_layer as fix_and_sum_interactions_layer_kernel,
-            logup_gkr_fix_and_sum_last_circuit_layer as fix_and_sum_last_circuit_layer_kernel,
-            prover_clean_logup_gkr_first_sum_as_poly_circuit_layer as first_sum_as_poly_layer_circuit_layer_kernel,
-            prover_clean_logup_gkr_fix_last_variable_first_layer as fix_last_variable_first_layer_kernel,
-            prover_clean_logup_gkr_fix_last_variable_interactions_layer as fix_last_variable_interactions_layer_kernel,
-            prover_clean_logup_gkr_fix_last_variable_last_circuit_layer as fix_last_row_last_circuit_layer_kernel,
-            prover_clean_logup_gkr_sum_as_poly_circuit_layer as sum_as_poly_circuit_layer_kernel,
-            prover_clean_logup_gkr_sum_as_poly_first_layer as sum_as_poly_first_layer_kernel,
-        },
-        runtime::KernelPtr,
+    sys::prover_clean::{
+        logup_gkr_fix_and_sum_circuit_layer as fix_and_sum_circuit_layer_kernel,
+        logup_gkr_fix_and_sum_interactions_layer as fix_and_sum_interactions_layer_kernel,
+        logup_gkr_fix_and_sum_last_circuit_layer as fix_and_sum_last_circuit_layer_kernel,
+        prover_clean_logup_gkr_first_sum_as_poly_circuit_layer as first_sum_as_poly_layer_circuit_layer_kernel,
+        prover_clean_logup_gkr_fix_last_variable_first_layer as fix_last_variable_first_layer_kernel,
+        prover_clean_logup_gkr_fix_last_variable_interactions_layer as fix_last_variable_interactions_layer_kernel,
+        prover_clean_logup_gkr_fix_last_variable_last_circuit_layer as fix_last_row_last_circuit_layer_kernel,
+        prover_clean_logup_gkr_sum_as_poly_circuit_layer as sum_as_poly_circuit_layer_kernel,
+        prover_clean_logup_gkr_sum_as_poly_first_layer as sum_as_poly_first_layer_kernel,
     },
     TaskScope, ToDevice,
 };
@@ -137,7 +134,6 @@ async fn sum_as_poly_first_layer(
 async fn fix_last_variable_first_layer(
     mut poly: FirstLayerPolynomial,
     alpha: Ext,
-    kernel: unsafe extern "C" fn() -> KernelPtr,
 ) -> LogupRoundPolynomial {
     let last_coordinate = poly.point.remove_last_coordinate();
     let padding_adjustment =
@@ -184,7 +180,9 @@ async fn fix_last_variable_first_layer(
         output_jagged_mle.dense_data.assume_init();
         output_jagged_mle.col_index.assume_init();
         let args = args!(poly.layer.jagged_mle.as_raw(), output_jagged_mle.as_mut_raw(), alpha);
-        backend.launch_kernel(kernel(), grid_size, block_dim, &args, 0).unwrap();
+        backend
+            .launch_kernel(fix_last_variable_first_layer_kernel(), grid_size, block_dim, &args, 0)
+            .unwrap();
     }
     // Fix the eq_row variables
     let eq_row = poly.eq_row.fix_last_variable(alpha).await;
@@ -653,8 +651,7 @@ where
         &mut point,
     );
 
-    let mut poly =
-        fix_last_variable_first_layer(poly, alpha, fix_last_variable_first_layer_kernel).await;
+    let mut poly = fix_last_variable_first_layer(poly, alpha).await;
 
     let round_claim = uni_poly.eval_at_point(*point.first().unwrap());
 

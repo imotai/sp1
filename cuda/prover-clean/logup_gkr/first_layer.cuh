@@ -92,7 +92,6 @@ struct FirstLayerCircuitValues {
 
 /// A GKR layer.
 struct JaggedFirstGkrLayer {
-    using F = ext_t;
     using OutputDenseData = JaggedGkrLayer;
 
   public:

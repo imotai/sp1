@@ -1,3 +1,8 @@
+/**
+ * This is just a playground hadamard sumcheck. For example, some kernels don't work with padding,
+ * etc. The hadamard kernels used in the actual Jagged Sumcheck are found in
+ * `jagged_sumcheck/jagged_sumcheck.cu`.
+ */
 
 #include "reduce.cuh"
 #include "config.cuh"
@@ -53,6 +58,7 @@ __global__ void hadamardSumAsPoly(
     }
 }
 
+/// Note: this does not correclty handle padding.
 template <typename F, typename EF>
 __global__ void hadamardFixLastVariableAndSumAsPoly(
     const F* base_input,
@@ -61,8 +67,8 @@ __global__ void hadamardFixLastVariableAndSumAsPoly(
     EF* __restrict ext_output,
     EF alpha,
     EF* univariate_result,
-    size_t numPolys,
     size_t inputHeight) {
+
     size_t outputHeight = (inputHeight + 1) >> 1;
     bool padding = inputHeight & 1;
     EF evalZero = EF::zero();
@@ -71,48 +77,47 @@ __global__ void hadamardFixLastVariableAndSumAsPoly(
     auto block = cg::this_thread_block();
     auto tile = cg::tiled_partition<2>(block);
 
-    for (size_t j = blockDim.y * blockIdx.y + threadIdx.y; j < numPolys;
-         j += blockDim.y * gridDim.y) {
-        for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight;
-             i += blockDim.x * gridDim.x) {
-            size_t startingIdx = j * inputHeight + (i << 1);
 
-            F baseZeroValue = F::load(base_input, startingIdx);
-            F baseOneValue;
-            if (padding && i >= outputHeight - 1) {
-                baseOneValue = F::zero();
-            } else {
-                baseOneValue = F::load(base_input, startingIdx + 1);
-            }
-            // Compute value = zeroValue * (1 - alpha) + oneValue * alpha
-            EF baseValue = alpha * baseOneValue + (F::one() - alpha) * baseZeroValue;
-            EF::store(base_output, j * outputHeight + i, baseValue);
+    for (size_t i = blockDim.x * blockIdx.x + threadIdx.x; i < outputHeight;
+         i += blockDim.x * gridDim.x) {
+        size_t startingIdx = i << 1;
 
-            EF extZeroValue = EF::load(ext_input, startingIdx);
-            EF extOneValue;
-            if (padding && i >= outputHeight - 1) {
-                extOneValue = EF::zero();
-            } else {
-                extOneValue = EF::load(ext_input, startingIdx + 1);
-            }
+        F baseZeroValue = F::load(base_input, startingIdx);
+        F baseOneValue;
+        if (padding && i >= outputHeight - 1) {
+            baseOneValue = F::zero();
+        } else {
+            baseOneValue = F::load(base_input, startingIdx + 1);
+        }
+        // Compute value = zeroValue * (1 - alpha) + oneValue * alpha
+        EF baseValue = alpha * baseOneValue + (F::one() - alpha) * baseZeroValue;
+        EF::store(base_output, i, baseValue);
 
-            // Compute value = zeroValue * (1 - alpha) + oneValue * alpha
-            EF extValue = alpha * extOneValue + (EF::one() - alpha) * extZeroValue;
-            EF::store(ext_output, j * outputHeight + i, extValue);
+        EF extZeroValue = EF::load(ext_input, startingIdx);
+        EF extOneValue;
+        if (padding && i >= outputHeight - 1) {
+            extOneValue = EF::zero();
+        } else {
+            extOneValue = EF::load(ext_input, startingIdx + 1);
+        }
 
-            EF prevBaseValue = tile.shfl(baseValue, 0);
-            EF prevExtValue = tile.shfl(extValue, 0);
+        // Compute value = zeroValue * (1 - alpha) + oneValue * alpha
+        EF extValue = alpha * extOneValue + (EF::one() - alpha) * extZeroValue;
+        EF::store(ext_output, i, extValue);
 
-            bool amEven = (tile.thread_rank() & 1) == 0;
-            if (amEven) {
-                // The even threads sum in evalZero.
-                evalZero += extValue * baseValue;
-            } else {
-                // The odd threads read from the even threads and sum in evalHalf.
-                evalHalf += (prevExtValue + extValue) * (prevBaseValue + baseValue);
-            }
+        EF prevBaseValue = tile.shfl(baseValue, 0);
+        EF prevExtValue = tile.shfl(extValue, 0);
+
+        bool amEven = (tile.thread_rank() & 1) == 0;
+        if (amEven) {
+            // The even threads sum in evalZero.
+            evalZero += extValue * baseValue;
+        } else {
+            // The odd threads read from the even threads and sum in evalHalf.
+            evalHalf += (prevExtValue + extValue) * (prevBaseValue + baseValue);
         }
     }
+
 
     // Allocate shared memory
     extern __shared__ unsigned char memory[];

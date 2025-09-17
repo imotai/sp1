@@ -125,7 +125,7 @@ where
         // individual table, which is how the sum is done below. Given an entry (row, col) for a
         // table with a certain height, the corresponding index is given by
         // `i = offset + col * height + row`. Since our MLEs are not contiguous but grouped in
-        // batches according to thwe log_stacking_height, with each round having potentially
+        // batches according to the log_stacking_height, with each round having potentially
         // different batch sizes, we can compute the corresponding element mle(i,X) by indexing
         // correctly into the pointer of the batch, and then the specific index.
         //

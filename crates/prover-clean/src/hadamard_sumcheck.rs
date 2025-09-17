@@ -4,6 +4,7 @@ use csl_cuda::sys::prover_clean::hadamard_fix_last_variable_and_sum_as_poly_base
 use csl_cuda::sys::prover_clean::hadamard_fix_last_variable_and_sum_as_poly_ext_ext_kernel;
 use csl_cuda::sys::prover_clean::hadamard_sum_as_poly_base_ext_kernel;
 use csl_cuda::sys::prover_clean::hadamard_sum_as_poly_ext_ext_kernel;
+use csl_cuda::sys::prover_clean::padded_hadamard_fix_and_sum;
 use csl_cuda::sys::runtime::Dim3;
 use csl_cuda::sys::runtime::KernelPtr;
 use csl_cuda::TaskScope;
@@ -126,7 +127,7 @@ where
 }
 
 // returns (base_output, ext_output, next_univariate)
-async fn fix_last_variable_and_sum_as_poly<F>(
+pub async fn fix_last_variable_and_sum_as_poly<F>(
     base: Mle<F, TaskScope>,
     ext: Mle<Ext, TaskScope>,
     alpha: Ext,
@@ -143,8 +144,6 @@ where
     let mut ext_output: Tensor<Ext, TaskScope> = backend.uninit_mle(1, output_height);
 
     let grid_size_x = output_height.div_ceil(BLOCK_SIZE * STRIDE);
-    let grid_size_y = 1;
-    let grid_size = (grid_size_x, grid_size_y, 1);
 
     const BLOCK_SIZE: usize = 256;
     const STRIDE: usize = 1;
@@ -153,7 +152,7 @@ where
     let shared_mem = num_tiles * std::mem::size_of::<Ext>();
 
     let mut univariate_evals =
-        Tensor::<Ext, TaskScope>::with_sizes_in([2, grid_size.1, grid_size.0], backend.clone());
+        Tensor::<Ext, TaskScope>::with_sizes_in([2, grid_size_x], backend.clone());
 
     let args = args!(
         base.guts().as_ptr(),
@@ -162,7 +161,6 @@ where
         ext_output.as_mut_ptr(),
         alpha,
         univariate_evals.as_mut_ptr(),
-        1usize,
         input_height
     );
 
@@ -170,11 +168,11 @@ where
         univariate_evals.assume_init();
         base_output.assume_init();
         ext_output.assume_init();
-        backend.launch_kernel(kernel(), grid_size, (BLOCK_SIZE, 1, 1), &args, shared_mem).unwrap();
+        backend.launch_kernel(kernel(), grid_size_x, BLOCK_SIZE, &args, shared_mem).unwrap();
     }
 
     // Sum the univariate evals and interpolate into a degree-2 univariate
-    let univariate_evals = univariate_evals.sum(2).await.sum(1).await;
+    let univariate_evals = univariate_evals.sum(1).await;
     let host_evals = unsafe { univariate_evals.into_buffer().copy_into_host_vec() };
 
     let [component_eval_zero, component_eval_half] = host_evals.try_into().unwrap();
@@ -259,7 +257,7 @@ where
             ext,
             *point.first().unwrap(),
             round_claim,
-            hadamard_fix_last_variable_and_sum_as_poly_ext_ext_kernel,
+            padded_hadamard_fix_and_sum,
         )
         .await;
 

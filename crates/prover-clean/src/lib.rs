@@ -1,6 +1,7 @@
 pub mod config;
 pub mod hadamard_sumcheck;
 pub mod jagged;
+pub mod jagged_sumcheck;
 pub mod logup_gkr;
 pub mod look_ahead;
 pub mod reduce;
