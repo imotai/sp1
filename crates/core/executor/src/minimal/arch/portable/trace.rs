@@ -98,6 +98,8 @@ impl TraceChunkBuffer {
     /// # SAFETY
     ///
     /// See the safety section of [`TraceChunkBuffer`].
+    ///
+    /// - The caller must ensure that the buffer has enough space to write the values.
     pub unsafe fn extend(&self, values: &[MemValue]) {
         // Load the current `num_mem_reads``
         let num_mem_reads = std::ptr::read_unaligned(
@@ -107,6 +109,12 @@ impl TraceChunkBuffer {
         // Add the count
         let new_num_mem_reads =
             num_mem_reads.checked_add(values.len() as u64).expect("Num mem reads too large");
+
+        debug_assert!(
+            new_num_mem_reads * std::mem::size_of::<MemValue>() as u64
+                <= self.inner.len() as u64 - std::mem::size_of::<TraceChunkHeader>() as u64,
+            "Num mem reads too large"
+        );
 
         // Write the new `num_mem_reads`
         std::ptr::write_unaligned(

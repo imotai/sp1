@@ -35,6 +35,8 @@ pub trait SyscallContext {
     /// This increment is local to the precompile, and does not affect the number of cycles
     /// the precompile itself takes up.
     fn bump_memory_clk(&mut self);
+    /// Set the exit code of the program.
+    fn set_exit_code(&mut self, exit_code: u32);
 }
 
 impl SyscallContext for JitContext {
@@ -150,6 +152,10 @@ impl SyscallContext for JitContext {
     fn mw_hint(&mut self, addr: u64, val: u64) {
         unsafe { ContextMemory::new(self).mw_hint(addr, val) };
     }
+
+    fn set_exit_code(&mut self, exit_code: u32) {
+        self.exit_code = exit_code;
+    }
 }
 
 #[repr(C)]
@@ -187,6 +193,8 @@ pub struct JitContext {
     pub(crate) tracing: bool,
     /// Whether the JIT is sending debug state every instruction.
     pub(crate) debug_sender: Option<mpsc::SyncSender<Option<debug::State>>>,
+    /// The exit code of the program.
+    pub(crate) exit_code: u32,
 }
 
 impl JitContext {

@@ -150,8 +150,11 @@ pub fn ecall_handler(ctx: &mut impl SyscallContext) -> u64 {
             uint256_ops(ctx, arg1, arg2)
         },
         SyscallCode::POSEIDON2 => unsafe { poseidon2(ctx, arg1, arg2) },
-        SyscallCode::HALT
-        | SyscallCode::MPROTECT
+        SyscallCode::HALT => {
+            ctx.set_exit_code(arg1 as u32);
+            None
+        }
+        SyscallCode::MPROTECT
         | SyscallCode::VERIFY_SP1_PROOF
         | SyscallCode::COMMIT
         | SyscallCode::COMMIT_DEFERRED_PROOFS => None,

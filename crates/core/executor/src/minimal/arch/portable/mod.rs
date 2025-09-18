@@ -2,7 +2,7 @@
 
 use sp1_jit::{
     debug::{self, DebugState},
-    MemValue, RiscRegister, SyscallContext, TraceChunk, TraceChunkHeader, TraceChunkRaw,
+    MemValue, RiscRegister, SyscallContext, TraceChunkHeader, TraceChunkRaw,
 };
 
 use std::{
@@ -32,6 +32,7 @@ pub struct MinimalExecutor {
     pc: u64,
     clk: u64,
     global_clk: u64,
+    exit_code: u32,
     max_trace_size: Option<u64>,
     public_values_stream: Vec<u8>,
     hints: Vec<(u64, Vec<u8>)>,
@@ -175,6 +176,10 @@ impl SyscallContext for MinimalExecutor {
     fn bump_memory_clk(&mut self) {
         self.clk = self.clk.wrapping_add(1);
     }
+
+    fn set_exit_code(&mut self, exit_code: u32) {
+        self.exit_code = exit_code;
+    }
 }
 
 impl MinimalExecutor {
@@ -187,14 +192,6 @@ impl MinimalExecutor {
         for (addr, value) in program.memory_image.iter() {
             memory.insert(*addr, MemValue { clk: 0, value: *value });
         }
-
-        let capacity_bytes = max_trace_size.map_or(0, |size| {
-            let events_bytes = size as usize * std::mem::size_of::<MemValue>();
-            // Scale a bit for leeway.
-            let events_bytes = events_bytes * 10 / 9;
-            let header_bytes = std::mem::size_of::<TraceChunkHeader>();
-            events_bytes + header_bytes
-        });
 
         Self {
             program,
@@ -210,6 +207,7 @@ impl MinimalExecutor {
             hints: Vec::new(),
             maybe_unconstrained: None,
             debug_sender: None,
+            exit_code: 0,
         }
     }
 

@@ -212,6 +212,7 @@ pub struct JitFunction {
     pub registers: [u64; 32],
     pub clk: u64,
     pub global_clk: u64,
+    pub exit_code: u32,
 
     pub debug_sender: Option<mpsc::SyncSender<Option<debug::State>>>,
 }
@@ -254,6 +255,7 @@ impl JitFunction {
             hints: Vec::new(),
             public_values_stream: Vec::new(),
             debug_sender: None,
+            exit_code: 0,
         })
     }
 
@@ -349,6 +351,7 @@ impl JitFunction {
             is_unconstrained: 0,
             tracing,
             debug_sender: self.debug_sender.clone(),
+            exit_code: self.exit_code,
         };
 
         tracing::debug_span!("JIT function", pc = ctx.pc, clk = ctx.clk).in_scope(|| {
@@ -360,6 +363,7 @@ impl JitFunction {
         self.registers = ctx.registers;
         self.clk = ctx.clk;
         self.global_clk = ctx.global_clk;
+        self.exit_code = ctx.exit_code;
 
         tracing.then_some(TraceChunkRaw::new(
             trace_buf.make_read_only().expect("Failed to make trace buf read only"),

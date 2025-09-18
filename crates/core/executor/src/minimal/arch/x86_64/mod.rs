@@ -148,6 +148,12 @@ impl MinimalExecutor {
         self.compiled.global_clk
     }
 
+    /// Get the exit code of the JIT function.
+    #[must_use]
+    pub fn exit_code(&self) -> u32 {
+        self.compiled.exit_code
+    }
+
     /// Get the public values stream of the JIT function.
     #[must_use]
     pub fn public_values_stream(&self) -> &Vec<u8> {
