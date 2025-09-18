@@ -1,6 +1,6 @@
 use csl_cuda::run_in_place;
 use csl_prover_clean::config::{Ext, Felt};
-use csl_prover_clean::zerocheck::simple_zerocheck;
+use csl_prover_clean::zerocheck_mock::simple_zerocheck;
 use itertools::Itertools;
 
 use rand::SeedableRng;

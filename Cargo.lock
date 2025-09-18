@@ -954,6 +954,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "serial_test",
  "slop-air",
  "slop-algebra",
  "slop-alloc",

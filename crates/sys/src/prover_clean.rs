@@ -3,17 +3,22 @@ use std::ffi::c_void;
 use crate::runtime::{CudaRustError, CudaStreamHandle, KernelPtr};
 
 extern "C" {
-
     // Sum kernels
-
     pub fn sum_kernel_u32() -> KernelPtr;
     pub fn sum_kernel_felt() -> KernelPtr;
     pub fn sum_kernel_ext() -> KernelPtr;
 
     // Reduce kernels
-
     pub fn reduce_kernel_felt() -> KernelPtr;
     pub fn reduce_kernel_ext() -> KernelPtr;
+
+    // JaggedMLE kernels
+    pub fn jagged_eval_kernel_chunked_felt() -> KernelPtr;
+    pub fn jagged_eval_kernel_chunked_ext() -> KernelPtr;
+
+    // Basic jagged fix last variable
+    pub fn fix_last_variable_jagged_felt() -> KernelPtr;
+    pub fn fix_last_variable_jagged_ext() -> KernelPtr;
 
     // Zerocheck kernels
     pub fn zerocheck_sum_as_poly_base_ext_kernel() -> KernelPtr;
