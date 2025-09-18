@@ -449,7 +449,7 @@ impl<'a> MemoryView<'a> {
     ///
     /// Panics if the address is not aligned to 8 bytes.
     pub fn get(&self, addr: u64) -> MemValue {
-        assert!(addr % 8 == 0, "Address {addr} is not aligned to 8");
+        assert!(addr.is_multiple_of(8), "Address {addr} is not aligned to 8");
 
         let word_address = addr / 8;
         let entry_ptr = self.memory.as_ptr() as *mut MemValue;

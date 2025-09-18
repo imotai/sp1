@@ -499,10 +499,7 @@ impl<'a> ContextMemory<'a> {
         addr: u64,
         len: usize,
     ) -> impl IntoIterator<Item = &u64> + Clone {
-        #[cfg(debug_assertions)]
-        if addr % 8 > 0 {
-            panic!("Address {addr} is not aligned to 8");
-        }
+        debug_assert!(addr.is_multiple_of(8), "Address {addr} is not aligned to 8");
 
         // Convert the byte address to the word address.
         let word_address = addr / 8;
