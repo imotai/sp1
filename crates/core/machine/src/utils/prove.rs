@@ -162,7 +162,7 @@ pub fn generate_records<F: PrimeField32>(
             deferred.append(&mut record.defer(&[]));
 
             // See if any deferred shards are ready to be committed to.
-            let mut deferred = deferred.split(done, None, &split_opts);
+            let mut deferred = deferred.split(done, &mut record, false, &split_opts);
             tracing::debug!("deferred {} records", deferred.len());
 
             // Update the public values & prover state for the shards which do not

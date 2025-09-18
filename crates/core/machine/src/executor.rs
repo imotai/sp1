@@ -13,7 +13,6 @@ use sp1_core_executor::{
     SP1CoreOpts, SplicingVM, SplitOpts, TracingVM,
 };
 use sp1_hypercube::{
-    air::PublicValues,
     prover::{MemoryPermit, MemoryPermitting},
     Machine, MachineRecord,
 };
@@ -27,11 +26,7 @@ use tracing::{Instrument, Level};
 
 use sp1_core_executor::{CycleResult, MinimalExecutor, SplicedMinimalTrace, TraceChunkRaw};
 
-use crate::{
-    io::SP1Stdin,
-    riscv::RiscvAir,
-    utils::concurrency::{AsyncTurn, TurnBasedSync},
-};
+use crate::{io::SP1Stdin, riscv::RiscvAir};
 
 pub struct MachineExecutor<F: PrimeField32> {
     num_record_workers: usize,
@@ -69,8 +64,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
         let (chunk_tx, mut chunk_rx) = mpsc::unbounded_channel::<TraceChunkRaw>();
         let (last_record_tx, mut last_record_rx) =
             tokio::sync::mpsc::channel::<(ExecutionRecord, [MemoryRecord; 32])>(1);
-        let record_gen_sync = AsyncTurn::new();
-        let state = Arc::new(Mutex::new(PublicValues::<u32, u64, u64, u32>::default().reset()));
+        // let record_gen_sync = AsyncTurn::new();
         let deferred = Arc::new(Mutex::new(ExecutionRecord::new(program.clone())));
         let mut record_worker_channels = Vec::with_capacity(self.num_record_workers);
 
@@ -85,9 +79,9 @@ impl<F: PrimeField32> MachineExecutor<F> {
             let machine = self.machine.clone();
             let opts = self.opts.clone();
             let program = program.clone();
-            let record_gen_sync = record_gen_sync.clone();
+            // let record_gen_sync = record_gen_sync.clone();
             let record_tx = record_tx.clone();
-            let state = state.clone();
+            // let state = state.clone();
             let deferred: Arc<Mutex<ExecutionRecord>> = deferred.clone();
             let last_record_tx = last_record_tx.clone();
             let permitting = self.memory.clone();
@@ -95,8 +89,8 @@ impl<F: PrimeField32> MachineExecutor<F> {
             handles.push(tokio::task::spawn(
                 async move {
                     while let Some(task) = rx.recv().await {
-                        let RecordTask { index, chunk } = task;
-                        tracing::trace!("tracing chunk at idx: {}, with worker: {}", index, i);
+                        let RecordTask { chunk } = task;
+                        tracing::trace!("tracing chunk with worker: {}", i);
 
                         // Assume a record is 4Gb for now.
                         let permit = permitting.acquire(2 * 1024 * 1024 * 1024).await.unwrap();
@@ -110,7 +104,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
                             move || {
                                 let _debug_span =
                                     tracing::trace_span!("tracing chunk blocking task").entered();
-                                trace_chunk(program, opts, index, chunk)
+                                trace_chunk(program, opts, chunk)
                             }
                         })
                         .await
@@ -118,29 +112,22 @@ impl<F: PrimeField32> MachineExecutor<F> {
                         .expect("todo: handle error");
 
                         // Wait for our turn to update the state.
-                        let _turn_guard = record_gen_sync.wait_for_turn(index).await;
+                        // let _turn_guard = record_gen_sync.wait_for_turn(index).await;
 
                         let deferred_records = if done {
-                            tracing::trace!("last record at idx: {}", index);
+                            tracing::trace!("last record");
 
                             // If this is the last record, we have special handling for the memory
                             // events.
                             last_record_tx.send((record, registers)).await.unwrap();
                             return;
                         } else {
-                            tracing::trace!("defferring record at idx: {}", index);
+                            tracing::trace!("defferring record");
 
-                            let mut state = state.lock().unwrap();
+                            // let mut state = state.lock().unwrap();
                             let mut deferred = deferred.lock().unwrap();
 
-                            defer::<F>(
-                                &mut state,
-                                &mut record,
-                                &mut deferred,
-                                &split_opts,
-                                opts,
-                                done,
-                            )
+                            defer::<F>(&mut record, &mut deferred, &split_opts, opts, done)
                         };
 
                         start_prove(
@@ -193,16 +180,13 @@ impl<F: PrimeField32> MachineExecutor<F> {
             async move {
                 let mut splicing_handles = Vec::new();
                 let touched_addresses = Arc::new(Mutex::new(HashSet::new()));
-                let idx = Arc::new(Mutex::new(0));
-                let splicer_turn_sync = Arc::new(TurnBasedSync::new());
-                let mut splicer_index = 0;
+                // let splicer_turn_sync = Arc::new(TurnBasedSync::new());
                 while let Some(chunk) = chunk_rx.recv().await {
                     let splicing_handle = tokio::task::spawn_blocking({
                         let program = program.clone();
                         let touched_addresses = touched_addresses.clone();
                         let record_worker_channels = record_worker_channels.clone();
-                        let idx = idx.clone();
-                        let splicer_turn_sync = splicer_turn_sync.clone();
+                        // let splicer_turn_sync = splicer_turn_sync.clone();
 
                         move || {
                             generate_chunks(
@@ -210,15 +194,11 @@ impl<F: PrimeField32> MachineExecutor<F> {
                                 chunk,
                                 record_worker_channels,
                                 touched_addresses,
-                                idx,
-                                splicer_turn_sync,
-                                splicer_index,
                             )
                         }
                     });
 
                     splicing_handles.push(splicing_handle);
-                    splicer_index += 1;
                 }
 
                 try_join_all(splicing_handles).await.expect("error: splicing tasks panicked");
@@ -249,16 +229,9 @@ impl<F: PrimeField32> MachineExecutor<F> {
             minimal_executor.emit_globals(&mut last_record, final_registers, touched_addresses);
 
             let mut deferred = deferred.lock().unwrap();
-            let mut state = state.lock().unwrap();
+            // let mut state = state.lock().unwrap();
             tracing::trace_span!("defer last shard").in_scope(|| {
-                defer::<F>(
-                    &mut state,
-                    &mut last_record,
-                    &mut deferred,
-                    &split_opts,
-                    self.opts.clone(),
-                    true,
-                )
+                defer::<F>(&mut last_record, &mut deferred, &split_opts, self.opts.clone(), true)
             })
         });
 
@@ -294,7 +267,6 @@ pub struct ExecutionOutput {
 }
 
 struct RecordTask {
-    index: usize,
     chunk: SplicedMinimalTrace<TraceChunkRaw>,
 }
 
@@ -305,21 +277,19 @@ fn generate_chunks(
     chunk: TraceChunkRaw,
     record_worker_channels: Arc<WorkerQueue<UnboundedSender<RecordTask>>>,
     all_touched_addresses: Arc<Mutex<HashSet<u64>>>,
-    idx: Arc<Mutex<usize>>,
-    splicer_turn: Arc<TurnBasedSync>,
-    splicer_index: usize,
 ) -> Result<(), ExecutionError> {
     let mut touched_addresses = CompressedMemory::new();
     let mut vm = SplicingVM::new(&chunk, program.clone(), &mut touched_addresses);
-    // If the logic is correct than this is the happy path condition,
-    // in the worst case, we just miss our turn and just take the lock later.
-    let mut maybe_lock =
-        if splicer_turn.current_turn() != splicer_index { None } else { Some(idx.lock().unwrap()) };
+    // // If the logic is correct than this is the happy path condition,
+    // // in the worst case, we just miss our turn and just take the lock later.
+    // let mut maybe_lock =
+    //     if splicer_turn.current_turn() != splicer_index { None } else { Some(idx.lock().unwrap())
+    // };
 
     let start_num_mem_reads = chunk.num_mem_reads();
 
     let mut last_splice = SplicedMinimalTrace::new_full_trace(chunk.clone());
-    let mut splices = Vec::new();
+    // let mut splices = Vec::new();
     loop {
         tracing::debug!("starting new shard at clk: {} at pc: {}", vm.core.clk(), vm.core.pc());
 
@@ -339,16 +309,12 @@ fn generate_chunks(
                     );
 
                     let splice_to_send = std::mem::replace(&mut last_splice, spliced);
-                    if let Some(ref mut lock) = maybe_lock {
-                        send_spliced_trace_blocking(
-                            record_worker_channels.clone(),
-                            splice_to_send,
-                            **lock,
-                        );
-                        **lock += 1;
-                    } else {
-                        splices.push(splice_to_send);
-                    }
+                    // if let Some(ref mut lock) = maybe_lock {
+                    send_spliced_trace_blocking(record_worker_channels.clone(), splice_to_send);
+                    // **lock += 1;
+                    // } else {
+                    //     splices.push(splice_to_send);
+                    // }
                 } else {
                     tracing::trace!("trace ended at clk: {}", vm.core.clk());
                     tracing::trace!("trace ended at pc: {}", vm.core.pc());
@@ -360,16 +326,7 @@ fn generate_chunks(
                         start_num_mem_reads as usize - vm.core.mem_reads.len(),
                     );
 
-                    if let Some(ref mut lock) = maybe_lock {
-                        send_spliced_trace_blocking(
-                            record_worker_channels.clone(),
-                            last_splice,
-                            **lock,
-                        );
-                        **lock += 1;
-                    } else {
-                        splices.push(last_splice);
-                    }
+                    send_spliced_trace_blocking(record_worker_channels.clone(), last_splice);
 
                     break;
                 }
@@ -378,16 +335,7 @@ fn generate_chunks(
                 last_splice.set_last_clk(vm.core.clk());
                 last_splice.set_last_mem_reads_idx(chunk.num_mem_reads() as usize);
 
-                if let Some(ref mut lock) = maybe_lock {
-                    send_spliced_trace_blocking(
-                        record_worker_channels.clone(),
-                        last_splice,
-                        **lock,
-                    );
-                    **lock += 1;
-                } else {
-                    splices.push(last_splice);
-                }
+                send_spliced_trace_blocking(record_worker_channels.clone(), last_splice);
 
                 break;
             }
@@ -398,21 +346,21 @@ fn generate_chunks(
         }
     }
 
-    // We couldnt take the lock, so once we can accquire it we send all the splices to the record
-    // workers.
-    if maybe_lock.is_none() {
-        // Wait for our turn to update the state.
-        splicer_turn.wait_for_turn(splicer_index);
+    // // We couldnt take the lock, so once we can accquire it we send all the splices to the record
+    // // workers.
+    // // if maybe_lock.is_none() {
+    //     // Wait for our turn to update the state.
+    //     splicer_turn.wait_for_turn(splicer_index);
 
-        let mut lock = idx.lock().unwrap();
+    //     let mut lock = idx.lock().unwrap();
 
-        for splice in splices {
-            send_spliced_trace_blocking(record_worker_channels.clone(), splice, *lock);
-            *lock += 1;
-        }
-    }
-    drop(maybe_lock);
-    splicer_turn.advance_turn();
+    //     for splice in splices {
+    //         send_spliced_trace_blocking(record_worker_channels.clone(), splice, *lock);
+    //         *lock += 1;
+    //     }
+    // }
+    // drop(maybe_lock);
+    // splicer_turn.advance_turn();
 
     // Append the touched addresses from this chunk to the globally tracked touched addresses.
     tracing::trace!("extending all_touched_addresses with touched_addresses");
@@ -427,14 +375,10 @@ fn generate_chunks(
     level = Level::DEBUG,
     name = "trace_chunk",
     skip_all,
-    fields(
-        index = index,
-    )
 )]
 fn trace_chunk(
     program: Arc<Program>,
     _opts: SP1CoreOpts,
-    index: usize,
     chunk: SplicedMinimalTrace<TraceChunkRaw>,
 ) -> Result<(bool, ExecutionRecord, [MemoryRecord; 32]), ExecutionError> {
     let mut vm = TracingVM::new(&chunk, program);
@@ -473,19 +417,14 @@ fn trace_chunk(
 
 #[tracing::instrument(name = "defer", skip_all)]
 fn defer<F: PrimeField32>(
-    state: &mut PublicValues<u32, u64, u64, u32>,
     record: &mut ExecutionRecord,
     deferred: &mut ExecutionRecord,
     split_opts: &SplitOpts,
     opts: SP1CoreOpts,
     done: bool,
 ) -> Vec<ExecutionRecord> {
+    let state = &mut record.public_values;
     state.is_execution_shard = 1;
-    state.pc_start = record.public_values.pc_start;
-    state.next_pc = record.public_values.next_pc;
-    state.initial_timestamp = record.public_values.initial_timestamp;
-    state.last_timestamp = record.public_values.last_timestamp;
-    state.is_first_execution_shard = (record.public_values.initial_timestamp == 1) as u32;
 
     let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
     let initial_timestamp_low = (state.initial_timestamp & 0xFFFFFF) as u32;
@@ -523,29 +462,7 @@ fn defer<F: PrimeField32>(
         .inverse()
         .as_canonical_u32();
     }
-
-    if state.committed_value_digest == [0u32; 8] {
-        state.committed_value_digest = record.public_values.committed_value_digest;
-    }
-    if state.deferred_proofs_digest == [0u32; 8] {
-        state.deferred_proofs_digest = record.public_values.deferred_proofs_digest;
-    }
-    if state.commit_syscall == 0 {
-        state.commit_syscall = record.public_values.commit_syscall;
-    }
-    if state.commit_deferred_syscall == 0 {
-        state.commit_deferred_syscall = record.public_values.commit_deferred_syscall;
-    }
-    if state.exit_code == 0 {
-        state.exit_code = record.public_values.exit_code;
-    }
-    record.public_values = *state;
-    state.prev_exit_code = state.exit_code;
-    state.prev_commit_syscall = state.commit_syscall;
-    state.prev_commit_deferred_syscall = state.commit_deferred_syscall;
-    state.prev_committed_value_digest = state.committed_value_digest;
-    state.prev_deferred_proofs_digest = state.deferred_proofs_digest;
-    state.initial_timestamp = state.last_timestamp;
+    state.is_first_execution_shard = (state.initial_timestamp == 1) as u32;
 
     // Defer events that are too expensive to include in every shard.
     deferred.append(&mut record.defer(&opts.retained_events_presets));
@@ -560,49 +477,8 @@ fn defer<F: PrimeField32>(
             <= split_opts.combine_page_prot_threshold;
 
     // See if any deferred shards are ready to be committed to.
-    let mut deferred_records =
-        deferred.split(done, can_pack_global_memory.then_some(record), split_opts);
+    let deferred_records = deferred.split(done, record, can_pack_global_memory, split_opts);
     tracing::trace!("split deffered into {} records", deferred_records.len());
-
-    // Update the public values & prover state for the shards which do not
-    // contain "cpu events" before committing to them.
-    for record in deferred_records.iter_mut() {
-        state.previous_init_addr = record.public_values.previous_init_addr;
-        state.last_init_addr = record.public_values.last_init_addr;
-        state.previous_finalize_addr = record.public_values.previous_finalize_addr;
-        state.last_finalize_addr = record.public_values.last_finalize_addr;
-
-        state.pc_start = state.next_pc;
-        state.prev_exit_code = state.exit_code;
-        state.prev_commit_syscall = state.commit_syscall;
-
-        state.prev_commit_deferred_syscall = state.commit_deferred_syscall;
-        state.prev_committed_value_digest = state.committed_value_digest;
-        state.prev_deferred_proofs_digest = state.deferred_proofs_digest;
-
-        state.last_timestamp = state.initial_timestamp;
-        state.is_timestamp_high_eq = 1;
-        state.is_timestamp_low_eq = 1;
-
-        state.is_first_execution_shard = 0;
-        state.is_execution_shard = 0;
-
-        let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
-        let initial_timestamp_low = (state.initial_timestamp & 0xFFFFFF) as u32;
-        let last_timestamp_high = (state.last_timestamp >> 24) as u32;
-        let last_timestamp_low = (state.last_timestamp & 0xFFFFFF) as u32;
-
-        state.is_first_execution_shard = (record.public_values.initial_timestamp == 1) as u32;
-        state.initial_timestamp_inv =
-            F::from_canonical_u32(initial_timestamp_high + initial_timestamp_low - 1)
-                .inverse()
-                .as_canonical_u32();
-        state.last_timestamp_inv =
-            F::from_canonical_u32(last_timestamp_high + last_timestamp_low - 1)
-                .inverse()
-                .as_canonical_u32();
-        record.public_values = *state;
-    }
 
     deferred_records
 }
@@ -646,14 +522,11 @@ async fn start_prove<F: PrimeField32>(
 fn send_spliced_trace_blocking(
     record_worker_channels: Arc<WorkerQueue<UnboundedSender<RecordTask>>>,
     chunk: SplicedMinimalTrace<TraceChunkRaw>,
-    idx: usize,
 ) {
-    tracing::trace!("sending spliced trace to record worker at idx: {}", idx);
-
     loop {
         match record_worker_channels.clone().try_pop() {
             Ok(worker) => {
-                worker.send(RecordTask { index: idx, chunk }).unwrap();
+                worker.send(RecordTask { chunk }).unwrap();
 
                 break;
             }

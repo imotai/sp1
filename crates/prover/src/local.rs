@@ -12,6 +12,7 @@ use sp1_core_executor::{
 };
 use sp1_core_machine::{executor::MachineExecutor, io::SP1Stdin};
 use sp1_hypercube::{
+    air::PublicValues,
     prover::{MachineProvingKey, MemoryPermit},
     MachineVerifierConfigError, MachineVerifyingKey, ShardProof,
 };
@@ -246,7 +247,15 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         let pv_stream = output.public_value_stream;
         let cycles = output.cycles;
         let public_values = SP1PublicValues::from(&pv_stream);
-        let shard_proofs = shard_proofs.await.unwrap()?;
+        let mut shard_proofs = shard_proofs.await.unwrap()?;
+        // Sort the shard proofs by initial and last timestamp, as they come in out of order.
+        shard_proofs.sort_by_key(|shard_proof| {
+            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
+                shard_proof.public_values.as_slice().borrow();
+            let initial_timestamp = public_values.initial_timestamp();
+            let last_timestamp = public_values.last_timestamp();
+            (initial_timestamp, last_timestamp)
+        });
 
         // Check for high cycle count.
         Self::check_for_high_cycles(cycles);

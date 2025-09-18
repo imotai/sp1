@@ -177,6 +177,83 @@ impl PublicValues<u32, u64, u64, u32> {
         copy.last_finalize_page_idx = 0;
         copy
     }
+
+    /// Get the public values corresponding to initial state of the program for a non-execution
+    /// shard.
+    #[must_use]
+    pub fn initialize(&self, pc_start_abs: u64, enable_untrusted_programs: bool) -> Self {
+        let mut state = *self;
+        state.pc_start = pc_start_abs;
+        state.next_pc = pc_start_abs;
+        state.initial_timestamp = 1;
+        state.last_timestamp = 1;
+        state.is_timestamp_high_eq = 1;
+        state.is_timestamp_low_eq = 1;
+        state.is_first_execution_shard = 0;
+        state.is_execution_shard = 0;
+        state.initial_timestamp_inv = 0;
+        state.last_timestamp_inv = 0;
+        state.is_untrusted_programs_enabled = enable_untrusted_programs as u32;
+        state
+    }
+
+    /// Update the public values to the state.
+    pub fn update_state(&mut self, state: &PublicValues<u32, u64, u64, u32>) {
+        self.pc_start = state.pc_start;
+        self.next_pc = state.next_pc;
+        self.exit_code = state.exit_code;
+        self.initial_timestamp = state.initial_timestamp;
+        self.last_timestamp = state.last_timestamp;
+        self.is_timestamp_high_eq = state.is_timestamp_high_eq;
+        self.is_timestamp_low_eq = state.is_timestamp_low_eq;
+        self.last_timestamp_inv = state.last_timestamp_inv;
+        self.initial_timestamp_inv = state.initial_timestamp_inv;
+        self.is_first_execution_shard = state.is_first_execution_shard;
+        self.is_execution_shard = state.is_execution_shard;
+        self.is_untrusted_programs_enabled = state.is_untrusted_programs_enabled;
+    }
+
+    /// Update the public values to the state, as a non-execution shard in the initial state of the
+    /// program's execution.
+    pub fn update_initialized_state(&mut self, pc_start_abs: u64, enable_untrusted_programs: bool) {
+        self.pc_start = pc_start_abs;
+        self.next_pc = pc_start_abs;
+        self.exit_code = 0;
+        self.initial_timestamp = 1;
+        self.last_timestamp = 1;
+        self.is_timestamp_high_eq = 1;
+        self.is_timestamp_low_eq = 1;
+        self.is_first_execution_shard = 0;
+        self.is_execution_shard = 0;
+        self.initial_timestamp_inv = 0;
+        self.last_timestamp_inv = 0;
+        self.is_untrusted_programs_enabled = enable_untrusted_programs as u32;
+    }
+
+    /// Update the public values to the state, as a non-execution shard in the final state of the
+    /// program's execution.
+    pub fn update_finalized_state(&mut self, state: &PublicValues<u32, u64, u64, u32>) {
+        self.pc_start = state.next_pc;
+        self.next_pc = state.next_pc;
+        self.exit_code = state.exit_code;
+        self.initial_timestamp = state.last_timestamp;
+        self.last_timestamp = state.last_timestamp;
+        self.is_timestamp_high_eq = 1;
+        self.is_timestamp_low_eq = 1;
+        self.is_first_execution_shard = 0;
+        self.is_execution_shard = 0;
+        self.initial_timestamp_inv = 0;
+        self.last_timestamp_inv = 0;
+        self.prev_committed_value_digest = state.committed_value_digest;
+        self.committed_value_digest = state.committed_value_digest;
+        self.prev_deferred_proofs_digest = state.deferred_proofs_digest;
+        self.deferred_proofs_digest = state.deferred_proofs_digest;
+        self.is_untrusted_programs_enabled = state.is_untrusted_programs_enabled;
+        self.prev_commit_syscall = state.commit_syscall;
+        self.commit_syscall = state.commit_syscall;
+        self.prev_commit_deferred_syscall = state.commit_deferred_syscall;
+        self.commit_deferred_syscall = state.commit_deferred_syscall;
+    }
 }
 
 impl<F: PrimeField32> PublicValues<[F; 4], [F; 3], [F; 4], F> {
@@ -186,6 +263,18 @@ impl<F: PrimeField32> PublicValues<[F; 4], [F; 3], [F; 4], F> {
             .iter()
             .flat_map(|w| w.iter().map(|f| f.as_canonical_u32() as u8))
             .collect_vec()
+    }
+
+    /// Returns the initial timestamp.
+    pub fn initial_timestamp(&self) -> u64 {
+        self.initial_timestamp
+            .iter()
+            .fold(0, |acc, x| acc * (1 << 16) + x.as_canonical_u32() as u64)
+    }
+
+    /// Returns the last timestamp.
+    pub fn last_timestamp(&self) -> u64 {
+        self.last_timestamp.iter().fold(0, |acc, x| acc * (1 << 16) + x.as_canonical_u32() as u64)
     }
 }
 

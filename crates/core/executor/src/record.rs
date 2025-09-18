@@ -181,14 +181,12 @@ impl ExecutionRecord {
 
     /// Splits the deferred [`ExecutionRecord`] into multiple [`ExecutionRecord`]s, each which
     /// contain a "reasonable" number of deferred events.
-    ///
-    /// The optional `last_record` will be provided if there are few enough deferred events that
-    /// they can all be packed into the already existing last record.
     #[allow(clippy::too_many_lines)]
     pub fn split(
         &mut self,
         done: bool,
-        last_record: Option<&mut ExecutionRecord>,
+        last_record: &mut ExecutionRecord,
+        can_pack_global_memory: bool,
         opts: &SplitOpts,
     ) -> Vec<ExecutionRecord> {
         let mut shards = Vec::new();
@@ -204,6 +202,10 @@ impl ExecutionRecord {
                 if !remainder.is_empty() {
                     let mut execution_record = ExecutionRecord::new(self.program.clone());
                     execution_record.precompile_events.insert(syscall_code, remainder);
+                    execution_record.public_values.update_initialized_state(
+                        self.program.pc_start_abs,
+                        self.program.enable_untrusted_programs,
+                    );
                     shards.push(execution_record);
                 }
             } else {
@@ -213,6 +215,10 @@ impl ExecutionRecord {
                 .map(|chunk| {
                     let mut execution_record = ExecutionRecord::new(self.program.clone());
                     execution_record.precompile_events.insert(syscall_code, chunk.to_vec());
+                    execution_record.public_values.update_initialized_state(
+                        self.program.pc_start_abs,
+                        self.program.enable_untrusted_programs,
+                    );
                     execution_record
                 })
                 .collect::<Vec<_>>();
@@ -222,15 +228,18 @@ impl ExecutionRecord {
         if done {
             // If there are no precompile shards, and `last_record` is Some, pack the memory events
             // into the last record.
-            let pack_memory_events_into_last_record = last_record.is_some() && shards.is_empty();
+            let pack_memory_events_into_last_record = can_pack_global_memory && shards.is_empty();
             let mut blank_record = ExecutionRecord::new(self.program.clone());
 
+            // Clone the public values of the last record to update the last record's public values.
+            let last_record_public_values = last_record.public_values;
+
+            // Update the state of the blank record
+            blank_record.public_values.update_finalized_state(&last_record_public_values);
+
             // If `last_record` is None, use a blank record to store the memory events.
-            let last_record_ref = if pack_memory_events_into_last_record {
-                last_record.unwrap()
-            } else {
-                &mut blank_record
-            };
+            let mem_record_ref =
+                if pack_memory_events_into_last_record { last_record } else { &mut blank_record };
 
             let mut init_page_idx = 0;
             let mut finalize_page_idx = 0;
@@ -261,43 +270,47 @@ impl ExecutionRecord {
                     let page_prot_init_chunk = &init_remaining[..init_to_take];
                     let page_prot_finalize_chunk = &finalize_remaining[..finalize_to_take];
 
-                    last_record_ref
+                    mem_record_ref
                         .global_page_prot_initialize_events
                         .extend_from_slice(page_prot_init_chunk);
-                    last_record_ref.public_values.previous_init_page_idx = init_page_idx;
+                    mem_record_ref.public_values.previous_init_page_idx = init_page_idx;
                     if let Some(last_event) = page_prot_init_chunk.last() {
                         init_page_idx = last_event.page_idx;
                     }
-                    last_record_ref.public_values.last_init_page_idx = init_page_idx;
+                    mem_record_ref.public_values.last_init_page_idx = init_page_idx;
 
-                    last_record_ref
+                    mem_record_ref
                         .global_page_prot_finalize_events
                         .extend_from_slice(page_prot_finalize_chunk);
-                    last_record_ref.public_values.previous_finalize_page_idx = finalize_page_idx;
+                    mem_record_ref.public_values.previous_finalize_page_idx = finalize_page_idx;
                     if let Some(last_event) = page_prot_finalize_chunk.last() {
                         finalize_page_idx = last_event.page_idx;
                     }
-                    last_record_ref.public_values.last_finalize_page_idx = finalize_page_idx;
+                    mem_record_ref.public_values.last_finalize_page_idx = finalize_page_idx;
 
                     // Because page prot events are non empty, we set the page protect active flag
-                    last_record_ref.public_values.is_untrusted_programs_enabled = true as u32;
+                    mem_record_ref.public_values.is_untrusted_programs_enabled = true as u32;
 
                     init_remaining = &init_remaining[init_to_take..];
                     finalize_remaining = &finalize_remaining[finalize_to_take..];
 
                     // Ensure last record has same proof nonce as other shards
-                    last_record_ref.public_values.proof_nonce = self.public_values.proof_nonce;
+                    mem_record_ref.public_values.proof_nonce = self.public_values.proof_nonce;
 
                     if !pack_memory_events_into_last_record {
                         // If not packing memory events into the last record, add 'last_record_ref'
                         // to the returned records. `take` replaces `blank_program` with the
                         // default.
-                        shards.push(take(last_record_ref));
+                        shards.push(take(mem_record_ref));
 
                         // Reset the last record so its program is the correct one. (The default
                         // program provided by `take` contains no
                         // instructions.)
-                        last_record_ref.program = self.program.clone();
+                        mem_record_ref.program = self.program.clone();
+                        // Reset the public values execution state to match the last record state.
+                        mem_record_ref
+                            .public_values
+                            .update_finalized_state(&last_record_public_values);
                     }
                 }
             }
@@ -325,36 +338,38 @@ impl ExecutionRecord {
                 let mem_init_chunk = &mem_init_remaining[..init_to_take];
                 let mem_finalize_chunk = &mem_finalize_remaining[..finalize_to_take];
 
-                last_record_ref.global_memory_initialize_events.extend_from_slice(mem_init_chunk);
-                last_record_ref.public_values.previous_init_addr = init_addr;
+                mem_record_ref.global_memory_initialize_events.extend_from_slice(mem_init_chunk);
+                mem_record_ref.public_values.previous_init_addr = init_addr;
                 if let Some(last_event) = mem_init_chunk.last() {
                     init_addr = last_event.addr;
                 }
-                last_record_ref.public_values.last_init_addr = init_addr;
+                mem_record_ref.public_values.last_init_addr = init_addr;
 
-                last_record_ref.global_memory_finalize_events.extend_from_slice(mem_finalize_chunk);
-                last_record_ref.public_values.previous_finalize_addr = finalize_addr;
+                mem_record_ref.global_memory_finalize_events.extend_from_slice(mem_finalize_chunk);
+                mem_record_ref.public_values.previous_finalize_addr = finalize_addr;
                 if let Some(last_event) = mem_finalize_chunk.last() {
                     finalize_addr = last_event.addr;
                 }
-                last_record_ref.public_values.last_finalize_addr = finalize_addr;
+                mem_record_ref.public_values.last_finalize_addr = finalize_addr;
 
                 mem_init_remaining = &mem_init_remaining[init_to_take..];
                 mem_finalize_remaining = &mem_finalize_remaining[finalize_to_take..];
 
                 if !pack_memory_events_into_last_record {
-                    last_record_ref.public_values.previous_init_page_idx = init_page_idx;
-                    last_record_ref.public_values.last_init_page_idx = init_page_idx;
-                    last_record_ref.public_values.previous_finalize_page_idx = finalize_page_idx;
-                    last_record_ref.public_values.last_finalize_page_idx = finalize_page_idx;
+                    mem_record_ref.public_values.previous_init_page_idx = init_page_idx;
+                    mem_record_ref.public_values.last_init_page_idx = init_page_idx;
+                    mem_record_ref.public_values.previous_finalize_page_idx = finalize_page_idx;
+                    mem_record_ref.public_values.last_finalize_page_idx = finalize_page_idx;
 
                     // If not packing memory events into the last record, add 'last_record_ref'
                     // to the returned records. `take` replaces `blank_program` with the default.
-                    shards.push(take(last_record_ref));
+                    shards.push(take(mem_record_ref));
 
                     // Reset the last record so its program is the correct one. (The default program
                     // provided by `take` contains no instructions.)
-                    last_record_ref.program = self.program.clone();
+                    mem_record_ref.program = self.program.clone();
+                    // Reset the public values execution state to match the last record state.
+                    mem_record_ref.public_values.update_finalized_state(&last_record_public_values);
                 }
             }
         }
