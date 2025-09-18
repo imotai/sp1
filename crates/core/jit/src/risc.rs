@@ -346,7 +346,13 @@ impl TraceChunk {
     }
 }
 
-pub trait MinimalTrace: Clone {
+/// A trait that represents a minimal trace.
+///
+/// A minimal trace is the minimum required information to rexecute from
+/// `pc_start` and `clk_start` -> `clk_end`.
+///
+/// It effectively acts as an oracle for the results of memory read operations.
+pub trait MinimalTrace: Clone + Send + Sync + 'static {
     fn start_registers(&self) -> [u64; 32];
 
     fn pc_start(&self) -> u64;
