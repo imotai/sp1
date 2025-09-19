@@ -252,9 +252,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         shard_proofs.sort_by_key(|shard_proof| {
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 shard_proof.public_values.as_slice().borrow();
-            let initial_timestamp = public_values.initial_timestamp();
-            let last_timestamp = public_values.last_timestamp();
-            (initial_timestamp, last_timestamp)
+            *public_values
         });
 
         // Check for high cycle count.

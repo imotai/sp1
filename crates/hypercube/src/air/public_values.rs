@@ -276,6 +276,97 @@ impl<F: PrimeField32> PublicValues<[F; 4], [F; 3], [F; 4], F> {
     pub fn last_timestamp(&self) -> u64 {
         self.last_timestamp.iter().fold(0, |acc, x| acc * (1 << 16) + x.as_canonical_u32() as u64)
     }
+
+    /// Returns the previous initialization address.
+    pub fn previous_init_addr(&self) -> u64 {
+        self.previous_init_addr
+            .iter()
+            .rev()
+            .fold(0, |acc, x| acc * (1 << 16) + x.as_canonical_u32() as u64)
+    }
+
+    /// Returns the last initialization address.
+    pub fn last_init_addr(&self) -> u64 {
+        self.last_init_addr
+            .iter()
+            .rev()
+            .fold(0, |acc, x| acc * (1 << 16) + x.as_canonical_u32() as u64)
+    }
+
+    /// Returns the previous finalize address.
+    pub fn previous_finalize_addr(&self) -> u64 {
+        self.previous_finalize_addr
+            .iter()
+            .rev()
+            .fold(0, |acc, x| acc * (1 << 16) + x.as_canonical_u32() as u64)
+    }
+
+    /// Returns the last finalize address.
+    pub fn last_finalize_addr(&self) -> u64 {
+        self.last_finalize_addr
+            .iter()
+            .rev()
+            .fold(0, |acc, x| acc * (1 << 16) + x.as_canonical_u32() as u64)
+    }
+
+    /// Returns the previous initialization page index.
+    pub fn previous_init_page_idx(&self) -> u64 {
+        self.previous_init_page_idx
+            .iter()
+            .rev()
+            .fold(0, |acc, x| acc * (1 << 16) + x.as_canonical_u32() as u64)
+    }
+
+    /// Returns the last initialization page index.
+    pub fn last_init_page_idx(&self) -> u64 {
+        self.last_init_page_idx
+            .iter()
+            .rev()
+            .fold(0, |acc, x| acc * (1 << 16) + x.as_canonical_u32() as u64)
+    }
+
+    /// Returns the previous finalize page index.
+    pub fn previous_finalize_page_idx(&self) -> u64 {
+        self.previous_finalize_page_idx
+            .iter()
+            .rev()
+            .fold(0, |acc, x| acc * (1 << 16) + x.as_canonical_u32() as u64)
+    }
+
+    /// Returns the last finalize page index.
+    pub fn last_finalize_page_idx(&self) -> u64 {
+        self.last_finalize_page_idx
+            .iter()
+            .rev()
+            .fold(0, |acc, x| acc * (1 << 16) + x.as_canonical_u32() as u64)
+    }
+}
+
+impl<F: PrimeField32> Ord for PublicValues<[F; 4], [F; 3], [F; 4], F> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let get_tuple = |pv: &Self| {
+            (
+                pv.initial_timestamp(),
+                pv.last_timestamp(),
+                pv.previous_init_addr(),
+                pv.last_init_addr(),
+                pv.previous_finalize_addr(),
+                pv.last_finalize_addr(),
+                pv.previous_init_page_idx(),
+                pv.last_init_page_idx(),
+                pv.previous_finalize_page_idx(),
+                pv.last_finalize_page_idx(),
+            )
+        };
+
+        get_tuple(self).cmp(&get_tuple(other))
+    }
+}
+
+impl<F: PrimeField32> PartialOrd for PublicValues<[F; 4], [F; 3], [F; 4], F> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl<T: Clone> Borrow<PublicValues<[T; 4], [T; 3], [T; 4], T>> for [T] {
