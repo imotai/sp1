@@ -88,7 +88,10 @@ mod tests {
     use slop_challenger::CanObserve;
     use slop_commit::{Message, Rounds};
     use slop_koala_bear::KoalaBear;
-    use slop_multilinear::{Evaluations, Mle, MultilinearPcsProver, MultilinearPcsVerifier, Point};
+    use slop_multilinear::{
+        Evaluations, Mle, MultilinearPcsBatchProver, MultilinearPcsBatchVerifier,
+        MultilinearPcsProver, Point,
+    };
     use slop_stacked::{FixedRateInterleave, StackedPcsProver, StackedPcsVerifier};
 
     use super::*;
@@ -289,7 +292,7 @@ mod tests {
                 for mles in round_mles.iter() {
                     t.synchronize().await.unwrap();
                     let time = std::time::Instant::now();
-                    let (commitment, data) =
+                    let (commitment, data, _) =
                         prover.commit_multilinears(mles.clone()).await.unwrap();
                     t.synchronize().await.unwrap();
                     commit_time += time.elapsed();
@@ -325,7 +328,6 @@ mod tests {
                         point.clone(),
                         eval_claim,
                         prover_data,
-                        batch_evaluations,
                         &mut challenger,
                     )
                     .await

@@ -326,6 +326,7 @@ where
         _jagged_params: &slop_jagged::JaggedLittlePolynomialProverParams,
         row_data: slop_commit::Rounds<std::sync::Arc<Vec<usize>>>,
         column_data: slop_commit::Rounds<std::sync::Arc<Vec<usize>>>,
+        _log_stacking_height: u32,
         z_row: &slop_multilinear::Point<EF, TaskScope>,
         z_col: &slop_multilinear::Point<EF, TaskScope>,
     ) -> Self::Polynomial {
@@ -553,7 +554,7 @@ mod tests {
 
                 let all_mles = prover_data
                     .iter()
-                    .map(|data| data.stacked_pcs_prover_data.interleaved_mles.clone())
+                    .map(|data| data.pcs_prover_data.interleaved_mles.clone())
                     .collect::<Rounds<_>>();
 
                 let hadamard_poly = hadamard_prover
@@ -562,13 +563,14 @@ mod tests {
                         &params,
                         row_data.clone(),
                         column_data.clone(),
+                        log_stacking_height,
                         &z_row,
                         &z_col,
                     )
                     .await;
 
                 let virtual_poly = virtual_prover
-                    .jagged_sumcheck_poly(all_mles, &params, row_data, column_data, &z_row, &z_col)
+                    .jagged_sumcheck_poly(all_mles, &params, row_data, column_data, log_stacking_height, &z_row, &z_col)
                     .await;
 
                 // Get the sum as poly value with the zero claim (it's not correct but we only

@@ -86,7 +86,7 @@ where
         + ZerocheckAir<GC::F, GC::EF>
         + std::fmt::Debug,
 {
-    let ShardVerifier { pcs_verifier, machine } = verifier;
+    let ShardVerifier { jagged_pcs_verifier: pcs_verifier, machine } = verifier;
     let pcs_prover = JaggedProver::from_verifier(&pcs_verifier);
     let airs = machine.chips().iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
     let trace_generator = CudaTraceGenerator::new_in(machine, scope.clone());
