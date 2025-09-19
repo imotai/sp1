@@ -1,8 +1,8 @@
 use slop_algebra::{AbstractExtensionField, AbstractField};
 use sp1_primitives::{SP1ExtensionField, SP1Field};
-use std::ops::{Add, Mul, MulAssign};
+use std::ops::{Mul, MulAssign};
 
-use super::{Array, Builder, Config, DslIr, Ext, Felt, SymbolicExt, Usize, Var, Variable};
+use super::{Builder, Config, DslIr, Ext, Felt, SymbolicExt, Var, Variable};
 
 impl<C: Config> Builder<C> {
     /// The generator for the field.
@@ -59,24 +59,6 @@ impl<C: Config> Builder<C> {
         self.eval(e)
     }
 
-    /// Exponentializes a variable to an array of bits in little endian.
-    pub fn exp_bits<V>(&mut self, x: V, power_bits: &Array<C, Var<C::N>>) -> V
-    where
-        V::Expression: AbstractField,
-        V: Copy + Mul<Output = V::Expression> + Variable<C>,
-    {
-        let result = self.eval(V::Expression::one());
-        let power_f: V = self.eval(x);
-        self.range(0, power_bits.len()).for_each(|i, builder| {
-            let bit = builder.get(power_bits, i);
-            builder
-                .if_eq(bit, C::N::one())
-                .then(|builder| builder.assign(result, result * power_f));
-            builder.assign(power_f, power_f * power_f);
-        });
-        result
-    }
-
     /// Exponentiates a felt to a list of bits in little endian.
     pub fn exp_f_bits(&mut self, x: Felt<SP1Field>, power_bits: Vec<Var<C::N>>) -> Felt<SP1Field> {
         let mut result = self.eval(SP1Field::one());
@@ -107,60 +89,6 @@ impl<C: Config> Builder<C> {
         result
     }
 
-    /// Exponetiates a variable to a list of reversed bits with a given length.
-    ///
-    /// Reference: [p3_util::reverse_bits_len]
-    pub fn exp_reverse_bits_len<V>(
-        &mut self,
-        x: V,
-        power_bits: &Array<C, Var<C::N>>,
-        bit_len: impl Into<Usize<C::N>>,
-    ) -> V
-    where
-        V::Expression: AbstractField,
-        V: Copy + Mul<Output = V::Expression> + Variable<C>,
-    {
-        let result = self.eval(V::Expression::one());
-        let power_f: V = self.eval(x);
-        let bit_len = bit_len.into().materialize(self);
-        let bit_len_plus_one: Var<_> = self.eval(bit_len + C::N::one());
-
-        self.range(1, bit_len_plus_one).for_each(|i, builder| {
-            let index: Var<C::N> = builder.eval(bit_len - i);
-            let bit = builder.get(power_bits, index);
-            builder
-                .if_eq(bit, C::N::one())
-                .then(|builder| builder.assign(result, result * power_f));
-            builder.assign(power_f, power_f * power_f);
-        });
-        result
-    }
-
-    /// Exponentiates a variable to a list of bits in little endian.
-    pub fn exp_power_of_2_v<V>(
-        &mut self,
-        base: impl Into<V::Expression>,
-        power_log: impl Into<Usize<C::N>>,
-    ) -> V
-    where
-        V: Variable<C> + Copy + Mul<Output = V::Expression>,
-    {
-        let mut result: V = self.eval(base);
-        let power_log: Usize<_> = power_log.into();
-        match power_log {
-            Usize::Var(power_log) => {
-                self.range(0, power_log)
-                    .for_each(|_, builder| builder.assign(result, result * result));
-            }
-            Usize::Const(power_log) => {
-                for _ in 0..power_log {
-                    result = self.eval(result * result);
-                }
-            }
-        }
-        result
-    }
-
     /// Exponentiates a variable to a list of bits in little endian inside a circuit.
     pub fn exp_power_of_2_v_circuit<V>(
         &mut self,
@@ -174,16 +102,6 @@ impl<C: Config> Builder<C> {
         for _ in 0..power_log {
             result = self.eval(result * result)
         }
-        result
-    }
-
-    /// Multiplies `base` by `2^{log_power}`.
-    pub fn sll<V>(&mut self, base: impl Into<V::Expression>, shift: Usize<C::N>) -> V
-    where
-        V: Variable<C> + Copy + Add<Output = V::Expression>,
-    {
-        let result: V = self.eval(base);
-        self.range(0, shift).for_each(|_, builder| builder.assign(result, result + result));
         result
     }
 

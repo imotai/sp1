@@ -66,7 +66,7 @@ impl<F> UnsafeRecord<F> {
     /// # Safety
     ///
     /// The caller must ensure that the `UnsafeRecord` is fully initialized, this is
-    /// done by the runtime.
+    /// done by the executor.
     pub unsafe fn into_record(
         self,
         program: Arc<RecursionProgram<F>>,

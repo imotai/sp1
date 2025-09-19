@@ -7,7 +7,6 @@ use sp1_recursion_executor::DIGEST_SIZE;
 
 /// Convert 8 SP1Field words into a Bn254Fr field element by shifting by 31 bits each time. The last
 /// word becomes the least significant bits.
-#[allow(dead_code)]
 pub fn koalabears_to_bn254(digest: &[SP1Field; 8]) -> Bn254Fr {
     let mut result = Bn254Fr::zero();
     for word in digest.iter() {
@@ -19,7 +18,6 @@ pub fn koalabears_to_bn254(digest: &[SP1Field; 8]) -> Bn254Fr {
     result
 }
 
-#[allow(dead_code)]
 pub fn koalabears_proof_nonce_to_bn254(nonce: &[SP1Field; 4]) -> Bn254Fr {
     let mut result = Bn254Fr::zero();
     for word in nonce.iter() {
@@ -33,7 +31,6 @@ pub fn koalabears_proof_nonce_to_bn254(nonce: &[SP1Field; 4]) -> Bn254Fr {
 
 /// Convert 32 SP1Field bytes into a Bn254Fr field element. The first byte's most significant 3 bits
 /// (which would become the 3 most significant bits) are truncated.
-#[allow(dead_code)]
 pub fn koalabear_bytes_to_bn254(bytes: &[SP1Field; 32]) -> Bn254Fr {
     let mut result = Bn254Fr::zero();
     for (i, byte) in bytes.iter().enumerate() {
@@ -49,7 +46,6 @@ pub fn koalabear_bytes_to_bn254(bytes: &[SP1Field; 32]) -> Bn254Fr {
     result
 }
 
-#[allow(dead_code)]
 pub fn felts_to_bn254_var<C: Config>(
     builder: &mut Builder<C>,
     digest: &[Felt<SP1Field>; DIGEST_SIZE],
@@ -84,7 +80,6 @@ pub fn felt_proof_nonce_to_bn254_var<C: Config>(
     result
 }
 
-#[allow(dead_code)]
 pub fn felt_bytes_to_bn254_var<C: Config>(
     builder: &mut Builder<C>,
     bytes: &[Felt<SP1Field>; 32],
@@ -110,7 +105,6 @@ pub fn felt_bytes_to_bn254_var<C: Config>(
     result
 }
 
-#[allow(dead_code)]
 pub fn words_to_bytes<T: Copy>(words: &[[T; 4]]) -> Vec<T> {
     words.iter().flat_map(|w| w.iter()).copied().collect::<Vec<_>>()
 }

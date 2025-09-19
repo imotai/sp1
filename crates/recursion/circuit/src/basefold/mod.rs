@@ -463,7 +463,7 @@ mod tests {
     use sp1_hypercube::inner_perm;
     use sp1_primitives::{SP1Field, SP1GlobalContext};
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler};
-    use sp1_recursion_executor::Runtime;
+    use sp1_recursion_executor::Executor;
 
     type F = SP1Field;
     type EF = BinomialExtensionField<SP1Field, 4>;
@@ -565,9 +565,10 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
-        runtime.witness_stream = witness_stream.into();
-        runtime.run().unwrap();
+        let mut executor =
+            Executor::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
+        executor.witness_stream = witness_stream.into();
+        executor.run().unwrap();
     }
 
     #[tokio::test]
@@ -670,8 +671,9 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
-        runtime.witness_stream = witness_stream.into();
-        runtime.run().expect_err("invalid proof should not be verified");
+        let mut executor =
+            Executor::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
+        executor.witness_stream = witness_stream.into();
+        executor.run().expect_err("invalid proof should not be verified");
     }
 }

@@ -8,7 +8,7 @@ use sp1_hypercube::septic_curve::SepticCurve;
 use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_executor::RecursionPublicValues;
 
-use super::{Array, Config, Ext, Felt, MemIndex, Ptr, Usize, Var};
+use super::{Config, Ext, Felt, Var};
 
 /// An intermeddiate instruction set for implementing programs.
 ///
@@ -43,8 +43,6 @@ pub enum DslIr<C: Config> {
     AddEI(Ext<SP1Field, SP1ExtensionField>, Ext<SP1Field, SP1ExtensionField>, SP1ExtensionField),
     /// Add an extension field element and a field element (ext = ext + felt).
     AddEF(Ext<SP1Field, SP1ExtensionField>, Ext<SP1Field, SP1ExtensionField>, Felt<SP1Field>),
-    /// Add an extension field element and a field immediate (ext = ext + field imm).
-    AddEFI(Ext<SP1Field, SP1ExtensionField>, Ext<SP1Field, SP1ExtensionField>, SP1Field),
     /// Add a field element and an ext field immediate (ext = felt + ext field imm).
     AddEFFI(Ext<SP1Field, SP1ExtensionField>, Felt<SP1Field>, SP1ExtensionField),
 
@@ -73,8 +71,6 @@ pub enum DslIr<C: Config> {
     /// Subtracts an extension field immediate and an extension field element (ext = ext field imm
     /// - ext).
     SubEIN(Ext<SP1Field, SP1ExtensionField>, SP1ExtensionField, Ext<SP1Field, SP1ExtensionField>),
-    /// Subtracts an extension field element and a field immediate (ext = ext - field imm).
-    SubEFI(Ext<SP1Field, SP1ExtensionField>, Ext<SP1Field, SP1ExtensionField>, SP1Field),
     /// Subtracts an extension field element and a field element (ext = ext - felt).
     SubEF(Ext<SP1Field, SP1ExtensionField>, Ext<SP1Field, SP1ExtensionField>, Felt<SP1Field>),
 
@@ -96,8 +92,6 @@ pub enum DslIr<C: Config> {
     /// Multiplies an extension field element and an extension field immediate (ext = ext * ext
     /// field imm).
     MulEI(Ext<SP1Field, SP1ExtensionField>, Ext<SP1Field, SP1ExtensionField>, SP1ExtensionField),
-    /// Multiplies an extension field element and a field immediate (ext = ext * field imm).
-    MulEFI(Ext<SP1Field, SP1ExtensionField>, Ext<SP1Field, SP1ExtensionField>, SP1Field),
     /// Multiplies an extension field element and a field element (ext = ext * felt).
     MulEF(Ext<SP1Field, SP1ExtensionField>, Ext<SP1Field, SP1ExtensionField>, Felt<SP1Field>),
 
@@ -120,10 +114,6 @@ pub enum DslIr<C: Config> {
     /// Divides and extension field immediate and an extension field element (ext = ext field imm /
     /// ext).
     DivEIN(Ext<SP1Field, SP1ExtensionField>, SP1ExtensionField, Ext<SP1Field, SP1ExtensionField>),
-    /// Divides an extension field element and a field immediate (ext = ext / field imm).
-    DivEFI(Ext<SP1Field, SP1ExtensionField>, Ext<SP1Field, SP1ExtensionField>, SP1Field),
-    /// Divides a field immediate and an extension field element (ext = field imm / ext).
-    DivEFIN(Ext<SP1Field, SP1ExtensionField>, SP1Field, Ext<SP1Field, SP1ExtensionField>),
     /// Divides an extension field element and a field element (ext = ext / felt).
     DivEF(Ext<SP1Field, SP1ExtensionField>, Ext<SP1Field, SP1ExtensionField>, Felt<SP1Field>),
 
@@ -144,25 +134,6 @@ pub enum DslIr<C: Config> {
     /// Selects order of felts based on a bit (should_swap, first result, second result, first
     /// input, second input)
     Select(Felt<SP1Field>, Felt<SP1Field>, Felt<SP1Field>, Felt<SP1Field>, Felt<SP1Field>),
-
-    // Control flow.
-    /// Executes a for loop with the parameters (start step value, end step value, step size, step
-    /// variable, body).
-    For(Box<(Usize<C::N>, Usize<C::N>, C::N, Var<C::N>, Vec<DslIr<C>>)>),
-    /// Executes an equal conditional branch with the parameters (lhs var, rhs var, then body, else
-    /// body).
-    IfEq(Box<(Var<C::N>, Var<C::N>, Vec<DslIr<C>>, Vec<DslIr<C>>)>),
-    /// Executes a not equal conditional branch with the parameters (lhs var, rhs var, then body,
-    /// else body).
-    IfNe(Box<(Var<C::N>, Var<C::N>, Vec<DslIr<C>>, Vec<DslIr<C>>)>),
-    /// Executes an equal conditional branch with the parameters (lhs var, rhs imm, then body, else
-    /// body).
-    IfEqI(Box<(Var<C::N>, C::N, Vec<DslIr<C>>, Vec<DslIr<C>>)>),
-    /// Executes a not equal conditional branch with the parameters (lhs var, rhs imm, then body,
-    /// else body).
-    IfNeI(Box<(Var<C::N>, C::N, Vec<DslIr<C>>, Vec<DslIr<C>>)>),
-    /// Break out of a for loop.
-    Break,
 
     // Assertions.
     /// Assert that two variables are equal (var == var).
@@ -192,22 +163,6 @@ pub enum DslIr<C: Config> {
     /// ext field imm).
     AssertNeEI(Ext<SP1Field, SP1ExtensionField>, SP1ExtensionField),
 
-    // Memory instructions.
-    /// Allocate (ptr, len, size) a memory slice of length len
-    Alloc(Ptr<C::N>, Usize<C::N>, usize),
-    /// Load variable (var, ptr, index)
-    LoadV(Var<C::N>, Ptr<C::N>, MemIndex<C::N>),
-    /// Load field element (var, ptr, index)
-    LoadF(Felt<SP1Field>, Ptr<C::N>, MemIndex<C::N>),
-    /// Load extension field
-    LoadE(Ext<SP1Field, SP1ExtensionField>, Ptr<C::N>, MemIndex<C::N>),
-    /// Store variable at address
-    StoreV(Var<C::N>, Ptr<C::N>, MemIndex<C::N>),
-    /// Store field element at address
-    StoreF(Felt<SP1Field>, Ptr<C::N>, MemIndex<C::N>),
-    /// Store extension field at address
-    StoreE(Ext<SP1Field, SP1ExtensionField>, Ptr<C::N>, MemIndex<C::N>),
-
     /// Force reduction of field elements in circuit.
     ReduceE(Ext<SP1Field, SP1ExtensionField>),
 
@@ -235,17 +190,6 @@ pub enum DslIr<C: Config> {
     /// Performs the internal SBOX mapping for Poseidon2 in a batch.
     Poseidon2InternalSBOX(Ext<SP1Field, SP1ExtensionField>, Ext<SP1Field, SP1ExtensionField>),
 
-    /// Permutes an array of koala bear elements using Poseidon2 (output = p2_permute(array)).
-    Poseidon2PermuteKoalaBear(Box<(Array<C, Felt<SP1Field>>, Array<C, Felt<SP1Field>>)>),
-    /// Compresses two koala bear element arrays using Poseidon2 (output = p2_compress(array1,
-    /// array2)).
-    Poseidon2CompressKoalaBear(
-        Box<(Array<C, Felt<SP1Field>>, Array<C, Felt<SP1Field>>, Array<C, Felt<SP1Field>>)>,
-    ),
-    /// Absorb an array of koala bear elements for a specified hash instance.
-    Poseidon2AbsorbKoalaBear(Var<C::N>, Array<C, Felt<SP1Field>>),
-    /// Finalize and return the hash digest of a specified hash instance.
-    Poseidon2FinalizeKoalaBear(Var<C::N>, Array<C, Felt<SP1Field>>),
     /// Permutes an array of Bn254 elements using Poseidon2 (output = p2_permute(array)). Should
     /// only be used when target is a gnark circuit.
     CircuitPoseidon2Permute([Var<C::N>; 3]),
@@ -256,13 +200,6 @@ pub enum DslIr<C: Config> {
     /// Commits the public values.
     CircuitV2CommitPublicValues(Box<RecursionPublicValues<Felt<SP1Field>>>),
 
-    // Miscellaneous instructions.
-    /// Decompose hint operation of a usize into an array. (output = num2bits(usize)).
-    HintBitsU(Array<C, Var<C::N>>, Usize<C::N>),
-    /// Decompose hint operation of a variable into an array. (output = num2bits(var)).
-    HintBitsV(Array<C, Var<C::N>>, Var<C::N>),
-    /// Decompose hint operation of a field element into an array. (output = num2bits(felt)).
-    HintBitsF(Array<C, Var<C::N>>, Felt<SP1Field>),
     /// Decompose hint operation of a field element into an array. (output = num2bits(felt)).
     CircuitV2HintBitsF(Vec<Felt<SP1Field>>, Felt<SP1Field>),
     /// Prints a variable.
@@ -274,16 +211,6 @@ pub enum DslIr<C: Config> {
     /// Throws an error.
     Error(),
 
-    /// Converts an ext to a slice of felts.  
-    HintExt2Felt(Array<C, Felt<SP1Field>>, Ext<SP1Field, SP1ExtensionField>),
-    /// Hint the length of the next array.  
-    HintLen(Var<C::N>),
-    /// Hint an array of variables.
-    HintVars(Array<C, Var<C::N>>),
-    /// Hint an array of field elements.
-    HintFelts(Array<C, Felt<SP1Field>>),
-    /// Hint an array of extension field elements.
-    HintExts(Array<C, Ext<SP1Field, SP1ExtensionField>>),
     /// Hint an array of field elements.
     CircuitV2HintFelts(Felt<SP1Field>, usize),
     /// Hint an array of extension field elements.
@@ -296,10 +223,6 @@ pub enum DslIr<C: Config> {
     WitnessExt(Ext<SP1Field, SP1ExtensionField>, u32),
     /// Label a field element as the ith public input.
     Commit(Felt<SP1Field>, Var<C::N>),
-    /// Registers a field element to the public inputs.
-    RegisterPublicValue(Felt<SP1Field>),
-    /// Operation to halt the program. Should be the last instruction in the program.  
-    Halt,
 
     // Public inputs for circuits.
     /// Asserts that the inputted var is equal the circuit's vkey hash public input. Should only be
@@ -365,10 +288,6 @@ pub enum DslIr<C: Config> {
     CircuitChipFelt2Ext(Ext<SP1Field, SP1ExtensionField>, [Felt<SP1Field>; 4]),
 
     // Debugging instructions.
-    /// Executes less than (var = var < var).  This operation is NOT constrained.
-    LessThan(Var<C::N>, Var<C::N>, Var<C::N>),
-    /// Tracks the number of cycles used by a block of code annotated by the string input.
-    CycleTracker(String),
     /// Tracks the number of cycles used by a block of code annotated by the string input.
     CycleTrackerV2Enter(Cow<'static, str>),
     /// Tracks the number of cycles used by a block of code annotated by the string input.

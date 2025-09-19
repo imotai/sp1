@@ -50,7 +50,7 @@ async fn main() {
     let proof = client.prove(&pk, stdin).compressed().await.expect("proving failed");
 
     // Verify proof.
-    client.verify(&proof, pk.verifying_key(), None).expect("verification failed");;
+    client.verify(&proof, pk.verifying_key(), None).expect("verification failed");
 
     // Verify the public values
     let mut expected_public_values: Vec<u8> = Vec::new();
@@ -66,7 +66,7 @@ async fn main() {
         SP1ProofWithPublicValues::load("proof-with-pis.bin").expect("loading proof failed");
 
     // Verify the deserialized proof.
-    client.verify(&deserialized_proof, pk.verifying_key(), None).expect("verification failed");;
+    client.verify(&deserialized_proof, pk.verifying_key(), None).expect("verification failed");
 
     println!("successfully generated and verified proof for the program!")
 }

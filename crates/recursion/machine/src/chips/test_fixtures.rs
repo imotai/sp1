@@ -15,10 +15,10 @@ use sp1_primitives::{SP1DiffusionMatrix, SP1Field};
 use sp1_recursion_executor::{
     instruction::{HintAddCurveInstr, HintBitsInstr, HintExt2FeltsInstr, HintInstr},
     linear_program, Address, BaseAluInstr, BaseAluIo, BaseAluOpcode, Block,
-    CommitPublicValuesInstr, ExecutionRecord, ExtAluInstr, ExtAluIo, ExtAluOpcode, ExtFeltInstr,
-    Instruction, MemAccessKind, MemInstr, MemIo, Poseidon2Instr, Poseidon2Io,
+    CommitPublicValuesInstr, ExecutionRecord, Executor, ExtAluInstr, ExtAluIo, ExtAluOpcode,
+    ExtFeltInstr, Instruction, MemAccessKind, MemInstr, MemIo, Poseidon2Instr, Poseidon2Io,
     Poseidon2LinearLayerInstr, Poseidon2LinearLayerIo, Poseidon2SBoxInstr, Poseidon2SBoxIo,
-    PrefixSumChecksInstr, PrefixSumChecksIo, RecursionProgram, Runtime, SelectInstr, SelectIo,
+    PrefixSumChecksInstr, PrefixSumChecksIo, RecursionProgram, SelectInstr, SelectIo,
     RECURSIVE_PROOF_NUM_PV_ELTS,
 };
 use strum::VariantArray;
@@ -389,7 +389,7 @@ pub async fn shard() -> &'static ExecutionRecord<SP1Field> {
         .get_or_init(|| async {
             let (program, witness_stream) = program_with_input().await;
             let mut executor =
-                Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
+                Executor::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
             executor.witness_stream = witness_stream.clone();
             executor.run().unwrap();
             assert!(executor.witness_stream.is_empty());

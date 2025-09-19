@@ -72,7 +72,6 @@ where
     >;
 }
 
-#[allow(dead_code)]
 #[derive(Clone)]
 pub struct RecursiveJaggedPcsVerifier<
     SC: SP1FieldConfigVariable<C>,
@@ -100,7 +99,6 @@ impl<
         >,
     > RecursiveJaggedPcsVerifier<SC, C, JC>
 {
-    #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
     pub fn verify_trusted_evaluations(
         &self,
@@ -185,7 +183,6 @@ impl<
     }
 }
 
-#[allow(dead_code)]
 pub struct RecursiveMachineJaggedPcsVerifier<
     'a,
     SC: SP1FieldConfigVariable<C>,
@@ -213,7 +210,6 @@ impl<
         >,
     > RecursiveMachineJaggedPcsVerifier<'a, SC, C, JC>
 {
-    #[allow(dead_code)]
     pub fn new(
         jagged_pcs_verifier: &'a RecursiveJaggedPcsVerifier<SC, C, JC>,
         column_counts_by_round: Vec<Vec<usize>>,
@@ -221,7 +217,6 @@ impl<
         Self { jagged_pcs_verifier, column_counts_by_round }
     }
 
-    #[allow(dead_code)]
     pub fn verify_trusted_evaluations(
         &self,
         builder: &mut Builder<JC::Circuit>,
@@ -269,7 +264,7 @@ mod tests {
     };
     use sp1_primitives::{SP1DiffusionMatrix, SP1ExtensionField, SP1Field, SP1GlobalContext};
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler, AsmConfig, CircuitV2Builder};
-    use sp1_recursion_executor::Runtime;
+    use sp1_recursion_executor::Executor;
 
     use crate::{
         basefold::{
@@ -496,10 +491,10 @@ mod tests {
         Witnessable::<AsmConfig>::write(&eval_point, &mut witness_stream);
         Witnessable::<AsmConfig>::write(&evaluation_claims, &mut witness_stream);
         Witnessable::<AsmConfig>::write(&proof, &mut witness_stream);
-        let mut runtime =
-            Runtime::<F, EF, SP1DiffusionMatrix>::new(Arc::new(program.clone()), inner_perm());
-        runtime.witness_stream = witness_stream.into();
-        runtime.run().unwrap();
+        let mut executor =
+            Executor::<F, EF, SP1DiffusionMatrix>::new(Arc::new(program.clone()), inner_perm());
+        executor.witness_stream = witness_stream.into();
+        executor.run().unwrap();
 
         // Run the verification circuit with the proof artifacts with an expected failure.
         let mut witness_stream = Vec::new();
@@ -508,9 +503,9 @@ mod tests {
         Witnessable::<AsmConfig>::write(&eval_point, &mut witness_stream);
         Witnessable::<AsmConfig>::write(&evaluation_claims, &mut witness_stream);
         Witnessable::<AsmConfig>::write(&proof, &mut witness_stream);
-        let mut runtime =
-            Runtime::<F, EF, SP1DiffusionMatrix>::new(Arc::new(program), inner_perm());
-        runtime.witness_stream = witness_stream.into();
-        runtime.run().expect_err("invalid proof should not be verified");
+        let mut executor =
+            Executor::<F, EF, SP1DiffusionMatrix>::new(Arc::new(program), inner_perm());
+        executor.witness_stream = witness_stream.into();
+        executor.run().expect_err("invalid proof should not be verified");
     }
 }

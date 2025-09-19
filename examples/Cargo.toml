@@ -75,7 +75,6 @@ sp1-primitives = { path = "../crates/primitives" }
 sp1-prover = { path = "../crates/prover" }
 sp1-recursion-compiler = { path = "../crates/recursion/compiler" }
 sp1-recursion-core = { path = "../crates/recursion/core", default-features = false }
-sp1-recursion-derive = { path = "../crates/recursion/derive", default-features = false }
 sp1-recursion-gnark-ffi = { path = "../crates/recursion/gnark-ffi", default-features = false }
 sp1-recursion-program = { path = "../crates/recursion/program", default-features = false }
 sp1-recursion-circuit = { path = "../crates/recursion/circuit", default-features = false }

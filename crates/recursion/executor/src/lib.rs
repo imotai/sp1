@@ -51,12 +51,6 @@ use std::{
 use thiserror::Error;
 use tracing::debug_span;
 
-/// The heap pointer address.
-pub const HEAP_PTR: i32 = -4;
-pub const STACK_SIZE: usize = 1 << 24;
-pub const HEAP_START_ADDRESS: usize = STACK_SIZE + 4;
-pub const MEMORY_SIZE: usize = 1 << 28;
-
 /// The width of the Poseidon2 permutation.
 pub const PERMUTATION_WIDTH: usize = 16;
 pub const POSEIDON2_SBOX_DEGREE: u64 = 3;
@@ -308,37 +302,9 @@ type Perm<F, Diffusion> = Poseidon2<
 >;
 
 /// TODO fully document.
-/// Taken from [`sp1_recursion_executor::runtime::Runtime`].
+/// Taken from [`sp1_recursion_executor::executor::Runtime`].
 /// Many missing things (compared to the old `Runtime`) will need to be implemented.
-pub struct Runtime<'a, F: PrimeField32, EF: ExtensionField<F>, Diffusion> {
-    pub timestamp: usize,
-
-    pub nb_poseidons: usize,
-
-    pub nb_wide_poseidons: usize,
-
-    pub nb_bit_decompositions: usize,
-
-    pub nb_ext_ops: usize,
-
-    pub nb_base_ops: usize,
-
-    pub nb_memory_ops: usize,
-
-    pub nb_branch_ops: usize,
-
-    pub nb_select: usize,
-
-    pub nb_exp_reverse_bits: usize,
-
-    pub nb_fri_fold: usize,
-
-    pub nb_batch_fri: usize,
-
-    pub nb_print_f: usize,
-
-    pub nb_print_e: usize,
-
+pub struct Executor<'a, F: PrimeField32, EF: ExtensionField<F>, Diffusion> {
     /// The program.
     pub program: Arc<RecursionProgram<F>>,
 
@@ -381,7 +347,7 @@ pub enum RuntimeError<F: Debug, EF: Debug> {
     EmptyWitnessStream,
 }
 
-impl<F: PrimeField32, EF: ExtensionField<F>, Diffusion> Runtime<'_, F, EF, Diffusion>
+impl<F: PrimeField32, EF: ExtensionField<F>, Diffusion> Executor<'_, F, EF, Diffusion>
 where
     Poseidon2<
         F,
@@ -404,20 +370,6 @@ where
         let record = ExecutionRecord::<F> { program: program.clone(), ..Default::default() };
         let memory = MemVec::with_capacity(program.total_memory);
         Self {
-            timestamp: 0,
-            nb_poseidons: 0,
-            nb_wide_poseidons: 0,
-            nb_bit_decompositions: 0,
-            nb_select: 0,
-            nb_exp_reverse_bits: 0,
-            nb_ext_ops: 0,
-            nb_base_ops: 0,
-            nb_memory_ops: 0,
-            nb_branch_ops: 0,
-            nb_fri_fold: 0,
-            nb_batch_fri: 0,
-            nb_print_f: 0,
-            nb_print_e: 0,
             program,
             memory,
             record,
@@ -834,7 +786,7 @@ where
             Self::execute_raw_inner(env, &root_program.inner, witness_stream, &root_record)
         })?;
 
-        // SAFETY: `root_record` has been populated by the runtime.
+        // SAFETY: `root_record` has been populated by the executor.
         let record = root_record.into_record(Arc::clone(root_program), 0);
         Ok(record)
     }

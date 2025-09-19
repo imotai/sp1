@@ -14,13 +14,12 @@ slop-bn254 = { workspace = true }
 slop-koala-bear = { workspace = true }
 slop-algebra = { workspace = true }
 slop-symmetric = { workspace = true }
-slop-challenger = {workspace = true}
+slop-challenger = { workspace = true }
 slop-merkle-tree = { workspace = true }
 
 sp1-core-machine = { workspace = true }
 sp1-primitives = { workspace = true }
 sp1-recursion-executor = { workspace = true }
-sp1-recursion-derive = { workspace = true }
 sp1-hypercube = { workspace = true }
 
 itertools = { workspace = true }

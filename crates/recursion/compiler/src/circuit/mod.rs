@@ -17,7 +17,7 @@ mod tests {
     // use sp1_recursion_core::{machine::RecursionAir, Runtime, RuntimeError};
     use sp1_hypercube::inner_perm;
     use sp1_primitives::SP1Field;
-    use sp1_recursion_executor::{Runtime, RuntimeError};
+    use sp1_recursion_executor::{Executor, RuntimeError};
 
     use crate::{
         circuit::{AsmBuilder, AsmCompiler, CircuitV2Builder},
@@ -51,8 +51,9 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
-        runtime.witness_stream = [
+        let mut executor =
+            Executor::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
+        executor.witness_stream = [
             vec![F::one().into(), F::one().into(), F::two().into()],
             vec![F::zero().into(), F::one().into(), F::two().into()],
             vec![F::one().into()],
@@ -60,13 +61,13 @@ mod tests {
         ]
         .concat()
         .into();
-        runtime.run().unwrap();
+        executor.run().unwrap();
 
         // let machine = A::compress_machine(SC::new());
 
         // let (pk, vk) = machine.setup(&program);
         // let result =
-        //     run_test_machine(vec![runtime.record], machine, pk, vk.clone()).expect("should
+        //     run_test_machine(vec![executor.record], machine, pk, vk.clone()).expect("should
         // verify");
 
         // tracing::info!("num shard proofs: {}", result.shard_proofs.len());
@@ -90,11 +91,12 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
-        runtime.witness_stream =
+        let mut executor =
+            Executor::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
+        executor.witness_stream =
             [vec![F::one().into(), F::one().into(), F::two().into()]].concat().into();
 
-        match runtime.run() {
+        match executor.run() {
             Err(RuntimeError::EmptyWitnessStream) => (),
             Ok(_) => panic!("should not succeed"),
             Err(x) => panic!("should not yield error variant: {x}"),

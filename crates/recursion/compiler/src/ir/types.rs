@@ -1,12 +1,12 @@
 use alloc::format;
 
 use serde::{Deserialize, Serialize};
-use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, Field};
+use slop_algebra::{AbstractExtensionField, AbstractField, Field};
 use sp1_primitives::{SP1ExtensionField, SP1Field};
 
 use super::{
-    Builder, Config, DslIr, ExtConst, ExtHandle, FeltHandle, FromConstant, MemIndex, MemVariable,
-    Ptr, SymbolicExt, SymbolicFelt, SymbolicUsize, SymbolicVar, VarHandle, Variable,
+    Builder, Config, DslIr, ExtConst, ExtHandle, FeltHandle, FromConstant, SymbolicExt,
+    SymbolicFelt, SymbolicVar, VarHandle, Variable,
 };
 
 /// A variable that represents a native field element.
@@ -14,7 +14,7 @@ use super::{
 /// Used for counters, simple loops, etc.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Var<N> {
-    pub idx: u32,
+    pub(crate) idx: u32,
     pub(crate) handle: *mut VarHandle<N>,
 }
 
@@ -23,7 +23,7 @@ pub struct Var<N> {
 /// Used to do field arithmetic for recursive verification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Felt<F> {
-    pub idx: u32,
+    pub(crate) idx: u32,
     pub(crate) handle: *mut FeltHandle<F>,
 }
 
@@ -32,7 +32,7 @@ pub struct Felt<F> {
 /// Used to do extension field arithmetic for recursive verification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Ext<F, EF> {
-    pub idx: u32,
+    pub(crate) idx: u32,
     pub(crate) handle: *mut ExtHandle<F, EF>,
 }
 
@@ -43,13 +43,6 @@ unsafe impl<F> Send for Felt<F> {}
 unsafe impl<N> Sync for Var<N> {}
 unsafe impl<F, EF> Sync for Ext<F, EF> {}
 unsafe impl<F> Sync for Felt<F> {}
-
-/// A variable that represents either a constant or variable counter.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Usize<N> {
-    Const(usize),
-    Var(Var<N>),
-}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Witness<C: Config> {
@@ -64,10 +57,6 @@ pub struct Witness<C: Config> {
 }
 
 impl<C: Config> Witness<C> {
-    pub fn size(&self) -> usize {
-        self.vars.len() + self.felts.len() + self.exts.len() + 2
-    }
-
     pub fn write_vkey_hash(&mut self, vkey_hash: C::N) {
         self.vars.push(vkey_hash);
         self.vkey_hash = vkey_hash;
@@ -94,62 +83,26 @@ impl<C: Config> Witness<C> {
     }
 }
 
-impl<N: Field> Usize<N> {
-    pub fn value(&self) -> usize {
-        match self {
-            Usize::Const(c) => *c,
-            Usize::Var(_) => panic!("Cannot get the value of a variable"),
-        }
-    }
-
-    pub fn materialize<C: Config<N = N>>(&self, builder: &mut Builder<C>) -> Var<C::N> {
-        match self {
-            Usize::Const(c) => builder.eval(C::N::from_canonical_usize(*c)),
-            Usize::Var(v) => *v,
-        }
-    }
-}
-
-impl<N> From<Var<N>> for Usize<N> {
-    fn from(v: Var<N>) -> Self {
-        Usize::Var(v)
-    }
-}
-
-impl<N> From<usize> for Usize<N> {
-    fn from(c: usize) -> Self {
-        Usize::Const(c)
-    }
-}
-
 impl<N> Var<N> {
-    pub const fn new(idx: u32, handle: *mut VarHandle<N>) -> Self {
+    pub(crate) const fn new(idx: u32, handle: *mut VarHandle<N>) -> Self {
         Self { idx, handle }
     }
 
-    pub fn id(&self) -> String {
+    pub(crate) fn id(&self) -> String {
         format!("var{}", self.idx)
-    }
-
-    pub fn loc(&self) -> String {
-        self.idx.to_string()
     }
 }
 
 impl<F> Felt<F> {
-    pub const fn new(id: u32, handle: *mut FeltHandle<F>) -> Self {
+    pub(crate) const fn new(id: u32, handle: *mut FeltHandle<F>) -> Self {
         Self { idx: id, handle }
     }
 
-    pub fn id(&self) -> String {
+    pub(crate) fn id(&self) -> String {
         format!("felt{}", self.idx)
     }
 
-    pub fn loc(&self) -> String {
-        self.idx.to_string()
-    }
-
-    pub fn inverse(&self) -> SymbolicFelt<F>
+    pub(crate) fn inverse(&self) -> SymbolicFelt<F>
     where
         F: Field,
     {
@@ -158,94 +111,12 @@ impl<F> Felt<F> {
 }
 
 impl<F, EF> Ext<F, EF> {
-    pub const fn new(id: u32, handle: *mut ExtHandle<F, EF>) -> Self {
+    pub(crate) const fn new(id: u32, handle: *mut ExtHandle<F, EF>) -> Self {
         Self { idx: id, handle }
     }
 
-    pub fn id(&self) -> String {
+    pub(crate) fn id(&self) -> String {
         format!("ext{}", self.idx)
-    }
-
-    pub fn loc(&self) -> String {
-        self.idx.to_string()
-    }
-
-    pub fn inverse(&self) -> SymbolicExt<F, EF>
-    where
-        F: Field,
-        EF: ExtensionField<F>,
-    {
-        SymbolicExt::<F, EF>::one() / *self
-    }
-}
-
-impl<C: Config> Variable<C> for Usize<C::N> {
-    type Expression = SymbolicUsize<C::N>;
-
-    fn uninit(builder: &mut Builder<C>) -> Self {
-        builder.uninit::<Var<C::N>>().into()
-    }
-
-    fn assign(&self, src: Self::Expression, builder: &mut Builder<C>) {
-        match self {
-            Usize::Const(_) => {
-                panic!("cannot assign to a constant usize")
-            }
-            Usize::Var(v) => match src {
-                SymbolicUsize::Const(src) => {
-                    builder.assign(*v, C::N::from_canonical_usize(src));
-                }
-                SymbolicUsize::Var(src) => {
-                    builder.assign(*v, src);
-                }
-            },
-        }
-    }
-
-    fn assert_eq(
-        lhs: impl Into<Self::Expression>,
-        rhs: impl Into<Self::Expression>,
-        builder: &mut Builder<C>,
-    ) {
-        let lhs = lhs.into();
-        let rhs = rhs.into();
-
-        match (lhs, rhs) {
-            (SymbolicUsize::Const(lhs), SymbolicUsize::Const(rhs)) => {
-                assert_eq!(lhs, rhs, "constant usizes do not match");
-            }
-            (SymbolicUsize::Const(lhs), SymbolicUsize::Var(rhs)) => {
-                builder.assert_var_eq(C::N::from_canonical_usize(lhs), rhs);
-            }
-            (SymbolicUsize::Var(lhs), SymbolicUsize::Const(rhs)) => {
-                builder.assert_var_eq(lhs, C::N::from_canonical_usize(rhs));
-            }
-            (SymbolicUsize::Var(lhs), SymbolicUsize::Var(rhs)) => builder.assert_var_eq(lhs, rhs),
-        }
-    }
-
-    fn assert_ne(
-        lhs: impl Into<Self::Expression>,
-        rhs: impl Into<Self::Expression>,
-        builder: &mut Builder<C>,
-    ) {
-        let lhs = lhs.into();
-        let rhs = rhs.into();
-
-        match (lhs, rhs) {
-            (SymbolicUsize::Const(lhs), SymbolicUsize::Const(rhs)) => {
-                assert_ne!(lhs, rhs, "constant usizes do not match");
-            }
-            (SymbolicUsize::Const(lhs), SymbolicUsize::Var(rhs)) => {
-                builder.assert_var_ne(C::N::from_canonical_usize(lhs), rhs);
-            }
-            (SymbolicUsize::Var(lhs), SymbolicUsize::Const(rhs)) => {
-                builder.assert_var_ne(lhs, C::N::from_canonical_usize(rhs));
-            }
-            (SymbolicUsize::Var(lhs), SymbolicUsize::Var(rhs)) => {
-                builder.assert_var_ne(lhs, rhs);
-            }
-        }
     }
 }
 
@@ -319,20 +190,6 @@ impl<C: Config> Variable<C> for Var<C::N> {
     }
 }
 
-impl<C: Config> MemVariable<C> for Var<C::N> {
-    fn size_of() -> usize {
-        1
-    }
-
-    fn load(&self, ptr: Ptr<C::N>, index: MemIndex<C::N>, builder: &mut Builder<C>) {
-        builder.push_op(DslIr::LoadV(*self, ptr, index));
-    }
-
-    fn store(&self, ptr: Ptr<<C as Config>::N>, index: MemIndex<C::N>, builder: &mut Builder<C>) {
-        builder.push_op(DslIr::StoreV(*self, ptr, index));
-    }
-}
-
 impl<C: Config> Variable<C> for Felt<SP1Field> {
     type Expression = SymbolicFelt<SP1Field>;
 
@@ -400,20 +257,6 @@ impl<C: Config> Variable<C> for Felt<SP1Field> {
                 builder.push_traced_op(DslIr::AssertNeF(lhs, rhs));
             }
         }
-    }
-}
-
-impl<C: Config> MemVariable<C> for Felt<SP1Field> {
-    fn size_of() -> usize {
-        1
-    }
-
-    fn load(&self, ptr: Ptr<C::N>, index: MemIndex<C::N>, builder: &mut Builder<C>) {
-        builder.push_op(DslIr::LoadF(*self, ptr, index));
-    }
-
-    fn store(&self, ptr: Ptr<<C as Config>::N>, index: MemIndex<C::N>, builder: &mut Builder<C>) {
-        builder.push_op(DslIr::StoreF(*self, ptr, index));
     }
 }
 
@@ -526,20 +369,6 @@ impl<C: Config> Variable<C> for Ext<SP1Field, SP1ExtensionField> {
                 builder.push_traced_op(DslIr::AssertNeE(lhs_value, rhs_value));
             }
         }
-    }
-}
-
-impl<C: Config> MemVariable<C> for Ext<SP1Field, SP1ExtensionField> {
-    fn size_of() -> usize {
-        1
-    }
-
-    fn load(&self, ptr: Ptr<C::N>, index: MemIndex<C::N>, builder: &mut Builder<C>) {
-        builder.push_op(DslIr::LoadE(*self, ptr, index));
-    }
-
-    fn store(&self, ptr: Ptr<<C as Config>::N>, index: MemIndex<C::N>, builder: &mut Builder<C>) {
-        builder.push_op(DslIr::StoreE(*self, ptr, index));
     }
 }
 

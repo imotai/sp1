@@ -121,6 +121,7 @@ pub fn build_groth16_bn254(data_dir: &str) {
     build(ProofSystem::Groth16, data_dir).expect("failed to build with docker");
 }
 
+#[allow(clippy::too_many_arguments)]
 fn verify(
     system: ProofSystem,
     data_dir: &str,

@@ -19,14 +19,14 @@ fn panic_handler(panic_payload: Box<dyn Any + Send>) {
     let backtrace = Backtrace::capture();
 
     if let Some(message) = panic_payload.downcast_ref::<&str>() {
-        eprintln!("Rayon thread panic: '{}'", message);
+        eprintln!("Rayon thread panic: '{message}'");
     } else if let Some(message) = panic_payload.downcast_ref::<String>() {
-        eprintln!("Rayon thread panic: '{}'", message);
+        eprintln!("Rayon thread panic: '{message}'");
     } else {
         eprintln!("Rayon thread panic with unknown payload");
     }
 
-    eprintln!("Backtrace:\n{:?}", backtrace);
+    eprintln!("Backtrace:\n{backtrace:?}");
 
     // TODO: perhaps safer to abort the process
 }

@@ -7,7 +7,7 @@ use sp1_hypercube::{
 };
 use sp1_primitives::{SP1DiffusionMatrix, SP1Field, SP1GlobalContext};
 use sp1_recursion_executor::{
-    linear_program, Block, ExecutionRecord, Instruction, RecursionProgram, Runtime, D,
+    linear_program, Block, ExecutionRecord, Executor, Instruction, RecursionProgram, D,
 };
 use tracing::Instrument;
 
@@ -20,17 +20,17 @@ pub async fn run_recursion_test_machines(
 ) {
     type A = RecursionAir<SP1Field, 3, 2>;
 
-    let mut runtime =
-        Runtime::<SP1Field, BinomialExtensionField<SP1Field, D>, SP1DiffusionMatrix>::new(
+    let mut executor =
+        Executor::<SP1Field, BinomialExtensionField<SP1Field, D>, SP1DiffusionMatrix>::new(
             Arc::new(program.clone()),
             inner_perm(),
         );
-    runtime.witness_stream = witness.into();
-    runtime.run().unwrap();
+    executor.witness_stream = witness.into();
+    executor.run().unwrap();
 
     // Run with the poseidon2 wide chip.
     let machine = A::compress_machine();
-    run_test_recursion(vec![runtime.record.clone()], machine, program.clone()).await.unwrap();
+    run_test_recursion(vec![executor.record.clone()], machine, program.clone()).await.unwrap();
 }
 
 /// Constructs a linear program and runs it on machines that use the wide and skinny Poseidon2

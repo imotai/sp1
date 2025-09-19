@@ -4,13 +4,12 @@ use slop_algebra::AbstractField;
 use sp1_primitives::{types::RecursionProgramType, SP1ExtensionField, SP1Field};
 
 use super::{
-    Array, Config, DslIr, DslIrBlock, Ext, ExtHandle, ExtOperations, Felt, FeltHandle,
-    FeltOperations, FromConstant, SymbolicExt, SymbolicFelt, SymbolicUsize, SymbolicVar, Usize,
-    Var, VarHandle, VarOperations, Variable,
+    Config, DslIr, DslIrBlock, Ext, ExtHandle, ExtOperations, Felt, FeltHandle, FeltOperations,
+    FromConstant, SymbolicExt, SymbolicFelt, SymbolicVar, Var, VarHandle, VarOperations, Variable,
 };
 
 #[derive(Debug, Clone)]
-pub struct InnerBuilder<C: Config> {
+pub(crate) struct InnerBuilder<C: Config> {
     pub(crate) variable_count: u32,
     pub operations: Vec<DslIr<C>>,
 }
@@ -136,10 +135,6 @@ impl<C: Config> Builder<C> {
         unsafe { (*self.inner.get()).variable_count }
     }
 
-    pub fn set_variable_count(&mut self, variable_count: u32) {
-        self.inner.get_mut().variable_count = variable_count;
-    }
-
     pub fn into_operations(self) -> Vec<DslIr<C>> {
         self.inner.into_inner().operations
     }
@@ -239,27 +234,6 @@ impl<C: Config> Builder<C> {
         self.assert_ne::<Felt<SP1Field>>(lhs, rhs);
     }
 
-    /// Assert that two usizes are equal.
-    pub fn assert_usize_eq<
-        LhsExpr: Into<SymbolicUsize<C::N>>,
-        RhsExpr: Into<SymbolicUsize<C::N>>,
-    >(
-        &mut self,
-        lhs: LhsExpr,
-        rhs: RhsExpr,
-    ) {
-        self.assert_eq::<Usize<C::N>>(lhs, rhs);
-    }
-
-    /// Assert that two usizes are not equal.
-    pub fn assert_usize_ne(
-        &mut self,
-        lhs: impl Into<SymbolicUsize<C::N>>,
-        rhs: impl Into<SymbolicUsize<C::N>>,
-    ) {
-        self.assert_ne::<Usize<C::N>>(lhs, rhs);
-    }
-
     /// Assert that two exts are equal.
     pub fn assert_ext_eq<
         LhsExpr: Into<SymbolicExt<SP1Field, SP1ExtensionField>>,
@@ -284,44 +258,6 @@ impl<C: Config> Builder<C> {
         self.assert_ne::<Ext<SP1Field, SP1ExtensionField>>(lhs, rhs);
     }
 
-    pub fn lt(&mut self, lhs: Var<C::N>, rhs: Var<C::N>) -> Var<C::N> {
-        let result = self.uninit();
-        self.push_op(DslIr::LessThan(result, lhs, rhs));
-        result
-    }
-
-    /// Evaluate a block of operations if two expressions are equal.
-    pub fn if_eq<LhsExpr: Into<SymbolicVar<C::N>>, RhsExpr: Into<SymbolicVar<C::N>>>(
-        &mut self,
-        lhs: LhsExpr,
-        rhs: RhsExpr,
-    ) -> IfBuilder<'_, C> {
-        IfBuilder { lhs: lhs.into(), rhs: rhs.into(), is_eq: true, builder: self }
-    }
-
-    /// Evaluate a block of operations if two expressions are not equal.
-    pub fn if_ne<LhsExpr: Into<SymbolicVar<C::N>>, RhsExpr: Into<SymbolicVar<C::N>>>(
-        &mut self,
-        lhs: LhsExpr,
-        rhs: RhsExpr,
-    ) -> IfBuilder<'_, C> {
-        IfBuilder { lhs: lhs.into(), rhs: rhs.into(), is_eq: false, builder: self }
-    }
-
-    /// Evaluate a block of operations over a range from start to end.
-    pub fn range(
-        &mut self,
-        start: impl Into<Usize<C::N>>,
-        end: impl Into<Usize<C::N>>,
-    ) -> RangeBuilder<'_, C> {
-        RangeBuilder { start: start.into(), end: end.into(), builder: self, step_size: 1 }
-    }
-
-    /// Break out of a loop.
-    pub fn break_loop(&mut self) {
-        self.push_op(DslIr::Break);
-    }
-
     pub fn print_debug(&mut self, val: usize) {
         let constant = self.eval(C::N::from_canonical_usize(val));
         self.print_v(constant);
@@ -340,61 +276,6 @@ impl<C: Config> Builder<C> {
     /// Print an ext.
     pub fn print_e(&mut self, dst: Ext<SP1Field, SP1ExtensionField>) {
         self.push_op(DslIr::PrintE(dst));
-    }
-
-    /// Hint the length of the next vector of variables.
-    pub fn hint_len(&mut self) -> Var<C::N> {
-        let len = self.uninit();
-        self.push_op(DslIr::HintLen(len));
-        len
-    }
-
-    /// Hint a single variable.
-    pub fn hint_var(&mut self) -> Var<C::N> {
-        let len = self.hint_len();
-        let arr = self.dyn_array(len);
-        self.push_op(DslIr::HintVars(arr.clone()));
-        self.get(&arr, 0)
-    }
-
-    /// Hint a single felt.
-    pub fn hint_felt(&mut self) -> Felt<SP1Field> {
-        let len = self.hint_len();
-        let arr = self.dyn_array(len);
-        self.push_op(DslIr::HintFelts(arr.clone()));
-        self.get(&arr, 0)
-    }
-
-    /// Hint a single ext.
-    pub fn hint_ext(&mut self) -> Ext<SP1Field, SP1ExtensionField> {
-        let len = self.hint_len();
-        let arr = self.dyn_array(len);
-        self.push_op(DslIr::HintExts(arr.clone()));
-        self.get(&arr, 0)
-    }
-
-    /// Hint a vector of variables.
-    pub fn hint_vars(&mut self) -> Array<C, Var<C::N>> {
-        let len = self.hint_len();
-        let arr = self.dyn_array(len);
-        self.push_op(DslIr::HintVars(arr.clone()));
-        arr
-    }
-
-    /// Hint a vector of felts.
-    pub fn hint_felts(&mut self) -> Array<C, Felt<SP1Field>> {
-        let len = self.hint_len();
-        let arr = self.dyn_array(len);
-        self.push_op(DslIr::HintFelts(arr.clone()));
-        arr
-    }
-
-    /// Hint a vector of exts.
-    pub fn hint_exts(&mut self) -> Array<C, Ext<SP1Field, SP1ExtensionField>> {
-        let len = self.hint_len();
-        let arr = self.dyn_array(len);
-        self.push_op(DslIr::HintExts(arr.clone()));
-        arr
     }
 
     pub fn witness_var(&mut self) -> Var<C::N> {
@@ -426,19 +307,6 @@ impl<C: Config> Builder<C> {
         self.push_traced_op(DslIr::Error());
     }
 
-    /// Materializes a usize into a variable.
-    pub fn materialize(&mut self, num: Usize<C::N>) -> Var<C::N> {
-        match num {
-            Usize::Const(num) => self.eval(C::N::from_canonical_usize(num)),
-            Usize::Var(num) => num,
-        }
-    }
-
-    /// Register a felt as public value.  This is append to the proof's public values buffer.
-    pub fn register_public_value(&mut self, val: Felt<SP1Field>) {
-        self.push_op(DslIr::RegisterPublicValue(val));
-    }
-
     /// Register and commits a felt as public value.  This value will be constrained when verified.
     pub fn commit_public_value(&mut self, val: Felt<SP1Field>) {
         assert!(!self.is_sub_builder, "Cannot commit to a public value with a sub builder");
@@ -449,16 +317,6 @@ impl<C: Config> Builder<C> {
 
         self.push_op(DslIr::Commit(val, nb_public_values));
         self.assign(nb_public_values, nb_public_values + C::N::one());
-    }
-
-    /// Commits an array of felts in public values.
-    pub fn commit_public_values(&mut self, vals: &Array<C, Felt<SP1Field>>) {
-        assert!(!self.is_sub_builder, "Cannot commit to public values with a sub builder");
-        let len = vals.len();
-        self.range(0, len).for_each(|i, builder| {
-            let val = builder.get(vals, i);
-            builder.commit_public_value(val);
-        });
     }
 
     pub fn commit_vkey_hash_circuit(&mut self, var: Var<C::N>) {
@@ -489,264 +347,5 @@ impl<C: Config> Builder<C> {
         let var = self.uninit();
         self.push_op(DslIr::CircuitFelt2Var(felt, var));
         var
-    }
-
-    pub fn cycle_tracker(&mut self, name: &str) {
-        self.push_op(DslIr::CycleTracker(name.to_string()));
-    }
-
-    pub fn halt(&mut self) {
-        self.push_op(DslIr::Halt);
-    }
-}
-
-/// A builder for the DSL that handles if statements.
-#[allow(dead_code)]
-pub struct IfBuilder<'a, C: Config> {
-    lhs: SymbolicVar<C::N>,
-    rhs: SymbolicVar<C::N>,
-    is_eq: bool,
-    pub(crate) builder: &'a mut Builder<C>,
-}
-
-/// A set of conditions that if statements can be based on.
-#[allow(dead_code)]
-enum IfCondition<N> {
-    EqConst(N, N),
-    NeConst(N, N),
-    Eq(Var<N>, Var<N>),
-    EqI(Var<N>, N),
-    Ne(Var<N>, Var<N>),
-    NeI(Var<N>, N),
-}
-
-impl<C: Config> IfBuilder<'_, C> {
-    pub fn then(mut self, mut f: impl FnMut(&mut Builder<C>)) {
-        // Get the condition reduced from the expressions for lhs and rhs.
-        let condition = self.condition();
-
-        // Execute the `then` block and collect the instructions.
-        let mut f_builder = Builder::<C>::new_sub_builder(
-            self.builder.variable_count(),
-            self.builder.nb_public_values,
-            self.builder.p2_hash_num,
-            self.builder.debug,
-            self.builder.program_type,
-        );
-        f(&mut f_builder);
-        self.builder.p2_hash_num = f_builder.p2_hash_num;
-
-        let then_instructions = f_builder.into_operations();
-
-        // Dispatch instructions to the correct conditional block.
-        match condition {
-            IfCondition::EqConst(lhs, rhs) => {
-                if lhs == rhs {
-                    self.builder.extend_ops(then_instructions);
-                }
-            }
-            IfCondition::NeConst(lhs, rhs) => {
-                if lhs != rhs {
-                    self.builder.extend_ops(then_instructions);
-                }
-            }
-            IfCondition::Eq(lhs, rhs) => {
-                let op = DslIr::IfEq(Box::new((lhs, rhs, then_instructions, Default::default())));
-                self.builder.push_op(op);
-            }
-            IfCondition::EqI(lhs, rhs) => {
-                let op = DslIr::IfEqI(Box::new((lhs, rhs, then_instructions, Default::default())));
-                self.builder.push_op(op);
-            }
-            IfCondition::Ne(lhs, rhs) => {
-                let op = DslIr::IfNe(Box::new((lhs, rhs, then_instructions, Default::default())));
-                self.builder.push_op(op);
-            }
-            IfCondition::NeI(lhs, rhs) => {
-                let op = DslIr::IfNeI(Box::new((lhs, rhs, then_instructions, Default::default())));
-                self.builder.push_op(op);
-            }
-        }
-    }
-
-    pub fn then_or_else(
-        mut self,
-        mut then_f: impl FnMut(&mut Builder<C>),
-        mut else_f: impl FnMut(&mut Builder<C>),
-    ) {
-        // Get the condition reduced from the expressions for lhs and rhs.
-        let condition = self.condition();
-        let mut then_builder = Builder::<C>::new_sub_builder(
-            self.builder.variable_count(),
-            self.builder.nb_public_values,
-            self.builder.p2_hash_num,
-            self.builder.debug,
-            self.builder.program_type,
-        );
-
-        // Execute the `then` and `else_then` blocks and collect the instructions.
-        then_f(&mut then_builder);
-        self.builder.p2_hash_num = then_builder.p2_hash_num;
-
-        let then_instructions = then_builder.into_operations();
-
-        let mut else_builder = Builder::<C>::new_sub_builder(
-            self.builder.variable_count(),
-            self.builder.nb_public_values,
-            self.builder.p2_hash_num,
-            self.builder.debug,
-            self.builder.program_type,
-        );
-        else_f(&mut else_builder);
-        self.builder.p2_hash_num = else_builder.p2_hash_num;
-
-        let else_instructions = else_builder.into_operations();
-
-        // Dispatch instructions to the correct conditional block.
-        match condition {
-            IfCondition::EqConst(lhs, rhs) => {
-                if lhs == rhs {
-                    self.builder.extend_ops(then_instructions);
-                } else {
-                    self.builder.extend_ops(else_instructions);
-                }
-            }
-            IfCondition::NeConst(lhs, rhs) => {
-                if lhs != rhs {
-                    self.builder.extend_ops(then_instructions);
-                } else {
-                    self.builder.extend_ops(else_instructions);
-                }
-            }
-            IfCondition::Eq(lhs, rhs) => {
-                let op = DslIr::IfEq(Box::new((lhs, rhs, then_instructions, else_instructions)));
-                self.builder.push_op(op);
-            }
-            IfCondition::EqI(lhs, rhs) => {
-                let op = DslIr::IfEqI(Box::new((lhs, rhs, then_instructions, else_instructions)));
-                self.builder.push_op(op);
-            }
-            IfCondition::Ne(lhs, rhs) => {
-                let op = DslIr::IfNe(Box::new((lhs, rhs, then_instructions, else_instructions)));
-                self.builder.push_op(op);
-            }
-            IfCondition::NeI(lhs, rhs) => {
-                let op = DslIr::IfNeI(Box::new((lhs, rhs, then_instructions, else_instructions)));
-                self.builder.push_op(op);
-            }
-        }
-    }
-
-    fn condition(&mut self) -> IfCondition<C::N> {
-        unimplemented!("Deprecated")
-        // match (self.lhs.clone(), self.rhs.clone(), self.is_eq) {
-        //     (SymbolicVar::Const(lhs, _), SymbolicVar::Const(rhs, _), true) => {
-        //         IfCondition::EqConst(lhs, rhs)
-        //     }
-        //     (SymbolicVar::Const(lhs, _), SymbolicVar::Const(rhs, _), false) => {
-        //         IfCondition::NeConst(lhs, rhs)
-        //     }
-        //     (SymbolicVar::Const(lhs, _), SymbolicVar::Val(rhs, _), true) => {
-        //         IfCondition::EqI(rhs, lhs)
-        //     }
-        //     (SymbolicVar::Const(lhs, _), SymbolicVar::Val(rhs, _), false) => {
-        //         IfCondition::NeI(rhs, lhs)
-        //     }
-        //     (SymbolicVar::Const(lhs, _), rhs, true) => {
-        //         let rhs: Var<C::N> = self.builder.eval(rhs);
-        //         IfCondition::EqI(rhs, lhs)
-        //     }
-        //     (SymbolicVar::Const(lhs, _), rhs, false) => {
-        //         let rhs: Var<C::N> = self.builder.eval(rhs);
-        //         IfCondition::NeI(rhs, lhs)
-        //     }
-        //     (SymbolicVar::Val(lhs, _), SymbolicVar::Const(rhs, _), true) => {
-        //         let lhs: Var<C::N> = self.builder.eval(lhs);
-        //         IfCondition::EqI(lhs, rhs)
-        //     }
-        //     (SymbolicVar::Val(lhs, _), SymbolicVar::Const(rhs, _), false) => {
-        //         let lhs: Var<C::N> = self.builder.eval(lhs);
-        //         IfCondition::NeI(lhs, rhs)
-        //     }
-        //     (lhs, SymbolicVar::Const(rhs, _), true) => {
-        //         let lhs: Var<C::N> = self.builder.eval(lhs);
-        //         IfCondition::EqI(lhs, rhs)
-        //     }
-        //     (lhs, SymbolicVar::Const(rhs, _), false) => {
-        //         let lhs: Var<C::N> = self.builder.eval(lhs);
-        //         IfCondition::NeI(lhs, rhs)
-        //     }
-        //     (SymbolicVar::Val(lhs, _), SymbolicVar::Val(rhs, _), true) => IfCondition::Eq(lhs,
-        // rhs),     (SymbolicVar::Val(lhs, _), SymbolicVar::Val(rhs, _), false) => {
-        //         IfCondition::Ne(lhs, rhs)
-        //     }
-        //     (SymbolicVar::Val(lhs, _), rhs, true) => {
-        //         let rhs: Var<C::N> = self.builder.eval(rhs);
-        //         IfCondition::Eq(lhs, rhs)
-        //     }
-        //     (SymbolicVar::Val(lhs, _), rhs, false) => {
-        //         let rhs: Var<C::N> = self.builder.eval(rhs);
-        //         IfCondition::Ne(lhs, rhs)
-        //     }
-        //     (lhs, SymbolicVar::Val(rhs, _), true) => {
-        //         let lhs: Var<C::N> = self.builder.eval(lhs);
-        //         IfCondition::Eq(lhs, rhs)
-        //     }
-        //     (lhs, SymbolicVar::Val(rhs, _), false) => {
-        //         let lhs: Var<C::N> = self.builder.eval(lhs);
-        //         IfCondition::Ne(lhs, rhs)
-        //     }
-        //     (lhs, rhs, true) => {
-        //         let lhs: Var<C::N> = self.builder.eval(lhs);
-        //         let rhs: Var<C::N> = self.builder.eval(rhs);
-        //         IfCondition::Eq(lhs, rhs)
-        //     }
-        //     (lhs, rhs, false) => {
-        //         let lhs: Var<C::N> = self.builder.eval(lhs);
-        //         let rhs: Var<C::N> = self.builder.eval(rhs);
-        //         IfCondition::Ne(lhs, rhs)
-        //     }
-        // }
-    }
-}
-
-/// A builder for the DSL that handles for loops.
-pub struct RangeBuilder<'a, C: Config> {
-    start: Usize<C::N>,
-    end: Usize<C::N>,
-    step_size: usize,
-    builder: &'a mut Builder<C>,
-}
-
-impl<C: Config> RangeBuilder<'_, C> {
-    pub const fn step_by(mut self, step_size: usize) -> Self {
-        self.step_size = step_size;
-        self
-    }
-
-    pub fn for_each(self, mut f: impl FnMut(Var<C::N>, &mut Builder<C>)) {
-        let step_size = C::N::from_canonical_usize(self.step_size);
-        let loop_variable: Var<C::N> = self.builder.uninit();
-        let mut loop_body_builder = Builder::<C>::new_sub_builder(
-            self.builder.variable_count(),
-            self.builder.nb_public_values,
-            self.builder.p2_hash_num,
-            self.builder.debug,
-            self.builder.program_type,
-        );
-
-        f(loop_variable, &mut loop_body_builder);
-        self.builder.p2_hash_num = loop_body_builder.p2_hash_num;
-
-        let loop_instructions = loop_body_builder.into_operations();
-
-        let op = DslIr::For(Box::new((
-            self.start,
-            self.end,
-            step_size,
-            loop_variable,
-            loop_instructions,
-        )));
-        self.builder.push_op(op);
     }
 }

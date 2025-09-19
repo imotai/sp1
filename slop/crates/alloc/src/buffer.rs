@@ -380,8 +380,7 @@ where
         #[track_caller]
         fn len_mismatch_fail(dst_len: usize, src_len: usize) -> ! {
             panic!(
-                "source slice length ({}) does not match destination slice length ({})",
-                src_len, dst_len,
+                "source slice length ({src_len}) does not match destination slice length ({dst_len})",
             );
         }
 
@@ -468,8 +467,7 @@ where
         #[track_caller]
         fn capacity_fail(dst_len: usize, src_len: usize, cap: usize) -> ! {
             panic!(
-                "source slice length ({}) too long for buffer of length ({}) and capacity ({})",
-                src_len, dst_len, cap
+                "source slice length ({src_len}) too long for buffer of length ({dst_len}) and capacity ({cap})"
             );
         }
 
@@ -532,8 +530,7 @@ where
         #[track_caller]
         fn capacity_fail(dst_len: usize, src_len: usize, cap: usize) -> ! {
             panic!(
-                "source slice length ({}) too long for buffer of length ({}) and capacity ({})",
-                src_len, dst_len, cap
+                "source slice length ({src_len}) too long for buffer of length ({dst_len}) and capacity ({cap})"
             );
         }
 
@@ -577,8 +574,7 @@ where
         #[track_caller]
         fn len_mismatch_fail(dst_len: usize, src_len: usize) -> ! {
             panic!(
-                "source slice length ({}) does not match destination slice length ({})",
-                src_len, dst_len,
+                "source slice length ({src_len}) does not match destination slice length ({dst_len})",
             );
         }
 
@@ -653,10 +649,7 @@ where
         #[cold]
         #[track_caller]
         fn capacity_fail(dst_len: usize, len: usize, cap: usize) -> ! {
-            panic!(
-                "Cannot write {} bytes to buffer of length {} and capacity {}",
-                len, dst_len, cap
-            );
+            panic!("Cannot write {len} bytes to buffer of length {dst_len} and capacity {cap}");
         }
 
         // The panic code path was put into a cold function to not bloat the
@@ -665,7 +658,7 @@ where
         #[cold]
         #[track_caller]
         fn align_fail(len: usize, size: usize) -> ! {
-            panic!("Number of bytes ({}) does not match the size of the type ({})", len, size);
+            panic!("Number of bytes ({len}) does not match the size of the type ({size})");
         }
 
         // Check that the number of bytes matches the size of the type.

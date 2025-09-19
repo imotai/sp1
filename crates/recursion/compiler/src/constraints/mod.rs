@@ -124,13 +124,6 @@ impl<C: Config + Debug> ConstraintCompiler<C> {
                     opcode: ConstraintOpcode::AddEF,
                     args: vec![vec![a.id()], vec![b.id()], vec![c.id()]],
                 }),
-                DslIr::AddEFI(a, b, c) => {
-                    let tmp = self.alloc_f(constraints, c);
-                    constraints.push(Constraint {
-                        opcode: ConstraintOpcode::AddEF,
-                        args: vec![vec![a.id()], vec![b.id()], vec![tmp]],
-                    });
-                }
                 DslIr::AddEI(a, b, c) => {
                     let tmp = self.alloc_e(constraints, c);
                     constraints.push(Constraint {
@@ -411,7 +404,6 @@ impl<C: Config + Debug> ConstraintCompiler<C> {
 
                 // Ignore cycle tracker instruction.
                 // It currently serves as a marker for calculation at compile time.
-                DslIr::CycleTracker(_) => (),
                 DslIr::CycleTrackerV2Enter(_) => (),
                 DslIr::CycleTrackerV2Exit => (),
                 DslIr::ReduceE(a) => constraints.push(Constraint {

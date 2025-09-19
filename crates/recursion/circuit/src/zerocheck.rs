@@ -416,10 +416,10 @@ where
 //         let block = builder.into_root_block();
 //         let mut compiler = AsmCompiler::<AsmConfig<F, EF>>::default();
 //         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-//         let mut runtime =
+//         let mut executor =
 //             Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
-//         runtime.witness_stream = witness_stream.into();
-//         runtime.run().unwrap();
+//         executor.witness_stream = witness_stream.into();
+//         executor.run().unwrap();
 
 //         // Test for a bad zerocheck proof.
 //         let mut invalid_shard_proof = shard_proof.clone();
@@ -440,8 +440,8 @@ where
 //                 &mut witness_stream,
 //             );
 //         });
-//         let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program,
-// inner_perm());         runtime.witness_stream = witness_stream.into();
-//         runtime.run().expect_err("invalid proof should not be verified");
+//         let mut executor = Runtime::<F, EF, SP1DiffusionMatrix>::new(program,
+// inner_perm());         executor.witness_stream = witness_stream.into();
+//         executor.run().expect_err("invalid proof should not be verified");
 //     }
 // }

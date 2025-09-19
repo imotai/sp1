@@ -26,7 +26,7 @@ async fn main() {
     println!("a: {}, b: {}", a, b);
 
     // Verify proof and public values
-    client.verify(&proof, pk.verifying_key(), None).expect("verification failed");;
+    client.verify(&proof, pk.verifying_key(), None).expect("verification failed");
 
     // Save the proof.
     proof.save("compressed-proof-with-pis.bin").expect("saving proof failed");

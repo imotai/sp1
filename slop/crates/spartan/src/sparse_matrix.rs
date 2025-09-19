@@ -205,7 +205,7 @@ mod tests {
             let eval = poly.eval_at(&point);
 
             // Should match the original matrix value
-            assert_eq!(eval, EF::from_base(value), "Mismatch at row={}, col={}", row, col);
+            assert_eq!(eval, EF::from_base(value), "Mismatch at row={row}, col={col}");
         }
     }
 }

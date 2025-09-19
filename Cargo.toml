@@ -9,65 +9,60 @@ include = ["SP1_VERSION"]
 
 [workspace]
 members = [
-  "slop/crates/air",
-  "slop/crates/bn254",
-  "slop/crates/basefold",
-  "slop/crates/whir",
-  "slop/crates/algebra",
-  "slop/crates/basefold-prover",
-  "slop/crates/sumcheck",
-  "slop/crates/multilinear",
-  "slop/crates/utils",
-  "slop/crates/baby-bear",
-  "slop/crates/dft",
-  "slop/crates/matrix",
-  "slop/crates/symmetric",
-  "slop/crates/merkle-tree",
-  "slop/crates/poseidon2",
-  "slop/crates/commit",
-  "slop/crates/challenger",
-  "slop/crates/fri",
-  "slop/crates/maybe-rayon",
-  "slop/crates/tensor",
-  "slop/crates/alloc",
-  "slop/crates/slop",
-  "slop/crates/jagged",
-  "slop/crates/spartan",
-  "slop/crates/pgspcs",
-  "slop/crates/stacked",
-  "slop/crates/pcs-bench",
-  "slop/crates/futures",
-  "slop/crates/keccak-air",
-  "slop/crates/uni-stark",
-  "slop/crates/koala-bear",
   "crates/build",
   "crates/cli",
+  "crates/core/compiler",
   "crates/core/executor",
+  "crates/core/jit",
   "crates/core/machine",
-  "crates/recursion/circuit",
-  "crates/recursion/compiler",
-  "crates/recursion/derive",
-  "crates/recursion/executor",
-  "crates/recursion/gnark-ffi",
-  "crates/recursion/machine",
+  "crates/cuda",
   "crates/curves",
   "crates/derive",
   "crates/helper",
-  "crates/prover",
   "crates/hypercube",
-  "crates/test-artifacts",
-  "crates/zkvm/*",
-  "crates/sdk",
-  "crates/primitives",
-  "crates/cuda",
-  "crates/cli",
-  "crates/core/compiler",
   "crates/perf",
-  "crates/cli", 
-  "crates/core/compiler",
-  "crates/core/jit",
-  "crates/perf"
+  "crates/primitives",
+  "crates/prover",
+  "crates/recursion/circuit",
+  "crates/recursion/compiler",
+  "crates/recursion/executor",
+  "crates/recursion/gnark-ffi",
+  "crates/recursion/machine",
+  "crates/sdk",
+  "crates/test-artifacts",
   # "crates/verifier",
+  "crates/zkvm/*",
+  "slop/crates/air",
+  "slop/crates/algebra",
+  "slop/crates/alloc",
+  "slop/crates/baby-bear",
+  "slop/crates/basefold-prover",
+  "slop/crates/basefold",
+  "slop/crates/bn254",
+  "slop/crates/challenger",
+  "slop/crates/commit",
+  "slop/crates/dft",
+  "slop/crates/fri",
+  "slop/crates/futures",
+  "slop/crates/jagged",
+  "slop/crates/keccak-air",
+  "slop/crates/koala-bear",
+  "slop/crates/matrix",
+  "slop/crates/maybe-rayon",
+  "slop/crates/merkle-tree",
+  "slop/crates/multilinear",
+  "slop/crates/pcs-bench",
+  "slop/crates/pgspcs",
+  "slop/crates/poseidon2",
+  "slop/crates/slop",
+  "slop/crates/spartan",
+  "slop/crates/stacked",
+  "slop/crates/sumcheck",
+  "slop/crates/symmetric",
+  "slop/crates/tensor",
+  "slop/crates/uni-stark",
+  "slop/crates/utils",
+  "slop/crates/whir",
 ]
 exclude = [
   "examples/target",
@@ -102,12 +97,11 @@ sp1-primitives = { path = "crates/primitives", version = "6.0.0" }
 sp1-prover = { path = "crates/prover", version = "6.0.0" }
 sp1-recursion-compiler = { path = "crates/recursion/compiler", version = "6.0.0" }
 sp1-recursion-core = { path = "crates/recursion/core", version = "6.0.0" }
-sp1-recursion-derive = { path = "crates/recursion/derive", version = "6.0.0", default-features = false }
 sp1-recursion-gnark-ffi = { path = "crates/recursion/gnark-ffi", version = "6.0.0", default-features = false }
 sp1-recursion-circuit = { path = "crates/recursion/circuit", version = "6.0.0", default-features = false }
 sp1-recursion-executor = { path = "crates/recursion/executor", version = "6.0.0", default-features = false }
 sp1-recursion-machine = { path = "crates/recursion/machine", version = "6.0.0", default-features = false }
-sp1-sdk = { path = "crates/sdk", version = "6.0.0" }
+sp1-sdk = { path = "crates/sdk", version = "6.0.0", default-features = false }
 sp1-cuda = { path = "crates/cuda", version = "6.0.0" }
 sp1-hypercube = { path = "crates/hypercube", version = "6.0.0" }
 sp1-lib = { path = "crates/zkvm/lib", version = "6.0.0", default-features = false }
@@ -119,13 +113,13 @@ p3-field = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
 p3-commit = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
 p3-matrix = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
 p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6", features = [
-    "nightly-features",
+  "nightly-features",
 ] }
 p3-util = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
 p3-challenger = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
 p3-dft = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
 p3-maybe-rayon = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6", features = [
-    "parallel",
+  "parallel",
 ] }
 p3-merkle-tree = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
 p3-poseidon2 = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }

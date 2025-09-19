@@ -46,7 +46,7 @@ use sp1_recursion_compiler::{
     ir::{Builder, DslIrProgram},
 };
 use sp1_recursion_executor::{
-    shape::RecursionShape, ExecutionRecord, RecursionProgram, RecursionPublicValues, Runtime,
+    shape::RecursionShape, ExecutionRecord, Executor, RecursionProgram, RecursionPublicValues,
     DIGEST_SIZE,
 };
 
@@ -522,7 +522,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         // Execute the runtime.
         let runtime_span = tracing::debug_span!("execute runtime").entered();
         let mut runtime =
-            Runtime::<SP1Field, SP1ExtensionField, _>::new(program.clone(), inner_perm());
+            Executor::<SP1Field, SP1ExtensionField, _>::new(program.clone(), inner_perm());
         runtime.witness_stream = witness_stream.into();
         runtime.run().map_err(|e| SP1RecursionProverError::RuntimeError(e.to_string()))?;
         let mut record = runtime.record;

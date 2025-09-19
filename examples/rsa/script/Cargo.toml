@@ -6,9 +6,8 @@ publish = false
 
 [dependencies]
 rsa = "0.6"
-sp1-sdk = { workspace = true }
+sp1-sdk = { workspace = true, default-features = true }
 tokio = { workspace = true }
 
 [build-dependencies]
 sp1-build = { path = "../../../crates/build" }
-

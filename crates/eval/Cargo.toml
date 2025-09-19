@@ -11,7 +11,7 @@ categories = { workspace = true }
 
 [dependencies]
 sp1-prover = { workspace = true }
-sp1-sdk = { workspace = true }
+sp1-sdk = { workspace = true, default-features = true }
 sp1-hypercube = { workspace = true }
 
 anyhow = "1.0.83"

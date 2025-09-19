@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
-sp1-sdk = { workspace = true }
+sp1-sdk = { workspace = true, default-features = true }
 tokio = { workspace = true }
 
 [build-dependencies]

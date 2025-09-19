@@ -1247,7 +1247,7 @@ mod tests {
             .zip(tensor_concat.clone().into_buffer().to_vec())
             .enumerate()
         {
-            assert_eq!(elem_1, elem_2, "Failed at index {}", i);
+            assert_eq!(elem_1, elem_2, "Failed at index {i}");
         }
     }
 
@@ -1298,7 +1298,7 @@ mod tests {
                 incorrect_indices.push(i);
             }
         }
-        assert!(incorrect_indices.is_empty(), "Found incorrect indices: {:?}", incorrect_indices);
+        assert!(incorrect_indices.is_empty(), "Found incorrect indices: {incorrect_indices:?}");
     }
 
     // WHIR end-to-end tests.

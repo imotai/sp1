@@ -29,7 +29,6 @@ use crate::chips::{
 #[builder_path = "crate::builder::SP1RecursionAirBuilder<F = F>"]
 #[eval_trait_bound = "AB::Var: 'static"]
 #[strum_discriminants(derive(Hash, EnumIter))]
-#[allow(dead_code)]
 pub enum RecursionAir<
     F: PrimeField32 + BinomiallyExtendable<D>,
     const DEGREE: usize,
@@ -59,7 +58,6 @@ impl<
     }
 }
 
-#[allow(dead_code)]
 impl<
         F: PrimeField32 + BinomiallyExtendable<D>,
         const DEGREE: usize,

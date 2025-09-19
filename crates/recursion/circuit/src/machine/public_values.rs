@@ -14,7 +14,6 @@ pub struct RootPublicValues<T> {
 }
 
 /// Verifies the digest of a recursive public values struct.
-#[allow(dead_code)]
 pub(crate) fn assert_recursion_public_values_valid<C, H>(
     builder: &mut Builder<C>,
     public_values: &RecursionPublicValues<Felt<SP1Field>>,
@@ -42,7 +41,6 @@ where
 }
 
 /// Assert that the digest of the root public values is correct.
-#[allow(dead_code)]
 pub(crate) fn assert_root_public_values_valid<C, H>(
     builder: &mut Builder<C>,
     public_values: &RootPublicValues<Felt<SP1Field>>,

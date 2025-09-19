@@ -61,8 +61,7 @@ impl<T, A: Backend> Tensor<T, A> {
         #[inline(never)]
         fn dimension_fail(new_dimensions: &Dimensions, old_dimensions: &Dimensions) -> ! {
             panic!(
-                "TensorView::reshape: dimension mismatch: {:?} vs {:?}",
-                new_dimensions, old_dimensions
+                "TensorView::reshape: dimension mismatch: {new_dimensions:?} vs {old_dimensions:?}"
             );
         }
 
@@ -81,8 +80,7 @@ impl<T, A: Backend> Tensor<T, A> {
         #[inline(never)]
         fn dimension_fail(new_dimensions: &Dimensions, old_dimensions: &Dimensions) -> ! {
             panic!(
-                "TensorView::reshape: dimension mismatch: {:?} vs {:?}",
-                new_dimensions, old_dimensions
+                "TensorView::reshape: dimension mismatch: {new_dimensions:?} vs {old_dimensions:?}"
             );
         }
 
@@ -255,8 +253,7 @@ impl<T, A: Backend, I: AsRef<[usize]>> Index<I> for Tensor<T, A> {
         #[inline(never)]
         fn dimension_fail(index_len: usize, sizes_len: usize) -> ! {
             panic!(
-                "Index length ({}) does not match tensor dimensions length ({})",
-                index_len, sizes_len
+                "Index length ({index_len}) does not match tensor dimensions length ({sizes_len})"
             );
         }
 
@@ -402,8 +399,7 @@ impl<'a, T, A: Backend> TensorView<'a, T, A> {
         #[inline(never)]
         fn dimension_fail(new_dimensions: &Dimensions, old_dimensions: &Dimensions) -> ! {
             panic!(
-                "TensorView::reshape: dimension mismatch: {:?} vs {:?}",
-                new_dimensions, old_dimensions
+                "TensorView::reshape: dimension mismatch: {new_dimensions:?} vs {old_dimensions:?}"
             );
         }
 

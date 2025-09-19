@@ -34,7 +34,6 @@ pub trait RecursiveJaggedEvalConfig<C: CircuitConfig, Chal>: Sized {
     type JaggedEvalProof;
 
     #[allow(clippy::too_many_arguments)]
-    #[allow(dead_code)]
     #[allow(clippy::type_complexity)]
     fn jagged_evaluation(
         &self,
@@ -195,7 +194,7 @@ mod tests {
         circuit::{AsmBuilder, AsmCompiler, AsmConfig, CircuitV2Builder},
         ir::{Ext, Felt},
     };
-    use sp1_recursion_executor::Runtime;
+    use sp1_recursion_executor::Executor;
 
     use crate::{
         challenger::DuplexChallengerVariable,
@@ -253,13 +252,13 @@ mod tests {
         Witnessable::<AsmConfig>::write(&z_col, &mut witness_stream);
         Witnessable::<AsmConfig>::write(&z_trace, &mut witness_stream);
 
-        let mut runtime =
-            Runtime::<F, EF, SP1DiffusionMatrix>::new(Arc::new(program), inner_perm());
-        runtime.witness_stream = witness_stream.into();
+        let mut executor =
+            Executor::<F, EF, SP1DiffusionMatrix>::new(Arc::new(program), inner_perm());
+        executor.witness_stream = witness_stream.into();
         if should_succeed {
-            runtime.run().unwrap();
+            executor.run().unwrap();
         } else {
-            runtime.run().expect_err("invalid proof should not be verified");
+            executor.run().expect_err("invalid proof should not be verified");
         }
     }
 
@@ -330,13 +329,13 @@ mod tests {
         Witnessable::<AsmConfig>::write(&z_col, &mut witness_stream);
         Witnessable::<AsmConfig>::write(&z_trace, &mut witness_stream);
         Witnessable::<AsmConfig>::write(&jagged_eval_proof, &mut witness_stream);
-        let mut runtime =
-            Runtime::<F, EF, SP1DiffusionMatrix>::new(Arc::new(program), inner_perm());
-        runtime.witness_stream = witness_stream.into();
+        let mut executor =
+            Executor::<F, EF, SP1DiffusionMatrix>::new(Arc::new(program), inner_perm());
+        executor.witness_stream = witness_stream.into();
         if should_succeed {
-            runtime.run().unwrap();
+            executor.run().unwrap();
         } else {
-            runtime.run().expect_err("invalid proof should not be verified");
+            executor.run().expect_err("invalid proof should not be verified");
         }
         prefix_sum_felts
     }

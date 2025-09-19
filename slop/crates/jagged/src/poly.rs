@@ -80,7 +80,7 @@ pub enum StateOrFail {
 impl fmt::Display for StateOrFail {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            StateOrFail::State(memory_state) => write!(f, "{}", memory_state),
+            StateOrFail::State(memory_state) => write!(f, "{memory_state}"),
             StateOrFail::Fail => write!(f, "FAIL"),
         }
     }
@@ -513,9 +513,9 @@ pub mod tests {
     fn test_transition_function() {
         for bit_state in all_bit_states() {
             for memory_state in all_memory_states() {
-                println!("Bit state {:?}, Memory State {:?}", bit_state, memory_state);
+                println!("Bit state {bit_state:?}, Memory State {memory_state:?}");
                 let result = super::transition_function(bit_state, memory_state);
-                println!("Result: {:?}", result);
+                println!("Result: {result:?}");
             }
         }
     }

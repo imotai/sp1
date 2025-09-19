@@ -10,5 +10,4 @@ pub mod ir;
 
 pub mod prelude {
     pub use crate::ir::*;
-    pub use sp1_recursion_derive::DslVariable;
 }

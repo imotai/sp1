@@ -100,7 +100,7 @@ mod tests {
     use slop_tensor::Tensor;
     use sp1_hypercube::prover::SP1MerkleTreeProver;
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler};
-    use sp1_recursion_executor::Runtime;
+    use sp1_recursion_executor::Executor;
 
     use sp1_primitives::SP1Field;
     type F = SP1Field;
@@ -157,9 +157,10 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
-        runtime.witness_stream = witness_stream.into();
-        runtime.run().unwrap();
+        let mut executor =
+            Executor::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
+        executor.witness_stream = witness_stream.into();
+        executor.run().unwrap();
     }
 
     #[tokio::test]
@@ -215,8 +216,9 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
-        runtime.witness_stream = witness_stream.into();
-        runtime.run().expect_err("merkle proof should not verify");
+        let mut executor =
+            Executor::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
+        executor.witness_stream = witness_stream.into();
+        executor.run().expect_err("merkle proof should not verify");
     }
 }

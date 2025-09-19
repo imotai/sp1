@@ -138,7 +138,7 @@ mod tests {
         config::InnerConfig,
         ir::{Builder, Ext, SymbolicExt},
     };
-    use sp1_recursion_executor::Runtime;
+    use sp1_recursion_executor::Executor;
     use zkhash::ark_ff::UniformRand;
 
     use sp1_primitives::{SP1Field, SP1Perm};
@@ -185,9 +185,9 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
-        runtime.witness_stream = witness_stream.into();
-        runtime.run().unwrap();
+        let mut executor = Executor::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
+        executor.witness_stream = witness_stream.into();
+        executor.run().unwrap();
     }
 
     #[tokio::test]
@@ -231,9 +231,9 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
-        runtime.witness_stream = witness_stream.into();
-        runtime.run().expect_err("Sumcheck should fail");
+        let mut executor = Executor::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
+        executor.witness_stream = witness_stream.into();
+        executor.run().expect_err("Sumcheck should fail");
     }
 
     #[test]
@@ -254,14 +254,14 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
+        let mut executor = Executor::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
         let coeffs = (0..3).map(|_| F::rand(&mut rng)).collect::<Vec<_>>();
         let point = F::rand(&mut rng);
-        runtime.witness_stream =
+        executor.witness_stream =
             [vec![coeffs[0].into(), coeffs[1].into(), coeffs[2].into()], vec![point.into()]]
                 .concat()
                 .into();
-        runtime.run().unwrap();
+        executor.run().unwrap();
     }
 
     #[test]
@@ -280,12 +280,12 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
-        runtime.witness_stream =
+        let mut executor = Executor::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
+        executor.witness_stream =
             [vec![F::zero().into(), F::one().into()], vec![F::zero().into(), F::one().into()]]
                 .concat()
                 .into();
-        runtime.run().unwrap();
+        executor.run().unwrap();
     }
 
     #[test]
@@ -304,11 +304,11 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
-        runtime.witness_stream =
+        let mut executor = Executor::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
+        executor.witness_stream =
             [vec![F::zero().into(), F::one().into()], vec![F::one().into(), F::zero().into()]]
                 .concat()
                 .into();
-        runtime.run().unwrap();
+        executor.run().unwrap();
     }
 }

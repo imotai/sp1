@@ -89,7 +89,7 @@ mod tests {
     use slop_stacked::{FixedRateInterleave, StackedPcsProver, StackedPcsVerifier};
     use sp1_hypercube::{inner_perm, prover::SP1BasefoldCpuProverComponents};
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler};
-    use sp1_recursion_executor::Runtime;
+    use sp1_recursion_executor::Executor;
 
     use sp1_primitives::SP1Field;
     type F = SP1Field;
@@ -199,10 +199,11 @@ mod tests {
         let block = builder.into_root_block();
         let mut compiler = AsmCompiler::default();
         let program = Arc::new(compiler.compile_inner(block).validate().unwrap());
-        let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
-        runtime.witness_stream = witness_stream.into();
-        runtime.debug_stdout = Box::new(&mut buf);
-        runtime.run().unwrap();
+        let mut executor =
+            Executor::<F, EF, SP1DiffusionMatrix>::new(program.clone(), inner_perm());
+        executor.witness_stream = witness_stream.into();
+        executor.debug_stdout = Box::new(&mut buf);
+        executor.run().unwrap();
     }
 
     #[tokio::test]

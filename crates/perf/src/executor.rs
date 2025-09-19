@@ -122,7 +122,7 @@ async fn main() {
                 }
             });
             println!("Checkpoint mode:");
-            println!("checkpoint execution duration: {:?}", checkpoint_execution_duration);
+            println!("checkpoint execution duration: {checkpoint_execution_duration:?}");
             println!("cycles: {}", checkpoint_executor.state.global_clk);
             println!(
                 "MHZ: {}",
@@ -158,7 +158,7 @@ async fn main() {
             old_shard_trace_durations.push(execution_start.elapsed());
 
             println!("Trace mode:");
-            println!("trace execution duration: {:?}", execution_duration);
+            println!("trace execution duration: {execution_duration:?}");
             println!("cycles: {}", executor.state.global_clk);
             println!(
                 "MHZ: {}",
@@ -173,7 +173,7 @@ async fn main() {
             let (minimal_trace, minimal_trace_duration) =
                 time_operation(|| minimal.execute_chunk());
             let minimal_trace = minimal_trace.expect("failed to execute chunk");
-            println!("Minimal trace duration: {:?}", minimal_trace_duration);
+            println!("Minimal trace duration: {minimal_trace_duration:?}");
             assert_eq!(minimal.global_clk(), executor.state.global_clk);
             println!(
                 "minimal executor (trace) mhz: {}",
@@ -214,7 +214,7 @@ async fn main() {
             assert_eq!(minimal.global_clk(), splicing_vm.core.global_clk());
 
             println!("Spliced traces: {}", spliced_traces.len());
-            println!("Spliced traces duration: {:?}", splice_duration);
+            println!("Spliced traces duration: {splice_duration:?}");
             println!(
                 "Spliced traces mhz: {}",
                 minimal.global_clk() as f64 / 1_000_000.0 / splice_duration.as_secs_f64()
@@ -228,7 +228,7 @@ async fn main() {
                 let result = result.expect("failed to execute chunk");
                 assert!(result.is_shard_boundry() || result.is_done());
 
-                println!("shard {i} tracing vm duration: {:?}", execution_duration);
+                println!("shard {i} tracing vm duration: {execution_duration:?}");
                 println!(
                     "shard {i} vm mhz: {}",
                     tracing_vm.core.global_clk() as f64
@@ -244,7 +244,7 @@ async fn main() {
                 "total time spent checkpoint + trace: {:?}",
                 execution_duration + checkpoint_execution_duration
             );
-            println!("time to last shard old: {:?}", checkpoint_execution_duration);
+            println!("time to last shard old: {checkpoint_execution_duration:?}");
             println!(
                 "total old mhz: {}",
                 minimal.global_clk() as f64

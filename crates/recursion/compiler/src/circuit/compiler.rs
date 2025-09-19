@@ -528,7 +528,6 @@ where
             DslIr::AddE(dst, lhs, rhs) => f(self.ext_alu(AddE, dst, lhs, rhs)),
             DslIr::AddEI(dst, lhs, rhs) => f(self.ext_alu(AddE, dst, lhs, Imm::EF(rhs))),
             DslIr::AddEF(dst, lhs, rhs) => f(self.ext_alu(AddE, dst, lhs, rhs)),
-            DslIr::AddEFI(dst, lhs, rhs) => f(self.ext_alu(AddE, dst, lhs, Imm::F(rhs))),
             DslIr::AddEFFI(dst, lhs, rhs) => f(self.ext_alu(AddE, dst, lhs, Imm::EF(rhs))),
 
             DslIr::SubV(dst, lhs, rhs) => f(self.base_alu(SubF, dst, lhs, rhs)),
@@ -540,7 +539,6 @@ where
             DslIr::SubE(dst, lhs, rhs) => f(self.ext_alu(SubE, dst, lhs, rhs)),
             DslIr::SubEI(dst, lhs, rhs) => f(self.ext_alu(SubE, dst, lhs, Imm::EF(rhs))),
             DslIr::SubEIN(dst, lhs, rhs) => f(self.ext_alu(SubE, dst, Imm::EF(lhs), rhs)),
-            DslIr::SubEFI(dst, lhs, rhs) => f(self.ext_alu(SubE, dst, lhs, Imm::F(rhs))),
             DslIr::SubEF(dst, lhs, rhs) => f(self.ext_alu(SubE, dst, lhs, rhs)),
 
             DslIr::MulV(dst, lhs, rhs) => f(self.base_alu(MulF, dst, lhs, rhs)),
@@ -549,7 +547,6 @@ where
             DslIr::MulFI(dst, lhs, rhs) => f(self.base_alu(MulF, dst, lhs, Imm::F(rhs))),
             DslIr::MulE(dst, lhs, rhs) => f(self.ext_alu(MulE, dst, lhs, rhs)),
             DslIr::MulEI(dst, lhs, rhs) => f(self.ext_alu(MulE, dst, lhs, Imm::EF(rhs))),
-            DslIr::MulEFI(dst, lhs, rhs) => f(self.ext_alu(MulE, dst, lhs, Imm::F(rhs))),
             DslIr::MulEF(dst, lhs, rhs) => f(self.ext_alu(MulE, dst, lhs, rhs)),
 
             DslIr::DivF(dst, lhs, rhs) => f(self.base_alu(DivF, dst, lhs, rhs)),
@@ -558,8 +555,6 @@ where
             DslIr::DivE(dst, lhs, rhs) => f(self.ext_alu(DivE, dst, lhs, rhs)),
             DslIr::DivEI(dst, lhs, rhs) => f(self.ext_alu(DivE, dst, lhs, Imm::EF(rhs))),
             DslIr::DivEIN(dst, lhs, rhs) => f(self.ext_alu(DivE, dst, Imm::EF(lhs), rhs)),
-            DslIr::DivEFI(dst, lhs, rhs) => f(self.ext_alu(DivE, dst, lhs, Imm::F(rhs))),
-            DslIr::DivEFIN(dst, lhs, rhs) => f(self.ext_alu(DivE, dst, Imm::F(lhs), rhs)),
             DslIr::DivEF(dst, lhs, rhs) => f(self.ext_alu(DivE, dst, lhs, rhs)),
 
             DslIr::NegV(dst, src) => f(self.base_alu(SubF, dst, Imm::F(SP1Field::zero()), src)),
@@ -942,36 +937,6 @@ trait Reg {
     fn write_many(&self, compiler: &mut AsmCompiler, len: usize) -> Vec<Address<SP1Field>>;
 }
 
-macro_rules! impl_reg_borrowed {
-    ($a:ty) => {
-        impl<T> Reg for $a
-        where
-            T: Reg + ?Sized,
-        {
-            fn read(&self, compiler: &mut AsmCompiler) -> Address<SP1Field> {
-                (**self).read(compiler)
-            }
-
-            fn read_ghost(&self, compiler: &mut AsmCompiler) -> Address<SP1Field> {
-                (**self).read_ghost(compiler)
-            }
-
-            fn write(&self, compiler: &mut AsmCompiler) -> Address<SP1Field> {
-                (**self).write(compiler)
-            }
-
-            fn write_many(&self, compiler: &mut AsmCompiler, len: usize) -> Vec<Address<SP1Field>> {
-                (**self).write_many(compiler, len)
-            }
-        }
-    };
-}
-
-// Allow for more flexibility in arguments.
-impl_reg_borrowed!(&T);
-impl_reg_borrowed!(&mut T);
-impl_reg_borrowed!(Box<T>);
-
 macro_rules! impl_reg_vaddr {
     ($a:ty) => {
         impl Reg for $a {
@@ -1051,7 +1016,7 @@ mod tests {
     // use sp1_core_machine::utils::{run_test_machine};
     use slop_algebra::PrimeField32;
     use sp1_core_machine::utils::setup_logger;
-    use sp1_recursion_executor::Runtime;
+    use sp1_recursion_executor::Executor;
 
     use crate::circuit::{AsmBuilder, AsmConfig, CircuitV2Builder};
 
@@ -1061,9 +1026,9 @@ mod tests {
     type EF = BinomialExtensionField<SP1Field, 4>;
     fn test_block(block: DslIrBlock<AsmConfig>) {
         test_block_with_runner(block, |program| {
-            let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
-            runtime.run().unwrap();
-            runtime.record
+            let mut executor = Executor::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
+            executor.run().unwrap();
+            executor.record
         });
     }
 
@@ -1180,10 +1145,10 @@ mod tests {
         builder.cycle_tracker_v2_exit();
 
         test_block_with_runner(builder.into_root_block(), |program| {
-            let mut runtime = Runtime::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
-            runtime.debug_stdout = Box::new(&mut buf);
-            runtime.run().unwrap();
-            runtime.record
+            let mut executor = Executor::<F, EF, SP1DiffusionMatrix>::new(program, inner_perm());
+            executor.debug_stdout = Box::new(&mut buf);
+            executor.run().unwrap();
+            executor.record
         });
 
         let input_str_fs = input_fs.into_iter().map(|elt| format!("{elt}"));
