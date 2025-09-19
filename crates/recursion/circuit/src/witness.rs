@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldVerifier},
+    basefold::{
+        stacked::RecursiveStackedPcsProof, RecursiveBasefoldConfigImpl, RecursiveBasefoldVerifier,
+    },
     hash::FieldHasherVariable,
     jagged::RecursiveJaggedConfig,
     shard::{MachineVerifyingKeyVariable, ShardProofVariable},
@@ -282,7 +284,7 @@ impl<C: CircuitConfig> Witnessable<C> for AirOpenedValues<SP1ExtensionField> {
     }
 }
 
-impl<C, GC, SC, RecursiveStackedPcsProof> Witnessable<C> for ShardProof<GC, SC>
+impl<C, GC, SC, BatchPcsProof> Witnessable<C> for ShardProof<GC, SC>
 where
     C: CircuitConfig,
     GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
@@ -291,12 +293,14 @@ where
         F = SP1Field,
         EF = SP1ExtensionField,
         Circuit = C,
-        BatchPcsProof = RecursiveStackedPcsProof,
+        BatchPcsProof = BatchPcsProof,
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
     >,
     GC::Digest: Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
-    <SC::BatchPcsVerifier as MultilinearPcsVerifier<GC>>::Proof:
-        Witnessable<C, WitnessVariable = RecursiveStackedPcsProof>,
+    <SC::PcsVerifier as MultilinearPcsVerifier<GC>>::Proof: Witnessable<
+        C,
+        WitnessVariable = RecursiveStackedPcsProof<BatchPcsProof, SP1Field, SP1ExtensionField>,
+    >,
 {
     type WitnessVariable = ShardProofVariable<C, SC, SC::Recursive>;
 

@@ -56,7 +56,7 @@ pub enum MachineVerifierError<EF, PcsError> {
 /// Derive the error type from the machine config.
 pub type MachineVerifierConfigError<GC, C> = MachineVerifierError<
     <GC as IopCtx>::EF,
-    <<C as JaggedConfig<GC>>::BatchPcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
+    <<C as JaggedConfig<GC>>::PcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
 >;
 
 /// A verifier for a machine proof.
@@ -84,7 +84,7 @@ impl<GC: IopCtx, C: MachineConfig<GC>, A: MachineAir<GC::F>> MachineVerifier<GC,
 
     /// Get the maximum log row count.
     pub fn max_log_row_count(&self) -> usize {
-        self.shard_verifier.pcs_verifier.max_log_row_count
+        self.shard_verifier.jagged_pcs_verifier.max_log_row_count
     }
 
     /// Get the log stacking height.
@@ -155,6 +155,6 @@ impl<A: MachineAir<SP1Field>> MachineVerifier<SP1GlobalContext, SP1CoreJaggedCon
     #[must_use]
     #[inline]
     pub fn fri_config(&self) -> &FriConfig<SP1Field> {
-        &self.shard_verifier.pcs_verifier.stacked_pcs_verifier.pcs_verifier.fri_config
+        &self.shard_verifier.jagged_pcs_verifier.pcs_verifier.pcs_verifier.fri_config
     }
 }

@@ -769,7 +769,7 @@ pub mod tests {
 
                 for index in 0..(1 << (log_num_cols + log_num_rows)) {
                     let params = super::JaggedLittlePolynomialProverParams::new(
-                        (0..(1 << log_num_cols)).map(|_| (1 << log_num_rows)).collect(),
+                        (0..(1 << log_num_cols)).map(|_| 1 << log_num_rows).collect(),
                         log_num_rows,
                     );
 

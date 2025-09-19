@@ -9,7 +9,7 @@ use derive_where::derive_where;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use slop_algebra::{AbstractExtensionField, AbstractField, Field};
 use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend, GLOBAL_CPU_BACKEND};
-use slop_tensor::Tensor;
+use slop_tensor::{Tensor, TransposeBackend};
 
 use crate::{
     eval_mle_at_point_blocking, eval_monomial_basis_mle_at_point_blocking,
@@ -218,6 +218,14 @@ impl<F, A: Backend> Mle<F, A> {
         A: MleFixedAtZeroBackend<F, EF>,
     {
         MleEval::new(A::fixed_at_zero(&self.guts, point).await)
+    }
+
+    pub fn transpose(&self) -> Mle<F, A>
+    where
+        F: AbstractField,
+        A: TransposeBackend<F>,
+    {
+        Mle::new(self.guts.clone().transpose())
     }
 
     /// # Safety

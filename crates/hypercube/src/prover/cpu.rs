@@ -154,7 +154,7 @@ where
     #[must_use]
     pub fn new(verifier: ShardVerifier<GC, Config, A>) -> Self {
         // Construct the shard prover.
-        let ShardVerifier { pcs_verifier, machine } = verifier;
+        let ShardVerifier { jagged_pcs_verifier: pcs_verifier, machine } = verifier;
         let pcs_prover = JaggedProver::from_verifier(&pcs_verifier);
         let trace_generator = DefaultTraceGenerator::new(machine);
         let zerocheck_data = ZerocheckCpuProverData::default();

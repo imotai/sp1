@@ -396,7 +396,7 @@ where
             prefix_sum_felts[skip_indices[0] + 1],
             SP1Field::from_canonical_u32(
                 (1 << self.pcs_verifier.stacked_pcs_verifier.log_stacking_height)
-                    * evaluation_proof.stacked_pcs_proof.batch_evaluations.rounds[0]
+                    * evaluation_proof.pcs_proof.batch_evaluations.rounds[0]
                         .iter()
                         .map(|x| x.num_polynomials() as u32)
                         .sum::<u32>(),
@@ -454,7 +454,7 @@ where
             (1 << self.pcs_verifier.stacked_pcs_verifier.log_stacking_height)
                 * proof
                     .evaluation_proof
-                    .stacked_pcs_proof
+                    .pcs_proof
                     .batch_evaluations
                     .iter()
                     .flat_map(|evaluations| evaluations.iter().map(|eval| eval.num_polynomials()))
@@ -573,7 +573,7 @@ mod tests {
 
         // Get the vk and shard proof from the test artifacts.
 
-        let mut initial_challenger = verifier.pcs_verifier.challenger();
+        let mut initial_challenger = verifier.jagged_pcs_verifier.challenger();
         vk.observe_into(&mut initial_challenger);
 
         let machine_verifier = MachineVerifier::new(verifier);

@@ -250,9 +250,10 @@ impl ExecutorConfig for Unconstrained {
 }
 
 /// The different modes the executor can run in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
+#[derive(Debug, Clone, Default, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
 pub enum ExecutorMode {
     /// Run the execution with no tracing or checkpointing.
+    #[default]
     Simple,
     /// Run the execution with checkpoints for memory.
     Checkpoint,
@@ -2921,11 +2922,6 @@ impl<'a> Executor<'a> {
     }
 }
 
-impl Default for ExecutorMode {
-    fn default() -> Self {
-        Self::Simple
-    }
-}
 impl debug::DebugState for Executor<'_> {
     fn current_state(&self) -> debug::State {
         let registers = self.state.memory.registers.registers.map(|r| r.map_or(0, |r| r.value));

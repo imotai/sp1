@@ -1,6 +1,7 @@
 use std::{ops::Deref, sync::Arc};
 
 use serde::{Deserialize, Serialize};
+use slop_alloc::HasBackend;
 
 /// A message sent to a prover.
 ///
@@ -84,5 +85,17 @@ impl<T> Extend<T> for Message<T> {
 impl<T> Extend<Arc<T>> for Message<T> {
     fn extend<I: IntoIterator<Item = Arc<T>>>(&mut self, iter: I) {
         self.values.extend(iter);
+    }
+}
+
+impl<T> HasBackend for Message<T>
+where
+    T: HasBackend,
+{
+    type Backend = T::Backend;
+
+    fn backend(&self) -> &Self::Backend {
+        // All elements are assumed to have the same backend.
+        self.values.first().expect("Message is empty").backend()
     }
 }

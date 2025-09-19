@@ -27,7 +27,7 @@ use slop_merkle_tree::{
 };
 use slop_multilinear::{
     Evaluations, Mle, MleBaseBackend, MleEvaluationBackend, MleFixedAtZeroBackend,
-    MultilinearPcsProver, MultilinearPcsVerifier, Point,
+    MultilinearPcsBatchProver, MultilinearPcsBatchVerifier, Point,
 };
 use slop_tensor::Tensor;
 use thiserror::Error;
@@ -92,28 +92,33 @@ pub struct BasefoldProverData<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComp
     pub encoded_messages: Message<RsCodeWord<GC::F, C::A>>,
 }
 
-#[derive(Error)]
-pub enum BasefoldProverError<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> {
+#[derive(Debug, Error)]
+pub enum BasefoldProverError<TcsError, EncoderError, FriError> {
     #[error("Commit error: {0}")]
-    TcsCommitError(<C::TcsProver as TensorCsProver<GC, C::A>>::ProverError),
+    TcsCommitError(TcsError),
     #[error("Encoder error: {0}")]
-    EncoderError(<C::Encoder as ReedSolomonEncoder<GC::F, C::A>>::Error),
+    EncoderError(EncoderError),
     #[error("Commit phase error: {0}")]
     #[allow(clippy::type_complexity)]
-    CommitPhaseError(<C::FriProver as FriIoppProver<GC, C::Tcs, C::Encoder, C::A>>::FriProverError),
+    CommitPhaseError(FriError),
 }
 
-impl<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> std::fmt::Debug
-    for BasefoldProverError<GC, C>
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BasefoldProverError::TcsCommitError(e) => write!(f, "Tcs commit error: {e}"),
-            BasefoldProverError::EncoderError(e) => write!(f, "Encoder error: {e}"),
-            BasefoldProverError::CommitPhaseError(e) => write!(f, "Commit phase error: {e}"),
-        }
-    }
-}
+pub type BaseFoldConfigProverError<GC, C> = BasefoldProverError<
+    <<C as BasefoldProverComponents<GC>>::TcsProver as TensorCsProver<
+        GC,
+        <C as BasefoldProverComponents<GC>>::A,
+    >>::ProverError,
+    <<C as BasefoldProverComponents<GC>>::Encoder as ReedSolomonEncoder<
+        <GC as IopCtx>::F,
+        <C as BasefoldProverComponents<GC>>::A,
+    >>::Error,
+    <<C as BasefoldProverComponents<GC>>::FriProver as FriIoppProver<
+        GC,
+        <C as BasefoldProverComponents<GC>>::Tcs,
+        <C as BasefoldProverComponents<GC>>::Encoder,
+        <C as BasefoldProverComponents<GC>>::A,
+    >>::FriProverError,
+>;
 
 /// A prover for the BaseFold protocol.
 ///
@@ -127,13 +132,13 @@ pub struct BasefoldProver<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponen
     pub pow_prover: C::PowProver,
 }
 
-impl<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> MultilinearPcsProver<GC>
+impl<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> MultilinearPcsBatchProver<GC>
     for BasefoldProver<GC, C>
 {
     type Verifier = BasefoldVerifier<GC, C::Config>;
     type ProverData = BasefoldProverData<GC, C>;
     type A = C::A;
-    type ProverError = BasefoldProverError<GC, C>;
+    type ProverError = BaseFoldConfigProverError<GC, C>;
 
     async fn commit_multilinears(
         &self,
@@ -149,7 +154,7 @@ impl<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> MultilinearPc
         evaluation_claims: Rounds<Evaluations<GC::EF, Self::A>>,
         prover_data: Rounds<Self::ProverData>,
         challenger: &mut GC::Challenger,
-    ) -> Result<<Self::Verifier as MultilinearPcsVerifier<GC>>::Proof, Self::ProverError> {
+    ) -> Result<<Self::Verifier as MultilinearPcsBatchVerifier<GC>>::Proof, Self::ProverError> {
         self.prove_trusted_mle_evaluations(
             eval_point,
             mle_rounds,
@@ -185,7 +190,7 @@ impl<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> BasefoldProve
     pub async fn commit_mles<M>(
         &self,
         mles: Message<M>,
-    ) -> Result<(GC::Digest, BasefoldProverData<GC, C>), BasefoldProverError<GC, C>>
+    ) -> Result<(GC::Digest, BasefoldProverData<GC, C>), BaseFoldConfigProverError<GC, C>>
     where
         M: OwnedBorrow<Mle<GC::F, C::A>>,
     {
@@ -198,7 +203,7 @@ impl<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> BasefoldProve
             .tcs_prover
             .commit_tensors(encoded_messages.clone())
             .await
-            .map_err(BasefoldProverError::<GC, C>::TcsCommitError)?;
+            .map_err(BaseFoldConfigProverError::<GC, C>::TcsCommitError)?;
 
         Ok((commitment, BasefoldProverData { encoded_messages, tcs_prover_data }))
     }
@@ -211,7 +216,7 @@ impl<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> BasefoldProve
         evaluation_claims: Rounds<Evaluations<GC::EF, C::A>>,
         prover_data: Rounds<BasefoldProverData<GC, C>>,
         challenger: &mut GC::Challenger,
-    ) -> Result<BasefoldProof<GC, C::Config>, BasefoldProverError<GC, C>> {
+    ) -> Result<BasefoldProof<GC, C::Config>, BaseFoldConfigProverError<GC, C>> {
         // Get all the mles from all rounds in order.
         let mles = mle_rounds
             .iter()
@@ -305,7 +310,7 @@ impl<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> BasefoldProve
                 .tcs_prover
                 .prove_openings_at_indices(tcs_prover_data, &query_indices)
                 .await
-                .map_err(BasefoldProverError::<GC, C>::TcsCommitError)
+                .map_err(BaseFoldConfigProverError::<GC, C>::TcsCommitError)
                 .unwrap();
             let opening = MerkleTreeOpening::<GC> { values, proof };
             component_polynomials_query_openings.push(opening);
@@ -325,7 +330,7 @@ impl<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> BasefoldProve
                 .tcs_prover
                 .prove_openings_at_indices(data, &indices)
                 .await
-                .map_err(BasefoldProverError::<GC, C>::TcsCommitError)?;
+                .map_err(BaseFoldConfigProverError::<GC, C>::TcsCommitError)?;
             let opening = MerkleTreeOpening { values, proof };
             query_phase_openings.push(opening);
         }
@@ -500,7 +505,7 @@ mod tests {
         BasefoldVerifier, DefaultBasefoldConfig, Poseidon2BabyBear16BasefoldConfig,
     };
     use slop_challenger::CanObserve;
-    use slop_multilinear::MultilinearPcsVerifier;
+    use slop_multilinear::MultilinearPcsBatchVerifier;
 
     use super::*;
 

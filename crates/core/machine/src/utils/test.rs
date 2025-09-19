@@ -79,9 +79,7 @@ pub async fn run_test_core(
     let log_stacking_height = 21;
     let max_log_row_count = 22;
     let machine = RiscvAir::machine();
-    slop_futures::rayon::spawn(move || {
-        let x = 1;
-    });
+
     let verifier = ShardVerifier::from_basefold_parameters(
         log_blowup,
         log_stacking_height,
@@ -96,7 +94,7 @@ pub async fn run_test_core(
         .instrument(tracing::debug_span!("setup").or_current())
         .await;
     let pk = unsafe { pk.into_inner() };
-    let challenger = verifier.pcs_verifier.challenger();
+    let challenger = verifier.jagged_pcs_verifier.challenger();
     let (proof, _) = prove_core::<
         SP1GlobalContext,
         CpuMachineProverComponents<

@@ -1,4 +1,4 @@
-use crate::SP1NormalizeInputShape;
+use crate::{SP1NormalizeInputShape, CORE_LOG_BLOWUP};
 use futures::{
     prelude::*,
     stream::{FuturesOrdered, FuturesUnordered},
@@ -213,7 +213,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                                 let normalize_shape = SP1NormalizeInputShape {
                                     proof_shapes: vec![shape],
                                     max_log_row_count: prover.prover.recursion_prover.core_verifier.max_log_row_count(),
-                                    log_blowup: prover.prover.recursion_prover.core_verifier.fri_config().log_blowup,
+                                    log_blowup: CORE_LOG_BLOWUP,
                                     log_stacking_height: prover.prover.recursion_prover.core_verifier.log_stacking_height() as usize,
                                 };
                                 let witness = normalize_shape.dummy_input(SP1VerifyingKey { vk: dummy_vk } );

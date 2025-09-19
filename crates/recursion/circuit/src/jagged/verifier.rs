@@ -57,7 +57,7 @@ pub struct JaggedPcsProofVariable<JC: RecursiveJaggedConfig> {
     pub params: JaggedLittlePolynomialVerifierParams<Felt<JC::F>>,
     pub sumcheck_proof: PartialSumcheckProof<Ext<JC::F, JC::EF>>,
     pub jagged_eval_proof: JaggedSumcheckEvalProof<Ext<SP1Field, SP1ExtensionField>>,
-    pub stacked_pcs_proof: RecursiveStackedPcsProof<JC::BatchPcsProof, JC::F, JC::EF>,
+    pub pcs_proof: RecursiveStackedPcsProof<JC::BatchPcsProof, JC::F, JC::EF>,
     pub added_columns: Vec<usize>,
 }
 
@@ -113,7 +113,7 @@ impl<
         challenger: &mut JC::Challenger,
     ) -> Vec<Felt<JC::F>> {
         let JaggedPcsProofVariable {
-            stacked_pcs_proof,
+            pcs_proof,
             sumcheck_proof,
             jagged_eval_proof,
             params,
@@ -177,7 +177,7 @@ impl<
             builder,
             commitments,
             &evaluation_point,
-            stacked_pcs_proof,
+            pcs_proof,
             expected_eval,
             challenger,
         );

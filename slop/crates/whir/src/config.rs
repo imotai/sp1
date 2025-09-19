@@ -1,9 +1,9 @@
-/// A fully expanded WHIR configuration.
-#[derive(Debug, Clone)]
-pub struct WhirProofShape<F> {
-    /// The number of variables in the polynomial committed.
-    pub num_variables: usize,
+use serde::{Deserialize, Serialize};
+use slop_algebra::TwoAdicField;
 
+/// A fully expanded WHIR configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WhirProofShape<F> {
     pub domain_generator: F,
 
     /// The OOD samples used in the commitment.
@@ -13,7 +13,7 @@ pub struct WhirProofShape<F> {
     pub starting_log_inv_rate: usize,
 
     /// The initial folding factor.
-    pub starting_folding_factor: usize,
+    pub starting_interleaved_log_height: usize,
 
     /// The initial domain size
     pub starting_domain_log_size: usize,
@@ -37,8 +37,89 @@ pub struct WhirProofShape<F> {
     pub final_folding_pow_bits: Vec<f64>,
 }
 
+impl<F: TwoAdicField> WhirProofShape<F> {
+    pub fn default_whir_config() -> Self {
+        let folding_factor = 4;
+        WhirProofShape::<F> {
+            domain_generator: F::two_adic_generator(13),
+            starting_ood_samples: 1,
+            starting_log_inv_rate: 1,
+            starting_interleaved_log_height: 12,
+            starting_domain_log_size: 13,
+            starting_folding_pow_bits: vec![10.0; folding_factor],
+            round_parameters: vec![
+                RoundConfig {
+                    folding_factor,
+                    evaluation_domain_log_size: 12,
+                    queries_pow_bits: 10.0,
+                    pow_bits: vec![10.0; folding_factor],
+                    num_queries: 90,
+                    ood_samples: 1,
+                    log_inv_rate: 4,
+                },
+                RoundConfig {
+                    folding_factor,
+                    evaluation_domain_log_size: 11,
+                    queries_pow_bits: 10.0,
+                    pow_bits: vec![10.0; folding_factor],
+                    num_queries: 15,
+                    ood_samples: 1,
+                    log_inv_rate: 7,
+                },
+            ],
+            final_poly_log_degree: 4,
+            final_queries: 10,
+            final_pow_bits: 10.0,
+            final_folding_pow_bits: vec![10.0; 8],
+        }
+    }
+    pub fn big_beautiful_whir_config() -> Self {
+        let folding_factor = 4;
+        WhirProofShape::<F> {
+            domain_generator: F::two_adic_generator(21),
+            starting_ood_samples: 2,
+            starting_log_inv_rate: 1,
+            starting_interleaved_log_height: 20,
+            starting_domain_log_size: 21,
+            starting_folding_pow_bits: vec![0.; 10],
+            round_parameters: vec![
+                RoundConfig {
+                    folding_factor,
+                    evaluation_domain_log_size: 20,
+                    queries_pow_bits: 16.0,
+                    pow_bits: vec![0.0; folding_factor],
+                    num_queries: 84,
+                    ood_samples: 2,
+                    log_inv_rate: 4,
+                },
+                RoundConfig {
+                    folding_factor,
+                    evaluation_domain_log_size: 19,
+                    queries_pow_bits: 16.0,
+                    pow_bits: vec![0.0; folding_factor],
+                    num_queries: 21,
+                    ood_samples: 2,
+                    log_inv_rate: 7,
+                },
+                RoundConfig {
+                    folding_factor,
+                    evaluation_domain_log_size: 18,
+                    queries_pow_bits: 16.0,
+                    pow_bits: vec![0.0; folding_factor],
+                    num_queries: 12,
+                    ood_samples: 2,
+                    log_inv_rate: 10,
+                },
+            ],
+            final_poly_log_degree: 8,
+            final_queries: 9,
+            final_pow_bits: 16.0,
+            final_folding_pow_bits: vec![0.0; 8],
+        }
+    }
+}
 /// Round specific configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoundConfig {
     /// Folding factor for this round.
     pub folding_factor: usize,

@@ -9,13 +9,14 @@ use slop_algebra::{AbstractField, PrimeField32};
 use slop_basefold::{BasefoldConfig, BasefoldVerifier};
 use slop_challenger::IopCtx;
 use slop_jagged::JaggedConfig;
+use slop_stacked::StackedPcsVerifier;
 use sp1_core_executor::SP1RecursionProof;
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_hypercube::{
     air::{MachineAir, POSEIDON_NUM_WORDS, PROOF_NONCE_NUM_WORDS},
     inner_perm,
     prover::{MachineProver, MachineProverComponents, MachineProvingKey},
-    Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
+    Machine, MachineVerifier, MachineVerifyingKey, SP1BasefoldConfig, ShardProof, ShardVerifier,
 };
 use sp1_primitives::{
     hash_deferred_proof, SP1ExtensionField, SP1Field, SP1GlobalContext, SP1OuterGlobalContext,
@@ -146,17 +147,23 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         vk_map_path: Option<String>,
     ) -> Self {
         let recursive_core_verifier =
-            recursive_verifier::<SP1GlobalContext, _, _, CoreSC, InnerConfig, _>(&core_verifier);
+            recursive_verifier::<SP1GlobalContext, SP1BasefoldConfig, _, CoreSC, InnerConfig, _>(
+                &core_verifier,
+            );
 
         let recursive_compress_verifier =
-            recursive_verifier::<SP1GlobalContext, _, _, InnerSC, InnerConfig, _>(
+            recursive_verifier::<SP1GlobalContext, SP1BasefoldConfig, _, InnerSC, InnerConfig, _>(
                 prover.verifier().shard_verifier(),
             );
 
-        let recursive_shrink_verifier =
-            recursive_verifier::<SP1GlobalContext, _, _, InnerSC, CircuitWrapConfig, _>(
-                shrink_prover.verifier().shard_verifier(),
-            );
+        let recursive_shrink_verifier = recursive_verifier::<
+            SP1GlobalContext,
+            SP1BasefoldConfig,
+            _,
+            InnerSC,
+            CircuitWrapConfig,
+            _,
+        >(shrink_prover.verifier().shard_verifier());
 
         // Instantiate the cache.
         let normalize_program_cache = SP1NormalizeCache::new(normalize_programs_cache_size);
@@ -208,7 +215,6 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
                 compose_programs.insert(arity, program);
             }
         }
-
         let shrink_input = dummy_compose_input(&prover, &reduce_shape, 1, merkle_tree.height);
         let shrink_program =
             shrink_program_from_input(&recursive_compress_verifier, vk_verification, &shrink_input);
@@ -910,7 +916,8 @@ where
     B: BasefoldConfig<GC>,
     GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
     A: MachineAir<GC::F>,
-    SC: SP1FieldConfigVariable<C> + JaggedConfig<GC, BatchPcsVerifier = BasefoldVerifier<GC, B>>,
+    SC: SP1FieldConfigVariable<C>
+        + JaggedConfig<GC, PcsVerifier = StackedPcsVerifier<GC, BasefoldVerifier<GC, B>>>,
     C: CircuitConfig,
     JC: RecursiveJaggedConfig<
         BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
@@ -920,7 +927,7 @@ where
     let max_log_row_count = shard_verifier.max_log_row_count();
     let machine = shard_verifier.machine().clone();
     let pcs_verifier = RecursiveBasefoldVerifier {
-        fri_config: shard_verifier.pcs_verifier.stacked_pcs_verifier.pcs_verifier.fri_config,
+        fri_config: shard_verifier.jagged_pcs_verifier.pcs_verifier.pcs_verifier.fri_config,
         tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),
     };
     let recursive_verifier = RecursiveStackedPcsVerifier::new(pcs_verifier, log_stacking_height);

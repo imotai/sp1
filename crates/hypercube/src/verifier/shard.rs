@@ -1,4 +1,6 @@
 use derive_where::derive_where;
+use slop_merkle_tree::{DefaultMerkleTreeConfig, MerkleTreeTcs};
+use slop_whir::{Verifier, WhirJaggedConfig, WhirProofShape};
 use std::{
     collections::{BTreeMap, BTreeSet},
     marker::PhantomData,
@@ -33,7 +35,7 @@ use crate::record::MachineRecord;
 #[derive_where(Clone)]
 pub struct ShardVerifier<GC: IopCtx, C: MachineConfig<GC>, A: MachineAir<GC::F>> {
     /// The jagged pcs verifier.
-    pub pcs_verifier: JaggedPcsVerifier<GC, C>,
+    pub jagged_pcs_verifier: JaggedPcsVerifier<GC, C>,
     /// The machine.
     pub machine: Machine<GC::F, A>,
 }
@@ -95,7 +97,7 @@ pub enum ShardVerifierError<EF, PcsError> {
 /// Derive the error type from the jagged config.
 pub type ShardVerifierConfigError<GC, C> = ShardVerifierError<
     <GC as IopCtx>::EF,
-    <<C as JaggedConfig<GC>>::BatchPcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
+    <<C as JaggedConfig<GC>>::PcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
 >;
 
 /// An error that occurs when the shape of the openings does not match the expected shape.
@@ -112,14 +114,14 @@ pub enum OpeningShapeError {
 impl<GC: IopCtx, C: MachineConfig<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C, A> {
     /// Get a shard verifier from a jagged pcs verifier.
     pub fn new(pcs_verifier: JaggedPcsVerifier<GC, C>, machine: Machine<GC::F, A>) -> Self {
-        Self { pcs_verifier, machine }
+        Self { jagged_pcs_verifier: pcs_verifier, machine }
     }
 
     /// Get the maximum log row count.
     #[must_use]
     #[inline]
     pub fn max_log_row_count(&self) -> usize {
-        self.pcs_verifier.max_log_row_count
+        self.jagged_pcs_verifier.max_log_row_count
     }
 
     /// Get the machine.
@@ -133,14 +135,14 @@ impl<GC: IopCtx, C: MachineConfig<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C
     #[must_use]
     #[inline]
     pub fn log_stacking_height(&self) -> u32 {
-        self.pcs_verifier.stacked_pcs_verifier.log_stacking_height
+        C::log_stacking_height(&self.jagged_pcs_verifier.pcs_verifier)
     }
 
     /// Get a new challenger.
     #[must_use]
     #[inline]
     pub fn challenger(&self) -> GC::Challenger {
-        self.pcs_verifier.challenger()
+        self.jagged_pcs_verifier.challenger()
     }
 
     /// Get the shape of a shard proof.
@@ -154,13 +156,9 @@ impl<GC: IopCtx, C: MachineConfig<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C
             .collect::<BTreeSet<_>>();
         debug_assert_eq!(shard_chips.len(), proof.shard_chips.len());
 
-        let preprocessed_multiple =
-            proof.evaluation_proof.stacked_pcs_proof.batch_evaluations.rounds[0].round_evaluations
-                [0]
-            .num_polynomials();
-        let main_multiple = proof.evaluation_proof.stacked_pcs_proof.batch_evaluations.rounds[1]
-            .round_evaluations[0]
-            .num_polynomials();
+        let multiples = C::round_multiples(&proof.evaluation_proof.pcs_proof);
+        let preprocessed_multiple = multiples[0];
+        let main_multiple = multiples[1];
 
         let main_padding_cols = proof.evaluation_proof.added_columns[1];
         let preprocessed_padding_cols = proof.evaluation_proof.added_columns[0];
@@ -265,15 +263,12 @@ where
         challenger: &mut GC::Challenger,
     ) -> Result<
         (),
-        ShardVerifierError<
-            GC::EF,
-            <C::BatchPcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
-        >,
+        ShardVerifierError<GC::EF, <C::PcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError>,
     >
     where
         A: for<'a> Air<VerifierConstraintFolder<'a, GC>>,
     {
-        let max_log_row_count = self.pcs_verifier.max_log_row_count;
+        let max_log_row_count = self.jagged_pcs_verifier.max_log_row_count;
 
         // Get the random challenge to merge the constraints.
         let alpha = challenger.sample_ext_element::<GC::EF>();
@@ -343,7 +338,7 @@ where
         if proof.zerocheck_proof.point_and_eval.1 != rlc_eval {
             return Err(ShardVerifierError::<
                 _,
-                <C::BatchPcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
+                <C::PcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
             >::ConstraintsCheckFailed(SumcheckError::InconsistencyWithEval));
         }
 
@@ -378,7 +373,7 @@ where
         if proof.zerocheck_proof.claimed_sum != zerocheck_sum_modification {
             return Err(ShardVerifierError::<
                 _,
-                <C::BatchPcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
+                <C::PcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
             >::ConstraintsCheckFailed(
                 SumcheckError::InconsistencyWithClaimedSum
             ));
@@ -389,7 +384,7 @@ where
             .map_err(|e| {
             ShardVerifierError::<
                 _,
-                <C::BatchPcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
+                <C::PcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
             >::ConstraintsCheckFailed(e)
         })?;
 
@@ -429,7 +424,7 @@ where
         } else {
             Err(ShardVerifierError::<
                 _,
-                <C::BatchPcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
+                <C::PcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
             >::InvalidPublicValues)
         }
     }
@@ -455,7 +450,7 @@ where
             logup_gkr_proof,
         } = proof;
 
-        let max_log_row_count = self.pcs_verifier.max_log_row_count;
+        let max_log_row_count = self.jagged_pcs_verifier.max_log_row_count;
 
         if public_values.len() < self.machine.num_pv_elts() {
             tracing::error!("invalid public values length: {}", public_values.len());
@@ -510,7 +505,7 @@ where
             .collect::<Point<_>>();
         let pv_challenge = challenger.sample_ext_element::<GC::EF>();
 
-        let max_log_row_count = self.pcs_verifier.max_log_row_count;
+        let max_log_row_count = self.jagged_pcs_verifier.max_log_row_count;
         let cumulative_sum =
             -self.verify_public_values(pv_challenge, &alpha, &beta_seed, public_values)?;
 
@@ -687,21 +682,14 @@ where
             return Err(ShardVerifierError::InvalidPrefixSum);
         }
 
-        if proof.evaluation_proof.stacked_pcs_proof.batch_evaluations.rounds.len() != 2 {
+        let round_multiples = C::round_multiples(&proof.evaluation_proof.pcs_proof);
+
+        if round_multiples.len() != 2 {
             return Err(ShardVerifierError::InvalidShape);
         }
 
-        let preprocessed_round_num_poly =
-            (proof.evaluation_proof.stacked_pcs_proof.batch_evaluations.rounds[0]
-                .iter()
-                .map(slop_multilinear::MleEval::num_polynomials)
-                .sum::<usize>()) as u32;
-
-        let main_round_num_poly =
-            (proof.evaluation_proof.stacked_pcs_proof.batch_evaluations.rounds[1]
-                .iter()
-                .map(slop_multilinear::MleEval::num_polynomials)
-                .sum::<usize>()) as u32;
+        let preprocessed_round_num_poly = round_multiples[0] as u32;
+        let main_round_num_poly = round_multiples[1] as u32;
 
         // Check that the prefix sum value at the first skip index is the correct multiple of the
         // stacking height.
@@ -746,7 +734,7 @@ where
         );
 
         let machine_jagged_verifier =
-            MachineJaggedPcsVerifier::new(&self.pcs_verifier, column_counts);
+            MachineJaggedPcsVerifier::new(&self.jagged_pcs_verifier, column_counts);
 
         machine_jagged_verifier
             .verify_trusted_evaluations(
@@ -779,6 +767,31 @@ where
     ) -> Self {
         let pcs_verifier =
             JaggedPcsVerifier::new(log_blowup, log_stacking_height, max_log_row_count);
-        Self { pcs_verifier, machine }
+        Self { jagged_pcs_verifier: pcs_verifier, machine }
+    }
+}
+
+impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, BC, A>
+    ShardVerifier<GC, WhirJaggedConfig<BC, GC>, A>
+where
+    A: MachineAir<GC::F>,
+    BC: DefaultBasefoldConfig<GC, Tcs: DefaultMerkleTreeConfig<GC>>,
+    GC::F: PrimeField32,
+{
+    /// Create a shard verifier from basefold parameters.
+    #[must_use]
+    pub fn from_config(
+        config: &WhirProofShape<GC::F>,
+        max_log_row_count: usize,
+        machine: Machine<GC::F, A>,
+    ) -> Self {
+        let merkle_verifier = MerkleTreeTcs::default();
+        let verifier = Verifier::<GC, BC>::new(merkle_verifier, config.clone());
+
+        let jagged_verifier = JaggedPcsVerifier::<GC, WhirJaggedConfig<BC, GC>> {
+            pcs_verifier: verifier,
+            max_log_row_count,
+        };
+        Self { jagged_pcs_verifier: jagged_verifier, machine }
     }
 }

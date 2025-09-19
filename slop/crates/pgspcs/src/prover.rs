@@ -4,17 +4,19 @@ use slop_algebra::AbstractField;
 use slop_alloc::CpuBackend;
 use slop_challenger::IopCtx;
 use slop_commit::{Message, Rounds};
-use slop_multilinear::{Evaluations, Mle, MultilinearPcsProver, MultilinearPcsVerifier, Point};
+use slop_multilinear::{
+    Evaluations, Mle, MultilinearPcsBatchProver, MultilinearPcsBatchVerifier, Point,
+};
 use slop_sumcheck::{reduce_sumcheck_to_evaluation, PartialSumcheckProof};
 
 use crate::{sparse_poly::SparsePolynomial, sumcheck_polynomials::SparsePCSSumcheckPoly};
 
-pub struct SparsePCSProver<GC: IopCtx, MP: MultilinearPcsProver<GC>> {
+pub struct SparsePCSProver<GC: IopCtx, MP: MultilinearPcsBatchProver<GC>> {
     pub multilinear_prover: MP,
     _global_config: PhantomData<GC>,
 }
 
-pub struct ProverData<GC: IopCtx, MP: MultilinearPcsProver<GC>> {
+pub struct ProverData<GC: IopCtx, MP: MultilinearPcsBatchProver<GC>> {
     pub multilinear_prover_data: MP::ProverData,
     pub mles: Message<Mle<GC::F, MP::A>>,
     _prover: PhantomData<MP>,
@@ -26,7 +28,7 @@ pub struct Proof<EF, PCSProof> {
     pub pcs_proof: PCSProof,
 }
 
-impl<GC: IopCtx, MP: MultilinearPcsProver<GC, A = CpuBackend>> SparsePCSProver<GC, MP> {
+impl<GC: IopCtx, MP: MultilinearPcsBatchProver<GC, A = CpuBackend>> SparsePCSProver<GC, MP> {
     pub fn new(prover: MP) -> Self {
         Self { multilinear_prover: prover, _global_config: PhantomData }
     }
@@ -59,8 +61,10 @@ impl<GC: IopCtx, MP: MultilinearPcsProver<GC, A = CpuBackend>> SparsePCSProver<G
         eval_point: &Point<GC::EF>,
         prover_data: ProverData<GC, MP>,
         challenger: &mut GC::Challenger,
-    ) -> Result<Proof<GC::EF, <MP::Verifier as MultilinearPcsVerifier<GC>>::Proof>, MP::ProverError>
-    {
+    ) -> Result<
+        Proof<GC::EF, <MP::Verifier as MultilinearPcsBatchVerifier<GC>>::Proof>,
+        MP::ProverError,
+    > {
         // Compute the evaluation claim
         let v = poly.eval_at(eval_point);
 

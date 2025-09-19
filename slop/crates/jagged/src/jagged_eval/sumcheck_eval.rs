@@ -86,11 +86,11 @@ where
             2 * params.col_prefix_sums[0].len(),
             2,
         );
+
         if let Err(result) = result {
-            println!("Sumcheck proof verification failed");
-            println!("Sumcheck error: {:?}", result);
             return Err(JaggedEvalSumcheckError::SumcheckError(result));
         }
+
         let (first_half_z_index, second_half_z_index) = partial_sumcheck_proof
             .point_and_eval
             .0

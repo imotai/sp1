@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use slop_challenger::IopCtx;
 use slop_commit::Rounds;
-use slop_multilinear::{Evaluations, Mle, MultilinearPcsVerifier, Point};
+use slop_multilinear::{
+    Evaluations, Mle, MultilinearPcsBatchVerifier, MultilinearPcsVerifier, Point,
+};
 use thiserror::Error;
 
 #[derive(Debug, Clone)]
@@ -27,7 +29,7 @@ pub struct StackedPcsProof<PcsProof, EF> {
     pub batch_evaluations: Rounds<Evaluations<EF>>,
 }
 
-impl<GC: IopCtx, P: MultilinearPcsVerifier<GC>> StackedPcsVerifier<GC, P> {
+impl<GC: IopCtx, P: MultilinearPcsBatchVerifier<GC>> StackedPcsVerifier<GC, P> {
     pub fn challenger(&self) -> GC::Challenger {
         self.pcs_verifier.default_challenger()
     }
@@ -72,5 +74,28 @@ impl<GC: IopCtx, P: MultilinearPcsVerifier<GC>> StackedPcsVerifier<GC, P> {
                 challenger,
             )
             .map_err(StackedVerifierError::PcsError)
+    }
+}
+
+impl<GC: IopCtx, P: MultilinearPcsBatchVerifier<GC>> MultilinearPcsVerifier<GC>
+    for StackedPcsVerifier<GC, P>
+{
+    type VerifierError = StackedVerifierError<P::VerifierError>;
+
+    fn default_challenger(&self) -> GC::Challenger {
+        self.challenger()
+    }
+
+    type Proof = StackedPcsProof<P::Proof, GC::EF>;
+
+    fn verify_trusted_evaluation(
+        &self,
+        commitments: &[<GC as IopCtx>::Digest],
+        point: Point<<GC as IopCtx>::EF>,
+        evaluation_claim: <GC as IopCtx>::EF,
+        proof: &Self::Proof,
+        challenger: &mut <GC as IopCtx>::Challenger,
+    ) -> Result<(), Self::VerifierError> {
+        self.verify_trusted_evaluation(commitments, &point, proof, evaluation_claim, challenger)
     }
 }

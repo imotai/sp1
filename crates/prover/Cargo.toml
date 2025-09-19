@@ -31,6 +31,7 @@ sp1-primitives = { workspace = true }
 slop-algebra = { workspace = true }
 slop-koala-bear = { workspace = true }
 slop-bn254 = { workspace = true }
+slop-stacked = { workspace = true }
 # slop-util = { workspace = true }
 bincode = "1.3.3"
 serde = { workspace = true, features = ["derive", "rc"] }

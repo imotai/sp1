@@ -2,6 +2,7 @@
 
 use itertools::Itertools;
 use slop_algebra::{AbstractField, PrimeField32};
+use slop_basefold::Poseidon2Bn254FrBasefoldConfig;
 use slop_bn254::Bn254Fr;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_hypercube::{MachineVerifyingKey, ShardProof};
@@ -192,8 +193,14 @@ fn build_outer_circuit(
 ) -> Vec<Constraint> {
     let wrap_verifier = CpuSP1ProverComponents::wrap_verifier();
     let wrap_verifier = wrap_verifier.shard_verifier();
-    let recursive_wrap_verifier =
-        crate::recursion::recursive_verifier::<_, _, _, OuterSC, OuterConfig, _>(wrap_verifier);
+    let recursive_wrap_verifier = crate::recursion::recursive_verifier::<
+        _,
+        Poseidon2Bn254FrBasefoldConfig<_, _>,
+        _,
+        OuterSC,
+        OuterConfig,
+        _,
+    >(wrap_verifier);
 
     let wrap_span = tracing::debug_span!("build wrap circuit").entered();
     let mut builder = Builder::<OuterConfig>::default();

@@ -203,8 +203,8 @@ impl<F> LongMle<F, CpuBackend> {
     where
         Standard: Distribution<F>,
     {
-        let num_polynomials = 1 << (num_variables - log_stacking_height);
-        assert!(num_polynomials % batch_size == 0);
+        let num_polynomials: usize = 1 << (num_variables - log_stacking_height);
+        assert!(num_polynomials.is_multiple_of(batch_size));
         assert!(num_polynomials > batch_size);
         let num_components = num_polynomials / batch_size;
         let components = (0..num_components)

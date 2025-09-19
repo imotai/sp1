@@ -85,7 +85,7 @@ mod tests {
     use slop_commit::Rounds;
 
     use crate::challenger::CanObserveVariable;
-    use slop_multilinear::Mle;
+    use slop_multilinear::{Mle, MultilinearPcsProver};
     use slop_stacked::{FixedRateInterleave, StackedPcsProver, StackedPcsVerifier};
     use sp1_hypercube::{inner_perm, prover::SP1BasefoldCpuProverComponents};
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler};
@@ -137,7 +137,7 @@ mod tests {
         let (batch_point, stack_point) =
             point.split_at(point.dimension() - log_stacking_height as usize);
         for mles in round_mles.iter() {
-            let (commitment, data) = prover.commit_multilinears(mles.clone()).await.unwrap();
+            let (commitment, data, _) = prover.commit_multilinear(mles.clone()).await.unwrap();
             challenger.observe(commitment);
             commitments.push(commitment);
             let evaluations = prover.round_batch_evaluations(&stack_point, &data).await;
@@ -152,13 +152,7 @@ mod tests {
         let eval_claim = batch_evaluations_mle.eval_at(&batch_point).await[0];
 
         let proof = prover
-            .prove_trusted_evaluation(
-                point.clone(),
-                eval_claim,
-                prover_data,
-                batch_evaluations,
-                &mut challenger,
-            )
+            .prove_trusted_evaluation(point.clone(), eval_claim, prover_data, &mut challenger)
             .await
             .unwrap();
 

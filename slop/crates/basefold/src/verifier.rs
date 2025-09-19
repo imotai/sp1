@@ -6,7 +6,7 @@ use slop_algebra::AbstractExtensionField;
 use slop_algebra::{AbstractField, TwoAdicField};
 use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger, IopCtx};
 use slop_merkle_tree::{MerkleTreeOpening, MerkleTreeTcs, MerkleTreeTcsError};
-use slop_multilinear::{Evaluations, MultilinearPcsVerifier, Point};
+use slop_multilinear::{Evaluations, MultilinearPcsBatchVerifier, Point};
 use slop_utils::reverse_bits_len;
 use thiserror::Error;
 
@@ -93,7 +93,7 @@ pub struct BasefoldProof<GC: IopCtx, BC: BasefoldConfig<GC>> {
     pub marker: PhantomData<BC>,
 }
 
-impl<GC: IopCtx, B: BasefoldConfig<GC>> MultilinearPcsVerifier<GC> for BasefoldVerifier<GC, B>
+impl<GC: IopCtx, B: BasefoldConfig<GC>> MultilinearPcsBatchVerifier<GC> for BasefoldVerifier<GC, B>
 where
     GC::F: TwoAdicField,
 {

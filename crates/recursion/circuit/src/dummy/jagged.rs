@@ -114,7 +114,7 @@ pub fn dummy_pcs_proof(
     };
 
     JaggedPcsProof {
-        stacked_pcs_proof: stacked_proof,
+        pcs_proof: stacked_proof,
         params: jagged_params,
         jagged_eval_proof,
         sumcheck_proof: partial_sumcheck_proof,
@@ -324,15 +324,15 @@ mod tests {
 
         // Check the stacked proof is the right shape.
         assert_eq!(
-            dummy_proof.stacked_pcs_proof.batch_evaluations.rounds.len(),
-            proof.stacked_pcs_proof.batch_evaluations.rounds.len()
+            dummy_proof.pcs_proof.batch_evaluations.rounds.len(),
+            proof.pcs_proof.batch_evaluations.rounds.len()
         );
         for (round, dummy_round) in proof
-            .stacked_pcs_proof
+            .pcs_proof
             .batch_evaluations
             .rounds
             .iter()
-            .zip(dummy_proof.stacked_pcs_proof.batch_evaluations.rounds.iter())
+            .zip(dummy_proof.pcs_proof.batch_evaluations.rounds.iter())
         {
             assert_eq!(round.round_evaluations.len(), dummy_round.round_evaluations.len());
             assert_eq!(round.round_evaluations.len(), 1);
@@ -350,7 +350,7 @@ mod tests {
             component_polynomials_query_openings: dummy_component_polynomials_query_openings,
             query_phase_openings: dummy_query_phase_openings,
             ..
-        } = dummy_proof.stacked_pcs_proof.pcs_proof;
+        } = dummy_proof.pcs_proof.pcs_proof;
 
         let BasefoldProof {
             univariate_messages,
@@ -358,7 +358,7 @@ mod tests {
             component_polynomials_query_openings,
             query_phase_openings,
             ..
-        } = proof.stacked_pcs_proof.pcs_proof;
+        } = proof.pcs_proof.pcs_proof;
 
         assert_eq!(dummy_univariate_messages.len(), univariate_messages.len());
         assert_eq!(dummy_fri_commitments.len(), fri_commitments.len());

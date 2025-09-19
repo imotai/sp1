@@ -7,6 +7,7 @@ use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::ir::Builder;
 
 use crate::{
+    basefold::stacked::RecursiveStackedPcsProof,
     witness::{WitnessWriter, Witnessable},
     AsRecursive, CircuitConfig,
 };
@@ -58,7 +59,7 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C>
     }
 }
 
-impl<GC, C, SC, RecursiveStackedPcsProof> Witnessable<C> for JaggedPcsProof<GC, SC>
+impl<GC, C, SC, BatchPcsProof> Witnessable<C> for JaggedPcsProof<GC, SC>
 where
     GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
     C: CircuitConfig,
@@ -68,11 +69,13 @@ where
         F = SP1Field,
         EF = SP1ExtensionField,
         Circuit = C,
-        BatchPcsProof = RecursiveStackedPcsProof,
+        BatchPcsProof = BatchPcsProof,
         // JaggedEvalProof = RecursiveJaggedEvalProof,
     >,
-    <SC::BatchPcsVerifier as MultilinearPcsVerifier<GC>>::Proof:
-        Witnessable<C, WitnessVariable = RecursiveStackedPcsProof>,
+    <SC::PcsVerifier as MultilinearPcsVerifier<GC>>::Proof: Witnessable<
+        C,
+        WitnessVariable = RecursiveStackedPcsProof<BatchPcsProof, SP1Field, SP1ExtensionField>,
+    >,
 {
     type WitnessVariable = JaggedPcsProofVariable<SC::Recursive>;
 
@@ -80,11 +83,11 @@ where
         let params = self.params.read(builder);
         let sumcheck_proof = self.sumcheck_proof.read(builder);
         let jagged_eval_proof = self.jagged_eval_proof.read(builder);
-        let stacked_pcs_proof = self.stacked_pcs_proof.read(builder);
+        let pcs_proof = self.pcs_proof.read(builder);
         let added_columns = self.added_columns.clone();
 
         JaggedPcsProofVariable {
-            stacked_pcs_proof,
+            pcs_proof,
             sumcheck_proof,
             jagged_eval_proof,
             params,
@@ -96,6 +99,6 @@ where
         self.params.write(witness);
         self.sumcheck_proof.write(witness);
         self.jagged_eval_proof.write(witness);
-        self.stacked_pcs_proof.write(witness);
+        self.pcs_proof.write(witness);
     }
 }

@@ -65,7 +65,6 @@ where
                 while data.len() > needed_length {
                     let mut elements = Vec::with_capacity(batch_size << log_stacking_height);
                     elements.append(&mut overflow_buffer);
-                    // data = elements.split_off(needed_length)
                     let remaining = data.split_off(needed_length);
                     elements.append(&mut data);
                     data = remaining;

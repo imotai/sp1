@@ -92,31 +92,49 @@ where
     BC: BasefoldConfig<GC>,
     GC::Digest: Debug,
 {
-    type BatchPcsVerifier = BasefoldVerifier<GC, BC>;
+    type PcsVerifier = StackedPcsVerifier<GC, BasefoldVerifier<GC, BC>>;
+
+    fn log_stacking_height(verifier: &Self::PcsVerifier) -> u32 {
+        verifier.log_stacking_height
+    }
+
+    fn round_multiples(
+        proof: &<Self::PcsVerifier as slop_multilinear::MultilinearPcsVerifier<GC>>::Proof,
+    ) -> Vec<usize> {
+        proof
+            .batch_evaluations
+            .iter()
+            .map(|e| e.iter().map(|e| e.to_vec().len()).sum::<usize>())
+            .collect()
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct JaggedBasefoldProverComponents<B, J, E, GC>(B, J, E, PhantomData<GC>);
 
-impl<Bpc, JaggedProver, EvalProver, GC> JaggedProverComponents<GC>
-    for JaggedBasefoldProverComponents<Bpc, JaggedProver, EvalProver, GC>
+impl<Bpc, JaggedSCProver, EvalProver, GC> JaggedProverComponents<GC>
+    for JaggedBasefoldProverComponents<Bpc, JaggedSCProver, EvalProver, GC>
 where
     GC: IopCtx,
     GC::F: TwoAdicField,
     GC::EF: TwoAdicField,
     Bpc: BasefoldProverComponents<GC>,
     Bpc::A: JaggedBackend<GC::F, GC::EF>,
-    JaggedProver: JaggedSumcheckProver<GC::F, GC::EF, Bpc::A>,
+    JaggedSCProver: JaggedSumcheckProver<GC::F, GC::EF, Bpc::A>,
     EvalProver:
         JaggedEvalProver<GC::F, GC::EF, GC::Challenger, A = Bpc::A> + 'static + Send + Sync + Clone,
 {
     type A = Bpc::A;
     type Config = JaggedBasefoldConfig<GC, Bpc::Config>;
 
-    type JaggedSumcheckProver = JaggedProver;
-    type BatchPcsProver = BasefoldProver<GC, Bpc>;
+    type JaggedSumcheckProver = JaggedSCProver;
+    type BatchPcsProver = StackedPcsProver<BasefoldProver<GC, Bpc>, Self::Stacker, GC>;
     type Stacker = FixedRateInterleave<GC::F, Bpc::A>;
     type JaggedEvalProver = EvalProver;
+
+    fn log_stacking_height(prover: &JaggedProver<GC, Self>) -> u32 {
+        prover.pcs_prover.log_stacking_height
+    }
 }
 
 impl<GC, BC> JaggedPcsVerifier<GC, JaggedBasefoldConfig<GC, BC>>
@@ -127,7 +145,7 @@ where
     pub fn new(log_blowup: usize, log_stacking_height: u32, max_log_row_count: usize) -> Self {
         let basefold_verifer = BasefoldVerifier::<GC, BC>::new(log_blowup);
         let stacked_pcs_verifier = StackedPcsVerifier::new(basefold_verifer, log_stacking_height);
-        Self { stacked_pcs_verifier, max_log_row_count }
+        Self { pcs_verifier: stacked_pcs_verifier, max_log_row_count }
     }
 }
 
@@ -145,13 +163,10 @@ where
         jagged_generator: JP,
         interleave_batch_size: usize,
     ) -> Self {
-        let pcs_prover = BasefoldProver::new(&verifier.stacked_pcs_verifier.pcs_verifier);
+        let pcs_prover = BasefoldProver::new(&verifier.pcs_verifier.pcs_verifier);
         let stacker = FixedRateInterleave::new(interleave_batch_size);
-        let stacked_pcs_prover = StackedPcsProver::new(
-            pcs_prover,
-            stacker,
-            verifier.stacked_pcs_verifier.log_stacking_height,
-        );
+        let stacked_pcs_prover =
+            StackedPcsProver::new(pcs_prover, stacker, verifier.pcs_verifier.log_stacking_height);
 
         Self::new(verifier.max_log_row_count, stacked_pcs_prover, jagged_generator, E::default())
     }

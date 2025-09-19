@@ -1,36 +1,39 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, UnivariatePolynomial};
-use slop_basefold::BasefoldConfig;
+use slop_basefold::{BasefoldConfig, DefaultBasefoldConfig};
 use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger, IopCtx};
+use slop_commit::Rounds;
 use slop_merkle_tree::{MerkleTreeOpening, MerkleTreeTcs};
-use slop_multilinear::{Mle, Point};
+use slop_multilinear::{Mle, MultilinearPcsVerifier, Point};
 use slop_utils::reverse_bits_len;
 use std::{iter, marker::PhantomData};
 use thiserror::Error;
 
-use crate::config::WhirProofShape;
+use crate::{config::WhirProofShape, interleave_chain};
 
+#[derive(Clone)]
 pub struct Verifier<'a, GC, C>
 where
     GC: IopCtx,
     C: BasefoldConfig<GC>,
 {
+    pub config: WhirProofShape<GC::F>,
     merkle_verifier: MerkleTreeTcs<GC, C::Tcs>,
     _marker: PhantomData<&'a C>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParsedCommitment<GC, BC: BasefoldConfig<GC>>
 where
     GC: IopCtx,
 {
-    pub commitment: GC::Digest,
+    pub commitment: Rounds<GC::Digest>,
     pub ood_points: Vec<Point<GC::EF>>,
     pub ood_answers: Vec<GC::EF>,
     pub _marker: PhantomData<BC>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SumcheckPoly<F>(pub [F; 3]);
 
 impl<F> SumcheckPoly<F>
@@ -53,19 +56,21 @@ where
 pub type ProofOfWork<GC> = <<GC as IopCtx>::Challenger as GrindingChallenger>::Witness;
 pub type ProverMessage<GC> = (SumcheckPoly<<GC as IopCtx>::EF>, ProofOfWork<GC>);
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(bound = "GC: IopCtx, C: BasefoldConfig<GC>")]
 pub struct WhirProof<GC, C>
 where
     GC: IopCtx,
     C: BasefoldConfig<GC>,
 {
+    pub config: WhirProofShape<GC::F>,
     // First sumcheck
     pub initial_sumcheck_polynomials: Vec<(SumcheckPoly<GC::EF>, ProofOfWork<GC>)>,
 
     // For internal rounds
     pub commitments: Vec<ParsedCommitment<GC, C>>,
-    pub merkle_proofs: Vec<MerkleTreeOpening<GC>>,
-    pub query_proof_of_works: Vec<ProofOfWork<GC>>,
+    pub merkle_proofs: Vec<Rounds<MerkleTreeOpening<GC>>>,
+    pub query_proofs_of_work: Vec<ProofOfWork<GC>>,
     pub sumcheck_polynomials: Vec<Vec<ProverMessage<GC>>>,
 
     // Final round
@@ -81,7 +86,7 @@ pub enum WhirProofError {
     #[error("invalid number of OOD samples: expected {0}, got {1}")]
     InvalidNumberOfOODSamples(usize, usize),
     #[error("sumcheck error")]
-    SumcheckError(#[from] SumcheckError),
+    SumcheckError((SumcheckError, usize)),
     #[error("invalid proof of work")]
     PowError,
     #[error("invalid OOD evaluation")]
@@ -92,6 +97,14 @@ pub enum WhirProofError {
     InvalidDegreeFinalPolynomial(usize, usize),
     #[error("final query mismatch")]
     FinalQueryMismatch,
+    #[error("final eval error")]
+    FinalEvalError,
+}
+
+impl From<(SumcheckError, usize)> for WhirProofError {
+    fn from(value: (SumcheckError, usize)) -> Self {
+        WhirProofError::SumcheckError((value.0, value.1))
+    }
 }
 
 #[derive(Debug, Error)]
@@ -120,31 +133,21 @@ where
     GC: IopCtx,
     C: BasefoldConfig<GC>,
 {
-    pub const fn new(merkle_verifier: MerkleTreeTcs<GC, C::Tcs>) -> Self {
-        Self { _marker: PhantomData, merkle_verifier }
+    pub const fn new(
+        merkle_verifier: MerkleTreeTcs<GC, C::Tcs>,
+        config: WhirProofShape<GC::F>,
+    ) -> Self {
+        Self { _marker: PhantomData, merkle_verifier, config }
     }
 
     pub fn observe_commitment(
         &self,
-        commitment: &ParsedCommitment<GC, C>,
+        commitment: &[GC::Digest],
         challenger: &mut GC::Challenger,
-        config: &WhirProofShape<GC::F>,
     ) -> Result<(), WhirProofError> {
-        challenger.observe(commitment.commitment);
-        let ood_points: Vec<Point<GC::EF>> = (0..config.starting_ood_samples)
-            .map(|_| {
-                (0..config.num_variables)
-                    .map(|_| challenger.sample_ext_element())
-                    .collect::<Vec<GC::EF>>()
-                    .into()
-            })
-            .collect();
-
-        if ood_points != commitment.ood_points {
-            return Err(WhirProofError::InvalidOOD);
+        for c in commitment {
+            challenger.observe(*c);
         }
-
-        challenger.observe_ext_element_slice(&commitment.ood_answers);
 
         Ok(())
     }
@@ -153,13 +156,35 @@ where
     /// WHIR reduces it to a claim that v(point) = claim'
     pub fn verify(
         &self,
-        commitment: &ParsedCommitment<GC, C>,
+        commitments: &[GC::Digest],
+        num_variables: usize,
         claim: GC::EF,
         proof: &WhirProof<GC, C>,
         challenger: &mut GC::Challenger,
-        config: &WhirProofShape<GC::F>,
     ) -> Result<(Point<GC::EF>, GC::EF), WhirProofError> {
+        let config = &proof.config;
         let n_rounds = config.round_parameters.len();
+
+        let ood_points: Vec<Point<GC::EF>> = (0..config.starting_ood_samples)
+            .map(|_| {
+                (0..num_variables)
+                    .map(|_| challenger.sample_ext_element())
+                    .collect::<Vec<GC::EF>>()
+                    .into()
+            })
+            .collect();
+
+        let commitment = &proof.commitments[0];
+
+        if ood_points != commitment.ood_points {
+            return Err(WhirProofError::InvalidOOD);
+        }
+
+        if commitments.to_vec() != commitment.commitment.clone().into_iter().collect::<Vec<_>>() {
+            return Err(WhirProofError::InvalidMerkleAuthentication);
+        }
+
+        challenger.observe_ext_element_slice(&commitment.ood_answers);
 
         // Check that the number of OOD answers in the proof matches the expected value.
         if commitment.ood_answers.len() != config.starting_ood_samples {
@@ -173,7 +198,7 @@ where
         let claim_batching_randomness: GC::EF = challenger.sample_ext_element();
         let claimed_sum: GC::EF = claim_batching_randomness
             .powers()
-            .zip(iter::once(&claim).chain(&commitment.ood_answers))
+            .zip(std::iter::once(&claim).chain(&commitment.ood_answers))
             .map(|(r, &v)| v * r)
             .sum();
 
@@ -186,11 +211,11 @@ where
             .verify_sumcheck(
                 &proof.initial_sumcheck_polynomials,
                 claimed_sum,
-                config.starting_folding_factor,
+                num_variables - config.starting_interleaved_log_height,
                 &config.starting_folding_pow_bits,
                 challenger,
             )
-            .map_err(WhirProofError::SumcheckError)?;
+            .map_err(|err| (err, 0))?;
 
         // This contains all the sumcheck randomnesses (these are the alphas)
         let mut concatenated_folding_randomness = folding_randomness.clone();
@@ -200,17 +225,16 @@ where
         let mut all_claim_batching_randomness = vec![claim_batching_randomness];
 
         // This is relative to the previous commitment (i.e. prev_commitment has a domain size of this size)
-        let mut domain_size =
-            config.num_variables - config.starting_folding_factor + config.starting_log_inv_rate;
+        let mut domain_size = config.starting_interleaved_log_height + config.starting_log_inv_rate;
         let mut generator = config.domain_generator;
         let mut prev_commitment = commitment;
 
-        let mut prev_folding_factor = config.starting_folding_factor;
-        let mut num_variables = config.num_variables - config.starting_folding_factor;
+        let mut prev_folding_factor = num_variables - config.starting_interleaved_log_height;
+        let mut num_variables = config.starting_interleaved_log_height;
 
         for round_index in 0..n_rounds {
             let round_params = &config.round_parameters[round_index];
-            let new_commitment = &proof.commitments[round_index];
+            let new_commitment = &proof.commitments[round_index + 1];
             if new_commitment.ood_answers.len() != round_params.ood_samples {
                 return Err(WhirProofError::InvalidNumberOfOODSamples(
                     round_params.ood_samples,
@@ -218,8 +242,10 @@ where
                 ));
             }
 
-            // Observe the commitment
-            challenger.observe(new_commitment.commitment);
+            // Observe the commitments
+            new_commitment.commitment.iter().for_each(|c| {
+                challenger.observe(*c);
+            });
 
             // Squeeze the ood points
             let ood_points: Vec<Point<GC::EF>> = (0..round_params.ood_samples)
@@ -251,20 +277,29 @@ where
 
             if !challenger.check_witness(
                 round_params.queries_pow_bits.ceil() as usize,
-                proof.query_proof_of_works[round_index],
+                proof.query_proofs_of_work[round_index],
             ) {
                 return Err(WhirProofError::PowError);
             }
 
             let merkle_proof = &proof.merkle_proofs[round_index];
-            self.merkle_verifier
-                .verify_tensor_openings(
-                    &prev_commitment.commitment,
-                    &id_query_indices,
-                    merkle_proof,
-                    domain_size,
-                )
-                .map_err(|_| WhirProofError::InvalidMerkleAuthentication)?;
+
+            if round_index != 0 {
+                assert_eq!(merkle_proof.len(), 1);
+            }
+
+            for (merkle_commitment, merkle_proof) in
+                prev_commitment.commitment.iter().zip(merkle_proof.iter())
+            {
+                self.merkle_verifier
+                    .verify_tensor_openings(
+                        merkle_commitment,
+                        &id_query_indices,
+                        merkle_proof,
+                        domain_size,
+                    )
+                    .map_err(|_| WhirProofError::InvalidMerkleAuthentication)?;
+            }
 
             // Chunk the Merkle openings into chunks of size `1<<prev_folding_factor`
             // so that the verifier can induce in-domain evaluation claims about the next codeword.
@@ -273,26 +308,30 @@ where
             // to and opens only base-field values.)
             let merkle_read_values: Vec<Mle<GC::EF>> = if round_index != 0 {
                 merkle_proof
-                    .values
-                    .clone()
-                    .into_buffer()
-                    .into_extension::<GC::EF>()
-                    .to_vec()
-                    .chunks_exact(1 << prev_folding_factor)
-                    .map(|v| Mle::new(v.to_vec().into()))
+                    .iter()
+                    .flat_map(|proof| {
+                        proof
+                            .values
+                            .clone()
+                            .into_buffer()
+                            .into_extension::<GC::EF>()
+                            .to_vec()
+                            .chunks_exact(1 << prev_folding_factor)
+                            .map(|v| Mle::new(v.to_vec().into()))
+                            .collect::<Vec<_>>()
+                    })
                     .collect()
             } else {
-                merkle_proof
-                    .values
-                    .clone()
+                let num_openings = merkle_proof.iter().map(|p| p.values.sizes()[1]).sum::<usize>();
+                interleave_chain(merkle_proof.iter().map(|p| p.values.clone()))
                     .into_buffer()
                     .to_vec()
                     .into_iter()
                     .map(GC::EF::from)
                     .collect::<Vec<_>>()
-                    .chunks_exact(1 << prev_folding_factor)
+                    .chunks_exact(num_openings)
                     .map(|v| Mle::new(v.to_vec().into()))
-                    .collect()
+                    .collect::<Vec<_>>()
             };
 
             // Compute the STIR values by reading the merkle values and folding across the column.
@@ -318,7 +357,7 @@ where
                     &round_params.pow_bits,
                     challenger,
                 )
-                .map_err(WhirProofError::SumcheckError)?;
+                .map_err(|err| (err, round_index + 1))?;
 
             // Prepend the folding randomness from the sumcheck into the combined folding randomness.
             concatenated_folding_randomness =
@@ -365,9 +404,11 @@ where
             .map(|pos| generator.exp_u64(pos as u64))
             .collect();
 
+        assert_eq!(prev_commitment.commitment.len(), 1);
+
         self.merkle_verifier
             .verify_tensor_openings(
-                &prev_commitment.commitment,
+                &prev_commitment.commitment[0],
                 &final_id_indices,
                 &proof.final_merkle_proof,
                 domain_size,
@@ -412,7 +453,7 @@ where
                 &config.final_folding_pow_bits,
                 challenger,
             )
-            .map_err(WhirProofError::SumcheckError)?;
+            .map_err(|err| (err, n_rounds + 1))?;
 
         concatenated_folding_randomness =
             [folding_randomness.clone(), concatenated_folding_randomness].concat();
@@ -479,6 +520,43 @@ where
 
         randomness.reverse();
         Ok((randomness, claimed_sum))
+    }
+}
+
+impl<GC, C> MultilinearPcsVerifier<GC> for Verifier<'static, GC, C>
+where
+    GC: IopCtx,
+    C: DefaultBasefoldConfig<GC>,
+{
+    type Proof = WhirProof<GC, C>;
+
+    type VerifierError = WhirProofError;
+
+    fn default_challenger(&self) -> <GC as IopCtx>::Challenger {
+        C::default_challenger(&C::default_verifier(1))
+    }
+
+    fn verify_trusted_evaluation(
+        &self,
+        commitments: &[<GC as IopCtx>::Digest],
+        point: Point<<GC as IopCtx>::EF>,
+        evaluation_claims: <GC as IopCtx>::EF,
+        proof: &Self::Proof,
+        challenger: &mut <GC as IopCtx>::Challenger,
+    ) -> Result<(), Self::VerifierError> {
+        let (randomness, claimed_value) =
+            self.verify(commitments, point.dimension(), evaluation_claims, proof, challenger)?;
+        let (folding_point, stacking_point) =
+            point.split_at(point.dimension() - self.config.starting_interleaved_log_height);
+        let point = stacking_point
+            .iter()
+            .copied()
+            .chain(folding_point.iter().copied())
+            .collect::<Point<_>>();
+        if Mle::full_lagrange_eval(&randomness, &point) != claimed_value {
+            return Err(WhirProofError::FinalEvalError);
+        }
+        Ok(())
     }
 }
 

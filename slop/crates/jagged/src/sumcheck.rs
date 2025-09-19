@@ -23,6 +23,7 @@ pub trait JaggedSumcheckProver<F: Field, EF: ExtensionField<F>, B: Backend>:
         jagged_params: &JaggedLittlePolynomialProverParams,
         row_data: Rounds<Arc<Vec<usize>>>,
         column_data: Rounds<Arc<Vec<usize>>>,
+        log_stacking_height: u32,
         z_row: &Point<EF, B>,
         z_col: &Point<EF, B>,
     ) -> impl Future<Output = Self::Polynomial> + Send;
@@ -48,13 +49,12 @@ where
         jagged_params: &JaggedLittlePolynomialProverParams,
         row_data: Rounds<Arc<Vec<usize>>>,
         column_data: Rounds<Arc<Vec<usize>>>,
+        log_stacking_height: u32,
         z_row: &Point<EF, B>,
         z_col: &Point<EF, B>,
     ) -> Self::Polynomial {
         let base = base.into_iter().flatten().collect::<Message<Mle<_, _>>>();
-        let log_stacking_height = base.first().unwrap().num_variables();
         let long_mle = LongMle::from_message(base, log_stacking_height);
-
         let jaggled_mle = self
             .jagged_generator
             .partial_jagged_multilinear(jagged_params, row_data, column_data, z_row, z_col, 1)
@@ -69,6 +69,7 @@ where
                 .await,
             total_num_variables,
         );
+
         HadamardProduct { base: restacked_mle, ext: jaggled_mle }
     }
 }

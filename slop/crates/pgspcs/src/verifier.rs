@@ -1,12 +1,12 @@
 use std::marker::PhantomData;
 
 use slop_challenger::IopCtx;
-use slop_multilinear::{Evaluations, Mle, MultilinearPcsVerifier, Point};
+use slop_multilinear::{Evaluations, Mle, MultilinearPcsBatchVerifier, Point};
 use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
 
 use crate::prover::Proof;
 
-pub struct SparsePCSVerifier<GC: IopCtx, MV: MultilinearPcsVerifier<GC>> {
+pub struct SparsePCSVerifier<GC: IopCtx, MV: MultilinearPcsBatchVerifier<GC>> {
     pub multilinear_verifier: MV,
     _global_config: PhantomData<GC>,
 }
@@ -19,7 +19,7 @@ pub enum VerifierError<PCSError> {
     InvalidMLEEvalClaims,
 }
 
-impl<GC: IopCtx, MV: MultilinearPcsVerifier<GC>> SparsePCSVerifier<GC, MV> {
+impl<GC: IopCtx, MV: MultilinearPcsBatchVerifier<GC>> SparsePCSVerifier<GC, MV> {
     pub fn new(verifier: MV) -> Self {
         Self { multilinear_verifier: verifier, _global_config: PhantomData }
     }

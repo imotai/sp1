@@ -19,6 +19,7 @@ rrs_lib = { package = "rrs-lib", git = "https://github.com/succinctlabs/rrs-succ
 slop-air = { workspace = true }
 slop-koala-bear = { workspace = true }
 slop-algebra = { workspace = true }
+slop-whir = { workspace = true }
 slop-challenger = { workspace = true }
 slop-keccak-air = { workspace = true }
 slop-matrix = { workspace = true }

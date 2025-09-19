@@ -5,11 +5,17 @@ use slop_multilinear::MultilinearPcsVerifier;
 pub trait JaggedConfig<GC: IopCtx>:
     'static + Clone + Send + Clone + Serialize + DeserializeOwned
 {
-    type BatchPcsVerifier: MultilinearPcsVerifier<GC>;
+    type PcsVerifier: MultilinearPcsVerifier<GC>;
+
+    fn log_stacking_height(verifier: &Self::PcsVerifier) -> u32;
+
+    fn round_multiples(
+        proof: &<Self::PcsVerifier as MultilinearPcsVerifier<GC>>::Proof,
+    ) -> Vec<usize>;
 }
 
 pub type JaggedProof<GC, JC> =
-    <<JC as JaggedConfig<GC>>::BatchPcsVerifier as MultilinearPcsVerifier<GC>>::Proof;
+    <<JC as JaggedConfig<GC>>::PcsVerifier as MultilinearPcsVerifier<GC>>::Proof;
 
 pub type JaggedError<GC, JC> =
-    <<JC as JaggedConfig<GC>>::BatchPcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError;
+    <<JC as JaggedConfig<GC>>::PcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError;

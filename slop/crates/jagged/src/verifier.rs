@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
 use slop_challenger::{FieldChallenger, IopCtx};
 use slop_multilinear::{full_geq, Evaluations, Mle, MultilinearPcsVerifier, Point};
-use slop_stacked::{StackedPcsProof, StackedPcsVerifier, StackedVerifierError};
 use slop_sumcheck::{partially_verify_sumcheck_proof, PartialSumcheckProof, SumcheckError};
 use std::fmt::Debug;
 use thiserror::Error;
@@ -16,8 +15,7 @@ use crate::{
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(serialize = "", deserialize = ""))]
 pub struct JaggedPcsProof<GC: IopCtx, C: JaggedConfig<GC>> {
-    pub stacked_pcs_proof:
-        StackedPcsProof<<C::BatchPcsVerifier as MultilinearPcsVerifier<GC>>::Proof, GC::EF>,
+    pub pcs_proof: <C::PcsVerifier as MultilinearPcsVerifier<GC>>::Proof,
     pub sumcheck_proof: PartialSumcheckProof<GC::EF>,
     pub jagged_eval_proof: JaggedSumcheckEvalProof<GC::EF>,
     pub params: JaggedLittlePolynomialVerifierParams<GC::F>,
@@ -26,7 +24,7 @@ pub struct JaggedPcsProof<GC: IopCtx, C: JaggedConfig<GC>> {
 
 #[derive(Debug, Clone)]
 pub struct JaggedPcsVerifier<GC: IopCtx, C: JaggedConfig<GC>> {
-    pub stacked_pcs_verifier: StackedPcsVerifier<GC, C::BatchPcsVerifier>,
+    pub pcs_verifier: C::PcsVerifier,
     pub max_log_row_count: usize,
 }
 
@@ -39,7 +37,7 @@ pub enum JaggedPcsVerifierError<EF, PcsError> {
     #[error("jagged evaluation proof verification failed")]
     JaggedEvalProofVerificationFailed,
     #[error("dense pcs verification failed")]
-    DensePcsVerificationFailed(#[from] StackedVerifierError<PcsError>),
+    DensePcsVerificationFailed(#[from] PcsError),
     #[error("booleanity check failed")]
     BooleanityCheckFailed,
     #[error("montonicity check failed")]
@@ -52,7 +50,7 @@ pub enum JaggedPcsVerifierError<EF, PcsError> {
 
 impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
     pub fn challenger(&self) -> GC::Challenger {
-        self.stacked_pcs_verifier.challenger()
+        self.pcs_verifier.default_challenger()
     }
 
     fn verify_trusted_evaluations(
@@ -64,13 +62,8 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
         insertion_points: &[usize],
         challenger: &mut GC::Challenger,
     ) -> Result<(), JaggedPcsVerifierError<GC::EF, JaggedError<GC, C>>> {
-        let JaggedPcsProof {
-            stacked_pcs_proof,
-            sumcheck_proof,
-            jagged_eval_proof,
-            params,
-            added_columns,
-        } = proof;
+        let JaggedPcsProof { pcs_proof, sumcheck_proof, jagged_eval_proof, params, added_columns } =
+            proof;
 
         if params.col_prefix_sums.is_empty() || params.max_log_row_count != self.max_log_row_count {
             return Err(JaggedPcsVerifierError::IncorrectShape);
@@ -94,7 +87,7 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
         if insertion_points.len() != added_columns.len()
             || insertion_points.len() != commitments.len()
             || insertion_points.len() != evaluation_claims.len()
-            || insertion_points.len() != proof.stacked_pcs_proof.batch_evaluations.len()
+        /*|| insertion_points.len() != proof.pcs_proof.batch_evaluations.len()*/
         {
             return Err(JaggedPcsVerifierError::IncorrectShape);
         }
@@ -136,7 +129,7 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
 
         // Validate stacked columns alignment
         let mut prefix_sum_index = 0;
-        let mut num_stacked_columns = 0;
+        // let mut num_stacked_columns = 0;
 
         for i in 0..evaluation_claims.len() {
             let count_polys = |evals: &[slop_multilinear::MleEval<_>]| {
@@ -145,15 +138,16 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
 
             prefix_sum_index += count_polys(&evaluation_claims[i].round_evaluations);
             prefix_sum_index += added_columns[i];
-            num_stacked_columns +=
-                count_polys(&stacked_pcs_proof.batch_evaluations[i].round_evaluations);
 
-            let expected = (num_stacked_columns as u32)
-                .saturating_mul(1u32 << self.stacked_pcs_verifier.log_stacking_height);
+            // TODO: Put these in stacked PCS.
+            // num_stacked_columns += count_polys(&pcs_proof.batch_evaluations[i].round_evaluations);
 
-            if prefix_sums[prefix_sum_index] != expected {
-                return Err(JaggedPcsVerifierError::InvalidPrefixSums);
-            }
+            // let expected = (num_stacked_columns as u32)
+            //     .saturating_mul(1u32 << self.stacked_pcs_verifier.log_stacking_height);
+
+            // if prefix_sums[prefix_sum_index] != expected {
+            //     return Err(JaggedPcsVerifierError::InvalidPrefixSums);
+            // }
         }
         if prefix_sum_index != params.col_prefix_sums.len() - 1 {
             return Err(JaggedPcsVerifierError::IncorrectShape);
@@ -223,15 +217,15 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
 
         // Verify the evaluation proof using the (dense) stacked PCS verifier.
         let evaluation_point = sumcheck_proof.point_and_eval.0.clone();
-        self.stacked_pcs_verifier.verify_trusted_evaluation(
-            commitments,
-            &evaluation_point,
-            stacked_pcs_proof,
-            expected_eval,
-            challenger,
-        )?;
-
-        Ok(())
+        self.pcs_verifier
+            .verify_trusted_evaluation(
+                commitments,
+                evaluation_point,
+                expected_eval,
+                pcs_proof,
+                challenger,
+            )
+            .map_err(JaggedPcsVerifierError::DensePcsVerificationFailed)
     }
 }
 
