@@ -161,6 +161,21 @@ impl PublicValues<u32, u64, u64, u32> {
         ret
     }
 
+    /// Get the range of the shard.
+    #[must_use]
+    pub fn range(&self) -> ShardRange {
+        ShardRange {
+            timestamp_range: (self.initial_timestamp, self.last_timestamp),
+            initialized_address_range: (self.previous_init_addr, self.last_init_addr),
+            finalized_address_range: (self.previous_finalize_addr, self.last_finalize_addr),
+            initialized_page_index_range: (self.previous_init_page_idx, self.last_init_page_idx),
+            finalized_page_index_range: (
+                self.previous_finalize_page_idx,
+                self.last_finalize_page_idx,
+            ),
+        }
+    }
+
     /// Resets the public values to zero.
     #[must_use]
     pub fn reset(&self) -> Self {
@@ -256,6 +271,19 @@ impl PublicValues<u32, u64, u64, u32> {
     }
 }
 
+/// Returns a timestamp from a limbs array.
+///
+/// The representation of the timestamp is given in big endian by bit decomposition of bits
+/// (16, 8, 8, 16)
+#[inline]
+fn timestamp_from_limbs<F: PrimeField32>(limbs: &[F; 4]) -> u64 {
+    let mut timestamp = (limbs[0].as_canonical_u32() as u64) << 32;
+    timestamp += (limbs[1].as_canonical_u32() as u64) << 24;
+    timestamp += (limbs[2].as_canonical_u32() as u64) << 16;
+    timestamp += limbs[3].as_canonical_u32() as u64;
+    timestamp
+}
+
 impl<F: PrimeField32> PublicValues<[F; 4], [F; 3], [F; 4], F> {
     /// Returns the commit digest as a vector of little-endian bytes.
     pub fn commit_digest_bytes(&self) -> Vec<u8> {
@@ -267,14 +295,12 @@ impl<F: PrimeField32> PublicValues<[F; 4], [F; 3], [F; 4], F> {
 
     /// Returns the initial timestamp.
     pub fn initial_timestamp(&self) -> u64 {
-        self.initial_timestamp
-            .iter()
-            .fold(0, |acc, x| acc * (1 << 16) + x.as_canonical_u32() as u64)
+        timestamp_from_limbs(&self.initial_timestamp)
     }
 
     /// Returns the last timestamp.
     pub fn last_timestamp(&self) -> u64 {
-        self.last_timestamp.iter().fold(0, |acc, x| acc * (1 << 16) + x.as_canonical_u32() as u64)
+        timestamp_from_limbs(&self.last_timestamp)
     }
 
     /// Returns the previous initialization address.
@@ -340,32 +366,25 @@ impl<F: PrimeField32> PublicValues<[F; 4], [F; 3], [F; 4], F> {
             .rev()
             .fold(0, |acc, x| acc * (1 << 16) + x.as_canonical_u32() as u64)
     }
-}
 
-impl<F: PrimeField32> Ord for PublicValues<[F; 4], [F; 3], [F; 4], F> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        let get_tuple = |pv: &Self| {
-            (
-                pv.initial_timestamp(),
-                pv.last_timestamp(),
-                pv.previous_init_addr(),
-                pv.last_init_addr(),
-                pv.previous_finalize_addr(),
-                pv.last_finalize_addr(),
-                pv.previous_init_page_idx(),
-                pv.last_init_page_idx(),
-                pv.previous_finalize_page_idx(),
-                pv.last_finalize_page_idx(),
-            )
-        };
+    /// Returns the range of the shard.
+    #[must_use]
+    pub fn range(&self) -> ShardRange {
+        let timestamp_range = (self.initial_timestamp(), self.last_timestamp());
+        let initialized_address_range = (self.previous_init_addr(), self.last_init_addr());
+        let finalized_address_range = (self.previous_finalize_addr(), self.last_finalize_addr());
+        let initialized_page_index_range =
+            (self.previous_init_page_idx(), self.last_init_page_idx());
+        let finalized_page_index_range =
+            (self.previous_finalize_page_idx(), self.last_finalize_page_idx());
 
-        get_tuple(self).cmp(&get_tuple(other))
-    }
-}
-
-impl<F: PrimeField32> PartialOrd for PublicValues<[F; 4], [F; 3], [F; 4], F> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
+        ShardRange {
+            timestamp_range,
+            initialized_address_range,
+            finalized_address_range,
+            initialized_page_index_range,
+            finalized_page_index_range,
+        }
     }
 }
 
@@ -591,6 +610,52 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
             proof_nonce,
             empty: core::array::from_fn(|_| F::zero()),
         }
+    }
+}
+
+/// The range of the shard with respect to the program execution ordering.
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
+#[repr(C)]
+pub struct ShardRange {
+    /// The timestamp range of the shard
+    pub timestamp_range: (u64, u64),
+    /// The initialized address range of the shard,
+    pub initialized_address_range: (u64, u64),
+    /// The finalized address range of the shard
+    pub finalized_address_range: (u64, u64),
+    /// The initialized page index range of the shard
+    pub initialized_page_index_range: (u64, u64),
+    /// The finalized page index range of the shard
+    pub finalized_page_index_range: (u64, u64),
+}
+
+impl core::fmt::Display for ShardRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ShardRange:")?;
+        write!(f, "timestamp_range: {}..{}", self.timestamp_range.0, self.timestamp_range.1)?;
+        write!(
+            f,
+            "initialized_address_range: {}..{}",
+            self.initialized_address_range.0, self.initialized_address_range.1
+        )?;
+        write!(
+            f,
+            "finalized_address_range: {}..{}",
+            self.finalized_address_range.0, self.finalized_address_range.1
+        )?;
+        write!(
+            f,
+            "initialized_page_index_range: {}..{}",
+            self.initialized_page_index_range.0, self.initialized_page_index_range.1
+        )?;
+        write!(
+            f,
+            "finalized_page_index_range: {}..{}",
+            self.finalized_page_index_range.0, self.finalized_page_index_range.1
+        )?;
+        Ok(())
     }
 }
 

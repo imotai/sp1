@@ -64,7 +64,6 @@ impl<F: PrimeField32> MachineExecutor<F> {
         let (chunk_tx, mut chunk_rx) = mpsc::unbounded_channel::<TraceChunkRaw>();
         let (last_record_tx, mut last_record_rx) =
             tokio::sync::mpsc::channel::<(ExecutionRecord, [MemoryRecord; 32])>(1);
-        // let record_gen_sync = AsyncTurn::new();
         let deferred = Arc::new(Mutex::new(ExecutionRecord::new(program.clone())));
         let mut record_worker_channels = Vec::with_capacity(self.num_record_workers);
 
@@ -79,9 +78,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
             let machine = self.machine.clone();
             let opts = self.opts.clone();
             let program = program.clone();
-            // let record_gen_sync = record_gen_sync.clone();
             let record_tx = record_tx.clone();
-            // let state = state.clone();
             let deferred: Arc<Mutex<ExecutionRecord>> = deferred.clone();
             let last_record_tx = last_record_tx.clone();
             let permitting = self.memory.clone();
@@ -111,33 +108,28 @@ impl<F: PrimeField32> MachineExecutor<F> {
                         .expect("error: trace chunk task panicked")
                         .expect("todo: handle error");
 
-                        // Wait for our turn to update the state.
-                        // let _turn_guard = record_gen_sync.wait_for_turn(index).await;
-
-                        let deferred_records = if done {
+                        if done {
                             tracing::trace!("last record");
 
                             // If this is the last record, we have special handling for the memory
                             // events.
                             last_record_tx.send((record, registers)).await.unwrap();
-                            return;
                         } else {
                             tracing::trace!("defferring record");
 
-                            // let mut state = state.lock().unwrap();
-                            let mut deferred = deferred.lock().unwrap();
-
-                            defer::<F>(&mut record, &mut deferred, &split_opts, opts, done)
+                            let deferred_records = {
+                                let mut deferred = deferred.lock().unwrap();
+                                defer::<F>(&mut record, &mut deferred, &split_opts, opts, done)
+                            };
+                            start_prove(
+                                machine.clone(),
+                                record_tx.clone(),
+                                Some(permit),
+                                record,
+                                deferred_records,
+                            )
+                            .await;
                         };
-
-                        start_prove(
-                            machine.clone(),
-                            record_tx.clone(),
-                            Some(permit),
-                            record,
-                            deferred_records,
-                        )
-                        .await;
                     }
 
                     tracing::trace!("tracing worker finished");
@@ -180,13 +172,11 @@ impl<F: PrimeField32> MachineExecutor<F> {
             async move {
                 let mut splicing_handles = Vec::new();
                 let touched_addresses = Arc::new(Mutex::new(HashSet::new()));
-                // let splicer_turn_sync = Arc::new(TurnBasedSync::new());
                 while let Some(chunk) = chunk_rx.recv().await {
                     let splicing_handle = tokio::task::spawn_blocking({
                         let program = program.clone();
                         let touched_addresses = touched_addresses.clone();
                         let record_worker_channels = record_worker_channels.clone();
-                        // let splicer_turn_sync = splicer_turn_sync.clone();
 
                         move || {
                             generate_chunks(
@@ -212,9 +202,11 @@ impl<F: PrimeField32> MachineExecutor<F> {
 
         // Wait for the minimal executor to finish.
         let minimal_executor = minimal_executor_handle.await.unwrap();
+        tracing::debug!("Minimal executor finished");
 
         // Wait for the record workers to finish.
         try_join_all(handles).await.expect("error: tracing tasks panicked");
+        tracing::debug!("All record workers finished");
 
         // Wait for the last record to be traced.
         let (mut last_record, final_registers) = last_record_rx.recv().await.unwrap();
@@ -280,16 +272,10 @@ fn generate_chunks(
 ) -> Result<(), ExecutionError> {
     let mut touched_addresses = CompressedMemory::new();
     let mut vm = SplicingVM::new(&chunk, program.clone(), &mut touched_addresses);
-    // // If the logic is correct than this is the happy path condition,
-    // // in the worst case, we just miss our turn and just take the lock later.
-    // let mut maybe_lock =
-    //     if splicer_turn.current_turn() != splicer_index { None } else { Some(idx.lock().unwrap())
-    // };
 
     let start_num_mem_reads = chunk.num_mem_reads();
 
     let mut last_splice = SplicedMinimalTrace::new_full_trace(chunk.clone());
-    // let mut splices = Vec::new();
     loop {
         tracing::debug!("starting new shard at clk: {} at pc: {}", vm.core.clk(), vm.core.pc());
 
@@ -309,12 +295,7 @@ fn generate_chunks(
                     );
 
                     let splice_to_send = std::mem::replace(&mut last_splice, spliced);
-                    // if let Some(ref mut lock) = maybe_lock {
                     send_spliced_trace_blocking(record_worker_channels.clone(), splice_to_send);
-                    // **lock += 1;
-                    // } else {
-                    //     splices.push(splice_to_send);
-                    // }
                 } else {
                     tracing::trace!("trace ended at clk: {}", vm.core.clk());
                     tracing::trace!("trace ended at pc: {}", vm.core.pc());
@@ -345,22 +326,6 @@ fn generate_chunks(
             }
         }
     }
-
-    // // We couldnt take the lock, so once we can accquire it we send all the splices to the record
-    // // workers.
-    // // if maybe_lock.is_none() {
-    //     // Wait for our turn to update the state.
-    //     splicer_turn.wait_for_turn(splicer_index);
-
-    //     let mut lock = idx.lock().unwrap();
-
-    //     for splice in splices {
-    //         send_spliced_trace_blocking(record_worker_channels.clone(), splice, *lock);
-    //         *lock += 1;
-    //     }
-    // }
-    // drop(maybe_lock);
-    // splicer_turn.advance_turn();
 
     // Append the touched addresses from this chunk to the globally tracked touched addresses.
     tracing::trace!("extending all_touched_addresses with touched_addresses");
@@ -527,7 +492,6 @@ fn send_spliced_trace_blocking(
         match record_worker_channels.clone().try_pop() {
             Ok(worker) => {
                 worker.send(RecordTask { chunk }).unwrap();
-
                 break;
             }
             Err(TryAcquireWorkerError(TryAcquireError::NoPermits)) => {

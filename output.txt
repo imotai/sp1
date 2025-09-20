@@ -1,0 +1,1 @@
+error: package(s) `csl-perf` not found in workspace `/home/tamir/sp1-wip`

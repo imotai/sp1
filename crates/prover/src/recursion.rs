@@ -59,7 +59,9 @@ use crate::{
 };
 
 pub mod components;
+mod tree;
 pub use components::*;
+pub use tree::*;
 
 type RecursionConfig<C> =
     <<C as SP1ProverComponents>::RecursionComponents as MachineProverComponents<

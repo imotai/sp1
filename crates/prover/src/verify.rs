@@ -117,7 +117,10 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 shard_proof.public_values.as_slice().borrow();
 
             if public_values.initial_timestamp != prev_timestamp {
-                return Err(MachineVerifierError::InvalidPublicValues("invalid initial timestamp"));
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "invalid initial
+                timestamp",
+                ));
             }
             // These checks below are already done in the shard proof, but done additionally.
             if public_values.is_execution_shard != SP1Field::zero()
