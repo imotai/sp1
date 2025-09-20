@@ -112,7 +112,7 @@ impl<
         let (merged_prefix_sums, z_col_eq_vals): (Vec<Point<F>>, Vec<EF>) = merged_prefix_sums
             .iter()
             .zip(z_col_partial_lagrange.guts().as_slice())
-            .group_by(|(merged_prefix_sum, _)| *merged_prefix_sum)
+            .chunk_by(|(merged_prefix_sum, _)| *merged_prefix_sum)
             .into_iter()
             .map(|(merged_prefix_sum, group)| {
                 let group_elements =

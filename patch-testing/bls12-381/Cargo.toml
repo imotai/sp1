@@ -16,7 +16,7 @@ color-eyre = { workspace = true }
 # note: we use the patched version (which should be mostly equivalent to the original, outside the vm)
 # because we want to test the field ops which are not exposed in the original
 bls12_381-patched = { workspace = true }
-group = "0.13.0"
+group = { workspace = true }
 
 [features]
 prove = []

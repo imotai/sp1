@@ -114,6 +114,20 @@ bls12_381-patched = { git = "https://github.com/sp1-patches/bls12_381", tag = "p
   "groups",
 ], package = "bls12_381" }
 rsa-patched = { git = "https://github.com/sp1-patches/RustCrypto-RSA/", tag = "patch-0.9.6-sp1-6.0.0", package = "rsa" }
+crypto-bigint = "0.5.5"
+group = "0.13.0"
+lazy_static = "1.5.0"
+parking_lot = "0.12.3"
+proc-macro2 = "1.0.92"
+quote = "1.0.37"
+reqwest = "0.12.12"
+rsa = "0.9.7"
+serde_json = "1.0.138"
+sha2 = "0.9.9"
+sha3 = "=0.10.6"
+sp1-lib = { path = "../crates/zkvm/lib" }
+substrate-bn = "0.6.0"
+syn = "2.0"
 
 [patch.crates-io]
 sp1-lib = { path = "../crates/zkvm/lib" }

@@ -14,7 +14,7 @@ slop-alloc = { workspace = true }
 
 slop-algebra = { workspace = true }
 slop-multilinear = { workspace = true }
-rayon = "1.5.1"
+rayon = { workspace = true }
 serde = { workspace = true }
 itertools = { workspace = true }
 futures = { workspace = true }

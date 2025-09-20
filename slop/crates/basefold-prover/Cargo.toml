@@ -22,9 +22,9 @@ slop-koala-bear = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-fri = { workspace = true }
 slop-bn254 = { workspace = true }
-itertools = "0.12.0"
-rand = "0.8.5"
-serde = { version = "1.0.207", features = ["derive"] }
+itertools = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 derive-where = { workspace = true }

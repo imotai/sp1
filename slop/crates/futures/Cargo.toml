@@ -13,8 +13,8 @@ tokio = { workspace = true }
 futures = { workspace = true }
 thiserror = { workspace = true }
 
-crossbeam = "0.8.4"
-pin-project = "1"
+crossbeam = { workspace = true }
+pin-project = { workspace = true }
 
 [lints]
 workspace = true

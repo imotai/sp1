@@ -10,15 +10,15 @@ keywords = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-cfg-if = "1.0.0"
+cfg-if = { workspace = true }
 getrandom_v2 = { version = "0.2.15", features = ["custom"], package = "getrandom" }
 getrandom_v3 = { version = "0.3.3" , package = "getrandom" }
-rand = "0.8.5"
-libm = { version = "0.2.8", optional = true }
-sha2 = { version = "0.10.8" }
-lazy_static = "1.5.0"
-embedded-alloc = { version = "0.6.0" }
-critical-section = { version = "1.2.0" }
+rand = { workspace = true }
+libm = { workspace = true, optional = true }
+sha2 = { workspace = true }
+lazy_static = { workspace = true }
+embedded-alloc = { workspace = true }
+critical-section = { workspace = true }
 
 # optional
 sp1-lib = { workspace = true, optional = true }

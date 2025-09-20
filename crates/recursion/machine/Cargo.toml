@@ -32,12 +32,12 @@ strum = { workspace = true }
 strum_macros = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-rand = "0.8.5"
-zkhash = "0.2.0"
+rand = { workspace = true }
+zkhash = { workspace = true }
 
 
 [build-dependencies]
-rand = "0.8.5"
+rand = { workspace = true }
 sp1-hypercube = { workspace = true }
 sp1-primitives = { workspace = true }
 slop-koala-bear = { workspace = true }

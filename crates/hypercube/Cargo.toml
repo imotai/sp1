@@ -40,29 +40,29 @@ slop-uni-stark = { workspace = true }
 # misc
 futures = { workspace = true }
 serde = { workspace = true, features = ["derive", "rc"] }
-hashbrown = { version = "0.14.5", features = ["serde", "inline-more"] }
+hashbrown = { workspace = true, features = ["serde", "inline-more"] }
 itertools = { workspace = true }
 tracing = { workspace = true }
-rayon-scan = "0.1.1"
-rayon = "1.5.0"
-thiserror = "1.0"
+rayon-scan = { workspace = true }
+rayon = { workspace = true }
+thiserror = { workspace = true }
 derive-where = { workspace = true }
 deepsize2 = { workspace = true }
 
-arrayref = "0.3.8"
-num-bigint = { version = "0.4.3", default-features = false }
+arrayref = { workspace = true }
+num-bigint = { workspace = true }
 
 strum = { workspace = true }
 strum_macros = { workspace = true }
-num-traits = "0.2.19"
-num_cpus = "1.16.0"
+num-traits = { workspace = true }
+num_cpus = { workspace = true }
 
 # async
 tokio = { workspace = true }
 
 [dev-dependencies]
 sp1-zkvm = { workspace = true }
-rand = "0.8.4"
+rand = { workspace = true }
 
 [features]
 test-proof = []

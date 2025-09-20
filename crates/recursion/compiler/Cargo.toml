@@ -24,16 +24,16 @@ sp1-hypercube = { workspace = true }
 
 itertools = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-backtrace = "0.3.71"
+backtrace = { workspace = true }
 tracing = { workspace = true }
-vec_map = "0.8.2"
-cfg-if = "1.0.0"
+vec_map = { workspace = true }
+cfg-if = { workspace = true }
 
 [dev-dependencies]
 sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
 slop-dft = { workspace = true }
 slop-merkle-tree = { workspace = true }
-rand = "0.8.5"
+rand = { workspace = true }
 
 [features]
 # Enables cycle tracking and adds backtraces for circuit IR assertions.

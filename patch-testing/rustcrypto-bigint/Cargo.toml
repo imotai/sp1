@@ -12,7 +12,7 @@ rand = { workspace = true }
 sp1-test = { workspace = true }
 tokio = { workspace = true }
 color-eyre = { workspace = true }
-crypto-bigint = "0.5.5"
+crypto-bigint = { workspace = true }
 
 [features]
 prove = []

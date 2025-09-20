@@ -9,7 +9,7 @@ categories.workspace = true
 
 [dependencies]
 p3-field = { workspace = true }
-serde = "1.0.210"
+serde = { workspace = true }
 
 [dev-dependencies]
 slop-baby-bear = { workspace = true }

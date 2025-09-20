@@ -24,9 +24,9 @@ slop-basefold = { workspace = true }
 slop-futures = { workspace = true }
 slop-tensor = { workspace = true }
 
-itertools = "0.12.0"
-tracing = "0.1"
-rayon = "1.5.0"
+itertools = { workspace = true }
+tracing = { workspace = true }
+rayon = { workspace = true }
 serde = { workspace = true, features = ["rc"] }
 tokio = { workspace = true }
 thiserror = { workspace = true }

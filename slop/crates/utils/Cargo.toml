@@ -8,6 +8,6 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-tracing-forest = { version = "0.1.6", features = ["ansi", "smallvec"] }
-tracing-subscriber = { version = "0.3.18", features = ["std", "env-filter"] }
+tracing-forest = { workspace = true, features = ["ansi", "smallvec"] }
+tracing-subscriber = { workspace = true, features = ["std", "env-filter"] }
 p3-util = { workspace = true }

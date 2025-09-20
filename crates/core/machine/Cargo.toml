@@ -10,11 +10,11 @@ keywords = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-bincode = "1.3.3"
+bincode = { workspace = true }
 serde = { workspace = true, features = ["derive", "rc"] }
 serde_json = { workspace = true }
 itertools = { workspace = true }
-num = { version = "0.4.3" }
+num = { workspace = true }
 rrs_lib = { package = "rrs-lib", git = "https://github.com/succinctlabs/rrs-succinct.git", branch = "gautham/rv64executor-2" }
 slop-air = { workspace = true }
 slop-koala-bear = { workspace = true }
@@ -33,25 +33,25 @@ sp1-jit = { workspace = true }
 slop-futures = { workspace = true }
 futures = { workspace = true }
 
-rayon = "1.10.0"
-rayon-scan = "0.1.1"
-sysinfo = "0.30.13"
+rayon = { workspace = true }
+rayon-scan = { workspace = true }
+sysinfo = { workspace = true }
 
 amcl = { package = "snowbridge-amcl", version = "1.0.2", default-features = false, features = [
   "bls381",
 ] }
-cfg-if = "1.0.0"
-generic-array = { version = "=1.1.0", features = ["alloc", "serde"] }
-typenum = "1.17.0"
+cfg-if = { workspace = true }
+generic-array = { workspace = true, features = ["alloc", "serde"] }
+typenum = { workspace = true }
 
-num_cpus = "1.16.0"
-tempfile = "3.10.1"
+num_cpus = { workspace = true }
+tempfile = { workspace = true }
 tracing = { workspace = true }
-tracing-forest = { version = "0.1.6", features = ["ansi", "smallvec"] }
+tracing-forest = { workspace = true, features = ["ansi", "smallvec"] }
 tracing-subscriber = { workspace = true, features = ["std", "env-filter"] }
 strum = { workspace = true }
 strum_macros = { workspace = true }
-thiserror = "1.0.63"
+thiserror = { workspace = true }
 hashbrown = { workspace = true, features = ["serde", "inline-more"] }
 
 sp1-hypercube = { workspace = true }
@@ -59,11 +59,11 @@ sp1-core-executor = { workspace = true }
 sp1-curves = { workspace = true }
 slop-poseidon2 = { workspace = true }
 tokio = { workspace = true }
-static_assertions = "1.1.0"
+static_assertions = { workspace = true }
 
 [dev-dependencies]
 rand = { workspace = true }
-num = { version = "0.4.3", features = ["rand"] }
+num = { workspace = true, features = ["rand"] }
 sp1-core-executor = { workspace = true }
 test-artifacts = { workspace = true }
 tokio = { workspace = true }
@@ -71,11 +71,11 @@ slop-air = { workspace = true }
 slop-koala-bear = { workspace = true }
 slop-algebra = { workspace = true }
 slop-matrix = { workspace = true }
-tiny-keccak = { version = "2.0.2", features = ["keccak"] }
-hex = "0.4.3"
-elliptic-curve = "0.13.8"
-k256 = { version = "0.13.3", features = ["expose-field"] }
-p256 = { version = "0.13.2", features = ["expose-field"] }
+tiny-keccak = { workspace = true, features = ["keccak"] }
+hex = { workspace = true }
+elliptic-curve = { workspace = true }
+k256 = { workspace = true, features = ["expose-field"] }
+p256 = { workspace = true, features = ["expose-field"] }
 
 [build-dependencies]
 sp1-hypercube = { workspace = true }

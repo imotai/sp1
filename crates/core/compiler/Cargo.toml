@@ -18,7 +18,7 @@ sp1-primitives = { workspace = true }
 
 # dependencies for the binary
 
-clap = { version = "4.5.7", features = ["derive", "env"] }
+clap = { workspace = true, features = ["derive", "env"] }
 serde_json = { workspace = true }
 
 [lints]

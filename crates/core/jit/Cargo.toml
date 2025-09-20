@@ -9,17 +9,17 @@ categories.workspace = true
 include.workspace = true
 
 [dependencies]
-dynasmrt = "3.2.0"
-memfd = "0.6.4"
-paste = "1.0.15"
+dynasmrt = { workspace = true }
+memfd = { workspace = true }
+paste = { workspace = true }
 serde = { workspace = true, features = ["derive"]}
 tracing.workspace = true
-uuid = { version = "1.17.0", features = ["v4"] }
+uuid = { workspace = true, features = ["v4"] }
 hashbrown = { workspace = true }
-memmap2 = "0.9.8"
+memmap2 = { workspace = true }
 
 [dev-dependencies]
-bincode = "1.2.3"
+bincode = { workspace = true }
 
 [lints]
 workspace = true

@@ -14,7 +14,7 @@
 # slop-utils = { workspace = true }
 # slop-multivariate-adapter = { workspace = true }
 
-# itertools = "0.12.0"
+# itertools = { workspace = true }
 # rand = "0.8.5"
 # rayon = "1.5.1"
 # tracing = "0.1.40"

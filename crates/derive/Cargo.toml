@@ -13,9 +13,9 @@ categories = { workspace = true }
 proc-macro = true
 
 [dependencies]
-quote = "1.0"
-syn = { version = "1.0", features = ["full", "fold"] }
-proc-macro2 = "1.0"
+quote = { workspace = true }
+syn = { workspace = true, features = ["full", "fold"] }
+proc-macro2 = { workspace = true }
 
 [lints]
 workspace = true

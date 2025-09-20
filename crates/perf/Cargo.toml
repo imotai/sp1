@@ -22,10 +22,10 @@ sp1-cuda = { workspace = true, features = ["native"] }
 test-artifacts = { workspace = true }
 tracing = { workspace = true }
 serde_json = { workspace = true }
-rand = "0.8.5"
-clap = { version = "4.5.9", features = ["derive"] }
-bincode = "1.3.3"
-time = "0.3.26"
+rand = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+bincode = { workspace = true }
+time = { workspace = true }
 tokio = { workspace = true }
 hashbrown = { workspace = true }
 sp1-jit = { workspace = true }

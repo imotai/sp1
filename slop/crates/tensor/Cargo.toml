@@ -14,8 +14,8 @@ slop-matrix = { workspace = true }
 slop-futures = { workspace = true }
 
 rayon = { workspace = true }
-transpose = "0.2.3"
-arrayvec = "0.7.6"
+transpose = { workspace = true }
+arrayvec = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

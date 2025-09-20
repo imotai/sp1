@@ -40,9 +40,9 @@ tokio = { workspace = true }
 
 itertools = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-rand = "0.8.5"
+rand = { workspace = true }
 tracing = { workspace = true }
-rayon = "1.10.0"
+rayon = { workspace = true }
 
 [dev-dependencies]
 sp1-core-executor = { workspace = true }
@@ -50,11 +50,11 @@ sp1-hypercube = { workspace = true, features = ["test-proof"] }
 sp1-recursion-machine = { workspace = true }
 sp1-recursion-gnark-ffi = { workspace = true }
 slop-dft = { workspace = true }
-zkhash = "0.2.0"
-rand = "0.8.5"
-futures = "0.3.31"
+zkhash = { workspace = true }
+rand = { workspace = true }
+futures = { workspace = true }
 test-artifacts = { workspace = true }
-bincode = "1.3.3"
+bincode = { workspace = true }
 
 [features]
 # Enables debug features in dependencies.
