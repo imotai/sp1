@@ -257,6 +257,10 @@ impl<T> Mle<T, CpuBackend> {
 
     /// Returns an iterator over the evaluations of the MLE on the Boolean hypercube.
     ///
+    /// Panics
+    ///
+    /// If self.num_non_zero_entries() != 1 << self.num_variables()
+    ///
     /// The iterator yields a slice for each index of the Boolean hypercube.
     pub fn hypercube_iter(&self) -> impl Iterator<Item = &[T]>
     where
@@ -264,6 +268,9 @@ impl<T> Mle<T, CpuBackend> {
     {
         let width = self.num_polynomials();
         let height = self.num_variables();
+
+        assert_eq!(self.num_non_zero_entries(), 1 << height);
+
         (0..(1 << height)).map(move |i| &self.guts.as_slice()[i * width..(i + 1) * width])
     }
 
