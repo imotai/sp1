@@ -6451,7 +6451,7 @@ name = "slop-basefold"
 version = "6.0.0"
 dependencies = [
  "derive-where",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "serde",
  "slop-algebra",
  "slop-alloc",
@@ -6473,7 +6473,7 @@ name = "slop-basefold-prover"
 version = "6.0.0"
 dependencies = [
  "derive-where",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "rand 0.8.5",
  "serde",
  "slop-algebra",
@@ -6566,7 +6566,7 @@ version = "6.0.0"
 dependencies = [
  "derive-where",
  "futures",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "num_cpus",
  "rand 0.8.5",
  "rayon",
@@ -6759,7 +6759,7 @@ version = "6.0.0"
 dependencies = [
  "derive-where",
  "futures",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "rand 0.8.5",
  "rayon",
  "serde",

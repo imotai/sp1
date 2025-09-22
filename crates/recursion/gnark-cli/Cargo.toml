@@ -9,6 +9,8 @@ repository = { workspace = true }
 keywords = { workspace = true }
 categories = { workspace = true }
 
+# TODO: when reviving this crate, lift its dependencies to the workspace Cargo.toml.
+
 [dependencies]
 sp1-recursion-gnark-ffi = { workspace = true, features = ["native"] }
 clap = { version = "4.5.9", features = ["derive"] }

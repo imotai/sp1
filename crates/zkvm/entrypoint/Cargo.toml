@@ -11,8 +11,8 @@ categories = { workspace = true }
 
 [dependencies]
 cfg-if = { workspace = true }
-getrandom_v2 = { version = "0.2.15", features = ["custom"], package = "getrandom" }
-getrandom_v3 = { version = "0.3.3" , package = "getrandom" }
+getrandom_v2 = { workspace = true, features = ["custom"] }
+getrandom_v3 = { workspace = true }
 rand = { workspace = true }
 libm = { workspace = true, optional = true }
 sha2 = { workspace = true }

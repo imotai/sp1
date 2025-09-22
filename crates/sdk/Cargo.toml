@@ -12,7 +12,7 @@ categories = { workspace = true }
 [dependencies]
 prost = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
-twirp = { package = "twirp-rs", version = "0.13.0-succinct", optional = true }
+twirp = { workspace = true, optional = true }
 async-trait = { workspace = true }
 reqwest-middleware = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["rustls-tls", "trust-dns", "stream", "json"], optional = true }

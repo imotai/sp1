@@ -166,7 +166,7 @@ test-artifacts = { path = "crates/test-artifacts" }
 # misc
 alloy-primitives = { version = "1.0", default-features = false }
 alloy-sol-types = { version = "1.0", default-features = false }
-amcl = { version = "1.0.2", default-features = false }
+amcl = { package = "snowbridge-amcl", version = "1.0.2", default-features = false }
 anyhow = "1.0.86"
 arrayref = "0.3.8"
 arrayvec = "0.7.6"
@@ -201,8 +201,8 @@ ff = "0.13"
 futures = "0.3"
 gecko_profile = "0.4.0"
 generic-array = "=1.1.0"
-getrandom_v2 = "0.2.15"
-getrandom_v3 = "0.3.3"
+getrandom_v2 = { package = "getrandom", version = "0.2.15", default-features = false }
+getrandom_v3 = { package = "getrandom", version = "0.3.3", default-features = false }
 goblin = "0.9"
 hashbrown = "0.14.5"
 hex = "0.4.3"
@@ -230,7 +230,7 @@ rayon = "1.10.0"
 rayon-scan = "0.1.1"
 reqwest = { version = "0.12.12", default-features = false }
 reqwest-middleware = "0.3.2"
-rrs_lib = { git = "https://github.com/succinctlabs/rrs-succinct.git", branch = "gautham/rv64executor-2" }
+rrs-lib = { git = "https://github.com/succinctlabs/rrs-succinct.git", branch = "gautham/rv64executor-2" }
 rug = "1.26.1"
 rustc-demangle = "0.1.18"
 semver = "1.0.26"
@@ -258,7 +258,7 @@ tracing-appender = "0.2.3"
 tracing-forest = "0.1.6"
 tracing-subscriber = "0.3.18"
 transpose = "0.2.3"
-twirp = "0.13.0-succinct"
+twirp = { package = "twirp-rs", version = "0.13.0-succinct" }
 typenum = "1.17.0"
 users = "0.11.0"
 uuid = "1.17.0"

@@ -16,9 +16,7 @@ typenum = { workspace = true }
 k256 = { workspace = true, features = ["expose-field"] }
 p256 = { workspace = true, features = ["expose-field"] }
 generic-array = { workspace = true, features = ["alloc", "serde"] }
-amcl = { package = "snowbridge-amcl", version = "1.0.2", default-features = false, features = [
-  "bls381",
-] }
+amcl = { workspace = true, features = ["bls381"] }
 elliptic-curve = { workspace = true }
 dashu = { workspace = true }
 
