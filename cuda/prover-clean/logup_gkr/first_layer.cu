@@ -17,6 +17,70 @@ __global__ void proverCleanLogupGkrFixLastVariableFirstCircuitLayer(
     }
 }
 
+__global__ void proverCleanFixAndSumFirstCircuitLayer(
+    ext_t* __restrict__ univariate_result,
+    const JaggedMle<JaggedFirstGkrLayer> inputJaggedMle,
+    JaggedMle<JaggedGkrLayer> outputJaggedMle,
+    const ext_t* __restrict__ eqRow,
+    const ext_t* __restrict__ eqInteraction,
+    const ext_t lambda,
+    ext_t alpha) {
+
+    ext_t evalZero = ext_t::zero();
+    ext_t evalHalf = ext_t::zero();
+    ext_t eqSum = ext_t::zero();
+    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < inputJaggedMle.denseData.height >> 1;
+         i += blockDim.x * gridDim.x) {
+        // Process one fixLastVariable. Since height is always even, this is guaranteed to not
+        // require any padding checks.
+        size_t firstIdx = i << 1;
+        inputJaggedMle.fixLastVariableUnchecked(outputJaggedMle, firstIdx, alpha);
+
+        // The second fix_last_variable could by trying to process the end of the row. We are
+        // guaranteed to be able to access the end of this row, but we need to make sure that the
+        // next row has even length too.
+        size_t secondIdx = firstIdx + 1;
+
+        size_t restrictedIndex =
+            inputJaggedMle.fixLastVariableTwoPadding(outputJaggedMle, secondIdx, alpha);
+
+        size_t outputIndex = restrictedIndex >> 1;
+
+        // Now set up the sum_as_poly.
+        size_t colIdx = outputJaggedMle.colIndex[outputIndex];
+        size_t startIdx = outputJaggedMle.startIndices[colIdx];
+        SumAsPolyResult result = sumAsPolyCircuitLayerInner(
+            outputJaggedMle.denseData.layer,
+            colIdx,
+            startIdx,
+            eqRow,
+            eqInteraction,
+            lambda,
+            outputJaggedMle.denseData.height,
+            outputIndex);
+
+        evalZero += result.evalZero;
+        evalHalf += result.evalHalf;
+        eqSum += result.eqSum;
+    }
+
+    // Allocate shared memory
+    extern __shared__ unsigned char memory[];
+    ext_t* shared = reinterpret_cast<ext_t*>(memory);
+
+    auto block = cg::this_thread_block();
+    auto tile = cg::tiled_partition<32>(block);
+    ext_t evalZeroblockSum = partialBlockReduce(block, tile, evalZero, shared);
+    ext_t evalHalfblockSum = partialBlockReduce(block, tile, evalHalf, shared);
+    ext_t eqSumBlockSum = partialBlockReduce(block, tile, eqSum, shared);
+
+    if (threadIdx.x == 0) {
+        ext_t::store(univariate_result, blockIdx.x, evalZeroblockSum);
+        ext_t::store(univariate_result, gridDim.x + blockIdx.x, evalHalfblockSum);
+        ext_t::store(univariate_result, 2 * gridDim.x + blockIdx.x, eqSumBlockSum);
+    }
+}
+
 __global__ void proverCleanLogupGkrSumAsPolyFirstCircuitLayer(
     ext_t* __restrict__ result,
     const JaggedMle<JaggedFirstGkrLayer> inputJaggedMle,
@@ -100,6 +164,10 @@ __global__ void proverCleanLogUpFirstLayerTransitionKernel(
 
         circuitTransitionTwoPadding(inputJaggedMle, outputJaggedMle, i);
     }
+}
+
+extern "C" void* prover_clean_logup_gkr_fix_and_sum_first_layer() {
+    return (void*)proverCleanFixAndSumFirstCircuitLayer;
 }
 
 extern "C" void* prover_clean_logup_gkr_fix_last_variable_first_layer() {

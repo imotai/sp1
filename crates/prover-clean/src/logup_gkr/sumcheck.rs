@@ -9,7 +9,7 @@ use csl_cuda::{
         logup_gkr_fix_and_sum_interactions_layer as fix_and_sum_interactions_layer_kernel,
         logup_gkr_fix_and_sum_last_circuit_layer as fix_and_sum_last_circuit_layer_kernel,
         prover_clean_logup_gkr_first_sum_as_poly_circuit_layer as first_sum_as_poly_layer_circuit_layer_kernel,
-        prover_clean_logup_gkr_fix_last_variable_first_layer as fix_last_variable_first_layer_kernel,
+        prover_clean_logup_gkr_fix_and_sum_first_layer as fix_and_sum_first_layer_kernel,
         prover_clean_logup_gkr_fix_last_variable_interactions_layer as fix_last_variable_interactions_layer_kernel,
         prover_clean_logup_gkr_fix_last_variable_last_circuit_layer as fix_last_row_last_circuit_layer_kernel,
         prover_clean_logup_gkr_sum_as_poly_circuit_layer as sum_as_poly_circuit_layer_kernel,
@@ -53,6 +53,50 @@ pub async fn get_component_poly_evals(poly: &LogupRoundPolynomial) -> Vec<Ext> {
         }
         PolynomialLayer::CircuitLayer(_) => unreachable!(),
     }
+}
+
+async fn finalize_univariate(
+    poly: &LogupRoundPolynomial,
+    univariate_evals: Tensor<Ext, TaskScope>,
+    claim: Ext,
+) -> UnivariatePolynomial<Ext> {
+    let evals = univariate_evals.sum(1).await.into_buffer().to_host().await.unwrap();
+    let mut eval_zero: Ext = *evals[0];
+    let mut eval_half: Ext = *evals[1];
+    let eq_sum = *evals[2];
+    let point_last = *poly.point.last().unwrap();
+
+    // Correct the evaluations by the sum of the eq polynomial, which accounts for the
+    // contribution of padded row for the denominator expression
+    // `\Sum_i eq * denominator_0 * denominator_1`.
+    let eq_correction_term = poly.padding_adjustment - eq_sum;
+    // The evaluation at zero just gets the eq correction term.
+    eval_zero += eq_correction_term * (Ext::one() - point_last);
+    // The evaluation at 1/2 gets the eq correction term times 4, since the denominators
+    // have a 1/2 in them for the rest of the evaluations (so we multiply by 2 twice).
+    eval_half += eq_correction_term * Ext::from_canonical_u16(4);
+
+    // Since the sumcheck polynomial is homogeneous of degree 3, we need to divide by
+    // 8 = 2^3 to account for the evaluations at 1/2 to be double their true value.
+    let eval_half = eval_half * Ext::from_canonical_u16(8).inverse();
+
+    let eval_zero = eval_zero * poly.eq_adjustment;
+    let eval_half = eval_half * poly.eq_adjustment;
+
+    // Get the root of the eq polynomial which gives an evaluation of zero.
+    let b_const = (Ext::one() - point_last) / (Ext::one() - point_last.double());
+
+    let eval_one = claim - eval_zero;
+
+    interpolate_univariate_polynomial(
+        &[
+            Ext::from_canonical_u16(0),
+            Ext::from_canonical_u16(1),
+            Ext::from_canonical_u16(2).inverse(),
+            b_const,
+        ],
+        &[eval_zero, eval_one, eval_half, Ext::zero()],
+    )
 }
 
 /// Evaluates the first layer polynomial and eq polynomial at 0 and 1/2.
@@ -128,81 +172,6 @@ async fn sum_as_poly_first_layer(
         ],
         &[eval_zero, eval_one, eval_half, Ext::zero()],
     )
-}
-
-/// Fix the last variable of the first gkr layer.
-async fn fix_last_variable_first_layer(
-    mut poly: FirstLayerPolynomial,
-    alpha: Ext,
-) -> LogupRoundPolynomial {
-    let last_coordinate = poly.point.remove_last_coordinate();
-    let padding_adjustment =
-        last_coordinate * alpha + (Ext::one() - last_coordinate) * (Ext::one() - alpha);
-
-    let backend = poly.layer.jagged_mle.backend();
-    let height = poly.layer.jagged_mle.dense_data.height >> 1;
-    // If this is not the last layer, we need to fix the last variable and create a
-    // new circuit layer.
-    let output_interaction_col_sizes = poly
-        .layer
-        .interaction_col_sizes
-        .iter()
-        .map(|count| count.div_ceil(4) * 2)
-        .collect::<Vec<_>>();
-    // The output indices is just the prefix sum of the interaction row counts.
-    let output_interaction_start_indices = once(0)
-        .chain(output_interaction_col_sizes.iter().scan(0u32, |acc, x| {
-            *acc += x;
-            Some(*acc)
-        }))
-        .collect::<Buffer<_>>();
-    let output_height = output_interaction_start_indices.last().copied().unwrap() as usize;
-    let output_interaction_start_indices =
-        output_interaction_start_indices.to_device_in(backend).await.unwrap();
-
-    // Create a new layer
-    let output_layer: Tensor<Ext, TaskScope> =
-        Tensor::with_sizes_in([4, 1, output_height * 2], backend.clone());
-    let output_col_index: Buffer<u32, TaskScope> =
-        Buffer::with_capacity_in(output_height, backend.clone());
-
-    let output_jagged_layer = JaggedGkrLayer::new(output_layer, output_height);
-    let mut output_jagged_mle =
-        JaggedMle::new(output_jagged_layer, output_col_index, output_interaction_start_indices);
-
-    // populate the new layer
-    const BLOCK_SIZE: usize = 256;
-    const STRIDE: usize = 32;
-    let grid_size_x = height.div_ceil(BLOCK_SIZE * STRIDE);
-    let grid_size = (grid_size_x, 1, 1);
-    let block_dim = BLOCK_SIZE;
-    unsafe {
-        output_jagged_mle.dense_data.assume_init();
-        output_jagged_mle.col_index.assume_init();
-        let args = args!(poly.layer.jagged_mle.as_raw(), output_jagged_mle.as_mut_raw(), alpha);
-        backend
-            .launch_kernel(fix_last_variable_first_layer_kernel(), grid_size, block_dim, &args, 0)
-            .unwrap();
-    }
-    // Fix the eq_row variables
-    let eq_row = poly.eq_row.fix_last_variable(alpha).await;
-
-    let output_layer = GkrLayer {
-        jagged_mle: output_jagged_mle,
-        interaction_col_sizes: output_interaction_col_sizes,
-        num_row_variables: poly.layer.num_row_variables - 1,
-        num_interaction_variables: poly.layer.num_interaction_variables,
-    };
-
-    LogupRoundPolynomial {
-        layer: PolynomialLayer::CircuitLayer(output_layer),
-        eq_row,
-        eq_interaction: poly.eq_interaction,
-        lambda: poly.lambda,
-        point: poly.point,
-        eq_adjustment: Ext::one(),
-        padding_adjustment,
-    }
 }
 
 async fn fix_last_variable_materialized_round(
@@ -300,48 +269,103 @@ async fn fix_last_variable_materialized_round(
     }
 }
 
-async fn finalize_univariate(
-    poly: &LogupRoundPolynomial,
-    univariate_evals: Tensor<Ext, TaskScope>,
+async fn fix_and_sum_first_layer(
+    mut poly: FirstLayerPolynomial,
+    alpha: Ext,
     claim: Ext,
-) -> UnivariatePolynomial<Ext> {
-    let evals = univariate_evals.sum(1).await.into_buffer().to_host().await.unwrap();
-    let mut eval_zero: Ext = *evals[0];
-    let mut eval_half: Ext = *evals[1];
-    let eq_sum = *evals[2];
+) -> (UnivariatePolynomial<Ext>, LogupRoundPolynomial) {
+    let last_coordinate = poly.point.remove_last_coordinate();
+    let padding_adjustment =
+        last_coordinate * alpha + (Ext::one() - last_coordinate) * (Ext::one() - alpha);
 
-    // Correct the evaluations by the sum of the eq polynomial, which accounts for the
-    // contribution of padded row for the denominator expression
-    // `\Sum_i eq * denominator_0 * denominator_1`.
-    let eq_correction_term = poly.padding_adjustment - eq_sum;
-    // The evaluation at zero just gets the eq correction term.
-    eval_zero += eq_correction_term * (Ext::one() - *poly.point.last().unwrap());
-    // The evaluation at 1/2 gets the eq correction term times 4, since the denominators
-    // have a 1/2 in them for the rest of the evaluations (so we multiply by 2 twice).
-    eval_half += eq_correction_term * Ext::from_canonical_u16(4);
+    let backend = poly.layer.jagged_mle.backend();
+    let height = poly.layer.jagged_mle.dense_data.height >> 1;
+    // If this is not the last layer, we need to fix the last variable and create a
+    // new circuit layer.
+    let output_interaction_col_sizes = poly
+        .layer
+        .interaction_col_sizes
+        .iter()
+        .map(|count| count.div_ceil(4) * 2)
+        .collect::<Vec<_>>();
+    // The output indices is just the prefix sum of the interaction row counts.
+    let output_interaction_start_indices = once(0)
+        .chain(output_interaction_col_sizes.iter().scan(0u32, |acc, x| {
+            *acc += x;
+            Some(*acc)
+        }))
+        .collect::<Buffer<_>>();
+    let output_height = output_interaction_start_indices.last().copied().unwrap() as usize;
+    let output_interaction_start_indices =
+        output_interaction_start_indices.to_device_in(backend).await.unwrap();
 
-    // Since the sumcheck polynomial is homogeneous of degree 3, we need to divide by
-    // 8 = 2^3 to account for the evaluations at 1/2 to be double their true value.
-    let eval_half = eval_half * Ext::from_canonical_u16(8).inverse();
+    // Create a new layer
+    let output_layer: Tensor<Ext, TaskScope> =
+        Tensor::with_sizes_in([4, 1, output_height * 2], backend.clone());
+    let output_col_index: Buffer<u32, TaskScope> =
+        Buffer::with_capacity_in(output_height, backend.clone());
 
-    let eval_zero = eval_zero * poly.eq_adjustment;
-    let eval_half = eval_half * poly.eq_adjustment;
+    let output_jagged_layer = JaggedGkrLayer::new(output_layer, output_height);
+    let mut output_jagged_mle =
+        JaggedMle::new(output_jagged_layer, output_col_index, output_interaction_start_indices);
 
-    // Get the root of the eq polynomial which gives an evaluation of zero.
-    let point_last = poly.point.last().unwrap();
-    let b_const = (Ext::one() - *point_last) / (Ext::one() - point_last.double());
+    // Fix the eq_row variables
+    let eq_row = poly.eq_row.fix_last_variable(alpha).await;
 
-    let eval_one = claim - eval_zero;
+    // populate the new layer
+    const BLOCK_SIZE: usize = 256;
+    const STRIDE: usize = 32;
+    let grid_size_x = height.div_ceil(BLOCK_SIZE * STRIDE);
+    let mut univariate_evals =
+        Tensor::<Ext, TaskScope>::with_sizes_in([3, grid_size_x], backend.clone());
+    let grid_size = (grid_size_x, 1, 1);
+    let block_dim = BLOCK_SIZE;
 
-    interpolate_univariate_polynomial(
-        &[
-            Ext::from_canonical_u16(0),
-            Ext::from_canonical_u16(1),
-            Ext::from_canonical_u16(2).inverse(),
-            b_const,
-        ],
-        &[eval_zero, eval_one, eval_half, Ext::zero()],
-    )
+    let num_tiles = BLOCK_SIZE.checked_div(STRIDE).unwrap_or(1);
+    let shared_mem = num_tiles * std::mem::size_of::<Ext>();
+
+    unsafe {
+        univariate_evals.assume_init();
+        output_jagged_mle.dense_data.assume_init();
+        output_jagged_mle.col_index.assume_init();
+        let args = args!(
+            univariate_evals.as_mut_ptr(),
+            poly.layer.jagged_mle.as_raw(),
+            output_jagged_mle.as_mut_raw(),
+            eq_row.guts().as_ptr(),
+            poly.eq_interaction.guts().as_ptr(),
+            poly.lambda,
+            alpha
+        );
+        backend
+            .launch_kernel(
+                fix_and_sum_first_layer_kernel(),
+                grid_size,
+                block_dim,
+                &args,
+                shared_mem,
+            )
+            .unwrap();
+    }
+
+    let output_layer = GkrLayer {
+        jagged_mle: output_jagged_mle,
+        interaction_col_sizes: output_interaction_col_sizes,
+        num_row_variables: poly.layer.num_row_variables - 1,
+        num_interaction_variables: poly.layer.num_interaction_variables,
+    };
+
+    let result_poly = LogupRoundPolynomial {
+        layer: PolynomialLayer::CircuitLayer(output_layer),
+        eq_row,
+        eq_interaction: poly.eq_interaction,
+        lambda: poly.lambda,
+        point: poly.point,
+        eq_adjustment: Ext::one(),
+        padding_adjustment,
+    };
+    let univariate_evals = finalize_univariate(&result_poly, univariate_evals, claim).await;
+    (univariate_evals, result_poly)
 }
 
 async fn sum_as_poly_materialized_round(
@@ -642,20 +666,14 @@ where
     // The univariate poly messages.  This will be a rlc of the polys' univariate polys.
     let mut univariate_poly_msgs: Vec<UnivariatePolynomial<Ext>> = vec![];
 
-    let mut uni_poly = sum_as_poly_first_layer(&poly, claim).await;
+    let uni_poly = sum_as_poly_first_layer(&poly, claim).await;
 
-    let mut alpha = process_univariate_polynomial(
-        uni_poly.clone(),
-        challenger,
-        &mut univariate_poly_msgs,
-        &mut point,
-    );
+    let mut alpha =
+        process_univariate_polynomial(uni_poly, challenger, &mut univariate_poly_msgs, &mut point);
 
-    let mut poly = fix_last_variable_first_layer(poly, alpha).await;
+    let round_claim = univariate_poly_msgs.last().unwrap().eval_at_point(*point.first().unwrap());
 
-    let round_claim = uni_poly.eval_at_point(*point.first().unwrap());
-
-    uni_poly = sum_as_poly_materialized_round(&poly, round_claim).await;
+    let (mut uni_poly, mut poly) = fix_and_sum_first_layer(poly, alpha, round_claim).await;
 
     alpha =
         process_univariate_polynomial(uni_poly, challenger, &mut univariate_poly_msgs, &mut point);

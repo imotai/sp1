@@ -47,6 +47,7 @@ extern "C" {
 
     // LogUp GKR kernels - First layer operations
     pub fn prover_clean_logup_gkr_fix_last_variable_first_layer() -> KernelPtr;
+    pub fn prover_clean_logup_gkr_fix_and_sum_first_layer() -> KernelPtr;
     pub fn prover_clean_logup_gkr_sum_as_poly_first_layer() -> KernelPtr;
     pub fn prover_clean_logup_gkr_first_layer_transition() -> KernelPtr;
 
