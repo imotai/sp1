@@ -190,8 +190,10 @@ struct JaggedMle {
                 }
             }
             const uint32_t row = i - start_c;
-            cur_acc += this->denseData.evaluate(i << 1, row_coefficient[row << 1]);
-            cur_acc += this->denseData.evaluate(i << 1 | 1, row_coefficient[row << 1 | 1]);
+            ext_t row_coefficient_0 = row_coefficient[row << 1];
+            ext_t row_coefficient_1 = row_coefficient[row << 1 | 1];
+            cur_acc += this->denseData.evaluate(i << 1, row_coefficient_0);
+            cur_acc += this->denseData.evaluate(i << 1 | 1, row_coefficient_1);
         }
         acc += cur_acc * zc;
 

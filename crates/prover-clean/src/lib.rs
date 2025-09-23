@@ -6,6 +6,7 @@ pub mod logup_gkr;
 pub mod look_ahead;
 pub mod reduce;
 pub mod sum;
+pub mod tracegen;
 pub mod zerocheck;
 
 pub use jagged::*;

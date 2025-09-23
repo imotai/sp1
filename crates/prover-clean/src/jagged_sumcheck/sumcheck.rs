@@ -73,6 +73,7 @@ impl<A: Backend> JaggedFirstRoundPoly<A> {
 
 /// We allow dead code here because this is just a wrapper for a c struct. Rust never needs to read these fields.
 #[allow(dead_code)]
+#[repr(C)]
 pub struct JaggedFirstRoundPolyRaw {
     base: *const Felt,
     eq_z_col: *const Ext,

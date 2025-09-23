@@ -226,10 +226,8 @@ mod tests {
                 mles.push(Mle::from_buffer(Buffer::from(
                     data[2 * cnt..2 * cnt + row as usize].to_vec(),
                 )));
-                for _ in 0..row / 2 {
-                    cols[cnt] = col_idx;
-                    cnt += 1;
-                }
+                cols[cnt..cnt + row as usize / 2].fill(col_idx);
+                cnt += row as usize / 2;
                 start_idx[(col_idx + 1) as usize] = start_idx[col_idx as usize] + row / 2;
                 col_idx += 1;
             }

@@ -8,8 +8,11 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+# cuslop
 csl-cuda = { workspace = true }
+csl-tracegen = { workspace = true }
 
+# slop
 slop-air = { workspace = true }
 slop-algebra = { workspace = true }
 slop-alloc = { workspace = true }
@@ -23,11 +26,17 @@ slop-jagged = { workspace = true }
 slop-commit = { workspace = true }
 slop-futures = { workspace = true }
 
+# sp1
 sp1-hypercube = { workspace = true }
+sp1-core-executor = { workspace = true }
+sp1-core-machine = { workspace = true }
+sp1-prover = { workspace = true }
 
+# misc
 itertools = { workspace = true }
 rand = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
 
 bincode = "1.3"
 thiserror = "1.0"
@@ -36,8 +45,12 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 num-bigint = "0.4.6"
 rayon = "1.10.0"
+
 [dev-dependencies]
 serial_test = "3.1"
+zstd = "0.13.3"
+sp1-sdk = { workspace = true, features = ["unsound"] }
+sp1-recursion-circuit = { workspace = true }
 
 [[bin]]
 name = "hadamard_sumcheck_bench"
