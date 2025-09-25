@@ -150,7 +150,7 @@ impl<F: Field> AirInteraction<ExprRef<F>> {
                 }
             }
             InteractionKind::Program => {
-                assert_eq!(self.values.len(), 19);
+                assert_eq!(self.values.len(), 16);
 
                 for (idx, val) in self.values.iter().enumerate() {
                     if idx == 3 {
