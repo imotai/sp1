@@ -1634,6 +1634,11 @@ mod tests {
             challenger.observe(*commitment);
         }
 
+        let evaluation_claims = evaluation_claims
+            .into_iter()
+            .map(|round| round.into_iter().flat_map(|v| v.into_iter()).collect())
+            .collect::<Vec<_>>();
+
         machine_verifier
             .verify_trusted_evaluations(
                 &commitments,

@@ -2,7 +2,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
 use slop_challenger::{FieldChallenger, IopCtx};
-use slop_multilinear::{full_geq, Evaluations, Mle, MultilinearPcsVerifier, Point};
+use slop_multilinear::{full_geq, Mle, MleEval, MultilinearPcsVerifier, Point};
 use slop_sumcheck::{partially_verify_sumcheck_proof, PartialSumcheckProof, SumcheckError};
 use std::fmt::Debug;
 use thiserror::Error;
@@ -57,7 +57,7 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
         &self,
         commitments: &[GC::Digest],
         point: Point<GC::EF>,
-        evaluation_claims: &[Evaluations<GC::EF>],
+        evaluation_claims: &[MleEval<GC::EF>],
         proof: &JaggedPcsProof<GC, C>,
         insertion_points: &[usize],
         challenger: &mut GC::Challenger,
@@ -81,8 +81,7 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
         }
 
         // Collect the claims for the different polynomials.
-        let mut column_claims =
-            evaluation_claims.iter().flatten().flatten().copied().collect::<Vec<_>>();
+        let mut column_claims = evaluation_claims.iter().flatten().copied().collect::<Vec<_>>();
 
         if insertion_points.len() != added_columns.len()
             || insertion_points.len() != commitments.len()
@@ -132,11 +131,11 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
         // let mut num_stacked_columns = 0;
 
         for i in 0..evaluation_claims.len() {
-            let count_polys = |evals: &[slop_multilinear::MleEval<_>]| {
-                evals.iter().map(slop_multilinear::MleEval::num_polynomials).sum::<usize>()
-            };
+            // let count_polys = |evals: &[slop_multilinear::MleEval<_>]| {
+            //     evals.iter().map(slop_multilinear::MleEval::num_polynomials).sum::<usize>()
+            // };
 
-            prefix_sum_index += count_polys(&evaluation_claims[i].round_evaluations);
+            prefix_sum_index += evaluation_claims[i].num_polynomials();
             prefix_sum_index += added_columns[i];
 
             // TODO: Put these in stacked PCS.
@@ -246,7 +245,7 @@ impl<'a, GC: IopCtx, C: JaggedConfig<GC>> MachineJaggedPcsVerifier<'a, GC, C> {
         &self,
         commitments: &[GC::Digest],
         point: Point<GC::EF>,
-        evaluation_claims: &[Evaluations<GC::EF>],
+        evaluation_claims: &[MleEval<GC::EF>],
         proof: &JaggedPcsProof<GC, C>,
         challenger: &mut GC::Challenger,
     ) -> Result<(), JaggedPcsVerifierError<GC::EF, JaggedError<GC, C>>> {
@@ -256,11 +255,7 @@ impl<'a, GC: IopCtx, C: JaggedConfig<GC>> MachineJaggedPcsVerifier<'a, GC, C> {
         for (claims, expected_counts) in
             evaluation_claims.iter().zip_eq(&self.column_counts_by_round)
         {
-            let claim_count: usize = claims
-                .round_evaluations
-                .iter()
-                .map(slop_multilinear::MleEval::num_polynomials)
-                .sum();
+            let claim_count: usize = claims.num_polynomials();
 
             let expected_count: usize = expected_counts.iter().sum();
 

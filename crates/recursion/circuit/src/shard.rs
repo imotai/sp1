@@ -339,6 +339,16 @@ where
         let machine_jagged_verifier =
             RecursiveMachineJaggedPcsVerifier::new(&self.pcs_verifier, column_counts.clone());
 
+        let openings = openings
+            .into_iter()
+            .map(|round| {
+                round
+                    .into_iter()
+                    .flat_map(std::iter::IntoIterator::into_iter)
+                    .collect::<MleEval<_>>()
+            })
+            .collect::<Vec<_>>();
+
         builder.cycle_tracker_v2_enter("jagged-verifier");
         let prefix_sum_felts = machine_jagged_verifier.verify_trusted_evaluations(
             builder,
@@ -394,12 +404,9 @@ where
         // Check that the preprocessed prefix sum is the correct multiple of `stacking_height`.
         builder.assert_felt_eq(
             prefix_sum_felts[skip_indices[0] + 1],
-            SP1Field::from_canonical_u32(
+            SP1Field::from_canonical_usize(
                 (1 << self.pcs_verifier.stacked_pcs_verifier.log_stacking_height)
-                    * evaluation_proof.pcs_proof.batch_evaluations.rounds[0]
-                        .iter()
-                        .map(|x| x.num_polynomials() as u32)
-                        .sum::<u32>(),
+                    * evaluation_proof.pcs_proof.batch_evaluations.rounds[0].num_polynomials(),
             ),
         );
 
@@ -457,7 +464,7 @@ where
                     .pcs_proof
                     .batch_evaluations
                     .iter()
-                    .flat_map(|evaluations| evaluations.iter().map(|eval| eval.num_polynomials()))
+                    .map(|evaluations| evaluations.num_polynomials())
                     .sum::<usize>(),
         ));
 

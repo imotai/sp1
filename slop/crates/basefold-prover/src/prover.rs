@@ -505,7 +505,7 @@ mod tests {
         BasefoldVerifier, DefaultBasefoldConfig, Poseidon2BabyBear16BasefoldConfig,
     };
     use slop_challenger::CanObserve;
-    use slop_multilinear::MultilinearPcsBatchVerifier;
+    use slop_multilinear::{MleEval, MultilinearPcsBatchVerifier};
 
     use super::*;
 
@@ -588,6 +588,11 @@ mod tests {
         for commitment in commitments.iter() {
             challenger.observe(*commitment);
         }
+
+        let eval_claims = eval_claims
+            .into_iter()
+            .map(|round| round.into_iter().flat_map(|x| x.into_iter()).collect::<MleEval<_>>())
+            .collect::<Vec<_>>();
         verifier
             .verify_trusted_evaluations(&commitments, point, &eval_claims, &proof, &mut challenger)
             .unwrap();

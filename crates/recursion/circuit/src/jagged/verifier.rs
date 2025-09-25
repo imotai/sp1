@@ -4,7 +4,7 @@ use slop_algebra::{extension::BinomialExtensionField, AbstractField};
 use slop_jagged::{
     JaggedBasefoldConfig, JaggedLittlePolynomialVerifierParams, JaggedSumcheckEvalProof,
 };
-use slop_multilinear::{Evaluations, Mle, Point};
+use slop_multilinear::{Mle, MleEval, Point};
 use slop_sumcheck::PartialSumcheckProof;
 use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::{
@@ -105,7 +105,7 @@ impl<
         builder: &mut Builder<JC::Circuit>,
         commitments: &[JC::Commitment],
         point: Point<Ext<JC::F, JC::EF>>,
-        evaluation_claims: &[Evaluations<Ext<JC::F, JC::EF>>],
+        evaluation_claims: &[MleEval<Ext<JC::F, JC::EF>>],
         proof: &JaggedPcsProofVariable<JC>,
         insertion_points: &[usize],
         challenger: &mut JC::Challenger,
@@ -124,8 +124,7 @@ impl<
         let z_row = point;
 
         // Collect the claims for the different polynomials.
-        let mut column_claims =
-            evaluation_claims.iter().flatten().flatten().copied().collect::<Vec<_>>();
+        let mut column_claims = evaluation_claims.iter().flatten().copied().collect::<Vec<_>>();
 
         // For each commit, Rizz needed a commitment to a vector of length a multiple of
         // 1 << self.pcs.log_stacking_height, and this is achieved by adding a single column of
@@ -222,7 +221,7 @@ impl<
         builder: &mut Builder<JC::Circuit>,
         commitments: &[JC::Commitment],
         point: Point<Ext<JC::F, JC::EF>>,
-        evaluation_claims: &[Evaluations<Ext<JC::F, JC::EF>>],
+        evaluation_claims: &[MleEval<Ext<JC::F, JC::EF>>],
         proof: &JaggedPcsProofVariable<JC>,
         challenger: &mut JC::Challenger,
     ) -> Vec<Felt<JC::F>> {
@@ -257,7 +256,7 @@ mod tests {
     use slop_challenger::{CanObserve, IopCtx};
     use slop_commit::Rounds;
     use slop_jagged::{JaggedPcsProof, JaggedPcsVerifier, JaggedProver, MachineJaggedPcsVerifier};
-    use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
+    use slop_multilinear::{Evaluations, Mle, MleEval, PaddedMle, Point};
     use sp1_core_machine::utils::setup_logger;
     use sp1_hypercube::{
         inner_perm, SP1BasefoldConfig, SP1CoreJaggedConfig, SP1CpuJaggedProverComponents,
@@ -416,6 +415,13 @@ mod tests {
             // Ensure that the commitments are in the correct field.
             challenger.observe(*commitment);
         }
+
+        let evaluation_claims = evaluation_claims
+            .iter()
+            .map(|round| {
+                round.iter().flat_map(|evals| evals.iter().cloned()).collect::<MleEval<_>>()
+            })
+            .collect::<Vec<_>>();
 
         machine_verifier
             .verify_trusted_evaluations(

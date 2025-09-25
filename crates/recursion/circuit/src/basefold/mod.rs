@@ -9,7 +9,7 @@ use slop_algebra::{
     AbstractField, PrimeField31, TwoAdicField,
 };
 use slop_basefold::FriConfig;
-use slop_multilinear::{Evaluations, Point};
+use slop_multilinear::{MleEval, Point};
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     ir::{Builder, DslIr, Ext, Felt, SymbolicExt},
@@ -100,7 +100,7 @@ pub trait RecursiveMultilinearPcsVerifier: Sized {
         builder: &mut Builder<Self::Circuit>,
         commitments: &[Self::Commitment],
         point: Point<Ext<SP1Field, SP1ExtensionField>>,
-        evaluation_claims: &[Evaluations<Ext<SP1Field, SP1ExtensionField>>],
+        evaluation_claims: &[MleEval<Ext<SP1Field, SP1ExtensionField>>],
         proof: &Self::Proof,
         challenger: &mut Self::Challenger,
     );
@@ -110,16 +110,14 @@ pub trait RecursiveMultilinearPcsVerifier: Sized {
         builder: &mut Builder<Self::Circuit>,
         commitments: &[Self::Commitment],
         point: Point<Ext<SP1Field, SP1ExtensionField>>,
-        evaluation_claims: &[Evaluations<Ext<SP1Field, SP1ExtensionField>>],
+        evaluation_claims: &[MleEval<Ext<SP1Field, SP1ExtensionField>>],
         proof: &Self::Proof,
         challenger: &mut Self::Challenger,
     ) {
         for round in evaluation_claims.iter() {
-            for round_evaluations in round.iter() {
-                for evaluation in round_evaluations.iter() {
-                    let evaluation_felts = Self::Circuit::ext2felt(builder, *evaluation);
-                    evaluation_felts.iter().for_each(|felt| challenger.observe(builder, *felt));
-                }
+            for evaluation in round.iter() {
+                let evaluation_felts = Self::Circuit::ext2felt(builder, *evaluation);
+                evaluation_felts.iter().for_each(|felt| challenger.observe(builder, *felt));
             }
         }
         self.verify_trusted_evaluations(
@@ -147,7 +145,7 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> RecursiveMultilinearPcsVer
         builder: &mut Builder<Self::Circuit>,
         commitments: &[Self::Commitment],
         point: Point<Ext<SP1Field, SP1ExtensionField>>,
-        evaluation_claims: &[Evaluations<Ext<SP1Field, SP1ExtensionField>>],
+        evaluation_claims: &[MleEval<Ext<SP1Field, SP1ExtensionField>>],
         proof: &Self::Proof,
         challenger: &mut Self::Challenger,
     ) {
@@ -170,7 +168,7 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>>
         builder: &mut Builder<C>,
         commitments: &[SC::DigestVariable],
         mut point: Point<Ext<SP1Field, SP1ExtensionField>>,
-        evaluation_claims: &[Evaluations<Ext<SP1Field, SP1ExtensionField>>],
+        evaluation_claims: &[MleEval<Ext<SP1Field, SP1ExtensionField>>],
         proof: &RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>,
         challenger: &mut SC::FriChallengerVariable,
     ) {
@@ -182,7 +180,7 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>>
         // Compute the batched evaluation claim.
         let eval_claim = evaluation_claims
             .iter()
-            .flat_map(|batch_claims| batch_claims.iter().flat_map(|eval| eval.iter()))
+            .flat_map(|batch_claims| batch_claims.iter())
             .zip(batching_challenge.powers())
             .map(|(eval, batch_power)| *eval * batch_power)
             .sum::<SymbolicExt<SP1Field, SP1ExtensionField>>();
@@ -459,7 +457,7 @@ mod tests {
 
     use slop_commit::Rounds;
 
-    use slop_multilinear::Mle;
+    use slop_multilinear::{Evaluations, Mle};
     use sp1_hypercube::inner_perm;
     use sp1_primitives::{SP1Field, SP1GlobalContext};
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler};
@@ -530,6 +528,10 @@ mod tests {
         let mut builder = AsmBuilder::default();
         let mut witness_stream = Vec::new();
         let mut challenger_variable = DuplexChallengerVariable::new(&mut builder);
+        let eval_claims = eval_claims
+            .iter()
+            .map(|round| round.into_iter().flat_map(|x| x.into_iter()).collect::<MleEval<_>>())
+            .collect::<Rounds<_>>();
 
         for commitment in commitments.iter() {
             challenger.observe(*commitment);
@@ -656,6 +658,13 @@ mod tests {
 
         Witnessable::<AsmConfig>::write(&proof, &mut witness_stream);
         let proof = proof.read(&mut builder);
+
+        let eval_claims = eval_claims
+            .iter()
+            .map(|round| {
+                round.into_iter().flat_map(|x| x.into_iter()).copied().collect::<MleEval<_>>()
+            })
+            .collect::<Rounds<_>>();
 
         RecursiveBasefoldVerifier::<
             RecursiveBasefoldConfigImpl<AsmConfig, SP1CoreJaggedConfig>,

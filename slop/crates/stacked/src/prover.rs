@@ -5,7 +5,8 @@ use slop_alloc::{HasBackend, ToHost};
 use slop_challenger::IopCtx;
 use slop_commit::{Message, Rounds};
 use slop_multilinear::{
-    Evaluations, Mle, MleBaseBackend, MultilinearPcsBatchProver, MultilinearPcsProver, Point,
+    Evaluations, Mle, MleBaseBackend, MleEval, MultilinearPcsBatchProver, MultilinearPcsProver,
+    Point,
 };
 use std::fmt::Debug;
 use thiserror::Error;
@@ -177,6 +178,11 @@ impl<GC: IopCtx, P: MultilinearPcsBatchProver<GC>, S: InterleaveMultilinears<GC:
             )
             .await
             .map_err(StackedPcsProverError::PcsProverError)?;
+
+        let host_batch_evaluations = host_batch_evaluations
+            .into_iter()
+            .map(|round| round.into_iter().flatten().collect::<MleEval<_>>())
+            .collect::<Rounds<_>>();
 
         Ok(StackedPcsProof { pcs_proof, batch_evaluations: host_batch_evaluations })
     }

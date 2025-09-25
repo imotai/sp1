@@ -58,7 +58,7 @@ pub trait MultilinearPcsBatchVerifier<GC: IopCtx>: 'static + Send + Sync + Clone
         &self,
         commitments: &[GC::Digest],
         point: Point<GC::EF>,
-        evaluation_claims: &[Evaluations<GC::EF>],
+        evaluation_claims: &[MleEval<GC::EF>],
         proof: &Self::Proof,
         challenger: &mut GC::Challenger,
     ) -> Result<(), Self::VerifierError>;
@@ -72,16 +72,14 @@ pub trait MultilinearPcsBatchVerifier<GC: IopCtx>: 'static + Send + Sync + Clone
         &self,
         commitments: &[GC::Digest],
         point: Point<GC::EF>,
-        evaluation_claims: &[Evaluations<GC::EF>],
+        evaluation_claims: &[MleEval<GC::EF>],
         proof: &Self::Proof,
         challenger: &mut GC::Challenger,
     ) -> Result<(), Self::VerifierError> {
         // Observe the evaluation claims.
         for round in evaluation_claims.iter() {
-            for round_evaluations in round.iter() {
-                for evaluation in round_evaluations.iter() {
-                    challenger.observe_ext_element(*evaluation);
-                }
+            for evaluation in round.iter() {
+                challenger.observe_ext_element(*evaluation);
             }
         }
 
@@ -130,7 +128,7 @@ pub trait MultilinearPcsVerifier<GC: IopCtx>: 'static + Send + Sync + Clone {
         &self,
         commitments: &[GC::Digest],
         point: Point<GC::EF>,
-        evaluation_claims: GC::EF,
+        evaluation_claim: GC::EF,
         proof: &Self::Proof,
         challenger: &mut GC::Challenger,
     ) -> Result<(), Self::VerifierError>;

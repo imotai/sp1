@@ -1,7 +1,7 @@
 use super::RecursiveMultilinearPcsVerifier;
 use crate::sumcheck::evaluate_mle_ext;
 use slop_commit::Rounds;
-use slop_multilinear::{Evaluations, Mle, Point};
+use slop_multilinear::{Mle, MleEval, Point};
 use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
@@ -15,7 +15,7 @@ pub struct RecursiveStackedPcsVerifier<P> {
 }
 
 pub struct RecursiveStackedPcsProof<PcsProof, F, EF> {
-    pub batch_evaluations: Rounds<Evaluations<Ext<F, EF>>>,
+    pub batch_evaluations: Rounds<MleEval<Ext<F, EF>>>,
     pub pcs_proof: PcsProof,
 }
 
@@ -36,7 +36,7 @@ impl<P: RecursiveMultilinearPcsVerifier> RecursiveStackedPcsVerifier<P> {
         let (batch_point, stack_point) =
             point.split_at(point.dimension() - self.log_stacking_height as usize);
         let batch_evaluations =
-            proof.batch_evaluations.iter().flatten().flatten().cloned().collect::<Mle<_>>();
+            proof.batch_evaluations.iter().flatten().cloned().collect::<Mle<_>>();
 
         builder.cycle_tracker_v2_enter("rizz - evaluate_mle_ext");
         let expected_evaluation = evaluate_mle_ext(builder, batch_evaluations, batch_point)[0];

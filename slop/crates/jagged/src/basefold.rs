@@ -101,11 +101,7 @@ where
     fn round_multiples(
         proof: &<Self::PcsVerifier as slop_multilinear::MultilinearPcsVerifier<GC>>::Proof,
     ) -> Vec<usize> {
-        proof
-            .batch_evaluations
-            .iter()
-            .map(|e| e.iter().map(|e| e.to_vec().len()).sum::<usize>())
-            .collect()
+        proof.batch_evaluations.iter().map(|e| e.iter().count()).collect()
     }
 }
 
@@ -201,7 +197,7 @@ mod tests {
     use rand::{thread_rng, Rng};
     use slop_challenger::CanObserve;
     use slop_commit::Rounds;
-    use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
+    use slop_multilinear::{Evaluations, Mle, MleEval, PaddedMle, Point};
 
     use crate::MachineJaggedPcsVerifier;
 
@@ -347,6 +343,13 @@ mod tests {
         for commitment in commitments.iter() {
             challenger.observe(*commitment);
         }
+
+        let evaluation_claims = evaluation_claims
+            .iter()
+            .map(|round| {
+                round.iter().flat_map(|evals| evals.iter().cloned()).collect::<MleEval<_>>()
+            })
+            .collect::<Vec<_>>();
 
         machine_verifier
             .verify_trusted_evaluations(

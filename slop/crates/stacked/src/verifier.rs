@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
 use slop_challenger::IopCtx;
 use slop_commit::Rounds;
-use slop_multilinear::{
-    Evaluations, Mle, MultilinearPcsBatchVerifier, MultilinearPcsVerifier, Point,
-};
+use slop_multilinear::{Mle, MleEval, MultilinearPcsBatchVerifier, MultilinearPcsVerifier, Point};
 use thiserror::Error;
 
 #[derive(Debug, Clone)]
@@ -26,7 +24,7 @@ pub enum StackedVerifierError<PcsError> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StackedPcsProof<PcsProof, EF> {
     pub pcs_proof: PcsProof,
-    pub batch_evaluations: Rounds<Evaluations<EF>>,
+    pub batch_evaluations: Rounds<MleEval<EF>>,
 }
 
 impl<GC: IopCtx, P: MultilinearPcsBatchVerifier<GC>> StackedPcsVerifier<GC, P> {
@@ -57,7 +55,7 @@ impl<GC: IopCtx, P: MultilinearPcsBatchVerifier<GC>> StackedPcsVerifier<GC, P> {
 
         // Interpolate the batch evaluations as a multilinear polynomial.
         let batch_evaluations =
-            proof.batch_evaluations.iter().flatten().flatten().cloned().collect::<Mle<_>>();
+            proof.batch_evaluations.iter().flatten().cloned().collect::<Mle<_>>();
         // Verify that the climed evaluations matched the interpolated evaluations.
         let expected_evaluation = batch_evaluations.blocking_eval_at(&batch_point)[0];
         if evaluation_claim != expected_evaluation {

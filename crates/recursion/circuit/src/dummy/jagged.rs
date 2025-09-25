@@ -4,7 +4,7 @@ use slop_basefold::BasefoldProof;
 use slop_commit::Rounds;
 use slop_jagged::{JaggedLittlePolynomialVerifierParams, JaggedPcsProof, JaggedSumcheckEvalProof};
 use slop_merkle_tree::{MerkleTreeOpening, MerkleTreeTcsProof};
-use slop_multilinear::{Evaluations, Point};
+use slop_multilinear::{MleEval, Point};
 use slop_stacked::StackedPcsProof;
 use slop_tensor::Tensor;
 use sp1_hypercube::{log2_ceil_usize, SP1BasefoldConfig, SP1CoreJaggedConfig};
@@ -75,12 +75,10 @@ pub fn dummy_pcs_proof(
         marker: std::marker::PhantomData,
     };
 
-    let batch_evaluations: Rounds<Evaluations<InnerChallenge, CpuBackend>> = Rounds {
+    let batch_evaluations: Rounds<MleEval<InnerChallenge, CpuBackend>> = Rounds {
         rounds: log_stacking_height_multiples
             .iter()
-            .map(|&x| Evaluations {
-                round_evaluations: vec![vec![InnerChallenge::zero(); x].into()],
-            })
+            .map(|&x| vec![InnerChallenge::zero(); x].into())
             .collect(),
     };
 
@@ -125,7 +123,6 @@ pub fn dummy_pcs_proof(
 #[cfg(test)]
 mod tests {
 
-    use itertools::Itertools;
     use rand::{thread_rng, Rng};
     use slop_basefold::BasefoldProof;
     use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
@@ -334,15 +331,8 @@ mod tests {
             .iter()
             .zip(dummy_proof.pcs_proof.batch_evaluations.rounds.iter())
         {
-            assert_eq!(round.round_evaluations.len(), dummy_round.round_evaluations.len());
-            assert_eq!(round.round_evaluations.len(), 1);
-            for (eval, dummy_eval) in
-                round.round_evaluations.iter().zip_eq(dummy_round.round_evaluations.iter())
-            {
-                assert_eq!(eval.num_polynomials(), dummy_eval.num_polynomials());
-            }
+            assert_eq!(round.num_polynomials(), dummy_round.num_polynomials());
         }
-
         // Check that the BaseFold proof is the right shape.
         let BasefoldProof {
             univariate_messages: dummy_univariate_messages,

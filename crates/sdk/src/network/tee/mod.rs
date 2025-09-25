@@ -97,8 +97,7 @@ pub fn verify_tee_proof(
         Ok(())
     } else {
         Err(crate::SP1VerificationError::Other(anyhow::anyhow!(
-            "Invalid TEE proof, signed by unknown address {}",
-            address
+            "Invalid TEE proof, signed by unknown address {address}",
         )))
     }
 }

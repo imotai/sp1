@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use slop_challenger::IopCtx;
-use slop_multilinear::{Evaluations, Mle, MultilinearPcsBatchVerifier, Point};
+use slop_multilinear::{Mle, MultilinearPcsBatchVerifier, Point};
 use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
 
 use crate::prover::Proof;
@@ -67,7 +67,7 @@ impl<GC: IopCtx, MV: MultilinearPcsBatchVerifier<GC>> SparsePCSVerifier<GC, MV> 
             .verify_untrusted_evaluations(
                 &[commitment],
                 new_eval_point,
-                &[Evaluations::new(vec![proof.evaluation_claims.clone().into()])],
+                &[proof.evaluation_claims.clone().into()],
                 &proof.pcs_proof,
                 challenger,
             )

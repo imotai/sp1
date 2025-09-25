@@ -6,7 +6,7 @@ use slop_algebra::AbstractExtensionField;
 use slop_algebra::{AbstractField, TwoAdicField};
 use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger, IopCtx};
 use slop_merkle_tree::{MerkleTreeOpening, MerkleTreeTcs, MerkleTreeTcsError};
-use slop_multilinear::{Evaluations, MultilinearPcsBatchVerifier, Point};
+use slop_multilinear::{MleEval, MultilinearPcsBatchVerifier, Point};
 use slop_utils::reverse_bits_len;
 use thiserror::Error;
 
@@ -108,7 +108,7 @@ where
         &self,
         commitments: &[GC::Digest],
         point: Point<GC::EF>,
-        evaluation_claims: &[Evaluations<GC::EF>],
+        evaluation_claims: &[MleEval<GC::EF>],
         proof: &Self::Proof,
         challenger: &mut GC::Challenger,
     ) -> Result<(), Self::VerifierError> {
@@ -124,7 +124,7 @@ where
         &self,
         commitments: &[GC::Digest],
         mut point: Point<GC::EF>,
-        evaluation_claims: &[Evaluations<GC::EF>],
+        evaluation_claims: &[MleEval<GC::EF>],
         proof: &BasefoldProof<GC, B>,
         challenger: &mut GC::Challenger,
     ) -> Result<(), BaseFoldVerifierError<MerkleTreeTcsError>> {
@@ -133,7 +133,7 @@ where
         // Compute the batched evaluation claim.
         let eval_claim = evaluation_claims
             .iter()
-            .flat_map(|batch_claims| batch_claims.iter().flat_map(|eval| eval.iter()))
+            .flat_map(|batch_claims| batch_claims.iter())
             .zip(batching_challenge.powers())
             .map(|(eval, batch_power)| *eval * batch_power)
             .sum::<GC::EF>();
@@ -216,11 +216,7 @@ where
         let mut batch_challenge_power = GC::EF::one();
         for (round_idx, opening) in proof.component_polynomials_query_openings.iter().enumerate() {
             let values = &opening.values;
-            let total_columns = evaluation_claims[round_idx]
-                .round_evaluations
-                .iter()
-                .map(|y| y.num_polynomials())
-                .sum::<usize>();
+            let total_columns = evaluation_claims[round_idx].num_polynomials();
             if values.dimensions.sizes().len() != 2 {
                 return Err(BaseFoldVerifierError::IncorrectShape);
             }

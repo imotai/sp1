@@ -736,11 +736,21 @@ where
         let machine_jagged_verifier =
             MachineJaggedPcsVerifier::new(&self.jagged_pcs_verifier, column_counts);
 
+        let flattened_openings = openings
+            .into_iter()
+            .map(|round| {
+                round
+                    .into_iter()
+                    .flat_map(std::iter::IntoIterator::into_iter)
+                    .collect::<MleEval<_>>()
+            })
+            .collect::<Vec<_>>();
+
         machine_jagged_verifier
             .verify_trusted_evaluations(
                 &commitments,
                 zerocheck_proof.point_and_eval.0.clone(),
-                openings.as_slice(),
+                flattened_openings.as_slice(),
                 evaluation_proof,
                 challenger,
             )
