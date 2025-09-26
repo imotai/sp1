@@ -125,7 +125,7 @@ impl PlonkBn254Prover {
             &vk_root.to_string(),
             &proof_nonce.to_string(),
         )
-        .map_err(|e| anyhow::anyhow!("failed to verify proof: {}", e))
+        .map_err(|e| anyhow::anyhow!("failed to verify proof: {e}"))
     }
 }
 

@@ -43,7 +43,7 @@ serde_json = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 anyhow = { workspace = true }
 dirs = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }
 futures = { workspace = true }
 serial_test = { workspace = true }
 num-bigint = { workspace = true }
@@ -64,6 +64,7 @@ hex = { workspace = true }
 [dev-dependencies]
 test-artifacts = { workspace = true }
 anyhow = { workspace = true }
+sp1-verifier = { workspace = true, features = ["compressed"] }
 
 # [[bin]]
 # name = "build_plonk_bn254"
@@ -76,6 +77,7 @@ anyhow = { workspace = true }
 [[bin]]
 name = "build_recursion_vks"
 path = "scripts/build_recursion_vks.rs"
+required-features = ["tokio/rt-multi-thread"]
 
 # [[bin]]
 # name = "find_maximal_shapes"

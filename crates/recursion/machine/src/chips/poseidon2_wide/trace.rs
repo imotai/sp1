@@ -2,11 +2,11 @@ use slop_air::BaseAir;
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::dense::RowMajorMatrix;
 use slop_maybe_rayon::prelude::*;
-use sp1_core_machine::{
+use sp1_hypercube::{
+    air::MachineAir,
+    next_multiple_of_32,
     operations::poseidon2::{trace::populate_perm, WIDTH},
-    utils::next_multiple_of_32,
 };
-use sp1_hypercube::air::MachineAir;
 use sp1_primitives::SP1Field;
 use sp1_recursion_executor::{
     ExecutionRecord, Instruction, Poseidon2Instr, Poseidon2Io, RecursionProgram,

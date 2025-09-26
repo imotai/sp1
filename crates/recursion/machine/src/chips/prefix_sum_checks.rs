@@ -4,9 +4,11 @@ use itertools::Itertools;
 use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
-use sp1_core_machine::utils::{next_multiple_of_32, pad_rows_fixed};
 use sp1_derive::AlignedBorrow;
-use sp1_hypercube::air::{BinomialExtension, MachineAir};
+use sp1_hypercube::{
+    air::{BinomialExtension, MachineAir},
+    next_multiple_of_32, pad_rows_fixed,
+};
 use sp1_primitives::SP1Field;
 use sp1_recursion_executor::{
     Address, Block, ExecutionRecord, Instruction, PrefixSumChecksEvent, PrefixSumChecksInstr,

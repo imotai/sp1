@@ -4,7 +4,7 @@ use tokio::sync::{AcquireError, OwnedSemaphorePermit, Semaphore};
 /// A semaphore that can be used to permit memory usage.
 pub struct MemoryPermitting {
     inner: Arc<Semaphore>,
-    mem_in_bytes: u64,
+    mem_in_bytes: usize,
 }
 
 impl MemoryPermitting {
@@ -17,8 +17,8 @@ impl MemoryPermitting {
     ///
     /// Panics if the number of permits is greater than [`Self::MAX`].
     #[must_use]
-    pub fn new(mem_in_bytes: u64) -> Self {
-        Self { inner: Arc::new(Semaphore::new(mem_in_bytes as usize)), mem_in_bytes }
+    pub fn new(mem_in_bytes: usize) -> Self {
+        Self { inner: Arc::new(Semaphore::new(mem_in_bytes)), mem_in_bytes }
     }
 
     /// Get the total memory that can be permitted.
@@ -32,7 +32,7 @@ impl MemoryPermitting {
     /// # Panics
     ///
     /// Panics if the number of bytes is greater than [`Self::MAX`].
-    pub async fn acquire(&self, mem_in_bytes: u64) -> Result<MemoryPermit, MemoryPermitError> {
+    pub async fn acquire(&self, mem_in_bytes: usize) -> Result<MemoryPermit, MemoryPermitError> {
         if mem_in_bytes > self.mem_in_bytes {
             return Err(MemoryPermitError::ExceedsMaxPermittedMemory);
         } else if mem_in_bytes == 0 {
@@ -71,15 +71,15 @@ pub enum MemoryPermitError {
 pub struct MemoryPermit {
     inner: Vec<OwnedSemaphorePermit>,
     /// The total possible memory that can be permitted.
-    mem_in_bytes: u64,
+    mem_in_bytes: usize,
 }
 
 impl MemoryPermit {
     /// Create a new memory permit from a list of permits.
     #[must_use]
-    pub fn num_bytes(&self) -> u64 {
+    pub fn num_bytes(&self) -> usize {
         #[allow(clippy::pedantic)]
-        self.inner.iter().map(|p| p.num_permits() as u64).sum()
+        self.inner.iter().map(|p| p.num_permits()).sum()
     }
 
     /// Split the memory permit into two.
@@ -87,7 +87,7 @@ impl MemoryPermit {
     /// # Panics
     ///
     /// Panics if the number of bytes is greater than [`Self::num_bytes`].
-    pub fn split(&mut self, mem_in_bytes: u64) -> Result<MemoryPermit, MemoryPermitError> {
+    pub fn split(&mut self, mem_in_bytes: usize) -> Result<MemoryPermit, MemoryPermitError> {
         if mem_in_bytes > self.num_bytes() {
             return Err(MemoryPermitError::NotEnoughMemoryToSplit);
         } else if mem_in_bytes == 0 {
@@ -97,14 +97,14 @@ impl MemoryPermit {
         let mut permits = Vec::new();
         let mut to_acquire = mem_in_bytes;
         while let Some(permit) = self.inner.last_mut() {
-            let num_permits = permit.num_permits() as u64;
+            let num_permits = permit.num_permits();
 
             if num_permits <= to_acquire {
                 to_acquire -= num_permits;
                 permits.push(self.inner.pop().unwrap());
             } else {
                 // todo this accepts a usize, should we just use usize everywhere?
-                permits.push(permit.split(to_acquire as usize).unwrap());
+                permits.push(permit.split(to_acquire).unwrap());
             }
         }
 
@@ -112,7 +112,7 @@ impl MemoryPermit {
     }
 
     /// Increase the memory permit by the given number of bytes.
-    pub async fn increase(&mut self, mem_in_bytes: u64) -> Result<(), MemoryPermitError> {
+    pub async fn increase(&mut self, mem_in_bytes: usize) -> Result<(), MemoryPermitError> {
         if mem_in_bytes == 0 {
             return Ok(());
         }
@@ -138,7 +138,7 @@ impl MemoryPermit {
     /// # Panics
     ///
     /// Panics if the number of bytes is greater than [`Self::num_bytes`].
-    pub fn release(&mut self, mem_in_bytes: u64) -> Result<(), MemoryPermitError> {
+    pub fn release(&mut self, mem_in_bytes: usize) -> Result<(), MemoryPermitError> {
         if mem_in_bytes == 0 {
             return Ok(());
         }
@@ -156,12 +156,12 @@ impl MemoryPermit {
 /// a [`u32`].
 async fn accquire_raw(
     inner: &Arc<Semaphore>,
-    mem_in_bytes: u64,
+    mem_in_bytes: usize,
 ) -> Result<Vec<OwnedSemaphorePermit>, MemoryPermitError> {
     let mut permits = Vec::new();
     let mut to_acquire = mem_in_bytes;
     while to_acquire > 0 {
-        let n = to_acquire.min(u32::MAX as u64);
+        let n = to_acquire.min(u32::MAX as usize);
         let permit = inner.clone().acquire_many_owned(n as u32).await?;
 
         permits.push(permit);
@@ -170,6 +170,3 @@ async fn accquire_raw(
 
     Ok(permits)
 }
-
-#[cfg(not(target_pointer_width = "64"))]
-compile_error!("MemoryPermit is designed only to work on 64-bit systems.");

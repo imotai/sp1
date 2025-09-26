@@ -1,3 +1,5 @@
+//! An AIR operation for the Poseidon2 hash function.
+
 use permutation::Poseidon2Degree3Cols;
 use sp1_derive::AlignedBorrow;
 

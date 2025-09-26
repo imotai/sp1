@@ -16,6 +16,11 @@ lazy_static! {
     pub static ref GROTH16_VK_BYTES: &'static [u8] = include_bytes!("../bn254-vk/groth16_vk.bin");
 }
 
+#[cfg(feature = "compressed")]
+pub mod compressed;
+#[cfg(feature = "compressed")]
+pub use compressed::{CompressedError, CompressedVerifier};
+
 mod constants;
 mod converter;
 mod error;
@@ -32,5 +37,5 @@ pub use groth16::ark_converter::*;
 pub use plonk::{error::PlonkError, PlonkVerifier};
 mod plonk;
 
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;

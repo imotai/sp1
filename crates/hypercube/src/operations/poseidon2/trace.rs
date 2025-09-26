@@ -1,3 +1,5 @@
+//! Trace (witness) population functions for the Poseidon2 operation.
+
 use std::borrow::Borrow;
 
 use slop_algebra::PrimeField32;
@@ -12,6 +14,7 @@ use super::{
     WIDTH,
 };
 
+/// Populate a degree 3 `Poseidon2Operation`.
 pub fn populate_perm_deg3<F: PrimeField32>(
     input: [F; WIDTH],
     expected_output: Option<[F; WIDTH]>,
@@ -22,6 +25,7 @@ pub fn populate_perm_deg3<F: PrimeField32>(
     *op
 }
 
+/// Populate a Poseidon2 AIR row.
 pub fn populate_perm<F: PrimeField32, const DEGREE: usize>(
     input: [F; WIDTH],
     expected_output: Option<[F; WIDTH]>,
@@ -66,6 +70,7 @@ pub fn populate_perm<F: PrimeField32, const DEGREE: usize>(
     }
 }
 
+/// Populate the `r`th external round.
 pub fn populate_external_round<F: PrimeField32, const DEGREE: usize>(
     external_rounds_state: &[[F; WIDTH]],
     r: usize,
@@ -111,6 +116,7 @@ pub fn populate_external_round<F: PrimeField32, const DEGREE: usize>(
     state
 }
 
+/// Populate all internal rounds.
 pub fn populate_internal_rounds<F: PrimeField32>(
     internal_rounds_state: &[F; WIDTH],
     internal_rounds_s0: &mut [F; NUM_INTERNAL_ROUNDS - 1],

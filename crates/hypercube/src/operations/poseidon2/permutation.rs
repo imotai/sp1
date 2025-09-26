@@ -1,3 +1,5 @@
+//! AIR columns for the Poseidon2 hash function.
+
 use std::{
     borrow::BorrowMut,
     mem::{size_of, transmute},
@@ -7,7 +9,7 @@ use sp1_derive::AlignedBorrow;
 
 use crate::{
     operations::poseidon2::{NUM_EXTERNAL_ROUNDS, NUM_INTERNAL_ROUNDS, WIDTH},
-    utils::indices_arr,
+    util::indices_arr,
 };
 
 /// A column map for a Poseidon2 AIR with degree 3 constraints.
@@ -28,35 +30,45 @@ const fn make_col_map_degree3() -> Poseidon2Degree3Cols<usize> {
 #[derive(AlignedBorrow, Clone, Copy)]
 #[repr(C)]
 pub struct Poseidon2Degree3Cols<T: Copy> {
+    /// The Poseidon2 hasher state.
     pub state: Poseidon2StateCols<T>,
 }
 
-pub const GHOST: usize = NUM_INTERNAL_ROUNDS - 1;
+/// The number of internal rounds minus one.
+///
+/// Making this constant explicit is useful for generating bindings.
+pub const NUM_INTERNAL_ROUNDS_M1: usize = NUM_INTERNAL_ROUNDS - 1;
 
 /// A column layout for the intermediate states of a Poseidon2 AIR across all rounds.
 #[derive(AlignedBorrow, Clone, Copy)]
 #[repr(C)]
 pub struct Poseidon2StateCols<T> {
+    /// State for all external Poseidon2 rounds.
     pub external_rounds_state: [[T; WIDTH]; NUM_EXTERNAL_ROUNDS],
+    /// State for the first Poseidon2 internal round.
     pub internal_rounds_state: [T; WIDTH],
-    pub internal_rounds_s0: [T; GHOST],
+    /// State for the first elements of the remaining internal Poseidon2 rounds.
+    pub internal_rounds_s0: [T; NUM_INTERNAL_ROUNDS_M1],
+    /// The final state of the Poseidon2 permutation.
     pub output_state: [T; WIDTH],
 }
 
 /// Trait that describes getter functions for the permutation columns.
 pub trait Poseidon2Cols<T: Copy> {
+    /// State for all external Poseidon2 rounds.
     fn external_rounds_state(&self) -> &[[T; WIDTH]];
-
+    /// State for the first Poseidon2 internal round.
     fn internal_rounds_state(&self) -> &[T; WIDTH];
-
-    fn internal_rounds_s0(&self) -> &[T; NUM_INTERNAL_ROUNDS - 1];
-
+    /// State for the first elements of the remaining internal Poseidon2 rounds.
+    fn internal_rounds_s0(&self) -> &[T; NUM_INTERNAL_ROUNDS_M1];
+    /// The final state of the Poseidon2 permutation.
     fn perm_output(&self) -> &[T; WIDTH];
 
+    /// A mutable view into the columns, as if `self` was [`Poseidon2StateCols`].
     #[allow(clippy::type_complexity)]
     fn get_cols_mut(
         &mut self,
-    ) -> (&mut [[T; WIDTH]], &mut [T; WIDTH], &mut [T; NUM_INTERNAL_ROUNDS - 1], &mut [T; WIDTH]);
+    ) -> (&mut [[T; WIDTH]], &mut [T; WIDTH], &mut [T; NUM_INTERNAL_ROUNDS_M1], &mut [T; WIDTH]);
 }
 
 impl<T: Copy> Poseidon2Cols<T> for Poseidon2Degree3Cols<T> {
@@ -68,7 +80,7 @@ impl<T: Copy> Poseidon2Cols<T> for Poseidon2Degree3Cols<T> {
         &self.state.internal_rounds_state
     }
 
-    fn internal_rounds_s0(&self) -> &[T; NUM_INTERNAL_ROUNDS - 1] {
+    fn internal_rounds_s0(&self) -> &[T; NUM_INTERNAL_ROUNDS_M1] {
         &self.state.internal_rounds_s0
     }
 
@@ -78,7 +90,7 @@ impl<T: Copy> Poseidon2Cols<T> for Poseidon2Degree3Cols<T> {
 
     fn get_cols_mut(
         &mut self,
-    ) -> (&mut [[T; WIDTH]], &mut [T; WIDTH], &mut [T; NUM_INTERNAL_ROUNDS - 1], &mut [T; WIDTH])
+    ) -> (&mut [[T; WIDTH]], &mut [T; WIDTH], &mut [T; NUM_INTERNAL_ROUNDS_M1], &mut [T; WIDTH])
     {
         (
             &mut self.state.external_rounds_state,

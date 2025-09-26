@@ -9,7 +9,7 @@ use slop_bn254::Bn254Fr;
 use slop_koala_bear::{
     KoalaBear_BEGIN_EXT_CONSTS, KoalaBear_END_EXT_CONSTS, KoalaBear_PARTIAL_CONSTS,
 };
-use sp1_core_machine::operations::poseidon2::{NUM_EXTERNAL_ROUNDS, NUM_INTERNAL_ROUNDS};
+use sp1_hypercube::operations::poseidon2::{NUM_EXTERNAL_ROUNDS, NUM_INTERNAL_ROUNDS};
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     config::{InnerConfig, OuterConfig},

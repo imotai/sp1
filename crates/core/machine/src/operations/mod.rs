@@ -27,7 +27,6 @@ mod msb;
 mod mul;
 mod not_u32;
 mod page;
-pub mod poseidon2;
 mod slt;
 mod sp1_field_word;
 mod sub;

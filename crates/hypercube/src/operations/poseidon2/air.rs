@@ -1,5 +1,8 @@
+//! The operations that comprise the Poseidon2 hash function.
+
 use std::array;
 
+use crate::air::MachineAirBuilder;
 use slop_air::PairBuilder;
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_koala_bear::{
@@ -7,10 +10,10 @@ use slop_koala_bear::{
     POSEIDON2_INTERNAL_MATRIX_DIAG_16_KOALABEAR_MONTY,
 };
 use slop_poseidon2::matmul_internal;
-use sp1_hypercube::air::MachineAirBuilder;
 
 use super::{permutation::Poseidon2Cols, NUM_EXTERNAL_ROUNDS, NUM_INTERNAL_ROUNDS, WIDTH};
 
+/// Apply the Poseidon2 `M_4` matrix to `x`.
 pub fn apply_m_4_mut<AF>(x: &mut [AF])
 where
     AF: AbstractField,
@@ -26,6 +29,7 @@ where
     x[2] = t01233 + t23;
 }
 
+/// Apply a Poseidon2 external linear layer in-place.
 pub fn external_linear_layer_mut<AF: AbstractField>(state: &mut [AF; WIDTH]) {
     for j in (0..WIDTH).step_by(4) {
         apply_m_4_mut(&mut state[j..j + 4]);
@@ -38,12 +42,14 @@ pub fn external_linear_layer_mut<AF: AbstractField>(state: &mut [AF; WIDTH]) {
     }
 }
 
+/// Apply a Poseidon2 external linear layer.
 pub fn external_linear_layer<AF: AbstractField + Copy>(state: &[AF; WIDTH]) -> [AF; WIDTH] {
     let mut state = *state;
     external_linear_layer_mut(&mut state);
     state
 }
 
+/// Apply a Poseidon2 internal linear layer in-place.
 pub fn internal_linear_layer_mut<F: AbstractField>(state: &mut [F; WIDTH]) {
     let matmul_constants: [<F as AbstractField>::F; WIDTH] =
         POSEIDON2_INTERNAL_MATRIX_DIAG_16_KOALABEAR_MONTY
@@ -54,7 +60,9 @@ pub fn internal_linear_layer_mut<F: AbstractField>(state: &mut [F; WIDTH]) {
             .unwrap();
     matmul_internal(state, matmul_constants);
     let monty_inverse = F::from_wrapped_u32(MONTY_INVERSE.as_canonical_u32());
-    state.iter_mut().for_each(|i| *i = i.clone() * monty_inverse.clone());
+    for i in state {
+        *i = i.clone() * monty_inverse.clone();
+    }
 }
 
 /// Eval the constraints for the external rounds.
@@ -131,6 +139,6 @@ where
 
     let external_state = local_row.external_rounds_state()[NUM_EXTERNAL_ROUNDS / 2];
     for i in 0..WIDTH {
-        builder.assert_eq(external_state[i], state[i].clone())
+        builder.assert_eq(external_state[i], state[i].clone());
     }
 }

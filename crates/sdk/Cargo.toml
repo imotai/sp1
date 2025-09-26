@@ -15,7 +15,12 @@ serde = { workspace = true, features = ["derive"] }
 twirp = { workspace = true, optional = true }
 async-trait = { workspace = true }
 reqwest-middleware = { workspace = true, optional = true }
-reqwest = { workspace = true, features = ["rustls-tls", "trust-dns", "stream", "json"], optional = true }
+reqwest = { workspace = true, features = [
+  "rustls-tls",
+  "trust-dns",
+  "stream",
+  "json",
+], optional = true }
 anyhow = { workspace = true }
 sp1-prover = { workspace = true }
 sp1-core-machine = { workspace = true }
@@ -23,7 +28,14 @@ sp1-cuda = { workspace = true }
 sp1-build = { workspace = true }
 futures = { workspace = true }
 bincode = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = [
+  "fs",
+  "io-util",
+  "process",
+  "rt",
+  "sync",
+  "time",
+] }
 slop-algebra = { workspace = true }
 indicatif = { workspace = true }
 tracing = { workspace = true }
@@ -40,15 +52,19 @@ sp1-primitives = { workspace = true }
 itertools = { workspace = true }
 tonic = { workspace = true, features = ["tls", "tls-roots"], optional = true }
 alloy-sol-types = { workspace = true }
-alloy-primitives = { workspace = true, features = ["k256", "serde"], optional = true }
+alloy-primitives = { workspace = true, features = [
+  "k256",
+  "serde",
+], optional = true }
 backoff = { workspace = true, features = ["tokio"], optional = true }
 
 # TEE Dependencies
 k256 = { workspace = true, features = ["serde"] } # Signing
-eventsource-stream = { workspace = true }          # SSE Extenstion for reqwest
+eventsource-stream = { workspace = true }         # SSE Extenstion for reqwest
 
 [dev-dependencies]
 test-artifacts = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
 
 [features]
 default = ["network", "reserved-capacity"]

@@ -16,7 +16,6 @@ slop-poseidon2 = { workspace = true }
 slop-symmetric = { workspace = true }
 sp1-derive = { workspace = true }
 tracing = { workspace = true }
-sp1-core-machine = { workspace = true }
 sp1-hypercube = { workspace = true }
 hashbrown = { workspace = true, features = ["serde"] }
 itertools = { workspace = true }
@@ -26,12 +25,24 @@ backtrace = { workspace = true, features = ["serde"] }
 static_assertions = { workspace = true }
 thiserror = { workspace = true }
 range-set-blaze = { workspace = true, optional = true }
-smallvec = { workspace = true, features = ["const_generics", "const_new", "serde", "union", "write"], optional = true }
+smallvec = { workspace = true, features = [
+    "const_generics",
+    "const_new",
+    "serde",
+    "union",
+    "write",
+], optional = true }
 cfg-if = { workspace = true }
 
 [dev-dependencies]
 range-set-blaze = { workspace = true }
-smallvec = { workspace = true, features = ["const_generics", "const_new", "serde", "union", "write"] }
+smallvec = { workspace = true, features = [
+    "const_generics",
+    "const_new",
+    "serde",
+    "union",
+    "write",
+] }
 
 [build-dependencies]
 sp1-hypercube = { workspace = true }

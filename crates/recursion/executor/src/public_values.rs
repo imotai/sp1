@@ -1,10 +1,10 @@
 use crate::DIGEST_SIZE;
 use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
-use sp1_core_machine::utils::indices_arr;
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::{
     air::{POSEIDON_NUM_WORDS, PROOF_NONCE_NUM_WORDS},
+    indices_arr,
     septic_digest::SepticDigest,
     PROOF_MAX_NUM_PVS,
 };

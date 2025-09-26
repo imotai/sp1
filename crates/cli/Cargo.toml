@@ -27,12 +27,12 @@ yansi = { workspace = true }
 target-lexicon = { workspace = true }
 cargo_metadata = { workspace = true }
 indicatif = { workspace = true }
-futures.workspace = true
+futures = { workspace = true }
 
 [features]
 default = ["full"]
+full = ["dep:sp1-build", "dep:sp1-sdk"]
 
-full = [
-  "dep:sp1-build",
-  "dep:sp1-sdk"
-]
+[[bin]]
+name = "cargo-prove"
+path = "src/bin/cargo-prove.rs"

@@ -36,7 +36,6 @@ sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
 sp1-primitives = { workspace = true }
 slop-tensor = { workspace = true }
 slop-whir = { workspace = true }
-tokio = { workspace = true }
 
 itertools = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -55,6 +54,7 @@ rand = { workspace = true }
 futures = { workspace = true }
 test-artifacts = { workspace = true }
 bincode = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
 
 [features]
 # Enables debug features in dependencies.

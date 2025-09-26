@@ -22,7 +22,7 @@ slop-merkle-tree = { workspace = true }
 futures = { workspace = true }
 itertools = { workspace = true }
 rand = { workspace = true }
-tokio = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

@@ -291,8 +291,17 @@ where
 
     let record_memory = sysinfo::System::new_all().total_memory() / 7;
 
-    let machine_executor =
-        MachineExecutor::<GC::F>::new(record_memory, num_record_workers, opts.clone());
+    let machine_executor = MachineExecutor::<GC::F>::new(
+        record_memory.try_into().unwrap_or_else(|_| {
+            tracing::warn!(
+                "truncating available memory {record_memory} into {}. this is a bug.",
+                usize::MAX
+            );
+            usize::MAX
+        }),
+        num_record_workers,
+        opts.clone(),
+    );
 
     let prover_permits = ProverSemaphore::new(5);
     let prover = MachineProverBuilder::<GC, PC>::new(verifier, vec![prover_permits], vec![prover])

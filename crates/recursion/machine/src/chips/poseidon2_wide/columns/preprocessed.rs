@@ -1,5 +1,5 @@
-use sp1_core_machine::operations::poseidon2::WIDTH;
 use sp1_derive::AlignedBorrow;
+use sp1_hypercube::operations::poseidon2::WIDTH;
 use sp1_recursion_executor::Address;
 
 use crate::chips::mem::MemoryAccessColsChips;

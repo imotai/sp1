@@ -1,9 +1,3 @@
-use super::poseidon2::{
-    air::{eval_external_round, eval_internal_rounds},
-    permutation::Poseidon2Cols,
-    trace::populate_perm_deg3,
-    Poseidon2Operation, NUM_EXTERNAL_ROUNDS,
-};
 use crate::air::WordAirBuilder;
 use slop_air::AirBuilder;
 use slop_algebra::{AbstractExtensionField, AbstractField, Field, PrimeField32};
@@ -11,6 +5,12 @@ use sp1_core_executor::ByteOpcode;
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::{
     air::SP1AirBuilder,
+    operations::poseidon2::{
+        air::{eval_external_round, eval_internal_rounds},
+        permutation::Poseidon2Cols,
+        trace::populate_perm_deg3,
+        Poseidon2Operation, NUM_EXTERNAL_ROUNDS,
+    },
     septic_curve::{SepticCurve, CURVE_WITNESS_DUMMY_POINT_X, CURVE_WITNESS_DUMMY_POINT_Y},
     septic_extension::{SepticBlock, SepticExtension},
 };

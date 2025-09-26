@@ -37,7 +37,7 @@ pub struct MachineExecutor<F: PrimeField32> {
 }
 
 impl<F: PrimeField32> MachineExecutor<F> {
-    pub fn new(record_buffer_size: u64, num_record_workers: usize, opts: SP1CoreOpts) -> Self {
+    pub fn new(record_buffer_size: usize, num_record_workers: usize, opts: SP1CoreOpts) -> Self {
         let machine = RiscvAir::<F>::machine();
 
         Self {

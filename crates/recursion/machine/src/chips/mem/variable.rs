@@ -3,9 +3,8 @@ use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::PrimeField32;
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
-use sp1_core_machine::utils::{next_multiple_of_32, pad_rows_fixed};
 use sp1_derive::AlignedBorrow;
-use sp1_hypercube::air::MachineAir;
+use sp1_hypercube::{air::MachineAir, next_multiple_of_32, pad_rows_fixed};
 use sp1_recursion_executor::{
     instruction::{HintAddCurveInstr, HintBitsInstr, HintExt2FeltsInstr, HintInstr},
     Block, ExecutionRecord, Instruction, RecursionProgram,

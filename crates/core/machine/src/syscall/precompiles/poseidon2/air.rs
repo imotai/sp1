@@ -2,7 +2,6 @@ use crate::{
     air::SP1CoreAirBuilder,
     memory::MemoryAccessCols,
     operations::{
-        poseidon2::{permutation::Poseidon2Cols, Poseidon2Operation},
         AddrAddOperation, AddressSlicePageProtOperation, SP1FieldWordRangeChecker,
         SyscallAddrOperation,
     },
@@ -22,6 +21,7 @@ use sp1_core_executor::{
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::{
     air::{InteractionScope, MachineAir},
+    operations::poseidon2::{permutation::Poseidon2Cols, Poseidon2Operation},
     Word,
 };
 use sp1_primitives::consts::{PROT_READ, PROT_WRITE};
@@ -186,7 +186,7 @@ impl<F: PrimeField32> MachineAir<F> for Poseidon2Chip {
 
                     // Populate the Poseidon2 operation.
                     cols.poseidon2_operation =
-                        crate::operations::poseidon2::trace::populate_perm_deg3(
+                        sp1_hypercube::operations::poseidon2::trace::populate_perm_deg3(
                             posiedon_input,
                             Some(poseidon_output),
                         );
@@ -207,7 +207,10 @@ impl<F: PrimeField32> MachineAir<F> for Poseidon2Chip {
                     // Populate with dummy Poseidon2 operation for padding rows.
                     let dummy_input = [F::zero(); 16];
                     cols.poseidon2_operation =
-                        crate::operations::poseidon2::trace::populate_perm_deg3(dummy_input, None);
+                        sp1_hypercube::operations::poseidon2::trace::populate_perm_deg3(
+                            dummy_input,
+                            None,
+                        );
                 }
             });
         });
@@ -430,8 +433,8 @@ where
         }
 
         // Evaluate external rounds.
-        for r in 0..crate::operations::poseidon2::NUM_EXTERNAL_ROUNDS {
-            crate::operations::poseidon2::air::eval_external_round(
+        for r in 0..sp1_hypercube::operations::poseidon2::NUM_EXTERNAL_ROUNDS {
+            sp1_hypercube::operations::poseidon2::air::eval_external_round(
                 builder,
                 &local.poseidon2_operation.permutation,
                 r,
@@ -439,7 +442,7 @@ where
         }
 
         // Evaluate internal rounds.
-        crate::operations::poseidon2::air::eval_internal_rounds(
+        sp1_hypercube::operations::poseidon2::air::eval_internal_rounds(
             builder,
             &local.poseidon2_operation.permutation,
         );

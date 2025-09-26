@@ -31,7 +31,6 @@ thiserror = { workspace = true }
 itertools = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 derive-where = { workspace = true }
-tokio = { workspace = true }
 rayon = { workspace = true }
 futures = { workspace = true }
 
@@ -41,3 +40,4 @@ slop-basefold = { workspace = true }
 slop-basefold-prover = { workspace = true }
 bincode = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

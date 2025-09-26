@@ -33,6 +33,7 @@ slop-symmetric = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-whir = { workspace = true }
 slop-futures = { workspace = true }
+slop-poseidon2 = { workspace = true }
 
 # p3
 slop-uni-stark = { workspace = true }
@@ -58,11 +59,12 @@ num-traits = { workspace = true }
 num_cpus = { workspace = true }
 
 # async
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
 
 [dev-dependencies]
 sp1-zkvm = { workspace = true }
 rand = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
 
 [features]
 test-proof = []

@@ -4,8 +4,7 @@ use slop_algebra::{extension::BinomiallyExtendable, PrimeField32};
 use sp1_hypercube::{air::MachineAir, Chip, Machine, MachineShape, PROOF_MAX_NUM_PVS};
 use sp1_recursion_executor::{ExecutionRecord, RecursionAirEventCount, RecursionProgram, D};
 
-use strum::EnumIter;
-use strum_macros::EnumDiscriminants;
+use strum::{EnumDiscriminants, EnumIter};
 
 use crate::chips::{
     alu_base::{BaseAluChip, NUM_BASE_ALU_ENTRIES_PER_ROW},
@@ -23,7 +22,6 @@ use crate::chips::{
 };
 
 #[derive(sp1_derive::MachineAir, EnumDiscriminants, Clone)]
-#[sp1_core_path = "sp1_core_machine"]
 #[execution_record_path = "ExecutionRecord<F>"]
 #[program_path = "RecursionProgram<F>"]
 #[builder_path = "crate::builder::SP1RecursionAirBuilder<F = F>"]

@@ -2,9 +2,8 @@ use crate::builder::SP1RecursionAirBuilder;
 use slop_air::{Air, AirBuilder, BaseAir, PairBuilder};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
-use sp1_core_machine::utils::pad_rows_fixed;
 use sp1_derive::AlignedBorrow;
-use sp1_hypercube::air::MachineAir;
+use sp1_hypercube::{air::MachineAir, pad_rows_fixed};
 use sp1_primitives::SP1Field;
 use sp1_recursion_executor::{
     CommitPublicValuesEvent, CommitPublicValuesInstr, ExecutionRecord, Instruction,

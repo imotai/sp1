@@ -26,9 +26,10 @@ itertools = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
 derive-where = { workspace = true }
 
 
 [dev-dependencies]
 futures = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

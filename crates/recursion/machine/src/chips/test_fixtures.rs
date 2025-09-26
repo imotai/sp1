@@ -399,5 +399,5 @@ pub async fn shard() -> &'static ExecutionRecord<SP1Field> {
 }
 
 /// If the test program is big enough, everything should have strictly more rows than the minimum
-/// number of rows, which is 16. See [`sp1_core_machine::utils::next_multiple_of_32`].
+/// number of rows, which is 16. See [`sp1_hypercube::next_multiple_of_32`].
 pub const MIN_ROWS: usize = 16;

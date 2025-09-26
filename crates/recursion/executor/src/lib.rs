@@ -32,11 +32,13 @@ use slop_algebra::{
 use slop_maybe_rayon::prelude::*;
 use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 use slop_symmetric::{CryptographicPermutation, Permutation};
-use sp1_core_machine::operations::poseidon2::air::{
-    external_linear_layer_mut, internal_linear_layer_mut,
-};
 use sp1_derive::AlignedBorrow;
-use sp1_hypercube::{septic_curve::SepticCurve, septic_extension::SepticExtension, MachineRecord};
+use sp1_hypercube::{
+    operations::poseidon2::air::{external_linear_layer_mut, internal_linear_layer_mut},
+    septic_curve::SepticCurve,
+    septic_extension::SepticExtension,
+    MachineRecord,
+};
 use std::{
     array,
     borrow::Borrow,

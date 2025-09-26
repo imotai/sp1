@@ -30,7 +30,7 @@ members = [
   "crates/recursion/machine",
   "crates/sdk",
   "crates/test-artifacts",
-  # "crates/verifier",
+  "crates/verifier",
   "crates/zkvm/*",
   "slop/crates/air",
   "slop/crates/algebra",
@@ -91,7 +91,7 @@ sp1-core-executor = { path = "crates/core/executor" }
 sp1-jit = { path = "crates/core/jit" }
 sp1-curves = { path = "crates/curves" }
 sp1-derive = { path = "crates/derive" }
-sp1-eval = { path = "crates/eval" }
+# sp1-eval = { path = "crates/eval" }
 sp1-helper = { path = "crates/helper", default-features = false }
 sp1-primitives = { path = "crates/primitives" }
 sp1-prover = { path = "crates/prover" }
@@ -105,6 +105,7 @@ sp1-cuda = { path = "crates/cuda" }
 sp1-hypercube = { path = "crates/hypercube" }
 sp1-lib = { path = "crates/zkvm/lib", default-features = false }
 sp1-zkvm = { path = "crates/zkvm/entrypoint", default-features = false }
+sp1-verifier = { path = "crates/verifier", default-features = false }
 
 p3-air = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
 p3-bn254-fr = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
@@ -251,7 +252,7 @@ tempfile = "3.10.1"
 thiserror = "1.0"
 time = "0.3.26"
 tiny-keccak = "2.0.2"
-tokio = "1.42.0"
+tokio = { version = "1.42.0", default-features = false }
 tonic = "0.12"
 tracing = "0.1.40"
 tracing-appender = "0.2.3"

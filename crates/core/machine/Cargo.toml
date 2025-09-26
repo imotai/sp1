@@ -56,7 +56,7 @@ sp1-hypercube = { workspace = true }
 sp1-core-executor = { workspace = true }
 sp1-curves = { workspace = true }
 slop-poseidon2 = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync"] }
 static_assertions = { workspace = true }
 
 [dev-dependencies]
@@ -64,7 +64,6 @@ rand = { workspace = true }
 num = { workspace = true, features = ["rand"] }
 sp1-core-executor = { workspace = true }
 test-artifacts = { workspace = true }
-tokio = { workspace = true }
 slop-air = { workspace = true }
 slop-koala-bear = { workspace = true }
 slop-algebra = { workspace = true }
@@ -74,6 +73,7 @@ hex = { workspace = true }
 elliptic-curve = { workspace = true }
 k256 = { workspace = true, features = ["expose-field"] }
 p256 = { workspace = true, features = ["expose-field"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [build-dependencies]
 sp1-hypercube = { workspace = true }

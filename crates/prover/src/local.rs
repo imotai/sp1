@@ -45,7 +45,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct LocalProverOpts {
     pub core_opts: SP1CoreOpts,
-    pub records_buffer_size: u64,
+    pub records_buffer_size: usize,
     pub num_record_workers: usize,
     pub num_recursion_executors: usize,
 }
@@ -63,11 +63,18 @@ impl Default for LocalProverOpts {
 
         // Allow half the available memory for tracegen by default.
         let records_buffer_size = free_memory / 2;
+        let records_buffer_size = records_buffer_size.try_into().unwrap_or_else(|_| {
+            tracing::error!(
+                "truncating available memory {records_buffer_size} into {}. this is a bug.",
+                usize::MAX
+            );
+            usize::MAX
+        });
 
         // Reserve ~12Gb of memory for records by default.
         let records_buffer_size = env::var("SP1_PROVER_RECORDS_CAPACITY_BUFFER")
             .ok()
-            .and_then(|s| s.parse::<u64>().ok())
+            .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(records_buffer_size);
 
         const DEFAULT_NUM_RECORD_WORKERS: usize = 2;

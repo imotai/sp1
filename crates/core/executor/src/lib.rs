@@ -49,7 +49,6 @@ mod opts;
 mod profiler;
 mod program;
 mod record;
-mod recursion;
 mod register;
 mod report;
 mod retain;
@@ -69,12 +68,13 @@ pub use opcode::*;
 pub use opts::*;
 pub use program::*;
 pub use record::*;
-pub use recursion::*;
 pub use register::*;
 pub use report::*;
 pub use retain::*;
 pub use state::*;
 pub use utils::*;
+
+pub use sp1_hypercube::SP1RecursionProof;
 
 /// A module for testing programs.
 #[cfg(test)]

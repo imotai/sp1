@@ -3,12 +3,12 @@ use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::{extension::BinomiallyExtendable, AbstractField, Field, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
-use sp1_core_machine::{
-    operations::poseidon2::air::{external_linear_layer_mut, internal_linear_layer_mut},
-    utils::next_multiple_of_32,
-};
 use sp1_derive::AlignedBorrow;
-use sp1_hypercube::air::MachineAir;
+use sp1_hypercube::{
+    air::MachineAir,
+    next_multiple_of_32,
+    operations::poseidon2::air::{external_linear_layer_mut, internal_linear_layer_mut},
+};
 use sp1_primitives::SP1Field;
 use sp1_recursion_executor::{
     Address, Block, ExecutionRecord, Instruction, Poseidon2LinearLayerInstr,

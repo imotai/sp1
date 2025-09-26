@@ -2,7 +2,7 @@
 
 use std::{borrow::Borrow, ops::Deref};
 
-use sp1_core_machine::operations::poseidon2::permutation::{Poseidon2Cols, Poseidon2Degree3Cols};
+use sp1_hypercube::operations::poseidon2::permutation::{Poseidon2Cols, Poseidon2Degree3Cols};
 
 pub mod air;
 pub mod columns;
@@ -35,8 +35,8 @@ pub(crate) mod tests {
     use slop_algebra::{AbstractField, PrimeField32};
 
     use slop_symmetric::Permutation;
-    use sp1_core_machine::{operations::poseidon2::WIDTH, utils::setup_logger};
-    use sp1_hypercube::inner_perm;
+    use sp1_core_machine::utils::setup_logger;
+    use sp1_hypercube::{inner_perm, operations::poseidon2::WIDTH};
     use sp1_primitives::SP1Field;
     use sp1_recursion_executor::{instruction as instr, MemAccessKind};
     use zkhash::ark_ff::UniformRand;

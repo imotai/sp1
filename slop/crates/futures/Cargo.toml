@@ -9,12 +9,15 @@ categories.workspace = true
 
 [dependencies]
 rayon = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
 futures = { workspace = true }
 thiserror = { workspace = true }
 
 crossbeam = { workspace = true }
 pin-project = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
 
 [lints]
 workspace = true

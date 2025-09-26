@@ -10,7 +10,6 @@ keywords = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-sp1-core-machine = { workspace = true }
 sp1-derive = { workspace = true }
 sp1-primitives = { workspace = true }
 sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
@@ -26,11 +25,9 @@ slop-maybe-rayon = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-poseidon2 = { workspace = true }
 slop-symmetric = { workspace = true }
-slop-whir = {workspace = true }
+slop-whir = { workspace = true }
 itertools = { workspace = true }
-strum = { workspace = true }
-strum_macros = { workspace = true }
-tokio = { workspace = true }
+strum = { workspace = true, features = ["derive"] }
 tracing = { workspace = true }
 rand = { workspace = true }
 zkhash = { workspace = true }
@@ -45,8 +42,10 @@ sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
 
 
 [dev-dependencies]
+sp1-core-machine = { workspace = true }
 sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
-slop-challenger = { workspace = true}
+slop-challenger = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }
 
 [lints]
 workspace = true

@@ -28,6 +28,7 @@ pub mod ir;
 mod logup_gkr;
 mod lookup;
 mod machine;
+pub mod operations;
 pub mod prover;
 mod record;
 pub mod septic_curve;

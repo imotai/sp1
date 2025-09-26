@@ -19,6 +19,6 @@ slop-pgspcs = { workspace = true }
 futures = { workspace = true }
 itertools = { workspace = true }
 rand = { workspace = true }
-tokio = { workspace = true }
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
