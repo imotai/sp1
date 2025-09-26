@@ -29,7 +29,6 @@ slop-baby-bear = { workspace = true }
 slop-challenger = { workspace = true }
 
 rand = { workspace = true }
-bincode = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 
 [lints]

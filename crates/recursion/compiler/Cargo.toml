@@ -11,11 +11,8 @@ categories = { workspace = true }
 
 [dependencies]
 slop-bn254 = { workspace = true }
-slop-koala-bear = { workspace = true }
 slop-algebra = { workspace = true }
 slop-symmetric = { workspace = true }
-slop-challenger = { workspace = true }
-slop-merkle-tree = { workspace = true }
 
 sp1-core-machine = { workspace = true }
 sp1-primitives = { workspace = true }
@@ -31,8 +28,6 @@ cfg-if = { workspace = true }
 
 [dev-dependencies]
 sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
-slop-dft = { workspace = true }
-slop-merkle-tree = { workspace = true }
 rand = { workspace = true }
 
 [features]

@@ -1,7 +1,7 @@
 use deepsize2::DeepSizeOf;
 use enum_map::Enum;
 use serde::{Deserialize, Serialize};
-use strum_macros::EnumIter;
+use strum::EnumIter;
 
 use crate::{events::FieldOperation, RiscvAirId};
 

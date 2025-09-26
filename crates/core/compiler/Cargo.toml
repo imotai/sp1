@@ -10,7 +10,6 @@ include.workspace = true
 
 [dependencies]
 slop-air = { workspace = true }
-slop-koala-bear = { workspace = true }
 
 sp1-core-machine = { workspace = true }
 sp1-hypercube = { workspace = true }

@@ -2756,7 +2756,6 @@ dependencies = [
  "rand 0.8.5",
  "sha2 0.10.9",
  "slop-algebra",
- "slop-koala-bear",
  "sp1-lib 6.0.0",
  "sp1-primitives",
 ]

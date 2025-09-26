@@ -9,9 +9,5 @@ categories.workspace = true
 
 [dependencies]
 p3-commit = { workspace = true }
-slop-futures = { workspace = true }
-
-slop-tensor = { workspace = true }
 slop-alloc = { workspace = true }
-slop-challenger = { workspace = true }
 serde = { workspace = true, features = ["rc"] }

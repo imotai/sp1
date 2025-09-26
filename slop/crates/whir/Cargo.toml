@@ -21,14 +21,11 @@ slop-baby-bear = { workspace = true }
 slop-dft = { workspace = true }
 slop-koala-bear = { workspace = true }
 slop-stacked = { workspace = true }
-slop-symmetric = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-jagged = { workspace = true }
-slop-bn254 = { workspace = true }
 
 rand = { workspace = true }
 thiserror = { workspace = true }
-itertools = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 derive-where = { workspace = true }
 rayon = { workspace = true }
@@ -37,7 +34,6 @@ futures = { workspace = true }
 [dev-dependencies]
 slop-baby-bear = { workspace = true }
 slop-basefold = { workspace = true }
-slop-basefold-prover = { workspace = true }
 bincode = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }

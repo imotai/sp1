@@ -11,7 +11,7 @@ use slop_algebra::{AbstractField, Field};
 use slop_uni_stark::{
     ProverConstraintFolder, StarkGenericConfig, SymbolicAirBuilder, VerifierConstraintFolder,
 };
-use strum_macros::{Display, EnumIter};
+use strum::{Display, EnumIter};
 
 use super::{interaction::AirInteraction, BinomialExtension};
 use crate::{lookup::InteractionKind, septic_extension::SepticExtension, ConstraintSumcheckFolder};

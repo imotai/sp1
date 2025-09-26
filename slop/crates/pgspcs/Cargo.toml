@@ -17,12 +17,8 @@ slop-challenger = { workspace = true }
 slop-alloc = { workspace = true }
 slop-sumcheck = { workspace = true }
 slop-baby-bear = { workspace = true }
-slop-symmetric = { workspace = true }
-slop-merkle-tree = { workspace = true }
 futures = { workspace = true }
-itertools = { workspace = true }
 rand = { workspace = true }
-serde = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

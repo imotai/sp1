@@ -13,7 +13,7 @@ use sp1_hypercube::{
     air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
     Chip, Machine, MachineShape,
 };
-use strum_macros::{EnumDiscriminants, EnumIter};
+use strum::{EnumDiscriminants, EnumIter};
 
 use crate::{
     adapter::bump::StateBumpChip,
