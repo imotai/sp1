@@ -2,12 +2,17 @@ name: Patch Testing Cycles
 
 on:
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, multilinear_v6]
     types: [opened, synchronize]
 
 jobs:
   patch-testing-cycles:
     runs-on: [runs-on, runner=16cpu-linux-x64, disk=large, "run-id=${{ github.run_id }}"]
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: write
+      issues: write
     steps:
       - name: "Checkout sources"
         uses: "actions/checkout@v4"
@@ -43,7 +48,7 @@ jobs:
       - name: "Compare results and create comment"
         run: |
           cd ./patch-testing
-          cargo run --bin post-to-github
+          RUST_BACKTRACE=full cargo run --bin post-to-github
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

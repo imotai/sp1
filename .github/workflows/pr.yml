@@ -2,7 +2,7 @@ name: PR
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, multilinear_v6]
   pull_request:
     branches:
       - "**"
