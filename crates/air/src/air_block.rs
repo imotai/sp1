@@ -10,9 +10,6 @@ use sp1_core_executor::events::FieldOperation;
 use sp1_core_executor::syscalls::SyscallCode;
 use sp1_core_executor::ByteOpcode;
 use sp1_core_machine::air::{MemoryAirBuilder, SP1CoreAirBuilder, WordAirBuilder};
-use sp1_core_machine::operations::poseidon2::air::{eval_external_round, eval_internal_rounds};
-use sp1_core_machine::operations::poseidon2::permutation::Poseidon2Cols;
-use sp1_core_machine::operations::poseidon2::WIDTH;
 use sp1_core_machine::operations::{
     AddrAddOperation, AddressSlicePageProtOperation, GlobalAccumulationOperation,
     SyscallAddrOperation,
@@ -34,6 +31,9 @@ use sp1_curves::weierstrass::WeierstrassParameters;
 use sp1_curves::{BigUint, CurveType, EllipticCurve};
 use sp1_hypercube::air::ByteAirBuilder;
 use sp1_hypercube::air::{InstructionAirBuilder, SepticExtensionAirBuilder};
+use sp1_hypercube::operations::poseidon2::air::{eval_external_round, eval_internal_rounds};
+use sp1_hypercube::operations::poseidon2::permutation::Poseidon2Cols;
+use sp1_hypercube::operations::poseidon2::WIDTH;
 use sp1_hypercube::septic_curve::SepticCurve;
 use sp1_hypercube::septic_extension::SepticExtension;
 use sp1_hypercube::Word;

@@ -131,6 +131,8 @@ pub async fn make_measurement(
     // Serialize the compress proof and measure it's size.
     let compress_proof_bytes = bincode::serialize(&compress_proof).unwrap();
     let compress_proof_size = compress_proof_bytes.len();
+    let mut file = std::fs::File::create("crates/prover-clean/fib_proof.bin").unwrap();
+    bincode::serialize_into(&mut file, &compress_proof).unwrap();
     tracing::info!("compress proof size: {}", compress_proof_size);
 
     let time = Instant::now();

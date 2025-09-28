@@ -60,7 +60,7 @@ mod tests {
     use slop_challenger::{CanObserve, IopCtx};
     use slop_commit::Rounds;
     use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
-    use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
+    use slop_multilinear::{Evaluations, Mle, MleEval, PaddedMle, Point};
 
     use slop_jagged::{
         JaggedPcsVerifier, JaggedProver, KoalaBearPoseidon2, MachineJaggedPcsVerifier,
@@ -231,6 +231,13 @@ mod tests {
             for commitment in commitments.iter() {
                 challenger.observe(*commitment);
             }
+
+            let evaluation_claims = evaluation_claims
+                .into_iter()
+                .map(|round| {
+                    round.into_iter().flat_map(|eval| eval.into_iter()).collect::<MleEval<_>>()
+                })
+                .collect::<Vec<_>>();
 
             machine_verifier
                 .verify_trusted_evaluations(

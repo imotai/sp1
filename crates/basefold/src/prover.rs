@@ -89,7 +89,7 @@ mod tests {
     use slop_commit::{Message, Rounds};
     use slop_koala_bear::KoalaBear;
     use slop_multilinear::{
-        Evaluations, Mle, MultilinearPcsBatchProver, MultilinearPcsBatchVerifier,
+        Evaluations, Mle, MleEval, MultilinearPcsBatchProver, MultilinearPcsBatchVerifier,
         MultilinearPcsProver, Point,
     };
     use slop_stacked::{FixedRateInterleave, StackedPcsProver, StackedPcsVerifier};
@@ -185,7 +185,9 @@ mod tests {
                 let mut eval_claims_host = vec![];
                 for eval_claim in eval_claims {
                     let eval_claim = eval_claim.into_host().await.unwrap();
-                    eval_claims_host.push(eval_claim.clone());
+                    let eval_claims_flattened =
+                        eval_claim.into_iter().flat_map(|e| e.into_iter()).collect::<MleEval<_>>();
+                    eval_claims_host.push(eval_claims_flattened.clone());
                 }
                 (commitments, proof, eval_claims_host)
             })
