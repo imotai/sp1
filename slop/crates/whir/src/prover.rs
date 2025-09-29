@@ -16,7 +16,6 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIter
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_alloc::CpuBackend;
-use slop_basefold::{BasefoldConfig, DefaultBasefoldConfig, Poseidon2KoalaBear16BasefoldConfig};
 use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger, IopCtx};
 use slop_commit::{Message, Rounds};
 use slop_dft::{p3::Radix2DitParallel, Dft};
@@ -27,8 +26,8 @@ use slop_jagged::{
 };
 use slop_koala_bear::KoalaBearDegree4Duplex;
 use slop_merkle_tree::{
-    ComputeTcsOpenings, FieldMerkleTreeProver, MerkleTreeOpening, Poseidon2KoalaBear16Prover,
-    TensorCsProver,
+    ComputeTcsOpenings, FieldMerkleTreeProver, MerkleTreeOpeningAndProof,
+    Poseidon2KoalaBear16Prover, TensorCsProver,
 };
 use slop_multilinear::{
     monomial_basis_evals_blocking, partial_lagrange_blocking, Mle, MultilinearPcsProver, PaddedMle,
@@ -88,25 +87,23 @@ pub(crate) fn concat_transpose<F: Field>(
     Mle::new(Tensor::from(result).reshape([total_len, 1]))
 }
 
-pub struct Prover<GC, MerkleProver, D, C>
-where
-    GC: IopCtx,
-    C: BasefoldConfig<GC>,
-    MerkleProver: TensorCsProver<GC, CpuBackend, MerkleConfig = C::Tcs>
-        + ComputeTcsOpenings<GC, CpuBackend, MerkleConfig = C::Tcs>,
-{
-    dft: D,
-    merkle_prover: MerkleProver,
-    config: WhirProofShape<GC::F>,
-    _marker: std::marker::PhantomData<(C, GC)>,
-}
-
-pub struct WitnessData<GC, MerkleProver, BC: BasefoldConfig<GC>>
+pub struct Prover<GC, MerkleProver, D>
 where
     GC: IopCtx,
     MerkleProver: TensorCsProver<GC, CpuBackend> + ComputeTcsOpenings<GC, CpuBackend>,
 {
-    parsed_commitment: ParsedCommitment<GC, BC>,
+    dft: D,
+    merkle_prover: MerkleProver,
+    config: WhirProofShape<GC::F>,
+    _marker: std::marker::PhantomData<GC>,
+}
+
+pub struct WitnessData<GC, MerkleProver>
+where
+    GC: IopCtx,
+    MerkleProver: TensorCsProver<GC, CpuBackend> + ComputeTcsOpenings<GC, CpuBackend>,
+{
+    parsed_commitment: ParsedCommitment<GC>,
     polynomial: Mle<GC::F>,
     committed_data: Rounds<Tensor<GC::F>>,
     commitment_data: Rounds<MerkleProver::ProverData>,
@@ -152,13 +149,11 @@ where
     }
 }
 
-impl<GC, C, MerkleProver, D> Prover<GC, MerkleProver, D, C>
+impl<GC, MerkleProver, D> Prover<GC, MerkleProver, D>
 where
     GC: IopCtx,
     D: Dft<GC::F>,
-    C: BasefoldConfig<GC>,
-    MerkleProver: TensorCsProver<GC, CpuBackend, MerkleConfig = C::Tcs>
-        + ComputeTcsOpenings<GC, CpuBackend, MerkleConfig = C::Tcs>,
+    MerkleProver: TensorCsProver<GC, CpuBackend> + ComputeTcsOpenings<GC, CpuBackend>,
 {
     pub fn new(dft: D, merkle_prover: MerkleProver, config: WhirProofShape<GC::F>) -> Self {
         Self { dft, merkle_prover, config, _marker: std::marker::PhantomData }
@@ -169,7 +164,7 @@ where
         challenger: &mut GC::Challenger,
         config: &WhirProofShape<GC::F>,
         rounds: Rounds<WhirProverData<GC, MerkleProver>>,
-    ) -> WitnessData<GC, MerkleProver, C> {
+    ) -> WitnessData<GC, MerkleProver> {
         let num_variables = rounds
             .iter()
             .map(|r| r.polynomial.guts().as_slice().len())
@@ -254,7 +249,6 @@ where
             commitment: rounds.iter().map(|r| r.commitment).collect(),
             ood_points,
             ood_answers,
-            _marker: Default::default(),
         };
 
         let (committed_data, commitment_data) =
@@ -275,7 +269,7 @@ where
         claim: GC::EF,
         challenger: &mut GC::Challenger,
         config: &WhirProofShape<GC::F>,
-    ) -> WhirProof<GC, C> {
+    ) -> WhirProof<GC> {
         let n_rounds = config.round_parameters.len();
 
         let witness_data = self.parse_commitment_data(challenger, config, witness_data).await;
@@ -374,11 +368,10 @@ where
 
             challenger.observe_ext_element_slice(&ood_answers);
 
-            parsed_commitments.push(ParsedCommitment::<GC, C> {
+            parsed_commitments.push(ParsedCommitment::<GC> {
                 commitment: vec![commitment].into_iter().collect(),
                 ood_points: ood_points.clone(),
                 ood_answers: ood_answers.clone(),
-                _marker: Default::default(),
             });
 
             let id_query_indices = (0..round_params.num_queries)
@@ -426,7 +419,7 @@ where
             let merkle_proof = merkle_proof
                 .into_iter()
                 .zip(merkle_openings.into_iter())
-                .map(|(proof, opening)| MerkleTreeOpening { values: opening, proof })
+                .map(|(proof, opening)| MerkleTreeOpeningAndProof { values: opening, proof })
                 .collect::<Vec<_>>();
             let merkle_read_values: Vec<Mle<GC::EF>> = if round_index != 0 {
                 assert!(merkle_proof.len() == 1);
@@ -529,7 +522,7 @@ where
             .await
             .unwrap();
         let final_merkle_proof =
-            MerkleTreeOpening { values: final_merkle_openings, proof: final_merkle_proof };
+            MerkleTreeOpeningAndProof { values: final_merkle_openings, proof: final_merkle_proof };
 
         let (final_sumcheck_polynomials, _, _) = sumcheck_prover
             .compute_sumcheck_polynomials(
@@ -551,23 +544,21 @@ where
             query_proofs_of_work: query_proof_of_works,
             sumcheck_polynomials,
             final_polynomial,
-            final_merkle_proof,
+            final_merkle_opening_and_proof: final_merkle_proof,
             final_sumcheck_polynomials,
             final_pow,
-            _config: Default::default(),
         }
     }
 }
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
-pub struct WhirJaggedConfig<C, GC>(PhantomData<(C, GC)>);
+pub struct WhirJaggedConfig<GC>(PhantomData<GC>);
 
-impl<C, GC> JaggedConfig<GC> for WhirJaggedConfig<C, GC>
+impl<GC> JaggedConfig<GC> for WhirJaggedConfig<GC>
 where
     GC: IopCtx,
-    C: DefaultBasefoldConfig<GC>,
 {
-    type PcsVerifier = Verifier<'static, GC, C>;
+    type PcsVerifier = Verifier<GC>;
 
     fn log_stacking_height(verifier: &Self::PcsVerifier) -> u32 {
         verifier.config.starting_interleaved_log_height as u32
@@ -580,15 +571,13 @@ where
     }
 }
 
-impl<GC, C, MerkleProver, D> MultilinearPcsProver<GC> for Prover<GC, MerkleProver, D, C>
+impl<GC, MerkleProver, D> MultilinearPcsProver<GC> for Prover<GC, MerkleProver, D>
 where
     GC: IopCtx,
     D: Dft<GC::F>,
-    C: DefaultBasefoldConfig<GC>,
-    MerkleProver: TensorCsProver<GC, CpuBackend, MerkleConfig = C::Tcs>
-        + ComputeTcsOpenings<GC, CpuBackend, MerkleConfig = C::Tcs>,
+    MerkleProver: TensorCsProver<GC, CpuBackend> + ComputeTcsOpenings<GC, CpuBackend>,
 {
-    type Verifier = Verifier<'static, GC, C>;
+    type Verifier = Verifier<GC>;
 
     type ProverData = WhirProverData<GC, MerkleProver>;
 
@@ -669,26 +658,22 @@ where
 
 #[derive(Default, Serialize, Deserialize)]
 #[derive_where(Clone)]
-pub struct JaggedWhirProverComponents<GC, C, MerkleProver, D>(
-    PhantomData<(GC, C, MerkleProver, D)>,
-);
+pub struct JaggedWhirProverComponents<GC, MerkleProver, D>(PhantomData<(GC, MerkleProver, D)>);
 
-impl<GC, C, MerkleProver, D> JaggedProverComponents<GC>
-    for JaggedWhirProverComponents<GC, C, MerkleProver, D>
+impl<GC, MerkleProver, D> JaggedProverComponents<GC>
+    for JaggedWhirProverComponents<GC, MerkleProver, D>
 where
     GC: IopCtx,
-    C: DefaultBasefoldConfig<GC>,
-    MerkleProver: TensorCsProver<GC, CpuBackend, MerkleConfig = C::Tcs>
-        + ComputeTcsOpenings<GC, CpuBackend, MerkleConfig = C::Tcs>,
+    MerkleProver: TensorCsProver<GC, CpuBackend> + ComputeTcsOpenings<GC, CpuBackend>,
     D: Dft<GC::F>,
 {
     type A = CpuBackend;
 
-    type Config = WhirJaggedConfig<C, GC>;
+    type Config = WhirJaggedConfig<GC>;
 
     type JaggedSumcheckProver = HadamardJaggedSumcheckProver<CpuJaggedMleGenerator>;
 
-    type BatchPcsProver = Prover<GC, MerkleProver, D, C>;
+    type BatchPcsProver = Prover<GC, MerkleProver, D>;
 
     type Stacker = FixedRateInterleave<GC::F>;
 
@@ -707,7 +692,6 @@ where
 impl DefaultJaggedProver<KoalaBearDegree4Duplex>
     for JaggedWhirProverComponents<
         KoalaBearDegree4Duplex,
-        Poseidon2KoalaBear16BasefoldConfig,
         Poseidon2KoalaBear16Prover,
         Radix2DitParallel,
     >
@@ -715,11 +699,11 @@ impl DefaultJaggedProver<KoalaBearDegree4Duplex>
     fn prover_from_verifier(
         verifier: &slop_jagged::JaggedPcsVerifier<
             KoalaBearDegree4Duplex,
-            WhirJaggedConfig<Poseidon2KoalaBear16BasefoldConfig, KoalaBearDegree4Duplex>,
+            WhirJaggedConfig<KoalaBearDegree4Duplex>,
         >,
     ) -> slop_jagged::JaggedProver<KoalaBearDegree4Duplex, Self> {
         let merkle_prover = FieldMerkleTreeProver::default();
-        let prover = Prover::<_, _, _, _>::new(
+        let prover = Prover::<_, _, _>::new(
             Radix2DitParallel,
             merkle_prover,
             verifier.pcs_verifier.config.clone(),
@@ -921,21 +905,16 @@ mod tests {
     use rand::{distributions::Standard, prelude::Distribution, thread_rng, Rng, SeedableRng};
     use slop_algebra::{extension::BinomialExtensionField, TwoAdicField, UnivariatePolynomial};
     use slop_baby_bear::BabyBear;
-    use slop_basefold::{
-        DefaultBasefoldConfig, Poseidon2BabyBear16BasefoldConfig,
-        Poseidon2KoalaBear16BasefoldConfig,
-    };
     use slop_commit::Rounds;
     use slop_dft::p3::Radix2DitParallel;
     use slop_jagged::{
         CpuJaggedMleGenerator, HadamardJaggedSumcheckProver, JaggedEvalSumcheckProver,
-        JaggedPcsVerifier, JaggedProver, MachineJaggedPcsVerifier,
+        JaggedPcsVerifier, JaggedProver,
     };
     use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
     use slop_matrix::{bitrev::BitReversableMatrix, dense::RowMajorMatrix, Matrix};
     use slop_merkle_tree::{
-        DefaultMerkleTreeConfig, FieldMerkleTreeProver, MerkleTreeTcs, Poseidon2BabyBear16Prover,
-        Poseidon2KoalaBear16Prover,
+        FieldMerkleTreeProver, MerkleTreeTcs, Poseidon2BabyBear16Prover, Poseidon2KoalaBear16Prover,
     };
     use slop_multilinear::{Evaluations, MultilinearPcsVerifier, PaddedMle};
     use slop_utils::setup_logger;
@@ -1075,15 +1054,13 @@ mod tests {
         }
     }
 
-    type C = Poseidon2KoalaBear16BasefoldConfig;
     type GC = KoalaBearDegree4Duplex;
 
     #[tokio::test]
     async fn whir_test_sumcheck() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
-        let verifier = C::default_verifier(1);
-        let mut challenger_prover = C::default_challenger(&verifier);
+        let mut challenger_prover = GC::default_challenger();
 
         let num_variables: usize = 4;
         let polynomial: Mle<F> = Mle::rand(&mut rng, 1, num_variables as u32);
@@ -1122,7 +1099,7 @@ mod tests {
     async fn whir_test_sumcheck_with_eq_modification() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
-        let mut challenger_prover = C::default_challenger(&C::default_verifier(1));
+        let mut challenger_prover = GC::default_challenger();
 
         let num_variables: usize = 8;
         let polynomial: Mle<F> = Mle::rand(&mut rng, 1, num_variables as u32);
@@ -1305,9 +1282,7 @@ mod tests {
 
     async fn whir_test_generic<
         GC: IopCtx<F: TwoAdicField, EF: TwoAdicField + ExtensionField<GC::F>>,
-        C: DefaultBasefoldConfig<GC, Tcs: DefaultMerkleTreeConfig<GC>>,
-        MerkleProver: TensorCsProver<GC, CpuBackend, MerkleConfig = C::Tcs>
-            + ComputeTcsOpenings<GC, CpuBackend, MerkleConfig = C::Tcs>,
+        MerkleProver: TensorCsProver<GC, CpuBackend> + ComputeTcsOpenings<GC, CpuBackend>,
     >(
         config: WhirProofShape<GC::F>,
         merkle_prover: MerkleProver,
@@ -1332,10 +1307,10 @@ mod tests {
 
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
-        let mut challenger_prover = C::default_challenger(&C::default_verifier(1));
-        let mut challenger_verifier = C::default_challenger(&C::default_verifier(1));
+        let mut challenger_prover = GC::default_challenger();
+        let mut challenger_verifier = GC::default_challenger();
 
-        let prover = Prover::<_, _, _, C>::new(Radix2DitParallel, merkle_prover, config.clone());
+        let prover = Prover::<_, _, _>::new(Radix2DitParallel, merkle_prover, config.clone());
         let merkle_verifier = MerkleTreeTcs::default();
 
         let mut concat_vec: Vec<GC::F> = rounds
@@ -1380,7 +1355,7 @@ mod tests {
         let proof_bytes = bincode::serialize(&proof).unwrap();
         tracing::debug!("Proof size: {} bytes", proof_bytes.len());
 
-        let verifier = Verifier::new(merkle_verifier, config.clone());
+        let verifier = Verifier::new(merkle_verifier, config.clone(), rounds.iter().count());
         verifier.observe_commitment(&commitments, &mut challenger_verifier).unwrap();
         verifier
             .verify_trusted_evaluation(
@@ -1395,9 +1370,7 @@ mod tests {
 
     async fn whir_test_single_round<
         GC: IopCtx<F: TwoAdicField, EF: TwoAdicField + ExtensionField<GC::F>>,
-        C: DefaultBasefoldConfig<GC, Tcs: DefaultMerkleTreeConfig<GC>>,
-        MerkleProver: TensorCsProver<GC, CpuBackend, MerkleConfig = C::Tcs>
-            + ComputeTcsOpenings<GC, CpuBackend, MerkleConfig = C::Tcs>,
+        MerkleProver: TensorCsProver<GC, CpuBackend> + ComputeTcsOpenings<GC, CpuBackend>,
     >(
         config: WhirProofShape<GC::F>,
         num_variables: usize,
@@ -1414,7 +1387,7 @@ mod tests {
         ));
         let polynomial_3: Mle<GC::F> = Mle::rand(&mut rng, 2, num_variables as u32 - 3);
 
-        whir_test_generic::<GC, C, MerkleProver>(
+        whir_test_generic::<GC, MerkleProver>(
             config,
             merkle_prover,
             vec![vec![polynomial_1, polynomial_2, polynomial_3].into()].into_iter().collect(),
@@ -1424,9 +1397,7 @@ mod tests {
 
     async fn whir_test_multi_round<
         GC: IopCtx<F: TwoAdicField, EF: TwoAdicField + ExtensionField<GC::F>>,
-        C: DefaultBasefoldConfig<GC, Tcs: DefaultMerkleTreeConfig<GC>>,
-        MerkleProver: TensorCsProver<GC, CpuBackend, MerkleConfig = C::Tcs>
-            + ComputeTcsOpenings<GC, CpuBackend, MerkleConfig = C::Tcs>,
+        MerkleProver: TensorCsProver<GC, CpuBackend> + ComputeTcsOpenings<GC, CpuBackend>,
     >(
         config: WhirProofShape<GC::F>,
         num_variables: usize,
@@ -1442,7 +1413,7 @@ mod tests {
         let polynomial_3: Mle<GC::F> =
             Mle::new(Tensor::zeros_in([1 << (num_variables - 4), 1], CpuBackend));
 
-        whir_test_generic::<GC, C, MerkleProver>(
+        whir_test_generic::<GC, MerkleProver>(
             config,
             merkle_prover,
             vec![vec![polynomial_1].into(), vec![polynomial_2].into(), vec![polynomial_3].into()]
@@ -1457,24 +1428,14 @@ mod tests {
         let config = WhirProofShape::default_whir_config();
         let merkle_prover: Poseidon2KoalaBear16Prover = FieldMerkleTreeProver::default();
 
-        whir_test_multi_round::<_, Poseidon2KoalaBear16BasefoldConfig, _>(
-            config,
-            16,
-            merkle_prover,
-        )
-        .await;
+        whir_test_multi_round::<_, _>(config, 16, merkle_prover).await;
     }
 
     #[tokio::test]
     async fn whir_test_e2e_koala_bear() {
         let config = WhirProofShape::default_whir_config();
         let merkle_prover: Poseidon2KoalaBear16Prover = FieldMerkleTreeProver::default();
-        whir_test_single_round::<_, Poseidon2KoalaBear16BasefoldConfig, _>(
-            config,
-            16,
-            merkle_prover,
-        )
-        .await;
+        whir_test_single_round::<_, _>(config, 16, merkle_prover).await;
     }
 
     #[tokio::test]
@@ -1482,24 +1443,14 @@ mod tests {
     async fn whir_test_realistic_koala_bear() {
         let config = big_beautiful_whir_config::<KoalaBear>();
         let merkle_prover: Poseidon2KoalaBear16Prover = FieldMerkleTreeProver::default();
-        whir_test_single_round::<_, Poseidon2KoalaBear16BasefoldConfig, _>(
-            config,
-            28,
-            merkle_prover,
-        )
-        .await;
+        whir_test_single_round::<_, _>(config, 28, merkle_prover).await;
     }
 
     #[tokio::test]
     async fn whir_test_e2e_baby_bear() {
         let config = WhirProofShape::default_whir_config();
         let merkle_prover: Poseidon2BabyBear16Prover = FieldMerkleTreeProver::default();
-        whir_test_single_round::<_, Poseidon2BabyBear16BasefoldConfig, _>(
-            config,
-            16,
-            merkle_prover,
-        )
-        .await;
+        whir_test_single_round::<_, _>(config, 16, merkle_prover).await;
     }
 
     #[tokio::test]
@@ -1507,12 +1458,7 @@ mod tests {
     async fn whir_test_realistic_baby_bear() {
         let config = WhirProofShape::big_beautiful_whir_config();
         let merkle_prover: Poseidon2BabyBear16Prover = FieldMerkleTreeProver::default();
-        whir_test_single_round::<_, Poseidon2BabyBear16BasefoldConfig, _>(
-            config,
-            28,
-            merkle_prover,
-        )
-        .await;
+        whir_test_single_round::<_, _>(config, 28, merkle_prover).await;
     }
 
     #[tokio::test]
@@ -1520,15 +1466,12 @@ mod tests {
         let config = WhirProofShape::default_whir_config();
         let merkle_prover: Poseidon2BabyBear16Prover = FieldMerkleTreeProver::default();
 
-        test_jagged_whir_generic::<_, Poseidon2BabyBear16BasefoldConfig, _>(config, merkle_prover)
-            .await;
+        test_jagged_whir_generic::<_, _>(config, merkle_prover).await;
     }
 
     async fn test_jagged_whir_generic<
         GC: IopCtx<F: TwoAdicField, EF: TwoAdicField + ExtensionField<GC::F>>,
-        C: DefaultBasefoldConfig<GC, Tcs: DefaultMerkleTreeConfig<GC>>,
-        MerkleProver: TensorCsProver<GC, CpuBackend, MerkleConfig = C::Tcs>
-            + ComputeTcsOpenings<GC, CpuBackend, MerkleConfig = C::Tcs>,
+        MerkleProver: TensorCsProver<GC, CpuBackend> + ComputeTcsOpenings<GC, CpuBackend>,
     >(
         config: WhirProofShape<GC::F>,
         merkle_prover: MerkleProver,
@@ -1538,6 +1481,7 @@ mod tests {
     {
         let row_counts_rounds = vec![vec![1 << 10, 0, (1 << 9) - (1 << 7) - 1], vec![1 << 9]];
         let column_counts_rounds = vec![vec![32, 45, 32], vec![32]];
+        let num_rounds = row_counts_rounds.len();
         let max_log_row_count = 12;
 
         let row_counts = row_counts_rounds.into_iter().collect::<Rounds<Vec<usize>>>();
@@ -1567,14 +1511,14 @@ mod tests {
             .collect::<Rounds<_>>();
 
         let merkle_verifier = MerkleTreeTcs::default();
-        let verifier = Verifier::<GC, C>::new(merkle_verifier, config.clone());
+        let verifier = Verifier::<GC>::new(merkle_verifier, config.clone(), num_rounds);
 
-        let jagged_verifier = JaggedPcsVerifier::<GC, WhirJaggedConfig<C, GC>> {
+        let jagged_verifier = JaggedPcsVerifier::<GC, WhirJaggedConfig<GC>> {
             pcs_verifier: verifier,
             max_log_row_count: max_log_row_count as usize,
         };
 
-        let prover = Prover::<_, _, _, C>::new(Radix2DitParallel, merkle_prover, config.clone());
+        let prover = Prover::<_, _, _>::new(Radix2DitParallel, merkle_prover, config.clone());
 
         let jagged_generator = CpuJaggedMleGenerator;
 
@@ -1582,16 +1526,13 @@ mod tests {
 
         let jagged_prover = JaggedProver::<
             GC,
-            JaggedWhirProverComponents<GC, C, MerkleProver, Radix2DitParallel>,
+            JaggedWhirProverComponents<GC, MerkleProver, Radix2DitParallel>,
         >::new(
             max_log_row_count as usize,
             prover,
             jagged_sumcheck_prover,
             JaggedEvalSumcheckProver::default(),
         );
-
-        let machine_verifier =
-            MachineJaggedPcsVerifier::new(&jagged_verifier, column_counts.into_iter().collect());
 
         let eval_point = (0..max_log_row_count).map(|_| rng.gen::<GC::EF>()).collect::<Point<_>>();
 
@@ -1639,7 +1580,7 @@ mod tests {
             .map(|round| round.into_iter().flat_map(|v| v.into_iter()).collect())
             .collect::<Vec<_>>();
 
-        machine_verifier
+        jagged_verifier
             .verify_trusted_evaluations(
                 &commitments,
                 eval_point,

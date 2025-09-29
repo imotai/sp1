@@ -131,8 +131,8 @@ mod tests {
     use slop_challenger::DuplexChallenger;
     use slop_multilinear::{full_geq, Mle};
     use slop_sumcheck::reduce_sumcheck_to_evaluation;
-    use sp1_hypercube::{inner_perm, SP1CoreJaggedConfig};
-    use sp1_primitives::SP1DiffusionMatrix;
+    use sp1_hypercube::inner_perm;
+    use sp1_primitives::{SP1DiffusionMatrix, SP1GlobalContext};
     use sp1_recursion_compiler::{
         circuit::{AsmBuilder, AsmCompiler, AsmConfig, CircuitV2Builder},
         config::InnerConfig,
@@ -143,7 +143,7 @@ mod tests {
 
     use sp1_primitives::{SP1Field, SP1Perm};
     type F = SP1Field;
-    type SC = SP1CoreJaggedConfig;
+    type SC = SP1GlobalContext;
     type C = InnerConfig;
     type EF = BinomialExtensionField<SP1Field, 4>;
 

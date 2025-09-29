@@ -1,12 +1,15 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    iter::once,
+};
 
 use slop_algebra::AbstractField;
-use slop_basefold::DefaultBasefoldConfig;
+use slop_basefold::BasefoldVerifier;
 use slop_multilinear::Point;
 use sp1_hypercube::{
     air::MachineAir, septic_digest::SepticDigest, AirOpenedValues, Chip, ChipDimensions,
-    ChipOpenedValues, MachineVerifyingKey, SP1BasefoldConfig, SP1CoreJaggedConfig,
-    ShardOpenedValues, ShardProof, PROOF_MAX_NUM_PVS,
+    ChipOpenedValues, MachineVerifyingKey, SP1CoreJaggedConfig, ShardOpenedValues, ShardProof,
+    NUM_SP1_COMMITMENTS, PROOF_MAX_NUM_PVS,
 };
 use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
 
@@ -38,7 +41,9 @@ pub fn dummy_shard_proof<A: MachineAir<SP1Field>>(
     log_stacking_height_multiples: &[usize],
     added_cols: &[usize],
 ) -> ShardProof<SP1GlobalContext, SP1CoreJaggedConfig> {
-    let default_verifier = SP1BasefoldConfig::default_verifier(log_blowup);
+    let default_verifier =
+        BasefoldVerifier::<SP1GlobalContext>::new(log_blowup, NUM_SP1_COMMITMENTS);
+
     let fri_queries = default_verifier.fri_config.num_queries;
 
     let total_machine_cols =
@@ -51,7 +56,10 @@ pub fn dummy_shard_proof<A: MachineAir<SP1Field>>(
         log_blowup,
         total_machine_cols,
         max_log_row_count,
-        added_cols,
+        once(shard_chips.iter().map(MachineAir::preprocessed_width).filter(|x| *x > 0).collect())
+            .chain(once(shard_chips.iter().map(|chip| chip.air.width()).collect::<Vec<_>>()))
+            .zip(added_cols.iter().copied())
+            .collect(),
     );
 
     let logup_gkr_proof =

@@ -13,6 +13,7 @@ lazy_static = { workspace = true }
 slop-algebra = { workspace = true }
 slop-challenger = { workspace = true }
 slop-poseidon2 = { workspace = true }
+slop-symmetric = { workspace = true }
 serde = { workspace = true }
 
 [lints]

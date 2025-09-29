@@ -15,3 +15,7 @@ slop-poseidon2 = { workspace = true}
 slop-symmetric = { workspace = true }
 serde = { workspace = true }
 
+
+zkhash = "0.2.0"
+ff = { version = "0.13", features = ["derive", "derive_bits"] }
+

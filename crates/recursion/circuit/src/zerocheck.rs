@@ -1,13 +1,8 @@
 use std::{collections::BTreeSet, ops::Deref};
 
 use crate::{
-    basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldVerifier},
-    challenger::FieldChallengerVariable,
-    jagged::RecursiveJaggedConfig,
-    shard::RecursiveShardVerifier,
-    sumcheck::verify_sumcheck,
-    symbolic::IntoSymbolic,
-    CircuitConfig, SP1FieldConfigVariable,
+    challenger::FieldChallengerVariable, shard::RecursiveShardVerifier, sumcheck::verify_sumcheck,
+    symbolic::IntoSymbolic, CircuitConfig, SP1FieldConfigVariable,
 };
 use itertools::Itertools;
 use slop_air::{Air, BaseAir};
@@ -110,15 +105,11 @@ where
     Ok(())
 }
 
-impl<GC, C, SC, A, JC> RecursiveShardVerifier<GC, A, SC, C, JC>
+impl<GC, C, A> RecursiveShardVerifier<GC, A, C>
 where
-    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
+    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + SP1FieldConfigVariable<C>,
     C: CircuitConfig,
-    SC: SP1FieldConfigVariable<C>,
     A: MachineAir<SP1Field>,
-    JC: RecursiveJaggedConfig<
-        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >,
 {
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::type_complexity)]
@@ -130,7 +121,7 @@ where
         gkr_evaluations: &LogUpEvaluations<Ext<SP1Field, SP1ExtensionField>>,
         zerocheck_proof: &PartialSumcheckProof<Ext<SP1Field, SP1ExtensionField>>,
         public_values: &[Felt<SP1Field>],
-        challenger: &mut SC::FriChallengerVariable,
+        challenger: &mut GC::FriChallengerVariable,
     ) where
         A: for<'a> Air<RecursiveVerifierConstraintFolder<'a>>,
     {
@@ -190,7 +181,7 @@ where
                 compute_padded_row_adjustment(builder, chip, alpha, public_values);
 
             let constraint_eval =
-                eval_constraints::<C, SC, A>(builder, chip, openings, alpha, public_values)
+                eval_constraints::<C, GC, A>(builder, chip, openings, alpha, public_values)
                     - padded_row_adjustment * geq_val;
 
             let openings_batch = openings
@@ -245,7 +236,7 @@ where
         builder.assert_ext_eq(zerocheck_proof.claimed_sum, zerocheck_sum_modification);
 
         // Verify the zerocheck proof.
-        verify_sumcheck::<C, SC>(builder, challenger, zerocheck_proof);
+        verify_sumcheck::<C, GC>(builder, challenger, zerocheck_proof);
 
         // Observe the openings
         for opening in opened_values.chips.values() {

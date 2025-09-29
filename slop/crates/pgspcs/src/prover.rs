@@ -112,7 +112,7 @@ mod tests {
     use rand::{thread_rng, Rng};
     use slop_algebra::extension::BinomialExtensionField;
     use slop_baby_bear::{baby_bear_poseidon2::BabyBearDegree4Duplex, BabyBear};
-    use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
+    use slop_basefold::BasefoldVerifier;
     use slop_basefold_prover::{BasefoldProver, Poseidon2BabyBear16BasefoldCpuProverComponents};
 
     use crate::verifier::SparsePCSVerifier;
@@ -121,10 +121,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_sparse_polynomial_prover() {
-        type C = Poseidon2BabyBear16BasefoldConfig;
         type GC = BabyBearDegree4Duplex;
         type BackendProver = BasefoldProver<GC, Poseidon2BabyBear16BasefoldCpuProverComponents>;
-        type BackendVerifier = BasefoldVerifier<GC, C>;
+        type BackendVerifier = BasefoldVerifier<GC>;
         type F = BabyBear;
         type EF = BinomialExtensionField<BabyBear, 4>;
 
@@ -141,10 +140,10 @@ mod tests {
         );
         let alpha = Point::new((0..num_variables).map(|_| rng.gen::<EF>()).collect());
 
-        let basefold_verifier = BackendVerifier::new(log_blowup);
+        let basefold_verifier = BackendVerifier::new(log_blowup, 1);
         let basefold_prover = BackendProver::new(&basefold_verifier);
 
-        let mut challenger = basefold_verifier.challenger();
+        let mut challenger = GC::default_challenger();
 
         let sparse_prover = SparsePCSProver::new(basefold_prover);
         let (commitment, prover_data) = sparse_prover.commit_sparse_poly(&poly).await.unwrap();
@@ -155,7 +154,7 @@ mod tests {
             .unwrap();
         let evaluation_claim = poly.eval_at(&alpha);
 
-        let mut challenger = basefold_verifier.challenger();
+        let mut challenger = GC::default_challenger();
 
         let sparse_verifier = SparsePCSVerifier::new(basefold_verifier);
         sparse_verifier

@@ -4,35 +4,31 @@ use rayon::{
     slice::ParallelSlice,
 };
 use serde::{Deserialize, Serialize};
-use slop_algebra::Field;
+use slop_challenger::IopCtx;
 use sp1_core_machine::utils::{log2_strict_usize, reverse_bits_len, reverse_slice_index_bits};
 use sp1_recursion_compiler::ir::Builder;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "HV::Digest: Serialize"))]
-#[serde(bound(deserialize = "HV::Digest: Deserialize<'de>"))]
-pub struct MerkleTree<F: Field, HV: FieldHasher<F>> {
+pub struct MerkleTree<GC: IopCtx> {
     /// The height of the tree, not counting the root layer. This is the same as the logarithm of
     /// the number of leaves.
     pub height: usize,
 
     /// All the layers but the root. If there are `n` leaves where `n` is a power of 2, there are
     /// `2n - 2` elements in this vector. The leaves are at the beginning of the vector.
-    pub digest_layers: Vec<HV::Digest>,
+    pub digest_layers: Vec<GC::Digest>,
 }
 #[derive(Debug)]
 pub struct VcsError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "HV::Digest: Serialize"))]
-#[serde(bound(deserialize = "HV::Digest: Deserialize<'de>"))]
-pub struct MerkleProof<F: Field, HV: FieldHasher<F>> {
+pub struct MerkleProof<GC: IopCtx> {
     pub index: usize,
-    pub path: Vec<HV::Digest>,
+    pub path: Vec<GC::Digest>,
 }
 
-impl<F: Field, HV: FieldHasher<F>> MerkleTree<F, HV> {
-    pub fn commit(leaves: Vec<HV::Digest>) -> (HV::Digest, Self) {
+impl<GC: FieldHasher<Digest: Default>> MerkleTree<GC> {
+    pub fn commit(leaves: Vec<GC::Digest>) -> (GC::Digest, Self) {
         assert!(!leaves.is_empty());
         let new_len = leaves.len().next_power_of_two();
         let height = log2_strict_usize(new_len);
@@ -44,7 +40,7 @@ impl<F: Field, HV: FieldHasher<F>> MerkleTree<F, HV> {
         let mut last_layer = leaves;
         let old_len = last_layer.len();
         for _ in old_len..new_len {
-            last_layer.push(HV::Digest::default());
+            last_layer.push(GC::Digest::default());
         }
 
         // Store the leaves in bit-reversed order.
@@ -59,7 +55,7 @@ impl<F: Field, HV: FieldHasher<F>> MerkleTree<F, HV> {
                 .par_chunks_exact(2)
                 .map(|chunk| {
                     let [left, right] = chunk.try_into().unwrap();
-                    HV::constant_compress([left, right])
+                    GC::constant_compress([left, right])
                 })
                 .collect_into_vec(&mut next_layer);
             digest_layers.extend(next_layer.iter());
@@ -69,11 +65,12 @@ impl<F: Field, HV: FieldHasher<F>> MerkleTree<F, HV> {
 
         debug_assert_eq!(digest_layers.len(), 2 * new_len - 2);
 
-        let root = HV::constant_compress([last_layer[0], last_layer[1]]);
+        let root = GC::constant_compress([last_layer[0], last_layer[1]]);
+
         (root, Self { height, digest_layers })
     }
 
-    pub fn open(&self, index: usize) -> (HV::Digest, MerkleProof<F, HV>) {
+    pub fn open(&self, index: usize) -> (GC::Digest, MerkleProof<GC>) {
         let mut path = Vec::with_capacity(self.height);
         let mut bit_rev_index = reverse_bits_len(index, self.height);
         let value = self.digest_layers[bit_rev_index];
@@ -97,9 +94,9 @@ impl<F: Field, HV: FieldHasher<F>> MerkleTree<F, HV> {
     }
 
     pub fn verify(
-        proof: MerkleProof<F, HV>,
-        value: HV::Digest,
-        commitment: HV::Digest,
+        proof: MerkleProof<GC>,
+        value: GC::Digest,
+        commitment: GC::Digest,
     ) -> Result<(), VcsError> {
         let MerkleProof { index, path } = proof;
 
@@ -111,13 +108,13 @@ impl<F: Field, HV: FieldHasher<F>> MerkleTree<F, HV> {
             // If the index is odd, swap the order of [value, sibling].
             let new_pair =
                 if index.is_multiple_of(2) { [value, sibling] } else { [sibling, value] };
-            value = HV::constant_compress(new_pair);
+            value = GC::constant_compress(new_pair);
             index >>= 1;
         }
-        if value == commitment {
-            Ok(())
-        } else {
+        if value != commitment {
             Err(VcsError)
+        } else {
+            Ok(())
         }
     }
 }
@@ -127,7 +124,7 @@ pub fn verify<C: CircuitConfig, HV: FieldHasherVariable<C>>(
     path: Vec<HV::DigestVariable>,
     index: Vec<C::Bit>,
     value: HV::DigestVariable,
-    commitment: HV::DigestVariable,
+    merkle_root: HV::DigestVariable,
 ) {
     let mut value = value;
     for (sibling, bit) in path.iter().zip(index.iter()) {
@@ -136,5 +133,6 @@ pub fn verify<C: CircuitConfig, HV: FieldHasherVariable<C>>(
         let new_pair = HV::select_chain_digest(builder, *bit, [value, sibling]);
         value = HV::compress(builder, new_pair);
     }
-    HV::assert_digest_eq(builder, value, commitment);
+
+    HV::assert_digest_eq(builder, value, merkle_root);
 }

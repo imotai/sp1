@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use slop_algebra::{extension::BinomialExtensionField, AbstractField};
 use slop_challenger::{DuplexChallenger, IopCtx};
 use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
+use slop_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 
 pub(crate) fn string_to_koala_bear(hex_string: String) -> KoalaBear {
     KoalaBear::from_canonical_u64(
@@ -29,6 +30,19 @@ impl IopCtx for KoalaBearDegree4Duplex {
     type EF = BinomialExtensionField<KoalaBear, 4>;
     type Digest = [KoalaBear; KOALA_BEAR_DIGEST_SIZE];
     type Challenger = DuplexChallenger<Self::F, KoalaPerm, 16, 8>;
+    type Hasher = PaddingFreeSponge<KoalaPerm, 16, 8, 8>;
+    type Compressor = TruncatedPermutation<KoalaPerm, 2, 8, 16>;
+
+    fn default_hasher_and_compressor() -> (Self::Hasher, Self::Compressor) {
+        let perm = my_kb_16_perm();
+        let hasher = Self::Hasher::new(perm.clone());
+        let compressor = Self::Compressor::new(perm.clone());
+        (hasher, compressor)
+    }
+
+    fn default_challenger() -> Self::Challenger {
+        DuplexChallenger::new(my_kb_16_perm())
+    }
 }
 
 pub fn my_kb_16_perm() -> KoalaPerm {

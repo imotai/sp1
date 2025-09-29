@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use slop_algebra::{extension::BinomialExtensionField, AbstractField};
 use slop_challenger::{DuplexChallenger, IopCtx};
 use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
+use slop_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 
 #[derive(Debug, Clone, Default, Copy, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct Poseidon2BabyBearConfig<const STATE_WIDTH: usize = 16>;
@@ -37,6 +38,20 @@ impl IopCtx for BabyBearDegree4Duplex {
     type EF = BinomialExtensionField<BabyBear, 4>;
     type Digest = [BabyBear; BABY_BEAR_DIGEST_SIZE];
     type Challenger = DuplexChallenger<Self::F, Perm, 16, 8>;
+    type Compressor = TruncatedPermutation<Perm, 2, 8, 16>;
+    type Hasher = PaddingFreeSponge<Perm, 16, 8, 8>;
+
+    fn default_hasher_and_compressor() -> (Self::Hasher, Self::Compressor) {
+        let perm = my_bb_16_perm();
+        let hasher = Self::Hasher::new(perm.clone());
+        let compressor = Self::Compressor::new(perm.clone());
+        (hasher, compressor)
+    }
+
+    fn default_challenger() -> Self::Challenger {
+        let perm = my_bb_16_perm();
+        DuplexChallenger::new(perm)
+    }
 }
 
 lazy_static::lazy_static! {

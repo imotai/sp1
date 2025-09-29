@@ -6,21 +6,16 @@ use std::marker::PhantomData;
 
 use super::{PublicValuesOutputDigest, SP1CompressVerifier, SP1ShapedWitnessVariable};
 use crate::{
-    basefold::{
-        merkle_tree::{verify, MerkleProof},
-        RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier,
-    },
-    challenger::DuplexChallengerVariable,
+    basefold::merkle_tree::{verify, MerkleProof},
     hash::FieldHasher,
-    jagged::RecursiveJaggedConfig,
     zerocheck::RecursiveVerifierConstraintFolder,
     CircuitConfig, FieldHasherVariable, SP1FieldConfigVariable,
 };
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
 use slop_algebra::AbstractField;
-use sp1_hypercube::{air::MachineAir, MachineConfig, SP1CoreJaggedConfig};
-use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
+use sp1_hypercube::{air::MachineAir, MachineConfig};
+use sp1_primitives::{SP1Field, SP1GlobalContext};
 use sp1_recursion_compiler::ir::{Builder, Felt};
 use sp1_recursion_executor::DIGEST_SIZE;
 
@@ -51,12 +46,12 @@ pub struct SP1MerkleProofWitnessVariable<
 
 /// An input layout for the reduce verifier.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "SC::Digest: Serialize"))]
-#[serde(bound(deserialize = "SC::Digest: Deserialize<'de>"))]
-pub struct SP1MerkleProofWitnessValues<SC: FieldHasher<SP1Field>> {
-    pub vk_merkle_proofs: Vec<MerkleProof<SP1Field, SC>>,
-    pub values: Vec<SC::Digest>,
-    pub root: SC::Digest,
+#[serde(bound(serialize = "GC::Digest: Serialize"))]
+#[serde(bound(deserialize = "GC::Digest: Deserialize<'de>"))]
+pub struct SP1MerkleProofWitnessValues<GC: FieldHasher> {
+    pub vk_merkle_proofs: Vec<MerkleProof<GC>>,
+    pub values: Vec<GC::Digest>,
+    pub root: GC::Digest,
 }
 
 impl<C, SC> SP1MerkleProofVerifier<C, SC>
@@ -87,54 +82,32 @@ where
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct SP1CompressWithVKeyVerifier<C, SC, A, JC> {
-    _phantom: PhantomData<(C, SC, A, JC)>,
+pub struct SP1CompressWithVKeyVerifier<C, SC, A> {
+    _phantom: PhantomData<(C, SC, A)>,
 }
 
 /// Witness layout for the verifier of the proof shape phase of the compress stage.
-pub struct SP1CompressWithVKeyWitnessVariable<
-    C: CircuitConfig,
-    SC: SP1FieldConfigVariable<C> + Send + Sync,
-    JC: RecursiveJaggedConfig<
-        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >,
-> {
-    pub compress_var: SP1ShapedWitnessVariable<C, SC, JC>,
-    pub merkle_var: SP1MerkleProofWitnessVariable<C, SC>,
+pub struct SP1CompressWithVKeyWitnessVariable<C: CircuitConfig, GC: SP1FieldConfigVariable<C>> {
+    pub compress_var: SP1ShapedWitnessVariable<C, GC>,
+    pub merkle_var: SP1MerkleProofWitnessVariable<C, GC>,
 }
 
 /// An input layout for the verifier of the proof shape phase of the compress stage.
-pub struct SP1CompressWithVKeyWitnessValues<
-    SC: MachineConfig<SP1GlobalContext> + FieldHasher<SP1Field>,
-> {
+pub struct SP1CompressWithVKeyWitnessValues<SC: MachineConfig<SP1GlobalContext>> {
     pub compress_val: SP1ShapedWitnessValues<SP1GlobalContext, SC>,
-    pub merkle_val: SP1MerkleProofWitnessValues<SC>,
+    pub merkle_val: SP1MerkleProofWitnessValues<SP1GlobalContext>,
 }
 
-impl<C, SC, A, JC> SP1CompressWithVKeyVerifier<C, SC, A, JC>
+impl<C, SC, A> SP1CompressWithVKeyVerifier<C, SC, A>
 where
-    SC: SP1FieldConfigVariable<
-        C,
-        FriChallengerVariable = DuplexChallengerVariable<C>,
-        DigestVariable = [Felt<SP1Field>; DIGEST_SIZE],
-    >,
     C: CircuitConfig<Bit = Felt<SP1Field>>,
     A: MachineAir<InnerVal> + for<'a> Air<RecursiveVerifierConstraintFolder<'a>>,
-    JC: RecursiveJaggedConfig<
-        F = SP1Field,
-        EF = SP1ExtensionField,
-        Circuit = C,
-        Commitment = SC::DigestVariable,
-        Challenger = SC::FriChallengerVariable,
-        BatchPcsProof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>,
-        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >,
 {
     /// Verify the proof shape phase of the compress stage.
     pub fn verify(
         builder: &mut Builder<C>,
-        machine: &RecursiveShardVerifier<SP1GlobalContext, A, SC, C, JC>,
-        input: SP1CompressWithVKeyWitnessVariable<C, SC, JC>,
+        machine: &RecursiveShardVerifier<SP1GlobalContext, A, C>,
+        input: SP1CompressWithVKeyWitnessVariable<C, SP1GlobalContext>,
         value_assertions: bool,
         kind: PublicValuesOutputDigest,
     ) {
@@ -146,11 +119,17 @@ where
             .collect::<Vec<_>>();
         let vk_root = input.merkle_var.root.map(|x| builder.eval(x));
         SP1MerkleProofVerifier::verify(builder, values, input.merkle_var, value_assertions);
-        SP1CompressVerifier::verify(builder, machine, input.compress_var, vk_root, kind);
+        SP1CompressVerifier::<C, SP1GlobalContext, _>::verify(
+            builder,
+            machine,
+            input.compress_var,
+            vk_root,
+            kind,
+        );
     }
 }
 
-impl SP1MerkleProofWitnessValues<SP1CoreJaggedConfig> {
+impl SP1MerkleProofWitnessValues<SP1GlobalContext> {
     pub fn dummy(num_proofs: usize, height: usize) -> Self {
         let dummy_digest = [SP1Field::zero(); DIGEST_SIZE];
         let vk_merkle_proofs =

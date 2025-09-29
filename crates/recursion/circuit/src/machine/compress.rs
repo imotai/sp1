@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use sp1_core_machine::riscv::MAX_LOG_NUMBER_OF_SHARDS;
 use sp1_recursion_compiler::ir::{Builder, Felt, IrIter};
 
-use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
+use sp1_primitives::{SP1Field, SP1GlobalContext};
 use sp1_recursion_executor::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS};
 
 use sp1_hypercube::{
@@ -25,9 +25,7 @@ use sp1_hypercube::{
 };
 
 use crate::{
-    basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier},
     challenger::CanObserveVariable,
-    jagged::RecursiveJaggedConfig,
     machine::{
         assert_complete, assert_recursion_public_values_valid, recursion_public_values_digest,
         root_public_values_digest,
@@ -42,8 +40,8 @@ use sp1_recursion_compiler::circuit::CircuitV2Builder;
 use super::InnerVal;
 /// A program to verify a batch of recursive proofs and aggregate their public values.
 #[derive(Debug, Clone, Copy)]
-pub struct SP1CompressVerifier<C, SC, A, JC> {
-    _phantom: PhantomData<(C, SC, A, JC)>,
+pub struct SP1CompressVerifier<C, SC, A> {
+    _phantom: PhantomData<(C, SC, A)>,
 }
 
 pub enum PublicValuesOutputDigest {
@@ -53,15 +51,9 @@ pub enum PublicValuesOutputDigest {
 
 /// Witness layout for the compress stage verifier.
 #[allow(clippy::type_complexity)]
-pub struct SP1ShapedWitnessVariable<
-    C: CircuitConfig,
-    SC: SP1FieldConfigVariable<C> + Send + Sync,
-    JC: RecursiveJaggedConfig<
-        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >,
-> {
+pub struct SP1ShapedWitnessVariable<C: CircuitConfig, GC: SP1FieldConfigVariable<C>> {
     /// The shard proofs to verify.
-    pub vks_and_proofs: Vec<(MachineVerifyingKeyVariable<C, SC>, ShardProofVariable<C, SC, JC>)>,
+    pub vks_and_proofs: Vec<(MachineVerifyingKeyVariable<C, GC>, ShardProofVariable<C, GC>)>,
     pub is_complete: Felt<SP1Field>,
 }
 
@@ -88,20 +80,10 @@ pub struct SP1ShapedWitnessValues<GC: IopCtx, SC: MachineConfig<GC>> {
 //     BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
 // >,
 
-impl<C, SC, A, JC> SP1CompressVerifier<C, SC, A, JC>
+impl<C, SC, A> SP1CompressVerifier<C, SC, A>
 where
-    SC: SP1FieldConfigVariable<C> + Send + Sync,
-    C: CircuitConfig,
+    C: CircuitConfig<Bit = Felt<SP1Field>>,
     A: MachineAir<InnerVal> + for<'a> Air<RecursiveVerifierConstraintFolder<'a>>,
-    JC: RecursiveJaggedConfig<
-        F = SP1Field,
-        EF = SP1ExtensionField,
-        Circuit = C,
-        Commitment = SC::DigestVariable,
-        Challenger = SC::FriChallengerVariable,
-        BatchPcsProof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>,
-        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >,
 {
     /// Verify a batch of recursive proofs and aggregate their public values.
     ///
@@ -117,8 +99,8 @@ where
     ///   checked against itself as in [sp1_prover::Prover] or as in [super::SP1RootVerifier].
     pub fn verify(
         builder: &mut Builder<C>,
-        machine: &RecursiveShardVerifier<SP1GlobalContext, A, SC, C, JC>,
-        input: SP1ShapedWitnessVariable<C, SC, JC>,
+        machine: &RecursiveShardVerifier<SP1GlobalContext, A, C>,
+        input: SP1ShapedWitnessVariable<C, SP1GlobalContext>,
         vk_root: [Felt<SP1Field>; DIGEST_SIZE],
         kind: PublicValuesOutputDigest,
     ) {
@@ -172,7 +154,7 @@ where
             builder,
             |builder, (vk, shard_proof)| {
                 // Prepare a challenger.
-                let mut challenger = SC::challenger_variable(builder);
+                let mut challenger = SP1GlobalContext::challenger_variable(builder);
 
                 // Observe the vk and start pc.
                 challenger.observe(builder, vk.preprocessed_commit);
@@ -196,7 +178,10 @@ where
             let current_public_values: &RecursionPublicValues<Felt<SP1Field>> =
                 shard_proof.public_values.as_slice().borrow();
             // Assert that the public values are valid.
-            assert_recursion_public_values_valid::<C, SC>(builder, current_public_values);
+            assert_recursion_public_values_valid::<C, SP1GlobalContext>(
+                builder,
+                current_public_values,
+            );
             // Assert that the vk root is the same as the witnessed one.
             for (expected, actual) in vk_root.iter().zip(current_public_values.vk_root.iter()) {
                 builder.assert_felt_eq(*expected, *actual);
@@ -455,16 +440,19 @@ where
         // Set the digest according to the previous values.
         compress_public_values.digest = match kind {
             PublicValuesOutputDigest::Reduce => {
-                recursion_public_values_digest::<C, SC>(builder, compress_public_values)
+                recursion_public_values_digest::<C, SP1GlobalContext>(
+                    builder,
+                    compress_public_values,
+                )
             }
             PublicValuesOutputDigest::Root => {
-                root_public_values_digest::<C, SC>(builder, compress_public_values)
+                root_public_values_digest::<C, SP1GlobalContext>(builder, compress_public_values)
             }
         };
 
         // If the proof is complete, make completeness assertions.
         assert_complete(builder, compress_public_values, is_complete);
 
-        SC::commit_recursion_public_values(builder, *compress_public_values);
+        SP1GlobalContext::commit_recursion_public_values(builder, *compress_public_values);
     }
 }

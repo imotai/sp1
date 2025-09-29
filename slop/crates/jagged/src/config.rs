@@ -7,6 +7,8 @@ pub trait JaggedConfig<GC: IopCtx>:
 {
     type PcsVerifier: MultilinearPcsVerifier<GC>;
 
+    /// The jagged verifier will assume that the underlying PCS will pad commitments to a multiple of
+    /// `1<<log.stacking_height(verifier)`.
     fn log_stacking_height(verifier: &Self::PcsVerifier) -> u32;
 
     fn round_multiples(

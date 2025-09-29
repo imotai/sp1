@@ -188,7 +188,7 @@ mod tests {
     };
     use slop_multilinear::Point;
     use sp1_core_machine::utils::setup_logger;
-    use sp1_hypercube::{inner_perm, log2_ceil_usize, SP1CoreJaggedConfig};
+    use sp1_hypercube::{inner_perm, log2_ceil_usize};
     use sp1_primitives::{SP1DiffusionMatrix, SP1GlobalContext};
     use sp1_recursion_compiler::{
         circuit::{AsmBuilder, AsmCompiler, AsmConfig, CircuitV2Builder},
@@ -210,7 +210,7 @@ mod tests {
     type F = SP1Field;
     type EF = BinomialExtensionField<SP1Field, 4>;
     type C = AsmConfig;
-    type SC = SP1CoreJaggedConfig;
+    type SC = SP1GlobalContext;
 
     fn trivial_jagged_eval(
         verifier_params: &JaggedLittlePolynomialVerifierParams<F>,

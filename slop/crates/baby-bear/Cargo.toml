@@ -11,6 +11,7 @@ categories.workspace = true
 p3-baby-bear = { workspace = true }
 slop-algebra = {workspace = true}
 slop-poseidon2 = {workspace = true}
+slop-symmetric = { workspace = true }
 slop-challenger = { workspace = true }
 
 serde = { workspace = true, features = ["derive"] }

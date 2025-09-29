@@ -192,7 +192,7 @@ mod tests {
     use rand::thread_rng;
     use slop_algebra::extension::BinomialExtensionField;
     use slop_baby_bear::{baby_bear_poseidon2::BabyBearDegree4Duplex, BabyBear};
-    use slop_basefold::{BasefoldVerifier, Poseidon2BabyBear16BasefoldConfig};
+    use slop_basefold::BasefoldVerifier;
     use slop_basefold_prover::{BasefoldProver, Poseidon2BabyBear16BasefoldCpuProverComponents};
     use slop_challenger::CanObserve;
     use slop_tensor::Tensor;
@@ -206,7 +206,6 @@ mod tests {
         let log_stacking_height = 10;
         let batch_size = 10;
 
-        type C = Poseidon2BabyBear16BasefoldConfig;
         type GC = BabyBearDegree4Duplex;
         type Prover = BasefoldProver<GC, Poseidon2BabyBear16BasefoldCpuProverComponents>;
         type EF = BinomialExtensionField<BabyBear, 4>;
@@ -232,14 +231,15 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let pcs_verifier = BasefoldVerifier::<GC, C>::new(log_blowup);
+        let pcs_verifier =
+            BasefoldVerifier::<GC>::new(log_blowup, round_widths_and_log_heights.len());
         let pcs_prover = Prover::new(&pcs_verifier);
         let stacker = FixedRateInterleave::new(batch_size);
 
         let verifier = StackedPcsVerifier::new(pcs_verifier, log_stacking_height);
         let prover = StackedPcsProver::new(pcs_prover, stacker, log_stacking_height);
 
-        let mut challenger = verifier.pcs_verifier.challenger();
+        let mut challenger = GC::default_challenger();
         let mut commitments = vec![];
         let mut prover_data = Rounds::new();
         let mut batch_evaluations = Rounds::new();
@@ -280,7 +280,7 @@ mod tests {
             .await
             .unwrap();
 
-        let mut challenger = verifier.pcs_verifier.challenger();
+        let mut challenger = GC::default_challenger();
         for commitment in commitments.iter() {
             challenger.observe(*commitment);
         }

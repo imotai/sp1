@@ -4311,6 +4311,7 @@ dependencies = [
  "slop-algebra",
  "slop-challenger",
  "slop-poseidon2",
+ "slop-symmetric",
 ]
 
 [[package]]
@@ -4364,12 +4365,14 @@ dependencies = [
 name = "slop-bn254"
 version = "6.0.0"
 dependencies = [
+ "ff 0.13.1",
  "p3-bn254-fr",
  "serde",
  "slop-algebra",
  "slop-challenger",
  "slop-poseidon2",
  "slop-symmetric",
+ "zkhash",
 ]
 
 [[package]]
@@ -4447,6 +4450,7 @@ dependencies = [
  "slop-multilinear",
  "slop-stacked",
  "slop-sumcheck",
+ "slop-symmetric",
  "slop-tensor",
  "slop-utils",
  "thiserror 1.0.69",
@@ -4471,6 +4475,7 @@ dependencies = [
  "slop-algebra",
  "slop-challenger",
  "slop-poseidon2",
+ "slop-symmetric",
 ]
 
 [[package]]

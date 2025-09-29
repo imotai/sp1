@@ -1,9 +1,8 @@
 use std::marker::PhantomData;
 
+use itertools::izip;
 use slop_algebra::{extension::BinomialExtensionField, AbstractField};
-use slop_jagged::{
-    JaggedBasefoldConfig, JaggedLittlePolynomialVerifierParams, JaggedSumcheckEvalProof,
-};
+use slop_jagged::{JaggedLittlePolynomialVerifierParams, JaggedSumcheckEvalProof};
 use slop_multilinear::{Mle, MleEval, Point};
 use slop_sumcheck::PartialSumcheckProof;
 use sp1_primitives::{SP1ExtensionField, SP1Field};
@@ -15,109 +14,59 @@ use sp1_recursion_compiler::{
 use crate::{
     basefold::{
         stacked::{RecursiveStackedPcsProof, RecursiveStackedPcsVerifier},
-        RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier,
-        RecursiveMultilinearPcsVerifier,
+        RecursiveBasefoldProof, RecursiveBasefoldVerifier,
     },
     challenger::FieldChallengerVariable,
     sumcheck::{evaluate_mle_ext, verify_sumcheck},
-    AsRecursive, CircuitConfig, SP1FieldConfigVariable,
+    CircuitConfig, SP1FieldConfigVariable,
 };
 
 use super::jagged_eval::{RecursiveJaggedEvalConfig, RecursiveJaggedEvalSumcheckConfig};
-
-pub trait RecursiveJaggedConfig: Sized {
-    type F;
-    type EF: AbstractField;
-    type Bit;
-    type Circuit: CircuitConfig<Bit = Self::Bit>;
-    type Commitment;
-    type Challenger: FieldChallengerVariable<Self::Circuit, Self::Bit>;
-    type BatchPcsProof;
-    type BatchPcsVerifier;
-}
 
 pub struct RecursiveJaggedConfigImpl<C, SC, P> {
     _marker: PhantomData<(C, SC, P)>,
 }
 
-impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>, P: RecursiveMultilinearPcsVerifier>
-    RecursiveJaggedConfig for RecursiveJaggedConfigImpl<C, SC, P>
-{
-    type F = SP1Field;
-    type EF = SP1ExtensionField;
-    type Bit = C::Bit;
-    type Circuit = C;
-    type Commitment = SC::DigestVariable;
-    type Challenger = SC::FriChallengerVariable;
-    type BatchPcsProof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>;
-    type BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>;
-}
-
-pub struct JaggedPcsProofVariable<JC: RecursiveJaggedConfig> {
-    pub params: JaggedLittlePolynomialVerifierParams<Felt<JC::F>>,
-    pub sumcheck_proof: PartialSumcheckProof<Ext<JC::F, JC::EF>>,
+pub struct JaggedPcsProofVariable<Proof, Digest> {
+    pub params: JaggedLittlePolynomialVerifierParams<Felt<SP1Field>>,
+    pub sumcheck_proof: PartialSumcheckProof<Ext<SP1Field, SP1ExtensionField>>,
     pub jagged_eval_proof: JaggedSumcheckEvalProof<Ext<SP1Field, SP1ExtensionField>>,
-    pub pcs_proof: RecursiveStackedPcsProof<JC::BatchPcsProof, JC::F, JC::EF>,
-    pub added_columns: Vec<usize>,
-}
-
-impl<C: CircuitConfig, GC, BC> AsRecursive<C> for JaggedBasefoldConfig<GC, BC>
-where
-    Self: SP1FieldConfigVariable<C>,
-{
-    type Recursive = RecursiveJaggedConfigImpl<
-        C,
-        Self,
-        RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, Self>>,
-    >;
+    pub pcs_proof: RecursiveStackedPcsProof<Proof, SP1Field, SP1ExtensionField>,
+    pub column_counts: Vec<Vec<usize>>,
+    pub row_counts: Vec<Vec<Felt<SP1Field>>>,
+    pub original_commitments: Vec<Digest>,
 }
 
 #[derive(Clone)]
-pub struct RecursiveJaggedPcsVerifier<
-    SC: SP1FieldConfigVariable<C>,
-    C: CircuitConfig,
-    JC: RecursiveJaggedConfig<
-        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >,
-> {
-    pub stacked_pcs_verifier: RecursiveStackedPcsVerifier<JC::BatchPcsVerifier>,
+pub struct RecursiveJaggedPcsVerifier<SC: SP1FieldConfigVariable<C>, C: CircuitConfig> {
+    pub stacked_pcs_verifier: RecursiveStackedPcsVerifier<RecursiveBasefoldVerifier<C, SC>>,
     pub max_log_row_count: usize,
     pub jagged_evaluator: RecursiveJaggedEvalSumcheckConfig<SC>,
 }
 
-impl<
-        SC: SP1FieldConfigVariable<C>,
-        C: CircuitConfig,
-        JC: RecursiveJaggedConfig<
-            F = SP1Field,
-            EF = SP1ExtensionField,
-            Circuit = C,
-            Commitment = SC::DigestVariable,
-            Challenger = SC::FriChallengerVariable,
-            BatchPcsProof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>,
-            BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-        >,
-    > RecursiveJaggedPcsVerifier<SC, C, JC>
-{
+impl<SC: SP1FieldConfigVariable<C>, C: CircuitConfig> RecursiveJaggedPcsVerifier<SC, C> {
     #[allow(clippy::too_many_arguments)]
     pub fn verify_trusted_evaluations(
         &self,
-        builder: &mut Builder<JC::Circuit>,
-        commitments: &[JC::Commitment],
-        point: Point<Ext<JC::F, JC::EF>>,
-        evaluation_claims: &[MleEval<Ext<JC::F, JC::EF>>],
-        proof: &JaggedPcsProofVariable<JC>,
+        builder: &mut Builder<C>,
+        commitments: &[SC::DigestVariable],
+        point: Point<Ext<SP1Field, SP1ExtensionField>>,
+        evaluation_claims: &[MleEval<Ext<SP1Field, SP1ExtensionField>>],
+        proof: &JaggedPcsProofVariable<RecursiveBasefoldProof<C, SC>, SC::DigestVariable>,
         insertion_points: &[usize],
-        challenger: &mut JC::Challenger,
-    ) -> Vec<Felt<JC::F>> {
+        challenger: &mut SC::FriChallengerVariable,
+    ) -> Vec<Felt<SP1Field>> {
         let JaggedPcsProofVariable {
             pcs_proof,
             sumcheck_proof,
             jagged_eval_proof,
             params,
-            added_columns,
+            column_counts,
+            original_commitments,
+            ..
         } = proof;
         let num_col_variables = (params.col_prefix_sums.len() - 1).next_power_of_two().ilog2();
+
         let z_col =
             (0..num_col_variables).map(|_| challenger.sample_ext(builder)).collect::<Point<_>>();
 
@@ -126,11 +75,14 @@ impl<
         // Collect the claims for the different polynomials.
         let mut column_claims = evaluation_claims.iter().flatten().copied().collect::<Vec<_>>();
 
+        let added_columns: Vec<usize> =
+            column_counts.iter().map(|cc| cc[cc.len() - 2] + 1).collect();
         // For each commit, Rizz needed a commitment to a vector of length a multiple of
         // 1 << self.pcs.log_stacking_height, and this is achieved by adding a single column of
         // zeroes as the last matrix of the commitment. We insert these "artificial" zeroes
         // into the evaluation claims.
-        let zero_ext: Ext<JC::F, JC::EF> = builder.constant(JC::EF::zero());
+        let zero_ext: Ext<SP1Field, SP1ExtensionField> =
+            builder.constant(SP1ExtensionField::zero());
         for (insertion_point, num_added_columns) in
             insertion_points.iter().rev().zip(added_columns.iter().rev())
         {
@@ -139,11 +91,32 @@ impl<
             }
         }
 
+        for (round_column_counts, round_row_counts, modified_commitment, original_commitment) in izip!(
+            column_counts.iter(),
+            proof.row_counts.iter(),
+            commitments.iter(),
+            original_commitments.iter()
+        ) {
+            let mut felts_vec: Vec<Felt<_>> =
+                vec![builder.eval(SP1Field::from_canonical_usize(round_column_counts.len()))];
+            for &count in round_row_counts {
+                felts_vec.push(builder.eval(count));
+            }
+
+            for &count in round_column_counts {
+                felts_vec.push(builder.eval(SP1Field::from_canonical_usize(count)));
+            }
+            let hash = SC::hash(builder, &felts_vec);
+            let expected_commitment = SC::compress(builder, [*original_commitment, hash]);
+
+            SC::assert_digest_eq(builder, expected_commitment, *modified_commitment);
+        }
+
         // Pad the column claims to the next power of two.
         column_claims.resize(column_claims.len().next_power_of_two(), zero_ext);
 
         let column_mle = Mle::from(column_claims);
-        let sumcheck_claim: Ext<JC::F, JC::EF> =
+        let sumcheck_claim: Ext<SP1Field, SP1ExtensionField> =
             evaluate_mle_ext(builder, column_mle, z_col.clone())[0];
 
         builder.assert_ext_eq(sumcheck_claim, sumcheck_proof.claimed_sum);
@@ -172,7 +145,7 @@ impl<
         let evaluation_point = sumcheck_proof.point_and_eval.0.clone();
         self.stacked_pcs_verifier.verify_trusted_evaluation(
             builder,
-            commitments,
+            original_commitments,
             &evaluation_point,
             pcs_proof,
             expected_eval,
@@ -182,35 +155,16 @@ impl<
     }
 }
 
-pub struct RecursiveMachineJaggedPcsVerifier<
-    'a,
-    SC: SP1FieldConfigVariable<C>,
-    C: CircuitConfig,
-    JC: RecursiveJaggedConfig<
-        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >,
-> {
-    pub jagged_pcs_verifier: &'a RecursiveJaggedPcsVerifier<SC, C, JC>,
+pub struct RecursiveMachineJaggedPcsVerifier<'a, SC: SP1FieldConfigVariable<C>, C: CircuitConfig> {
+    pub jagged_pcs_verifier: &'a RecursiveJaggedPcsVerifier<SC, C>,
     pub column_counts_by_round: Vec<Vec<usize>>,
 }
 
-impl<
-        'a,
-        SC: SP1FieldConfigVariable<C>,
-        C: CircuitConfig,
-        JC: RecursiveJaggedConfig<
-            F = SP1Field,
-            EF = SP1ExtensionField,
-            Circuit = C,
-            Commitment = SC::DigestVariable,
-            Challenger = SC::FriChallengerVariable,
-            BatchPcsProof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>,
-            BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-        >,
-    > RecursiveMachineJaggedPcsVerifier<'a, SC, C, JC>
+impl<'a, SC: SP1FieldConfigVariable<C>, C: CircuitConfig>
+    RecursiveMachineJaggedPcsVerifier<'a, SC, C>
 {
     pub fn new(
-        jagged_pcs_verifier: &'a RecursiveJaggedPcsVerifier<SC, C, JC>,
+        jagged_pcs_verifier: &'a RecursiveJaggedPcsVerifier<SC, C>,
         column_counts_by_round: Vec<Vec<usize>>,
     ) -> Self {
         Self { jagged_pcs_verifier, column_counts_by_round }
@@ -218,13 +172,13 @@ impl<
 
     pub fn verify_trusted_evaluations(
         &self,
-        builder: &mut Builder<JC::Circuit>,
-        commitments: &[JC::Commitment],
-        point: Point<Ext<JC::F, JC::EF>>,
-        evaluation_claims: &[MleEval<Ext<JC::F, JC::EF>>],
-        proof: &JaggedPcsProofVariable<JC>,
-        challenger: &mut JC::Challenger,
-    ) -> Vec<Felt<JC::F>> {
+        builder: &mut Builder<C>,
+        commitments: &[SC::DigestVariable],
+        point: Point<Ext<SP1Field, SP1ExtensionField>>,
+        evaluation_claims: &[MleEval<Ext<SP1Field, SP1ExtensionField>>],
+        proof: &JaggedPcsProofVariable<RecursiveBasefoldProof<C, SC>, SC::DigestVariable>,
+        challenger: &mut SC::FriChallengerVariable,
+    ) -> Vec<Felt<SP1Field>> {
         let insertion_points = self
             .column_counts_by_round
             .iter()
@@ -255,12 +209,10 @@ mod tests {
     use slop_basefold::BasefoldVerifier;
     use slop_challenger::{CanObserve, IopCtx};
     use slop_commit::Rounds;
-    use slop_jagged::{JaggedPcsProof, JaggedPcsVerifier, JaggedProver, MachineJaggedPcsVerifier};
+    use slop_jagged::{JaggedPcsProof, JaggedPcsVerifier, JaggedProver};
     use slop_multilinear::{Evaluations, Mle, MleEval, PaddedMle, Point};
     use sp1_core_machine::utils::setup_logger;
-    use sp1_hypercube::{
-        inner_perm, SP1BasefoldConfig, SP1CoreJaggedConfig, SP1CpuJaggedProverComponents,
-    };
+    use sp1_hypercube::{inner_perm, SP1CoreJaggedConfig, SP1CpuJaggedProverComponents};
     use sp1_primitives::{SP1DiffusionMatrix, SP1ExtensionField, SP1Field, SP1GlobalContext};
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler, AsmConfig, CircuitV2Builder};
     use sp1_recursion_executor::Executor;
@@ -268,20 +220,18 @@ mod tests {
     use crate::{
         basefold::{
             stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs,
-            RecursiveBasefoldConfigImpl, RecursiveBasefoldVerifier,
+            RecursiveBasefoldVerifier,
         },
         challenger::{CanObserveVariable, DuplexChallengerVariable},
         jagged::{
             jagged_eval::RecursiveJaggedEvalSumcheckConfig,
-            verifier::{
-                RecursiveJaggedConfigImpl, RecursiveJaggedPcsVerifier,
-                RecursiveMachineJaggedPcsVerifier,
-            },
+            verifier::{RecursiveJaggedPcsVerifier, RecursiveMachineJaggedPcsVerifier},
         },
         witness::Witnessable,
     };
 
-    type SC = SP1CoreJaggedConfig;
+    type SC = SP1GlobalContext;
+    type JC = SP1CoreJaggedConfig;
     type GC = SP1GlobalContext;
     type F = SP1Field;
     type EF = SP1ExtensionField;
@@ -289,10 +239,10 @@ mod tests {
     type Prover = JaggedProver<SP1GlobalContext, SP1CpuJaggedProverComponents>;
 
     async fn generate_jagged_proof(
-        jagged_verifier: &JaggedPcsVerifier<GC, SC>,
+        jagged_verifier: &JaggedPcsVerifier<GC, JC>,
         round_mles: Rounds<Vec<PaddedMle<F>>>,
         eval_point: Point<EF>,
-    ) -> (JaggedPcsProof<GC, SC>, Rounds<<GC as IopCtx>::Digest>, Rounds<Evaluations<EF>>) {
+    ) -> (JaggedPcsProof<GC, JC>, Rounds<<GC as IopCtx>::Digest>, Rounds<Evaluations<EF>>) {
         let jagged_prover = Prover::from_verifier(jagged_verifier);
 
         let mut challenger = jagged_verifier.challenger();
@@ -363,6 +313,8 @@ mod tests {
             vec![512],
         ];
 
+        let num_rounds = row_counts_rounds.len();
+
         let log_blowup = 1;
         let log_stacking_height = 21;
         let max_log_row_count = 20;
@@ -393,10 +345,11 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let jagged_verifier = JaggedPcsVerifier::<GC, SC>::new(
+        let jagged_verifier = JaggedPcsVerifier::<GC, JC>::new(
             log_blowup,
             log_stacking_height,
             max_log_row_count as usize,
+            num_rounds,
         );
 
         let eval_point = (0..max_log_row_count).map(|_| rng.gen::<EF>()).collect::<Point<_>>();
@@ -406,10 +359,6 @@ mod tests {
             generate_jagged_proof(&jagged_verifier, round_mles, eval_point.clone()).await;
 
         let mut challenger = jagged_verifier.challenger();
-        let machine_verifier = MachineJaggedPcsVerifier::new(
-            &jagged_verifier,
-            vec![column_counts[0].clone(), column_counts[1].clone()],
-        );
 
         for commitment in commitments.iter() {
             // Ensure that the commitments are in the correct field.
@@ -423,7 +372,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        machine_verifier
+        jagged_verifier
             .verify_trusted_evaluations(
                 &commitments,
                 eval_point.clone(),
@@ -447,26 +396,18 @@ mod tests {
             challenger_variable.observe_slice(&mut builder, *commitment_var);
         }
         builder.cycle_tracker_v2_exit();
-        let verifier = BasefoldVerifier::<_, SP1BasefoldConfig>::new(log_blowup);
-        let recursive_verifier = RecursiveBasefoldVerifier::<RecursiveBasefoldConfigImpl<C, SC>> {
+        let verifier = BasefoldVerifier::<SC>::new(log_blowup, num_rounds);
+        let recursive_verifier = RecursiveBasefoldVerifier::<C, SC> {
             fri_config: verifier.fri_config,
             tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),
         };
         let recursive_verifier =
             RecursiveStackedPcsVerifier::new(recursive_verifier, log_stacking_height);
 
-        let recursive_jagged_verifier = RecursiveJaggedPcsVerifier::<
-            SC,
-            C,
-            RecursiveJaggedConfigImpl<
-                C,
-                SC,
-                RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-            >,
-        > {
+        let recursive_jagged_verifier = RecursiveJaggedPcsVerifier::<SC, C> {
             stacked_pcs_verifier: recursive_verifier,
             max_log_row_count: max_log_row_count as usize,
-            jagged_evaluator: RecursiveJaggedEvalSumcheckConfig::<SP1CoreJaggedConfig>(PhantomData),
+            jagged_evaluator: RecursiveJaggedEvalSumcheckConfig::<SP1GlobalContext>(PhantomData),
         };
 
         let recursive_jagged_verifier = RecursiveMachineJaggedPcsVerifier::new(

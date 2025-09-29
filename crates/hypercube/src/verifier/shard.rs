@@ -1,8 +1,9 @@
 use derive_where::derive_where;
-use slop_merkle_tree::{DefaultMerkleTreeConfig, MerkleTreeTcs};
+use slop_merkle_tree::MerkleTreeTcs;
 use slop_whir::{Verifier, WhirJaggedConfig, WhirProofShape};
 use std::{
     collections::{BTreeMap, BTreeSet},
+    iter::once,
     marker::PhantomData,
     ops::Deref,
 };
@@ -10,13 +11,9 @@ use std::{
 use itertools::Itertools;
 use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32, TwoAdicField};
-use slop_basefold::DefaultBasefoldConfig;
 use slop_challenger::{CanObserve, FieldChallenger, IopCtx};
 use slop_commit::Rounds;
-use slop_jagged::{
-    JaggedBasefoldConfig, JaggedConfig, JaggedPcsVerifier, JaggedPcsVerifierError,
-    MachineJaggedPcsVerifier,
-};
+use slop_jagged::{JaggedBasefoldConfig, JaggedConfig, JaggedPcsVerifier, JaggedPcsVerifierError};
 use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{full_geq, Evaluations, Mle, MleEval, MultilinearPcsVerifier, Point};
 use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
@@ -30,6 +27,10 @@ use crate::{
 
 use super::{MachineConfig, MachineVerifyingKey, ShardOpenedValues, ShardProof};
 use crate::record::MachineRecord;
+
+/// The number of commitments in an SP1 shard proof, corresponding to the preprocessed and main
+/// commitments.
+pub const NUM_SP1_COMMITMENTS: usize = 2;
 
 /// A verifier for shard proofs.
 #[derive_where(Clone)]
@@ -86,12 +87,6 @@ pub enum ShardVerifierError<EF, PcsError> {
     /// The height is larger than `1 << max_log_row_count`.
     #[error("height is larger than maximum possible value")]
     HeightTooLarge,
-    /// Invalid number of added columns.
-    #[error("invalid number of added columns")]
-    InvalidAddedColumns,
-    /// Invalid prefix sum.
-    #[error("invalid prefix sum")]
-    InvalidPrefixSum,
 }
 
 /// Derive the error type from the jagged config.
@@ -160,15 +155,19 @@ impl<GC: IopCtx, C: MachineConfig<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C
         let preprocessed_multiple = multiples[0];
         let main_multiple = multiples[1];
 
-        let main_padding_cols = proof.evaluation_proof.added_columns[1];
-        let preprocessed_padding_cols = proof.evaluation_proof.added_columns[0];
+        let added_columns: Vec<usize> = proof
+            .evaluation_proof
+            .row_counts_and_column_counts
+            .iter()
+            .map(|cc| cc[cc.len() - 2].1 + 1)
+            .collect();
 
         CoreProofShape {
             shard_chips,
             preprocessed_multiple,
             main_multiple,
-            preprocessed_padding_cols,
-            main_padding_cols,
+            preprocessed_padding_cols: added_columns[0],
+            main_padding_cols: added_columns[1],
         }
     }
 
@@ -570,12 +569,6 @@ where
             .map(|x| x.local.iter().as_slice())
             .collect::<Vec<_>>();
 
-        // `unfiltered_preprocessed_column_count` is the `Vec` of all preprocessed opening lengths.
-        let unfiltered_preprocessed_column_count = preprocessed_openings
-            .iter()
-            .map(|table_openings| table_openings.len())
-            .collect::<Vec<_>>();
-
         // `main_openings` is the `Evaluations` derived by collecting all the main openings.
         let main_openings = main_openings_for_proof
             .iter()
@@ -590,151 +583,10 @@ where
             .map(|x| x.iter().copied().collect::<MleEval<_>>())
             .collect::<Evaluations<_>>();
 
-        // `preprocessed_column_count` is the `Vec` of all non-zero preprocessed opening lengths.
-        let preprocessed_column_count = filtered_preprocessed_openings
-            .iter()
-            .map(|table_openings| table_openings.len())
-            .collect::<Vec<_>>();
-
-        // `main_column_count` is the `Vec` of all (non-zero) main opening lengths.
-        let main_column_count =
-            main_openings.iter().map(|table_openings| table_openings.len()).collect::<Vec<_>>();
-
-        let max_added_column =
-            (1usize << self.log_stacking_height()).div_ceil(1 << max_log_row_count);
-        let added_columns = &evaluation_proof.added_columns;
-        if added_columns.len() != 2 {
-            return Err(ShardVerifierError::InvalidShape);
-        }
-        for &added_column in added_columns {
-            if added_column == 0 || added_column > max_added_column {
-                return Err(ShardVerifierError::InvalidAddedColumns);
-            }
-        }
-
-        let column_counts = heights
-            .values()
-            .zip_eq(&unfiltered_preprocessed_column_count)
-            .flat_map(|(&h, &c)| std::iter::repeat_n(h, c))
-            // Add the preprocessed padding columns (except the last one)
-            .chain(std::iter::repeat_n(
-                GC::F::from_canonical_u32(1 << max_log_row_count),
-                added_columns[0] - 1,
-            ))
-            .chain(
-                heights
-                    .values()
-                    .zip_eq(&main_column_count)
-                    .flat_map(|(&h, &c)| std::iter::repeat_n(h, c)),
-            )
-            // Add the main padding columns (except the last one)
-            .chain(std::iter::repeat_n(
-                GC::F::from_canonical_u32(1 << max_log_row_count),
-                added_columns[1] - 1,
-            ))
-            .collect::<Vec<GC::F>>();
-        let preprocessed_column_count_total =
-            unfiltered_preprocessed_column_count.iter().sum::<usize>();
-        let main_column_count_total = main_column_count.iter().sum::<usize>();
-
-        let col_prefix_sum = evaluation_proof
-            .params
-            .col_prefix_sums
-            .iter()
-            .map(|x| {
-                if x.dimension() >= 31 {
-                    return Err(ShardVerifierError::InvalidPrefixSum);
-                }
-                x.iter().try_fold(GC::F::zero(), |acc, &y| {
-                    if y != GC::F::zero() && y != GC::F::one() {
-                        return Err(ShardVerifierError::InvalidPrefixSum);
-                    }
-                    Ok(y + GC::F::two() * acc)
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        if evaluation_proof.params.col_prefix_sums.len()
-            != 1 + preprocessed_column_count_total
-                + main_column_count_total
-                + added_columns[0]
-                + added_columns[1]
-        {
-            return Err(ShardVerifierError::InvalidPrefixSum);
-        }
-
-        // Need to do special checks for the final columns of each commit, which are padding
-        // columns of unknown height.
-        let skip_indices =
-            [preprocessed_column_count_total + added_columns[0] - 1, col_prefix_sum.len() - 2];
-
-        let mut param_index = 0;
-        for (i, (x, y)) in col_prefix_sum.iter().zip(col_prefix_sum.iter().skip(1)).enumerate() {
-            if !skip_indices.contains(&i) {
-                if *y != *x + column_counts[param_index] {
-                    return Err(ShardVerifierError::InvalidPrefixSum);
-                }
-                param_index += 1;
-            }
-        }
-
-        if col_prefix_sum[0] != GC::F::zero() {
-            return Err(ShardVerifierError::InvalidPrefixSum);
-        }
-
-        let round_multiples = C::round_multiples(&proof.evaluation_proof.pcs_proof);
-
-        if round_multiples.len() != 2 {
-            return Err(ShardVerifierError::InvalidShape);
-        }
-
-        let preprocessed_round_num_poly = round_multiples[0] as u32;
-        let main_round_num_poly = round_multiples[1] as u32;
-
-        // Check that the prefix sum value at the first skip index is the correct multiple of the
-        // stacking height.
-        if col_prefix_sum[skip_indices[0] + 1]
-            != GC::F::from_canonical_u32(1 << self.log_stacking_height())
-                * GC::F::from_canonical_u32(preprocessed_round_num_poly)
-            || preprocessed_round_num_poly.saturating_mul(1 << self.log_stacking_height())
-                >= (1 << 30)
-            || (col_prefix_sum[skip_indices[0] + 1] - col_prefix_sum[skip_indices[0]])
-                .as_canonical_u32()
-                > (1u32 << max_log_row_count)
-        {
-            return Err(ShardVerifierError::InvalidPrefixSum);
-        }
-
-        // Check that the prefix sum value at the second skip index is the correct multiple of the
-        // stacking height (total padded trace area committed to).
-        if col_prefix_sum[skip_indices[1] + 1]
-            != GC::F::from_canonical_u32(1 << self.log_stacking_height())
-                * GC::F::from_canonical_u32(preprocessed_round_num_poly + main_round_num_poly)
-            || (preprocessed_round_num_poly.saturating_add(main_round_num_poly))
-                .saturating_mul(1 << self.log_stacking_height())
-                >= (1 << 30)
-            || (col_prefix_sum[skip_indices[1] + 1] - col_prefix_sum[skip_indices[1]])
-                .as_canonical_u32()
-                > (1u32 << max_log_row_count)
-        {
-            return Err(ShardVerifierError::InvalidPrefixSum);
-        }
-
-        for skip_index in skip_indices {
-            let padded_column_height = col_prefix_sum[skip_index + 1] - col_prefix_sum[skip_index];
-            if padded_column_height.as_canonical_u32() > (1u32 << max_log_row_count) {
-                return Err(ShardVerifierError::InvalidPrefixSum);
-            }
-        }
-
-        let (commitments, column_counts, openings) = (
+        let (commitments, openings) = (
             vec![vk.preprocessed_commit, *main_commitment],
-            vec![preprocessed_column_count, main_column_count],
             Rounds { rounds: vec![filtered_preprocessed_openings, main_openings] },
         );
-
-        let machine_jagged_verifier =
-            MachineJaggedPcsVerifier::new(&self.jagged_pcs_verifier, column_counts);
 
         let flattened_openings = openings
             .into_iter()
@@ -746,7 +598,7 @@ where
             })
             .collect::<Vec<_>>();
 
-        machine_jagged_verifier
+        self.jagged_pcs_verifier
             .verify_trusted_evaluations(
                 &commitments,
                 zerocheck_proof.point_and_eval.0.clone(),
@@ -756,15 +608,93 @@ where
             )
             .map_err(ShardVerifierError::InvalidopeningArgument)?;
 
-        Ok(())
+        let [mut preprocessed_row_counts, mut main_row_counts]: [Vec<usize>; 2] = proof
+            .evaluation_proof
+            .row_counts_and_column_counts
+            .clone()
+            .into_iter()
+            .map(|r_c| r_c.into_iter().map(|(r, _)| r).collect::<Vec<_>>())
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+
+        // Remove the last two row row counts because we add the padding columns as two extra
+        // tables.
+        for _ in 0..2 {
+            preprocessed_row_counts.pop();
+            main_row_counts.pop();
+        }
+
+        let mut preprocessed_chip_degrees = vec![];
+        let mut main_chip_degrees = vec![];
+
+        for chip in shard_chips.iter() {
+            if chip.preprocessed_width() > 0 {
+                preprocessed_chip_degrees.push(
+                    proof.opened_values.chips[&chip.name()]
+                        .degree
+                        .bit_string_evaluation()
+                        .as_canonical_u32(),
+                );
+            }
+            main_chip_degrees.push(
+                proof.opened_values.chips[&chip.name()]
+                    .degree
+                    .bit_string_evaluation()
+                    .as_canonical_u32(),
+            );
+        }
+
+        // Check that the row counts in the jagged proof match the chip degrees in the `ChipOpenedValues`
+        // struct.
+        for (chip_opening_row_counts, proof_row_counts) in
+            [preprocessed_chip_degrees, main_chip_degrees]
+                .iter()
+                .zip_eq([preprocessed_row_counts, main_row_counts].iter())
+        {
+            if proof_row_counts.len() != chip_opening_row_counts.len() {
+                return Err(ShardVerifierError::InvalidShape);
+            }
+            for (a, b) in proof_row_counts.iter().zip(chip_opening_row_counts.iter()) {
+                if *a != *b as usize {
+                    return Err(ShardVerifierError::InvalidShape);
+                }
+            }
+        }
+
+        // Check that the shape of the proof struct column counts matches the shape of the shard chips.
+        // In the future, we may allow for a layer of abstraction where the proof row counts and
+        // column counts can be separate from the machine chips (e.g. if two chips in a row have the
+        // same height, the proof could have the column counts merged).
+        if !proof
+            .evaluation_proof
+            .row_counts_and_column_counts
+            .iter()
+            .cloned()
+            .zip(
+                once(
+                    shard_chips
+                        .iter()
+                        .map(MachineAir::<GC::F>::preprocessed_width)
+                        .filter(|&width| width > 0)
+                        .collect::<Vec<_>>(),
+                )
+                .chain(once(shard_chips.iter().map(Chip::width).collect())),
+            )
+            // The jagged verifier has already checked that `a.len()>=2`, so this indexing is safe.
+            .all(|(a, b)| a[..a.len() - 2].iter().map(|(_, c)| *c).collect::<Vec<_>>() == b)
+        {
+            Err(ShardVerifierError::InvalidShape)
+        } else {
+            Ok(())
+        }
     }
 }
 
-impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, BC, A>
-    ShardVerifier<GC, JaggedBasefoldConfig<GC, BC>, A>
+impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, A>
+    ShardVerifier<GC, JaggedBasefoldConfig<GC>, A>
 where
     A: MachineAir<GC::F>,
-    BC: DefaultBasefoldConfig<GC>,
     GC::F: PrimeField32,
 {
     /// Create a shard verifier from basefold parameters.
@@ -775,17 +705,19 @@ where
         max_log_row_count: usize,
         machine: Machine<GC::F, A>,
     ) -> Self {
-        let pcs_verifier =
-            JaggedPcsVerifier::new(log_blowup, log_stacking_height, max_log_row_count);
+        let pcs_verifier = JaggedPcsVerifier::new(
+            log_blowup,
+            log_stacking_height,
+            max_log_row_count,
+            NUM_SP1_COMMITMENTS,
+        );
         Self { jagged_pcs_verifier: pcs_verifier, machine }
     }
 }
 
-impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, BC, A>
-    ShardVerifier<GC, WhirJaggedConfig<BC, GC>, A>
+impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, A> ShardVerifier<GC, WhirJaggedConfig<GC>, A>
 where
     A: MachineAir<GC::F>,
-    BC: DefaultBasefoldConfig<GC, Tcs: DefaultMerkleTreeConfig<GC>>,
     GC::F: PrimeField32,
 {
     /// Create a shard verifier from basefold parameters.
@@ -794,11 +726,13 @@ where
         config: &WhirProofShape<GC::F>,
         max_log_row_count: usize,
         machine: Machine<GC::F, A>,
+        num_expected_commitments: usize,
     ) -> Self {
         let merkle_verifier = MerkleTreeTcs::default();
-        let verifier = Verifier::<GC, BC>::new(merkle_verifier, config.clone());
+        let verifier =
+            Verifier::<GC>::new(merkle_verifier, config.clone(), num_expected_commitments);
 
-        let jagged_verifier = JaggedPcsVerifier::<GC, WhirJaggedConfig<BC, GC>> {
+        let jagged_verifier = JaggedPcsVerifier::<GC, WhirJaggedConfig<GC>> {
             pcs_verifier: verifier,
             max_log_row_count,
         };

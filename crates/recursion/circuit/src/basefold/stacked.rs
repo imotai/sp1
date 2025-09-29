@@ -59,19 +59,17 @@ impl<P: RecursiveMultilinearPcsVerifier> RecursiveStackedPcsVerifier<P> {
 #[cfg(test)]
 mod tests {
     use rand::thread_rng;
+    use slop_challenger::IopCtx;
     use slop_commit::Message;
     use sp1_core_machine::utils::setup_logger;
-    use sp1_hypercube::{SP1BasefoldConfig, SP1CoreJaggedConfig};
-    use sp1_recursion_compiler::circuit::AsmConfig;
+    use sp1_recursion_compiler::{circuit::AsmConfig, config::InnerConfig};
     use std::{collections::VecDeque, marker::PhantomData, sync::Arc};
 
     use slop_algebra::extension::BinomialExtensionField;
     use sp1_primitives::{SP1DiffusionMatrix, SP1GlobalContext};
 
     use crate::{
-        basefold::{
-            tcs::RecursiveMerkleTreeTcs, RecursiveBasefoldConfigImpl, RecursiveBasefoldVerifier,
-        },
+        basefold::{tcs::RecursiveMerkleTreeTcs, RecursiveBasefoldVerifier},
         challenger::DuplexChallengerVariable,
         witness::Witnessable,
     };
@@ -86,7 +84,7 @@ mod tests {
 
     use crate::challenger::CanObserveVariable;
     use slop_multilinear::{Mle, MultilinearPcsProver};
-    use slop_stacked::{FixedRateInterleave, StackedPcsProver, StackedPcsVerifier};
+    use slop_stacked::{FixedRateInterleave, StackedPcsProver};
     use sp1_hypercube::{inner_perm, prover::SP1BasefoldCpuProverComponents};
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler};
     use sp1_recursion_executor::Executor;
@@ -99,7 +97,8 @@ mod tests {
         log_stacking_height: u32,
         batch_size: usize,
     ) {
-        type C = SP1BasefoldConfig;
+        type C = InnerConfig;
+        type SC = SP1GlobalContext;
         type Prover = BasefoldProver<SP1GlobalContext, SP1BasefoldCpuProverComponents>;
         type EF = BinomialExtensionField<SP1Field, 4>;
         let total_data_length = round_widths_and_log_heights
@@ -121,14 +120,14 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let pcs_verifier = BasefoldVerifier::<_, C>::new(log_blowup);
+        let pcs_verifier =
+            BasefoldVerifier::<SC>::new(log_blowup, round_widths_and_log_heights.len());
         let pcs_prover = Prover::new(&pcs_verifier);
         let stacker = FixedRateInterleave::new(batch_size);
 
-        let verifier = StackedPcsVerifier::new(pcs_verifier, log_stacking_height);
         let prover = StackedPcsProver::new(pcs_prover, stacker, log_stacking_height);
 
-        let mut challenger = verifier.pcs_verifier.challenger();
+        let mut challenger = SC::default_challenger();
         let mut commitments = vec![];
         let mut prover_data = Rounds::new();
         let mut batch_evaluations = Rounds::new();
@@ -176,12 +175,10 @@ mod tests {
         Witnessable::<AsmConfig>::write(&eval_claim, &mut witness_stream);
         let eval_claim = eval_claim.read(&mut builder);
 
-        let verifier = BasefoldVerifier::<_, C>::new(log_blowup);
-        let recursive_verifier = RecursiveBasefoldVerifier::<
-            RecursiveBasefoldConfigImpl<AsmConfig, SP1CoreJaggedConfig>,
-        > {
+        let verifier = BasefoldVerifier::<SC>::new(log_blowup, round_widths_and_log_heights.len());
+        let recursive_verifier = RecursiveBasefoldVerifier::<C, SC> {
             fri_config: verifier.fri_config,
-            tcs: RecursiveMerkleTreeTcs::<AsmConfig, SP1CoreJaggedConfig>(PhantomData),
+            tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),
         };
         let recursive_verifier =
             RecursiveStackedPcsVerifier::new(recursive_verifier, log_stacking_height);

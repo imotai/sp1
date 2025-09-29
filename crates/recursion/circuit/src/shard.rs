@@ -4,11 +4,10 @@ use std::{
 };
 
 use crate::{
-    basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier},
+    basefold::RecursiveBasefoldProof,
     challenger::{CanObserveVariable, FieldChallengerVariable},
     jagged::{
-        JaggedPcsProofVariable, RecursiveJaggedConfig, RecursiveJaggedPcsVerifier,
-        RecursiveMachineJaggedPcsVerifier,
+        JaggedPcsProofVariable, RecursiveJaggedPcsVerifier, RecursiveMachineJaggedPcsVerifier,
     },
     logup_gkr::RecursiveLogUpGkrVerifier,
     symbolic::IntoSymbolic,
@@ -35,13 +34,7 @@ use sp1_recursion_compiler::{
 use sp1_recursion_executor::{DIGEST_SIZE, NUM_BITS};
 
 #[allow(clippy::type_complexity)]
-pub struct ShardProofVariable<
-    C: CircuitConfig,
-    SC: SP1FieldConfigVariable<C> + Send + Sync,
-    JC: RecursiveJaggedConfig<
-        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >,
-> {
+pub struct ShardProofVariable<C: CircuitConfig, SC: SP1FieldConfigVariable<C> + Send + Sync> {
     /// The commitments to main traces.
     pub main_commitment: SC::DigestVariable,
     /// The values of the traces at the final random point.
@@ -55,7 +48,7 @@ pub struct ShardProofVariable<
     /// The chips participating in the shard.
     pub shard_chips: BTreeSet<String>,
     /// The evaluation proof.
-    pub evaluation_proof: JaggedPcsProofVariable<JC>,
+    pub evaluation_proof: JaggedPcsProofVariable<RecursiveBasefoldProof<C, SC>, SC::DigestVariable>,
 }
 
 pub struct MachineVerifyingKeyVariable<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> {
@@ -104,36 +97,22 @@ where
 
 /// A verifier for shard proofs.
 pub struct RecursiveShardVerifier<
-    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
+    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + SP1FieldConfigVariable<C>,
     A: MachineAir<SP1Field>,
-    SC: SP1FieldConfigVariable<C>,
     C: CircuitConfig,
-    JC: RecursiveJaggedConfig<
-        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >,
 > {
     /// The machine.
     pub machine: Machine<SP1Field, A>,
     /// The jagged pcs verifier.
-    pub pcs_verifier: RecursiveJaggedPcsVerifier<SC, C, JC>,
-    pub _phantom: std::marker::PhantomData<(GC, C, SC, A, JC)>,
+    pub pcs_verifier: RecursiveJaggedPcsVerifier<GC, C>,
+    pub _phantom: std::marker::PhantomData<(GC, C, A)>,
 }
 
-impl<GC, C, SC, A, JC> RecursiveShardVerifier<GC, A, SC, C, JC>
+impl<GC, C, A> RecursiveShardVerifier<GC, A, C>
 where
-    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
+    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + SP1FieldConfigVariable<C>,
     A: MachineAir<SP1Field>,
-    SC: SP1FieldConfigVariable<C>, /* MachineConfig<GC> */
     C: CircuitConfig,
-    JC: RecursiveJaggedConfig<
-        F = SP1Field,
-        EF = SP1ExtensionField,
-        Circuit = C,
-        Commitment = SC::DigestVariable,
-        Challenger = SC::FriChallengerVariable,
-        BatchPcsProof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>,
-        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >,
 {
     /// Verify the public values satisfy the required constraints, and return the cumulative sum.
     pub fn verify_public_values(
@@ -164,9 +143,9 @@ where
     pub fn verify_shard(
         &self,
         builder: &mut Builder<C>,
-        vk: &MachineVerifyingKeyVariable<C, SC>,
-        proof: &ShardProofVariable<C, SC, JC>,
-        challenger: &mut SC::FriChallengerVariable,
+        vk: &MachineVerifyingKeyVariable<C, GC>,
+        proof: &ShardProofVariable<C, GC>,
+        challenger: &mut GC::FriChallengerVariable,
     ) where
         A: for<'b> Air<RecursiveVerifierConstraintFolder<'b>>,
     {
@@ -258,7 +237,7 @@ where
 
         // Verify the `LogUp` GKR proof.
         builder.cycle_tracker_v2_enter("verify-logup-gkr");
-        RecursiveLogUpGkrVerifier::<C, SC, A>::verify_logup_gkr(
+        RecursiveLogUpGkrVerifier::<C, GC, A>::verify_logup_gkr(
             builder,
             &shard_chips,
             &degrees,
@@ -314,10 +293,13 @@ where
             .map(|table_openings| table_openings.len())
             .collect::<Vec<_>>();
 
+        let added_columns: Vec<usize> =
+            proof.evaluation_proof.column_counts.iter().map(|cc| cc[cc.len() - 2] + 1).collect();
+
         let unfiltered_preprocessed_column_count = preprocessed_openings
             .iter()
             .map(|table_openings| table_openings.len())
-            .chain(std::iter::once(proof.evaluation_proof.added_columns[0] - 1))
+            .chain(std::iter::once(added_columns[0] - 1))
             .collect::<Vec<_>>();
 
         let main_column_count =
@@ -326,7 +308,7 @@ where
         let unfiltered_main_column_count = main_openings
             .iter()
             .map(|table_openings| table_openings.len())
-            .chain(std::iter::once(proof.evaluation_proof.added_columns[1] - 1))
+            .chain(std::iter::once(added_columns[1] - 1))
             .collect::<Vec<_>>();
 
         let (commitments, column_counts, unfiltered_column_counts, openings) = (
@@ -505,8 +487,7 @@ mod tests {
     };
     use sp1_hypercube::{
         prover::{AirProver, CpuMachineProverComponents, CpuShardProver, ProverSemaphore},
-        MachineVerifier, SP1BasefoldConfig, SP1CoreJaggedConfig, SP1CpuJaggedProverComponents,
-        ShardVerifier,
+        MachineVerifier, SP1CpuJaggedProverComponents, ShardVerifier, NUM_SP1_COMMITMENTS,
     };
     use sp1_recursion_compiler::{
         circuit::{AsmCompiler, AsmConfig},
@@ -518,19 +499,14 @@ mod tests {
         basefold::{stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs},
         challenger::DuplexChallengerVariable,
         dummy::dummy_shard_proof,
-        jagged::{RecursiveJaggedConfigImpl, RecursiveJaggedEvalSumcheckConfig},
+        jagged::RecursiveJaggedEvalSumcheckConfig,
         witness::Witnessable,
     };
 
     use super::*;
 
     use sp1_primitives::{SP1Field, SP1GlobalContext};
-    type SC = SP1CoreJaggedConfig;
-    type JC = RecursiveJaggedConfigImpl<
-        C,
-        SC,
-        RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >;
+    type GC = SP1GlobalContext;
     type C = InnerConfig;
     type A = RiscvAir<SP1Field>;
 
@@ -588,6 +564,7 @@ mod tests {
 
         let shard_proof = proof.shard_proofs[0].clone();
         let shape = machine_verifier.shape_from_proof(&shard_proof);
+
         let dummy_proof = dummy_shard_proof(
             shape.shard_chips,
             max_log_row_count,
@@ -600,29 +577,21 @@ mod tests {
         let vk_variable = vk.read(&mut builder);
         let shard_proof_variable = dummy_proof.read(&mut builder);
 
-        let verifier = BasefoldVerifier::<_, SP1BasefoldConfig>::new(log_blowup);
-        let recursive_verifier = RecursiveBasefoldVerifier::<RecursiveBasefoldConfigImpl<C, SC>> {
+        let verifier = BasefoldVerifier::<GC>::new(log_blowup, NUM_SP1_COMMITMENTS);
+        let recursive_verifier = crate::basefold::RecursiveBasefoldVerifier::<C, GC> {
             fri_config: verifier.fri_config,
-            tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),
+            tcs: RecursiveMerkleTreeTcs::<C, GC>(PhantomData),
         };
         let recursive_verifier =
             RecursiveStackedPcsVerifier::new(recursive_verifier, log_stacking_height);
 
-        let recursive_jagged_verifier = RecursiveJaggedPcsVerifier::<
-            SC,
-            C,
-            RecursiveJaggedConfigImpl<
-                C,
-                SC,
-                RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-            >,
-        > {
+        let recursive_jagged_verifier = RecursiveJaggedPcsVerifier::<GC, C> {
             stacked_pcs_verifier: recursive_verifier,
             max_log_row_count,
-            jagged_evaluator: RecursiveJaggedEvalSumcheckConfig::<SP1CoreJaggedConfig>(PhantomData),
+            jagged_evaluator: RecursiveJaggedEvalSumcheckConfig::<GC>(PhantomData),
         };
 
-        let stark_verifier = RecursiveShardVerifier::<SP1GlobalContext, A, SC, C, JC> {
+        let stark_verifier = RecursiveShardVerifier::<GC, A, C> {
             machine,
             pcs_verifier: recursive_jagged_verifier,
             _phantom: std::marker::PhantomData,

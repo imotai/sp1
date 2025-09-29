@@ -608,8 +608,7 @@ mod tests {
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_alloc::CpuBackend;
 
-    use slop_basefold::BasefoldVerifier;
-    use slop_challenger::FieldChallenger;
+    use slop_challenger::{FieldChallenger, IopCtx};
     use slop_matrix::dense::RowMajorMatrix;
     use slop_multilinear::{PaddedMle, Padding};
     use slop_sumcheck::{partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation};
@@ -863,12 +862,10 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn test_logup_poly_sumcheck_circuit_layer() {
-        type Config = crate::SP1BasefoldConfig;
         type GC = sp1_primitives::SP1GlobalContext;
         let mut rng = thread_rng();
 
-        let verifier = BasefoldVerifier::<GC, Config>::new(1);
-        let get_challenger = move || verifier.clone().challenger();
+        let get_challenger = move || GC::default_challenger();
 
         let interaction_counts = vec![4, 5, 6];
         let num_rows: usize = 8;
@@ -1198,11 +1195,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_logup_gkr_round_prover() {
-        type Config = crate::SP1BasefoldConfig;
         type GC = sp1_primitives::SP1GlobalContext;
         type TraceGenerator = LogupGkrCpuTraceGenerator<SP1Field, EF, ()>;
-        let verifier = BasefoldVerifier::<GC, Config>::new(1);
-        let get_challenger = move || verifier.clone().challenger();
+        let get_challenger = move || GC::default_challenger();
         let trace_generator = TraceGenerator::default();
 
         let mut rng = thread_rng();

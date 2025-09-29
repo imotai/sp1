@@ -471,15 +471,14 @@ pub(crate) mod tests {
     };
     use slop_algebra::AbstractField;
 
-    use slop_bn254::{Bn254Fr, OuterPerm};
+    use slop_bn254::{outer_perm, Bn254Fr, OuterPerm};
     use slop_challenger::{
         CanObserve, CanSample, CanSampleBits, DuplexChallenger, FieldChallenger, IopCtx,
         MultiField32Challenger,
     };
 
-    use slop_merkle_tree::{outer_perm, DefaultMerkleTreeConfig, Poseidon2Bn254Config};
     use slop_symmetric::{CryptographicHasher, Hash, PseudoCompressionFunction};
-    use sp1_hypercube::{inner_perm, SP1OuterConfig};
+    use sp1_hypercube::inner_perm;
     use sp1_primitives::{SP1Field, SP1GlobalContext, SP1OuterGlobalContext, SP1Perm};
     use sp1_recursion_compiler::{
         circuit::{AsmBuilder, AsmCompiler, AsmConfig},
@@ -623,7 +622,7 @@ pub(crate) mod tests {
         let two: Var<_> = builder.eval(N::two());
 
         let to_swap = [[one], [two]];
-        let result = SP1OuterConfig::select_chain_digest(&mut builder, one, to_swap);
+        let result = SP1OuterGlobalContext::select_chain_digest(&mut builder, one, to_swap);
 
         builder.assert_var_eq(result[0][0], two);
         builder.assert_var_eq(result[1][0], one);
@@ -636,9 +635,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_p2_hash() {
-        let (hasher, _) = <Poseidon2Bn254Config<_> as DefaultMerkleTreeConfig<
-            SP1OuterGlobalContext,
-        >>::default_hasher_and_compressor();
+        let (hasher, _) = SP1OuterGlobalContext::default_hasher_and_compressor();
 
         let input: [SP1Field; 7] = [
             SP1Field::from_canonical_u32(0),
@@ -659,7 +656,7 @@ pub(crate) mod tests {
         let e: Felt<_> = builder.eval(input[4]);
         let f: Felt<_> = builder.eval(input[5]);
         let g: Felt<_> = builder.eval(input[6]);
-        let result = SP1OuterConfig::hash(&mut builder, &[a, b, c, d, e, f, g]);
+        let result = SP1OuterGlobalContext::hash(&mut builder, &[a, b, c, d, e, f, g]);
 
         builder.assert_var_eq(result[0], output[0]);
 
@@ -671,9 +668,7 @@ pub(crate) mod tests {
     #[test]
     fn test_p2_compress() {
         type OuterDigestVariable = [Var<<C as Config>::N>; BN254_DIGEST_SIZE];
-        let (_, compressor) = <Poseidon2Bn254Config<_> as DefaultMerkleTreeConfig<
-            SP1OuterGlobalContext,
-        >>::default_hasher_and_compressor();
+        let (_, compressor) = SP1OuterGlobalContext::default_hasher_and_compressor();
 
         let a: [Bn254Fr; 1] = [Bn254Fr::two()];
         let b: [Bn254Fr; 1] = [Bn254Fr::two()];
@@ -682,7 +677,7 @@ pub(crate) mod tests {
         let mut builder = Builder::<C>::default();
         let a: OuterDigestVariable = [builder.eval(a[0])];
         let b: OuterDigestVariable = [builder.eval(b[0])];
-        let result = SP1OuterConfig::compress(&mut builder, [a, b]);
+        let result = SP1OuterGlobalContext::compress(&mut builder, [a, b]);
         builder.assert_var_eq(result[0], gt[0]);
 
         let mut backend = ConstraintCompiler::<C>::default();

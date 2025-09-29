@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use slop_algebra::AbstractField;
 use slop_challenger::IopCtx;
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 use slop_tensor::Tensor;
@@ -10,21 +11,11 @@ use thiserror::Error;
 /// An opening of a tensor commitment scheme.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(serialize = "", deserialize = ""))]
-pub struct MerkleTreeOpening<GC: IopCtx> {
+pub struct MerkleTreeOpeningAndProof<GC: IopCtx> {
     /// The claimed values of the opening.
     pub values: Tensor<GC::F>,
     /// The proof of the opening.
     pub proof: MerkleTreeTcsProof<GC::Digest>,
-}
-
-/// An interfacr defining a Merkle tree.
-pub trait MerkleTreeConfig<GC: IopCtx>: 'static + Clone + Send + Sync {
-    type Hasher: CryptographicHasher<GC::F, GC::Digest> + Send + Sync + Clone;
-    type Compressor: PseudoCompressionFunction<GC::Digest, 2> + Send + Sync + Clone;
-}
-
-pub trait DefaultMerkleTreeConfig<GC: IopCtx>: MerkleTreeConfig<GC> {
-    fn default_hasher_and_compressor() -> (Self::Hasher, Self::Compressor);
 }
 
 /// A merkle tree Tensor commitment scheme.
@@ -32,9 +23,9 @@ pub trait DefaultMerkleTreeConfig<GC: IopCtx>: MerkleTreeConfig<GC> {
 /// A tensor commitment scheme based on merkleizing the committed tensors at a given dimension,
 /// which the prover is free to choose.
 #[derive(Debug, Clone, Copy)]
-pub struct MerkleTreeTcs<GC: IopCtx, M: MerkleTreeConfig<GC>> {
-    pub hasher: M::Hasher,
-    pub compressor: M::Compressor,
+pub struct MerkleTreeTcs<GC: IopCtx> {
+    pub hasher: GC::Hasher,
+    pub compressor: GC::Compressor,
 }
 
 #[derive(Debug, Clone, Copy, Error)]
@@ -43,48 +34,53 @@ pub enum MerkleTreeTcsError {
     RootMismatch,
     #[error("proof has incorrect shape")]
     IncorrectShape,
+    #[error("incorrect width or height")]
+    InconsistentCommitmentShape,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MerkleTreeTcsProof<T> {
+    pub merkle_root: T,
+    pub log_tensor_height: usize,
+    pub width: usize,
     pub paths: Tensor<T>,
 }
 
-impl<GC: IopCtx, M: DefaultMerkleTreeConfig<GC>> Default for MerkleTreeTcs<GC, M> {
+impl<GC: IopCtx> Default for MerkleTreeTcs<GC> {
     #[inline]
     fn default() -> Self {
-        let (hasher, compressor) = M::default_hasher_and_compressor();
+        let (hasher, compressor) = GC::default_hasher_and_compressor();
         Self { hasher, compressor }
     }
 }
 
-impl<GC: IopCtx, M: MerkleTreeConfig<GC>> MerkleTreeTcs<GC, M> {
+impl<GC: IopCtx> MerkleTreeTcs<GC> {
     pub fn verify_tensor_openings(
         &self,
         commit: &GC::Digest,
         indices: &[usize],
-        opening: &MerkleTreeOpening<GC>,
-        expected_path_len: usize,
+        opening: &Tensor<GC::F>,
+        proof: &MerkleTreeTcsProof<GC::Digest>,
     ) -> Result<(), MerkleTreeTcsError> {
-        if opening.proof.paths.dimensions.sizes().len() != 2
-            || opening.values.dimensions.sizes().len() != 2
-        {
+        let expected_path_len = proof.log_tensor_height;
+        if proof.paths.dimensions.sizes().len() != 2 || opening.dimensions.sizes().len() != 2 {
             return Err(MerkleTreeTcsError::IncorrectShape);
         }
-        if indices.len() != opening.proof.paths.dimensions.sizes()[0] {
+        if indices.len() != proof.paths.dimensions.sizes()[0] {
             return Err(MerkleTreeTcsError::IncorrectShape);
         }
-        if indices.len() != opening.values.dimensions.sizes()[0] {
+        if indices.len() != opening.dimensions.sizes()[0] {
             return Err(MerkleTreeTcsError::IncorrectShape);
         }
         if indices.is_empty() {
             return Ok(());
         }
-        let expected_value_len = opening.values.get(0).unwrap().as_slice().len();
-        for (i, (index, path)) in indices.iter().zip_eq(opening.proof.paths.split()).enumerate() {
+
+        for (i, (index, path)) in indices.iter().zip_eq(proof.paths.split()).enumerate() {
             // Collect the lead slices of the claimed values.
-            let claimed_values_slices = opening.values.get(i).unwrap().as_slice();
-            if claimed_values_slices.len() != expected_value_len {
+            let claimed_values_slices = opening.get(i).unwrap().as_slice();
+            // Check that the proof is the correct length.
+            if claimed_values_slices.len() != proof.width {
                 return Err(MerkleTreeTcsError::IncorrectShape);
             }
 
@@ -106,13 +102,24 @@ impl<GC: IopCtx, M: MerkleTreeConfig<GC>> MerkleTreeTcs<GC, M> {
                 index >>= 1;
             }
 
-            if root != *commit {
+            if root != proof.merkle_root {
                 return Err(MerkleTreeTcsError::RootMismatch);
             }
 
             if index != 0 {
                 return Err(MerkleTreeTcsError::IncorrectShape);
             }
+        }
+
+        // Hash the proof metadata in with the Merkle root to get the expected commitment.
+        let hash = self.hasher.hash_slice(&[
+            GC::F::from_canonical_usize(proof.log_tensor_height),
+            GC::F::from_canonical_usize(proof.width),
+        ]);
+        let expected_commit = self.compressor.compress([proof.merkle_root, hash]);
+
+        if expected_commit != *commit {
+            return Err(MerkleTreeTcsError::InconsistentCommitmentShape);
         }
 
         Ok(())

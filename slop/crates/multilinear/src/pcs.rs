@@ -39,6 +39,9 @@ pub trait MultilinearPcsBatchVerifier<GC: IopCtx>: 'static + Send + Sync + Clone
     /// The challenger returned by this method is un-seeded and it's state can be determinstic.
     fn default_challenger(&self) -> GC::Challenger;
 
+    /// The number of expected commitments in each proof.
+    fn num_expected_commitments(&self) -> usize;
+
     /// Verify an evaluation proofs for multilinear polynomials sent.
     ///
     /// All inputs are assumed to "trusted" in the sense of Fiat-Shamir. Namely, it is assumed that
@@ -104,6 +107,8 @@ pub trait MultilinearPcsVerifier<GC: IopCtx>: 'static + Send + Sync + Clone {
 
     /// The error type of the verifier.
     type VerifierError: Error;
+
+    fn num_expected_commitments(&self) -> usize;
 
     /// A default challenger for Fiat-Shamir.
     ///

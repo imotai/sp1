@@ -1,15 +1,16 @@
 use std::{
-    fmt::Debug,
+    borrow::Borrow,
     iter::{repeat, zip},
 };
 
 use itertools::Itertools;
 use slop_algebra::{AbstractField, Field};
+use slop_bn254::outer_perm;
 use slop_bn254::{Bn254Fr, OUTER_CHALLENGER_STATE_WIDTH};
-use slop_merkle_tree::outer_perm;
-use slop_symmetric::Permutation;
-use sp1_hypercube::{inner_perm, SP1CoreJaggedConfig, SP1OuterConfig};
-use sp1_primitives::{SP1Field, SP1GlobalContext};
+use slop_challenger::IopCtx;
+use slop_symmetric::{CryptographicHasher, Permutation};
+use sp1_hypercube::{inner_perm, SP1CoreJaggedConfig};
+use sp1_primitives::{SP1Field, SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_recursion_compiler::ir::{Builder, DslIr, Felt, Var};
 use sp1_recursion_executor::{DIGEST_SIZE, HASH_RATE, PERMUTATION_WIDTH};
 
@@ -18,10 +19,10 @@ use crate::{
     CircuitConfig,
 };
 
-pub trait FieldHasher<F: Field> {
-    type Digest: Copy + Default + Eq + Ord + Copy + Debug + Send + Sync;
-
+pub trait FieldHasher: IopCtx {
     fn constant_compress(input: [Self::Digest; 2]) -> Self::Digest;
+
+    fn hash_slice(input: &[Self::F]) -> Self::Digest;
 }
 
 pub trait Poseidon2SP1FieldHasherVariable<C: CircuitConfig> {
@@ -48,7 +49,7 @@ pub trait Poseidon2SP1FieldHasherVariable<C: CircuitConfig> {
     }
 }
 
-pub trait FieldHasherVariable<C: CircuitConfig>: FieldHasher<SP1Field> {
+pub trait FieldHasherVariable<C: CircuitConfig>: FieldHasher {
     type DigestVariable: Clone + Copy;
 
     fn hash(builder: &mut Builder<C>, input: &[Felt<SP1Field>]) -> Self::DigestVariable;
@@ -68,25 +69,24 @@ pub trait FieldHasherVariable<C: CircuitConfig>: FieldHasher<SP1Field> {
     fn print_digest(builder: &mut Builder<C>, digest: Self::DigestVariable);
 }
 
-impl FieldHasher<SP1Field> for SP1CoreJaggedConfig {
-    type Digest = [SP1Field; DIGEST_SIZE];
-
-    fn constant_compress(input: [Self::Digest; 2]) -> Self::Digest {
+impl FieldHasher for SP1GlobalContext {
+    fn constant_compress(
+        input: [<SP1GlobalContext as IopCtx>::Digest; 2],
+    ) -> <SP1GlobalContext as IopCtx>::Digest {
         let mut pre_iter = input.into_iter().flatten().chain(repeat(SP1Field::zero()));
         let mut pre = core::array::from_fn(move |_| pre_iter.next().unwrap());
         inner_perm().permute_mut(&mut pre);
         pre[..DIGEST_SIZE].try_into().unwrap()
     }
-}
 
-impl FieldHasher<SP1Field> for SP1GlobalContext {
-    type Digest = [SP1Field; DIGEST_SIZE];
-
-    fn constant_compress(input: [Self::Digest; 2]) -> Self::Digest {
-        let mut pre_iter = input.into_iter().flatten().chain(repeat(SP1Field::zero()));
-        let mut pre = core::array::from_fn(move |_| pre_iter.next().unwrap());
-        inner_perm().permute_mut(&mut pre);
-        pre[..DIGEST_SIZE].try_into().unwrap()
+    fn hash_slice(input: &[SP1Field]) -> <SP1GlobalContext as IopCtx>::Digest {
+        let mut state = [SP1Field::zero(); PERMUTATION_WIDTH];
+        for input_chunk in input.chunks(HASH_RATE) {
+            state[..input_chunk.len()].copy_from_slice(input_chunk);
+            inner_perm().permute_mut(&mut state);
+        }
+        let digest: [SP1Field; DIGEST_SIZE] = state[..DIGEST_SIZE].try_into().unwrap();
+        digest
     }
 }
 
@@ -105,58 +105,6 @@ impl<C: CircuitConfig> Poseidon2SP1FieldHasherVariable<C> for SP1GlobalContext {
         input: [Felt<SP1Field>; PERMUTATION_WIDTH],
     ) -> [Felt<SP1Field>; PERMUTATION_WIDTH] {
         C::poseidon2_permute_v2(builder, input)
-    }
-}
-
-impl<C: CircuitConfig<Bit = Felt<SP1Field>>> FieldHasherVariable<C> for SP1CoreJaggedConfig {
-    type DigestVariable = [Felt<SP1Field>; DIGEST_SIZE];
-
-    fn hash(builder: &mut Builder<C>, input: &[Felt<SP1Field>]) -> Self::DigestVariable {
-        <Self as Poseidon2SP1FieldHasherVariable<C>>::poseidon2_hash(builder, input)
-    }
-
-    fn compress(
-        builder: &mut Builder<C>,
-        input: [Self::DigestVariable; 2],
-    ) -> Self::DigestVariable {
-        C::poseidon2_compress_v2(builder, input.into_iter().flatten())
-    }
-
-    fn assert_digest_eq(
-        builder: &mut Builder<C>,
-        a: Self::DigestVariable,
-        b: Self::DigestVariable,
-    ) {
-        // Push the instruction directly instead of passing through `assert_felt_eq` in order to
-        //avoid symbolic expression overhead.
-        zip(a, b).for_each(|(e1, e2)| builder.push_op(DslIr::AssertEqF(e1, e2)));
-    }
-
-    fn select_chain_digest(
-        builder: &mut Builder<C>,
-        should_swap: <C as CircuitConfig>::Bit,
-        input: [Self::DigestVariable; 2],
-    ) -> [Self::DigestVariable; 2] {
-        let result0: [Felt<SP1Field>; DIGEST_SIZE] = core::array::from_fn(|_| builder.uninit());
-        let result1: [Felt<SP1Field>; DIGEST_SIZE] = core::array::from_fn(|_| builder.uninit());
-
-        (0..DIGEST_SIZE).for_each(|i| {
-            builder.push_op(DslIr::Select(
-                should_swap,
-                result0[i],
-                result1[i],
-                input[0][i],
-                input[1][i],
-            ));
-        });
-
-        [result0, result1]
-    }
-
-    fn print_digest(builder: &mut Builder<C>, digest: Self::DigestVariable) {
-        for d in digest.iter() {
-            builder.print_f(*d);
-        }
     }
 }
 
@@ -212,7 +160,7 @@ impl<C: CircuitConfig<Bit = Felt<SP1Field>>> FieldHasherVariable<C> for SP1Globa
     }
 }
 
-impl<C: CircuitConfig> Poseidon2SP1FieldHasherVariable<C> for SP1OuterConfig {
+impl<C: CircuitConfig> Poseidon2SP1FieldHasherVariable<C> for SP1OuterGlobalContext {
     fn poseidon2_permute(
         builder: &mut Builder<C>,
         state: [Felt<SP1Field>; PERMUTATION_WIDTH],
@@ -225,17 +173,25 @@ impl<C: CircuitConfig> Poseidon2SP1FieldHasherVariable<C> for SP1OuterConfig {
 
 pub const BN254_DIGEST_SIZE: usize = 1;
 
-impl FieldHasher<SP1Field> for SP1OuterConfig {
-    type Digest = [Bn254Fr; BN254_DIGEST_SIZE];
-
+impl FieldHasher for SP1OuterGlobalContext {
     fn constant_compress(input: [Self::Digest; 2]) -> Self::Digest {
-        let mut state = [input[0][0], input[1][0], Bn254Fr::zero()];
+        let mut state = [
+            Borrow::<[Bn254Fr; 1]>::borrow(&input[0])[0],
+            Borrow::<[Bn254Fr; 1]>::borrow(&input[1])[0],
+            Bn254Fr::zero(),
+        ];
         outer_perm().permute_mut(&mut state);
-        [state[0]; BN254_DIGEST_SIZE]
+        [state[0]; BN254_DIGEST_SIZE].into()
+    }
+
+    fn hash_slice(input: &[SP1Field]) -> Self::Digest {
+        SP1OuterGlobalContext::default_hasher_and_compressor().0.hash_slice(input)
     }
 }
 
-impl<C: CircuitConfig<N = Bn254Fr, Bit = Var<Bn254Fr>>> FieldHasherVariable<C> for SP1OuterConfig {
+impl<C: CircuitConfig<N = Bn254Fr, Bit = Var<Bn254Fr>>> FieldHasherVariable<C>
+    for SP1OuterGlobalContext
+{
     type DigestVariable = [Var<Bn254Fr>; BN254_DIGEST_SIZE];
 
     fn hash(builder: &mut Builder<C>, input: &[Felt<SP1Field>]) -> Self::DigestVariable {

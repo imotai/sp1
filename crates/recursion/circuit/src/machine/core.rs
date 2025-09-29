@@ -7,7 +7,7 @@ use itertools::Itertools;
 use slop_air::Air;
 use slop_algebra::AbstractField;
 use slop_challenger::IopCtx;
-use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
+use sp1_primitives::{SP1Field, SP1GlobalContext};
 
 use serde::{Deserialize, Serialize};
 use sp1_core_machine::riscv::RiscvAir;
@@ -24,24 +24,16 @@ use sp1_recursion_compiler::{
 use sp1_recursion_executor::{RecursionPublicValues, DIGEST_SIZE, RECURSIVE_PROOF_NUM_PV_ELTS};
 
 use crate::{
-    basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier},
-    challenger::{CanObserveVariable, DuplexChallengerVariable},
-    jagged::RecursiveJaggedConfig,
+    challenger::CanObserveVariable,
     machine::{assert_complete, recursion_public_values_digest},
     shard::{MachineVerifyingKeyVariable, RecursiveShardVerifier, ShardProofVariable},
     zerocheck::RecursiveVerifierConstraintFolder,
     CircuitConfig, SP1FieldConfigVariable,
 };
 
-pub struct SP1RecursionWitnessVariable<
-    C: CircuitConfig,
-    SC: SP1FieldConfigVariable<C>,
-    JC: RecursiveJaggedConfig<
-        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >,
-> {
+pub struct SP1RecursionWitnessVariable<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> {
     pub vk: MachineVerifyingKeyVariable<C, SC>,
-    pub shard_proofs: Vec<ShardProofVariable<C, SC, JC>>,
+    pub shard_proofs: Vec<ShardProofVariable<C, SC>>,
     pub reconstruct_deferred_digest: [Felt<SP1Field>; DIGEST_SIZE],
     pub is_complete: Felt<SP1Field>,
     pub vk_root: [Felt<SP1Field>; DIGEST_SIZE],
@@ -61,33 +53,13 @@ pub struct SP1NormalizeWitnessValues<GC: IopCtx, SC: MachineConfig<GC>> {
 
 /// A program for recursively verifying a batch of SP1 proofs.
 #[derive(Debug, Clone, Copy)]
-pub struct SP1RecursiveVerifier<GC, C: Config, SC, JC: RecursiveJaggedConfig> {
-    _phantom: PhantomData<(GC, C, SC, JC)>,
+pub struct SP1RecursiveVerifier<C: Config> {
+    _phantom: PhantomData<C>,
 }
 
-impl<GC: IopCtx, C, SC, JC> SP1RecursiveVerifier<GC, C, SC, JC>
+impl<C> SP1RecursiveVerifier<C>
 where
-    SC: SP1FieldConfigVariable<
-            C,
-            FriChallengerVariable = DuplexChallengerVariable<C>,
-            DigestVariable = [Felt<SP1Field>; DIGEST_SIZE],
-        > + Send
-        + Sync,
-    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
     C: CircuitConfig<Bit = Felt<SP1Field>>,
-    JC: RecursiveJaggedConfig<
-        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >,
-    // SC: SP1FieldConfigVariable<C> + MachineConfig<GC>,
-    JC: RecursiveJaggedConfig<
-        F = SP1Field,
-        EF = SP1ExtensionField,
-        Circuit = C,
-        Commitment = SC::DigestVariable,
-        Challenger = SC::FriChallengerVariable,
-        BatchPcsProof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>,
-        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >,
 {
     /// Verify a batch of SP1 shard proofs and aggregate their public values.
     ///
@@ -105,8 +77,8 @@ where
     /// The first shard has some additional constraints for initialization.
     pub fn verify(
         builder: &mut Builder<C>,
-        machine: &RecursiveShardVerifier<SP1GlobalContext, RiscvAir<SP1Field>, SC, C, JC>,
-        input: SP1RecursionWitnessVariable<C, SC, JC>,
+        machine: &RecursiveShardVerifier<SP1GlobalContext, RiscvAir<SP1Field>, C>,
+        input: SP1RecursionWitnessVariable<C, SP1GlobalContext>,
     ) where
         RiscvAir<SP1Field>: for<'b> Air<RecursiveVerifierConstraintFolder<'b>>,
     {
@@ -146,7 +118,7 @@ where
         ));
 
         // Prepare a challenger.
-        let mut challenger = SC::challenger_variable(builder);
+        let mut challenger = SP1GlobalContext::challenger_variable(builder);
 
         // Observe the vk and start pc.
         challenger.observe(builder, vk.preprocessed_commit);
@@ -223,12 +195,14 @@ where
             recursion_public_values.proof_nonce = public_values.proof_nonce;
 
             // Calculate the digest and set it in the public values.
-            recursion_public_values.digest =
-                recursion_public_values_digest::<C, SC>(builder, recursion_public_values);
+            recursion_public_values.digest = recursion_public_values_digest::<C, SP1GlobalContext>(
+                builder,
+                recursion_public_values,
+            );
 
             assert_complete(builder, recursion_public_values, is_complete);
 
-            SC::commit_recursion_public_values(builder, *recursion_public_values);
+            SP1GlobalContext::commit_recursion_public_values(builder, *recursion_public_values);
         }
     }
 }

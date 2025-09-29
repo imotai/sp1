@@ -226,6 +226,7 @@ impl<GC: IopCtx, C: MachineProverComponents<GC>> MachineProver<GC, C> {
                 .map(|air| air.preprocessed_width() * air.num_rows(record).unwrap_or_default())
                 .sum::<usize>())
         .div_ceil(1 << max_log_row_count);
+
         let shard_chips = self.machine().smallest_cluster(&shard_chips).cloned()?;
         Some(CoreProofShape {
             shard_chips,

@@ -1,13 +1,10 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    basefold::{
-        stacked::RecursiveStackedPcsProof, RecursiveBasefoldConfigImpl, RecursiveBasefoldVerifier,
-    },
+    basefold::{stacked::RecursiveStackedPcsProof, RecursiveBasefoldProof},
     hash::FieldHasherVariable,
-    jagged::RecursiveJaggedConfig,
     shard::{MachineVerifyingKeyVariable, ShardProofVariable},
-    AsRecursive, CircuitConfig, SP1FieldConfigVariable,
+    CircuitConfig, SP1FieldConfigVariable,
 };
 use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField, AbstractField};
 use slop_bn254::Bn254Fr;
@@ -284,25 +281,23 @@ impl<C: CircuitConfig> Witnessable<C> for AirOpenedValues<SP1ExtensionField> {
     }
 }
 
-impl<C, GC, SC, BatchPcsProof> Witnessable<C> for ShardProof<GC, SC>
+impl<C, GC, SC> Witnessable<C> for ShardProof<GC, SC>
 where
     C: CircuitConfig,
-    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
-    SC: MachineConfig<GC> + AsRecursive<C> + SP1FieldConfigVariable<C>,
-    SC::Recursive: RecursiveJaggedConfig<
-        F = SP1Field,
-        EF = SP1ExtensionField,
-        Circuit = C,
-        BatchPcsProof = BatchPcsProof,
-        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >,
-    GC::Digest: Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
+    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + SP1FieldConfigVariable<C>,
+    SC: MachineConfig<GC>,
+    <GC as IopCtx>::Digest:
+        Witnessable<C, WitnessVariable = <GC as FieldHasherVariable<C>>::DigestVariable>,
     <SC::PcsVerifier as MultilinearPcsVerifier<GC>>::Proof: Witnessable<
         C,
-        WitnessVariable = RecursiveStackedPcsProof<BatchPcsProof, SP1Field, SP1ExtensionField>,
+        WitnessVariable = RecursiveStackedPcsProof<
+            RecursiveBasefoldProof<C, GC>,
+            SP1Field,
+            SP1ExtensionField,
+        >,
     >,
 {
-    type WitnessVariable = ShardProofVariable<C, SC, SC::Recursive>;
+    type WitnessVariable = ShardProofVariable<C, GC>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let public_values = self.public_values.read(builder);
@@ -335,11 +330,12 @@ where
 impl<C, GC, SC> Witnessable<C> for MachineVerifyingKey<GC, SC>
 where
     C: CircuitConfig,
-    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
-    SC: MachineConfig<GC> + SP1FieldConfigVariable<C>,
-    GC::Digest: Witnessable<C, WitnessVariable = <SC as FieldHasherVariable<C>>::DigestVariable>,
+    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + SP1FieldConfigVariable<C>,
+    SC: MachineConfig<GC>,
+    <GC as IopCtx>::Digest:
+        Witnessable<C, WitnessVariable = <GC as FieldHasherVariable<C>>::DigestVariable>,
 {
-    type WitnessVariable = MachineVerifyingKeyVariable<C, SC>;
+    type WitnessVariable = MachineVerifyingKeyVariable<C, GC>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let pc_start = self.pc_start.read(builder);

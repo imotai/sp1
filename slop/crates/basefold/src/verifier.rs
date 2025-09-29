@@ -1,29 +1,29 @@
-use std::marker::PhantomData;
-
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractExtensionField;
 use slop_algebra::{AbstractField, TwoAdicField};
 use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger, IopCtx};
-use slop_merkle_tree::{MerkleTreeOpening, MerkleTreeTcs, MerkleTreeTcsError};
+use slop_merkle_tree::{MerkleTreeOpeningAndProof, MerkleTreeTcs, MerkleTreeTcsError};
 use slop_multilinear::{MleEval, MultilinearPcsBatchVerifier, Point};
 use slop_utils::reverse_bits_len;
 use thiserror::Error;
 
-use crate::{BasefoldConfig, DefaultBasefoldConfig};
-
 #[derive(Clone)]
-pub struct BasefoldVerifier<GC: IopCtx, B: BasefoldConfig<GC>> {
+pub struct BasefoldVerifier<GC: IopCtx> {
     pub fri_config: crate::FriConfig<GC::F>,
-    pub tcs: MerkleTreeTcs<GC, B::Tcs>,
+    pub tcs: MerkleTreeTcs<GC>,
+    pub num_expected_commitments: usize,
 }
-impl<GC: IopCtx, B: DefaultBasefoldConfig<GC>> BasefoldVerifier<GC, B> {
-    pub fn new(log_blowup: usize) -> Self {
-        B::default_verifier(log_blowup)
-    }
-
-    pub fn challenger(&self) -> GC::Challenger {
-        B::default_challenger(self)
+impl<GC: IopCtx> BasefoldVerifier<GC>
+where
+    GC::F: TwoAdicField,
+{
+    pub fn new(log_blowup: usize, num_expected_commitments: usize) -> Self {
+        Self {
+            fri_config: crate::FriConfig::auto(log_blowup, 84),
+            tcs: MerkleTreeTcs::default(),
+            num_expected_commitments,
+        }
     }
 }
 
@@ -45,6 +45,8 @@ pub enum BaseFoldVerifierError<TcsError> {
     SumcheckFinalPolyMismatch,
     #[error("incorrect shape of proof")]
     IncorrectShape,
+    #[error("instance overflows the field two_adicity")]
+    TwoAdicityOverflow,
 }
 
 impl<TcsError: std::fmt::Display> std::fmt::Debug for BaseFoldVerifierError<TcsError> {
@@ -66,6 +68,9 @@ impl<TcsError: std::fmt::Display> std::fmt::Debug for BaseFoldVerifierError<TcsE
             BaseFoldVerifierError::IncorrectShape => {
                 write!(f, "incorrect shape of proof")
             }
+            BaseFoldVerifierError::TwoAdicityOverflow => {
+                write!(f, "instance overflows the field two_adicity")
+            }
         }
     }
 }
@@ -73,7 +78,7 @@ impl<TcsError: std::fmt::Display> std::fmt::Debug for BaseFoldVerifierError<TcsE
 /// A proof of a Basefold evaluation claim.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(serialize = "", deserialize = ""))]
-pub struct BasefoldProof<GC: IopCtx, BC: BasefoldConfig<GC>> {
+pub struct BasefoldProof<GC: IopCtx> {
     /// The univariate polynomials that are used in the sumcheck part of the BaseFold protocol.
     pub univariate_messages: Vec<[GC::EF; 2]>,
     /// The FRI parts of the proof.
@@ -82,26 +87,29 @@ pub struct BasefoldProof<GC: IopCtx, BC: BasefoldConfig<GC>> {
     /// The query openings for the individual multilinear polynmomials.
     ///
     /// The vector is indexed by the batch number.
-    pub component_polynomials_query_openings: Vec<MerkleTreeOpening<GC>>,
+    pub component_polynomials_query_openings_and_proofs: Vec<MerkleTreeOpeningAndProof<GC>>,
     /// The query openings and the FRI query proofs for the FRI query phase.
-    pub query_phase_openings: Vec<MerkleTreeOpening<GC>>,
+    pub query_phase_openings_and_proofs: Vec<MerkleTreeOpeningAndProof<GC>>,
     /// The prover performs FRI until we reach a polynomial of degree 0, and return the constant
     /// value of this polynomial.
     pub final_poly: GC::EF,
     /// Proof-of-work witness.
     pub pow_witness: <GC::Challenger as GrindingChallenger>::Witness,
-    pub marker: PhantomData<BC>,
 }
 
-impl<GC: IopCtx, B: BasefoldConfig<GC>> MultilinearPcsBatchVerifier<GC> for BasefoldVerifier<GC, B>
+impl<GC: IopCtx> MultilinearPcsBatchVerifier<GC> for BasefoldVerifier<GC>
 where
     GC::F: TwoAdicField,
 {
-    type Proof = BasefoldProof<GC, B>;
+    type Proof = BasefoldProof<GC>;
     type VerifierError = BaseFoldVerifierError<MerkleTreeTcsError>;
 
     fn default_challenger(&self) -> GC::Challenger {
-        B::default_challenger(self)
+        GC::default_challenger()
+    }
+
+    fn num_expected_commitments(&self) -> usize {
+        self.num_expected_commitments
     }
 
     fn verify_trusted_evaluations(
@@ -116,7 +124,7 @@ where
     }
 }
 
-impl<GC: IopCtx, B: BasefoldConfig<GC>> BasefoldVerifier<GC, B>
+impl<GC: IopCtx> BasefoldVerifier<GC>
 where
     GC::F: TwoAdicField,
 {
@@ -125,7 +133,7 @@ where
         commitments: &[GC::Digest],
         mut point: Point<GC::EF>,
         evaluation_claims: &[MleEval<GC::EF>],
-        proof: &BasefoldProof<GC, B>,
+        proof: &BasefoldProof<GC>,
         challenger: &mut GC::Challenger,
     ) -> Result<(), BaseFoldVerifierError<MerkleTreeTcsError>> {
         // Sample the challenge used to batch all the different polynomials.
@@ -139,7 +147,8 @@ where
             .sum::<GC::EF>();
 
         if evaluation_claims.len() != commitments.len()
-            || commitments.len() != proof.component_polynomials_query_openings.len()
+            || commitments.len() != proof.component_polynomials_query_openings_and_proofs.len()
+            || commitments.len() != self.num_expected_commitments
         {
             return Err(BaseFoldVerifierError::IncorrectShape);
         }
@@ -205,6 +214,10 @@ where
 
         let log_len = proof.fri_commitments.len();
 
+        if log_len + self.fri_config.log_blowup() > GC::F::TWO_ADICITY {
+            return Err(BaseFoldVerifierError::TwoAdicityOverflow);
+        }
+
         // Sample query indices for the FRI query IOPP part of BaseFold. This part is very similar
         // to the corresponding part in the univariate FRI verifier.
         let query_indices = (0..self.fri_config.num_queries)
@@ -214,8 +227,10 @@ where
         // Compute the batch evaluations from the openings of the component polynomials.
         let mut batch_evals = vec![GC::EF::zero(); query_indices.len()];
         let mut batch_challenge_power = GC::EF::one();
-        for (round_idx, opening) in proof.component_polynomials_query_openings.iter().enumerate() {
-            let values = &opening.values;
+        for (round_idx, opening_and_proof) in
+            proof.component_polynomials_query_openings_and_proofs.iter().enumerate()
+        {
+            let values = &opening_and_proof.values;
             let total_columns = evaluation_claims[round_idx].num_polynomials();
             if values.dimensions.sizes().len() != 2 {
                 return Err(BaseFoldVerifierError::IncorrectShape);
@@ -239,15 +254,18 @@ where
         }
 
         // Verify the proof of the claimed values.
-        for (commit, opening) in
-            commitments.iter().zip_eq(proof.component_polynomials_query_openings.iter())
+        for (commit, opening_and_proof) in
+            commitments.iter().zip_eq(proof.component_polynomials_query_openings_and_proofs.iter())
         {
+            if opening_and_proof.proof.log_tensor_height != log_len + self.fri_config.log_blowup() {
+                return Err(BaseFoldVerifierError::IncorrectShape);
+            }
             self.tcs
                 .verify_tensor_openings(
                     commit,
                     &query_indices,
-                    opening,
-                    log_len + self.fri_config.log_blowup(),
+                    &opening_and_proof.values,
+                    &opening_and_proof.proof,
                 )
                 .map_err(BaseFoldVerifierError::TcsError)?;
         }
@@ -258,7 +276,7 @@ where
             &query_indices,
             proof.final_poly,
             batch_evals,
-            &proof.query_phase_openings,
+            &proof.query_phase_openings_and_proofs,
             &betas,
         )?;
 
@@ -281,7 +299,7 @@ where
         indices: &[usize],
         final_poly: GC::EF,
         reduced_openings: Vec<GC::EF>,
-        query_openings: &[MerkleTreeOpening<GC>],
+        query_openings: &[MerkleTreeOpeningAndProof<GC>],
         betas: &[GC::EF],
     ) -> Result<(), BaseFoldVerifierError<MerkleTreeTcsError>> {
         let log_max_height = commitments.len() + self.fri_config.log_blowup();
@@ -302,7 +320,7 @@ where
         }
 
         // Loop over the FRI queries.
-        for (idx, ((commitment, query_opening), beta)) in (self.fri_config.log_blowup()
+        for (round_idx, ((commitment, query_opening), beta)) in (self.fri_config.log_blowup()
             ..log_max_height)
             .rev()
             .zip_eq(commitments.iter().zip_eq(query_openings.iter()).zip_eq(betas))
@@ -351,9 +369,22 @@ where
                 *index = index_pair;
                 *x = x.square();
             }
+
+            // The magic constant 2 here is the folding factor we use for FRI.
+            if round_idx != query_opening.proof.log_tensor_height
+                || query_opening.proof.width != GC::EF::D * 2
+            {
+                return Err(BaseFoldVerifierError::IncorrectShape);
+            }
+
             // Check that the opening is consistent with the commitment.
             self.tcs
-                .verify_tensor_openings(commitment, &indices, query_opening, idx)
+                .verify_tensor_openings(
+                    commitment,
+                    &indices,
+                    &query_opening.values,
+                    &query_opening.proof,
+                )
                 .map_err(BaseFoldVerifierError::TcsError)?;
         }
 

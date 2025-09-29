@@ -102,6 +102,7 @@ impl<T> Point<T, CpuBackend> {
         )
     }
 
+    /// Big-ending evaluation of the bit string represented by this point.
     pub fn bit_string_evaluation(&self) -> T
     where
         T: AbstractField,

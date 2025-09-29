@@ -10,7 +10,7 @@ use slop_challenger::{CanObserve, FieldChallenger, IopCtx};
 use slop_commit::Message;
 pub use slop_fri::fold_even_odd as host_fold_even_odd;
 use slop_futures::OwnedBorrow;
-use slop_merkle_tree::{MerkleTreeConfig, TensorCsProver};
+use slop_merkle_tree::TensorCsProver;
 use slop_multilinear::{Mle, MleEval, Point};
 use slop_tensor::Tensor;
 
@@ -42,13 +42,12 @@ pub trait FixedAtZero<EF: Field, A: Backend> {
 
 pub trait FriIoppProver<
     GC: IopCtx<F: TwoAdicField>,
-    Tcs: MerkleTreeConfig<GC>,
     E: ReedSolomonEncoder<GC::F, A> + Clone,
     A: Backend = CpuBackend,
 >: BasefoldBatcher<GC, E, A>
 {
     type FriProverError: Error;
-    type TcsProver: TensorCsProver<GC, A, MerkleConfig = Tcs>;
+    type TcsProver: TensorCsProver<GC, A>;
     type Encoder: ReedSolomonEncoder<GC::F, A>;
     #[allow(clippy::type_complexity)]
     fn commit_phase_round(
@@ -165,10 +164,9 @@ impl<
 
 impl<
         GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>,
-        M: MerkleTreeConfig<GC>,
         E: ReedSolomonEncoder<GC::F, CpuBackend> + Clone,
-        P: TensorCsProver<GC, CpuBackend, MerkleConfig = M> + Send + Sync + 'static,
-    > FriIoppProver<GC, M, E, CpuBackend> for FriCpuProver<E, P>
+        P: TensorCsProver<GC, CpuBackend> + Send + Sync + 'static,
+    > FriIoppProver<GC, E, CpuBackend> for FriCpuProver<E, P>
 {
     type FriProverError = P::ProverError;
     type TcsProver = P;

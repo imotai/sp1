@@ -4,10 +4,7 @@ use crate::{
     CircuitConfig, SP1FieldConfigVariable,
 };
 use itertools::Itertools;
-use slop_algebra::{
-    extension::{BinomialExtensionField, BinomiallyExtendable, HasTwoAdicBionmialExtension},
-    AbstractField, PrimeField31, TwoAdicField,
-};
+use slop_algebra::{AbstractField, TwoAdicField};
 use slop_basefold::FriConfig;
 use slop_multilinear::{MleEval, Point};
 use sp1_recursion_compiler::{
@@ -24,68 +21,33 @@ pub mod stacked;
 pub mod tcs;
 mod whir;
 pub mod witness;
-use crate::AsRecursive;
-use slop_basefold::Poseidon2Bn254FrBasefoldConfig;
-use sp1_hypercube::{SP1BasefoldConfig, SP1CoreJaggedConfig, SP1OuterConfig};
-
-pub trait RecursiveBasefoldConfig: Sized {
-    type F: Copy;
-    type EF: Copy;
-    type Circuit: CircuitConfig<Bit = Self::Bit>;
-    type Bit;
-    type M: FieldHasherVariable<Self::Circuit>;
-    type Challenger: CanObserveVariable<Self::Circuit, Felt<SP1Field>>;
-}
 
 pub struct RecursiveBasefoldConfigImpl<C, SC>(PhantomData<(C, SC)>);
 
-impl<C: CircuitConfig> AsRecursive<C> for SP1BasefoldConfig {
-    type Recursive = RecursiveBasefoldConfigImpl<C, SP1CoreJaggedConfig>;
-}
-
-impl<C: CircuitConfig> AsRecursive<C>
-    for Poseidon2Bn254FrBasefoldConfig<SP1Field, SP1ExtensionField>
-where
-    SP1Field:
-        PrimeField31 + TwoAdicField + BinomiallyExtendable<4> + HasTwoAdicBionmialExtension<4>,
-{
-    type Recursive = RecursiveBasefoldConfigImpl<C, SP1OuterConfig>;
-}
-
-impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> RecursiveBasefoldConfig
-    for RecursiveBasefoldConfigImpl<C, SC>
-{
-    type F = SP1Field;
-    type EF = BinomialExtensionField<SP1Field, 4>;
-    type Circuit = C;
-    type Bit = C::Bit;
-    type M = SC;
-    type Challenger = SC::FriChallengerVariable;
-}
-
-pub struct RecursiveBasefoldProof<B: RecursiveBasefoldConfig> {
+pub struct RecursiveBasefoldProof<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> {
     /// The univariate polynomials that are used in the sumcheck part of the BaseFold protocol.
-    pub univariate_messages: Vec<[Ext<B::F, B::EF>; 2]>,
+    pub univariate_messages: Vec<[Ext<SP1Field, SP1ExtensionField>; 2]>,
     /// The FRI parts of the proof.
     /// The commitments to the folded polynomials produced in the commit phase.
-    pub fri_commitments: Vec<<B::M as FieldHasherVariable<B::Circuit>>::DigestVariable>,
+    pub fri_commitments: Vec<<SC as FieldHasherVariable<C>>::DigestVariable>,
     /// The query openings for the individual multilinear polynomials.
     /// The vector is indexed by the batch number.
-    pub component_polynomials_query_openings:
-        Vec<RecursiveTensorCsOpening<<B::M as FieldHasherVariable<B::Circuit>>::DigestVariable>>,
+    pub component_polynomials_query_openings_and_proofs:
+        Vec<RecursiveTensorCsOpening<<SC as FieldHasherVariable<C>>::DigestVariable>>,
     /// The query openings and the FRI query proofs for the FRI query phase.
-    pub query_phase_openings:
-        Vec<RecursiveTensorCsOpening<<B::M as FieldHasherVariable<B::Circuit>>::DigestVariable>>,
+    pub query_phase_openings_and_proofs:
+        Vec<RecursiveTensorCsOpening<<SC as FieldHasherVariable<C>>::DigestVariable>>,
     /// The prover performs FRI until we reach a polynomial of degree 0, and return the constant
     /// value of this polynomial.
-    pub final_poly: Ext<B::F, B::EF>,
+    pub final_poly: Ext<SP1Field, SP1ExtensionField>,
     /// Proof-of-work witness.
-    pub pow_witness: Felt<B::F>,
+    pub pow_witness: Felt<SP1Field>,
 }
 
-pub struct RecursiveBasefoldVerifier<B: RecursiveBasefoldConfig> {
-    pub fri_config: FriConfig<B::F>,
-    pub tcs: RecursiveMerkleTreeTcs<B::Circuit, B::M>,
+#[derive(Clone)]
+pub struct RecursiveBasefoldVerifier<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> {
+    pub fri_config: FriConfig<SP1Field>,
+    pub tcs: RecursiveMerkleTreeTcs<C, SC>,
 }
 
 pub trait RecursiveMultilinearPcsVerifier: Sized {
@@ -132,10 +94,10 @@ pub trait RecursiveMultilinearPcsVerifier: Sized {
 }
 
 impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> RecursiveMultilinearPcsVerifier
-    for RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>
+    for RecursiveBasefoldVerifier<C, SC>
 {
     type Commitment = SC::DigestVariable;
-    type Proof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>;
+    type Proof = RecursiveBasefoldProof<C, SC>;
     type Circuit = C;
     type Bit = C::Bit;
     type Challenger = SC::FriChallengerVariable;
@@ -160,16 +122,14 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> RecursiveMultilinearPcsVer
     }
 }
 
-impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>>
-    RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>
-{
+impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> RecursiveBasefoldVerifier<C, SC> {
     fn verify_mle_evaluations(
         &self,
         builder: &mut Builder<C>,
         commitments: &[SC::DigestVariable],
         mut point: Point<Ext<SP1Field, SP1ExtensionField>>,
         evaluation_claims: &[MleEval<Ext<SP1Field, SP1ExtensionField>>],
-        proof: &RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>,
+        proof: &RecursiveBasefoldProof<C, SC>,
         challenger: &mut SC::FriChallengerVariable,
     ) {
         // Sample the challenge used to batch all the different polynomials.
@@ -265,7 +225,7 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>>
         let zero = SymbolicExt::<SP1Field, SP1ExtensionField>::zero();
         let mut batch_evals = vec![zero; query_indices.len()];
         let mut batch_challenge_power = SymbolicExt::from(one);
-        for opening in proof.component_polynomials_query_openings.iter() {
+        for opening in proof.component_polynomials_query_openings_and_proofs.iter() {
             let values = &opening.values;
             for (batch_eval, values) in batch_evals.iter_mut().zip_eq(values.split()) {
                 let beta_powers = batching_challenge.shifted_powers(batch_challenge_power);
@@ -285,7 +245,7 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>>
 
         // Verify the proof of the claimed values.
         for (commit, opening) in
-            commitments.iter().zip_eq(proof.component_polynomials_query_openings.iter())
+            commitments.iter().zip_eq(proof.component_polynomials_query_openings_and_proofs.iter())
         {
             RecursiveMerkleTreeTcs::<C, SC>::verify_tensor_openings(
                 builder,
@@ -304,7 +264,7 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>>
             &query_indices,
             proof.final_poly,
             batch_evals,
-            &proof.query_phase_openings,
+            &proof.query_phase_openings_and_proofs,
             &betas,
         );
         builder.cycle_tracker_v2_exit();
@@ -440,10 +400,11 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>>
 mod tests {
     use rand::thread_rng;
     use slop_commit::Message;
-    use sp1_recursion_compiler::circuit::AsmConfig;
+    use sp1_recursion_compiler::{circuit::AsmConfig, config::InnerConfig};
     use std::sync::Arc;
 
     use slop_algebra::extension::BinomialExtensionField;
+    use slop_challenger::IopCtx;
     use sp1_primitives::SP1DiffusionMatrix;
 
     use crate::{challenger::DuplexChallengerVariable, witness::Witnessable};
@@ -468,7 +429,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_basefold_proof() {
-        type C = SP1BasefoldConfig;
+        type C = InnerConfig;
+        type SC = SP1GlobalContext;
+
         type Prover =
             BasefoldProver<SP1GlobalContext, sp1_hypercube::prover::SP1BasefoldCpuProverComponents>;
 
@@ -487,17 +450,15 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let verifier = BasefoldVerifier::<_, C>::new(log_blowup);
-        let recursive_verifier = RecursiveBasefoldVerifier::<
-            RecursiveBasefoldConfigImpl<AsmConfig, SP1CoreJaggedConfig>,
-        > {
+        let verifier = BasefoldVerifier::<_>::new(log_blowup, round_widths.len());
+        let recursive_verifier = RecursiveBasefoldVerifier::<C, SC> {
             fri_config: verifier.fri_config,
-            tcs: RecursiveMerkleTreeTcs::<AsmConfig, SP1CoreJaggedConfig>(PhantomData),
+            tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),
         };
 
         let prover = Prover::new(&verifier);
 
-        let mut challenger = verifier.challenger();
+        let mut challenger = SC::default_challenger();
         let mut commitments = vec![];
         let mut prover_data = Rounds::new();
         let mut eval_claims = Rounds::new();
@@ -553,9 +514,7 @@ mod tests {
         Witnessable::<AsmConfig>::write(&proof, &mut witness_stream);
         let proof = proof.read(&mut builder);
 
-        RecursiveBasefoldVerifier::<
-            RecursiveBasefoldConfigImpl<AsmConfig, SP1CoreJaggedConfig>,
-        >::verify_mle_evaluations(
+        RecursiveBasefoldVerifier::<C, SC>::verify_mle_evaluations(
             &recursive_verifier,
             &mut builder,
             &commitments,
@@ -575,7 +534,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalid_basefold_proof() {
-        type C = SP1BasefoldConfig;
+        type C = InnerConfig;
+        type SC = SP1GlobalContext;
         type Prover =
             BasefoldProver<SP1GlobalContext, sp1_hypercube::prover::SP1BasefoldCpuProverComponents>;
 
@@ -594,17 +554,15 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let verifier = BasefoldVerifier::<_, C>::new(log_blowup);
-        let recursive_verifier = RecursiveBasefoldVerifier::<
-            RecursiveBasefoldConfigImpl<AsmConfig, SP1CoreJaggedConfig>,
-        > {
+        let verifier = BasefoldVerifier::<SC>::new(log_blowup, round_widths.len());
+        let recursive_verifier = RecursiveBasefoldVerifier::<C, SC> {
             fri_config: verifier.fri_config,
-            tcs: RecursiveMerkleTreeTcs::<AsmConfig, SP1CoreJaggedConfig>(PhantomData),
+            tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),
         };
 
         let prover = Prover::new(&verifier);
 
-        let mut challenger = verifier.challenger();
+        let mut challenger = SC::default_challenger();
         let mut commitments = vec![];
         let mut prover_data = Rounds::new();
         let mut eval_claims = Rounds::new();
@@ -666,9 +624,7 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        RecursiveBasefoldVerifier::<
-            RecursiveBasefoldConfigImpl<AsmConfig, SP1CoreJaggedConfig>,
-        >::verify_mle_evaluations(
+        RecursiveBasefoldVerifier::<C, SC>::verify_mle_evaluations(
             &recursive_verifier,
             &mut builder,
             &commitments,

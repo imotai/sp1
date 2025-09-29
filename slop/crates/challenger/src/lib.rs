@@ -7,6 +7,7 @@ use futures::prelude::*;
 pub use p3_challenger::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::{ExtensionField, Field};
+use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 pub use synchronize::*;
 
 pub trait FromChallenger<Challenger: Send + Sync, A: Send + Sync>: Send + Sync + Sized {
@@ -46,4 +47,11 @@ pub trait IopCtx:
         + Send
         + Sync
         + Clone;
+
+    type Hasher: CryptographicHasher<Self::F, Self::Digest> + Send + Sync + Clone;
+    type Compressor: PseudoCompressionFunction<Self::Digest, 2> + Send + Sync + Clone;
+
+    fn default_hasher_and_compressor() -> (Self::Hasher, Self::Compressor);
+
+    fn default_challenger() -> Self::Challenger;
 }

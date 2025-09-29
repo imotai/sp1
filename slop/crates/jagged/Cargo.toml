@@ -23,6 +23,7 @@ slop-basefold-prover = { workspace = true }
 slop-basefold = { workspace = true }
 slop-futures = { workspace = true }
 slop-tensor = { workspace = true }
+slop-symmetric = { workspace = true }
 
 itertools = { workspace = true }
 tracing = { workspace = true }

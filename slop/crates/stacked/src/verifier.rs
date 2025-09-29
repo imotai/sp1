@@ -63,6 +63,8 @@ impl<GC: IopCtx, P: MultilinearPcsBatchVerifier<GC>> StackedPcsVerifier<GC, P> {
         }
 
         // Verify the PCS proof with respect to the claimed evaluations.
+        // It is assumed that the multilinear batch PCS verifier checks that the number of commitments
+        // is as expected.
         self.pcs_verifier
             .verify_untrusted_evaluations(
                 commitments,
@@ -79,6 +81,10 @@ impl<GC: IopCtx, P: MultilinearPcsBatchVerifier<GC>> MultilinearPcsVerifier<GC>
     for StackedPcsVerifier<GC, P>
 {
     type VerifierError = StackedVerifierError<P::VerifierError>;
+
+    fn num_expected_commitments(&self) -> usize {
+        self.pcs_verifier.num_expected_commitments()
+    }
 
     fn default_challenger(&self) -> GC::Challenger {
         self.challenger()

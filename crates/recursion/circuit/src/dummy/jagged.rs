@@ -3,11 +3,11 @@ use slop_alloc::CpuBackend;
 use slop_basefold::BasefoldProof;
 use slop_commit::Rounds;
 use slop_jagged::{JaggedLittlePolynomialVerifierParams, JaggedPcsProof, JaggedSumcheckEvalProof};
-use slop_merkle_tree::{MerkleTreeOpening, MerkleTreeTcsProof};
+use slop_merkle_tree::{MerkleTreeOpeningAndProof, MerkleTreeTcsProof};
 use slop_multilinear::{MleEval, Point};
 use slop_stacked::StackedPcsProof;
 use slop_tensor::Tensor;
-use sp1_hypercube::{log2_ceil_usize, SP1BasefoldConfig, SP1CoreJaggedConfig};
+use sp1_hypercube::{log2_ceil_usize, SP1CoreJaggedConfig, NUM_SP1_COMMITMENTS};
 use sp1_primitives::{SP1Field, SP1GlobalContext};
 use sp1_recursion_executor::DIGEST_SIZE;
 
@@ -20,23 +20,31 @@ pub fn dummy_hash() -> [SP1Field; DIGEST_SIZE] {
 }
 
 pub fn dummy_query_proof(
-    max_height: usize,
+    log_max_height: usize,
     log_blowup: usize,
     num_queries: usize,
-) -> Vec<MerkleTreeOpening<SP1GlobalContext>> {
+) -> Vec<MerkleTreeOpeningAndProof<SP1GlobalContext>> {
     // The outer Vec is an iteration over the commit-phase rounds, of which there should be
     // `log_max_height-1` (perhaps there's an off-by-one error here). The TensorCsOpening is
     // laid out so that the tensor shape is [num_queries, 8 (degree of extension field*folding
     // parameter)].
-    (0..max_height)
+    (0..log_max_height)
         .map(|i| {
             let openings = Tensor::<SP1Field, _>::zeros_in([num_queries, 4 * 2], CpuBackend);
             let proof = Tensor::<[SP1Field; DIGEST_SIZE], _>::zeros_in(
-                [num_queries, max_height - i + log_blowup - 1],
+                [num_queries, log_max_height - i + log_blowup - 1],
                 CpuBackend,
             );
 
-            MerkleTreeOpening { values: openings, proof: MerkleTreeTcsProof { paths: proof } }
+            MerkleTreeOpeningAndProof {
+                values: openings,
+                proof: MerkleTreeTcsProof {
+                    paths: proof,
+                    merkle_root: dummy_hash(),
+                    log_tensor_height: log_max_height - i + log_blowup - 1,
+                    width: 4 * 2,
+                },
+            }
         })
         .collect::<Vec<_>>()
 }
@@ -52,27 +60,37 @@ pub fn dummy_pcs_proof(
     log_blowup: usize,
     total_machine_cols: usize,
     max_log_row_count: usize,
-    added_cols: &[usize],
+    column_counts_and_added_cols: Rounds<(Vec<usize>, usize)>,
 ) -> JaggedPcsProof<SP1GlobalContext, SP1CoreJaggedConfig> {
-    let max_pcs_height = log_stacking_height;
+    let (column_counts, added_cols): (Rounds<Vec<usize>>, Vec<usize>) =
+        column_counts_and_added_cols.into_iter().unzip();
+    let max_pcs_log_height = log_stacking_height;
     let dummy_component_polys = log_stacking_height_multiples.iter().map(|&x| {
         let proof = Tensor::<[SP1Field; DIGEST_SIZE], _>::zeros_in(
-            [fri_queries, max_pcs_height + log_blowup],
+            [fri_queries, max_pcs_log_height + log_blowup],
             CpuBackend,
         );
-        MerkleTreeOpening::<SP1GlobalContext> {
+        MerkleTreeOpeningAndProof::<SP1GlobalContext> {
             values: Tensor::<SP1Field, _>::zeros_in([fri_queries, x], CpuBackend),
-            proof: MerkleTreeTcsProof { paths: proof },
+            proof: MerkleTreeTcsProof {
+                paths: proof,
+                merkle_root: dummy_hash(),
+                log_tensor_height: max_pcs_log_height + log_blowup,
+                width: x,
+            },
         }
     });
-    let basefold_proof = BasefoldProof::<SP1GlobalContext, SP1BasefoldConfig> {
-        univariate_messages: vec![[InnerChallenge::zero(); 2]; max_pcs_height],
-        fri_commitments: vec![dummy_hash(); max_pcs_height],
+    let basefold_proof = BasefoldProof::<SP1GlobalContext> {
+        univariate_messages: vec![[InnerChallenge::zero(); 2]; max_pcs_log_height],
+        fri_commitments: vec![dummy_hash(); max_pcs_log_height],
         final_poly: InnerChallenge::zero(),
         pow_witness: InnerVal::zero(),
-        component_polynomials_query_openings: dummy_component_polys.collect(),
-        query_phase_openings: dummy_query_proof(max_pcs_height, log_blowup, fri_queries),
-        marker: std::marker::PhantomData,
+        component_polynomials_query_openings_and_proofs: dummy_component_polys.collect(),
+        query_phase_openings_and_proofs: dummy_query_proof(
+            max_pcs_log_height,
+            log_blowup,
+            fri_queries,
+        ),
     };
 
     let batch_evaluations: Rounds<MleEval<InnerChallenge, CpuBackend>> = Rounds {
@@ -111,12 +129,25 @@ pub fn dummy_pcs_proof(
         partial_sumcheck_proof: eval_sumcheck_proof,
     };
 
+    let new_column_counts: Rounds<Vec<usize>> = column_counts
+        .into_iter()
+        .zip(added_cols.iter())
+        .map(|(x, &added)| x.into_iter().chain([added - 1, 1]).collect())
+        .collect();
+
+    let row_counts_and_column_counts: Rounds<Vec<(usize, usize)>> = new_column_counts
+        .clone()
+        .into_iter()
+        .map(|cc| cc.iter().map(|&c| (0, c)).collect())
+        .collect();
+
     JaggedPcsProof {
         pcs_proof: stacked_proof,
         params: jagged_params,
         jagged_eval_proof,
         sumcheck_proof: partial_sumcheck_proof,
-        added_columns: added_cols.to_vec(),
+        merkle_tree_commitments: vec![dummy_hash(); NUM_SP1_COMMITMENTS].into_iter().collect(),
+        row_counts_and_column_counts,
     }
 }
 
@@ -182,6 +213,7 @@ mod tests {
             log_blowup,
             log_stacking_height,
             max_log_row_count as usize,
+            row_counts_rounds.len(),
         );
 
         let jagged_prover = Prover::from_verifier(&jagged_verifier);
@@ -266,7 +298,12 @@ mod tests {
             log_blowup,
             column_counts.iter().flat_map(|x| x.iter()).sum(),
             max_log_row_count as usize,
-            &[preprocessed_padding_cols, main_padding_cols],
+            column_counts
+                .clone()
+                .into_iter()
+                .zip([preprocessed_padding_cols, main_padding_cols].iter())
+                .map(|(cc, &ac)| (cc.clone(), ac))
+                .collect(),
         );
 
         // Check the jagged sumcheck proof is the right shape.
@@ -337,16 +374,17 @@ mod tests {
         let BasefoldProof {
             univariate_messages: dummy_univariate_messages,
             fri_commitments: dummy_fri_commitments,
-            component_polynomials_query_openings: dummy_component_polynomials_query_openings,
-            query_phase_openings: dummy_query_phase_openings,
+            component_polynomials_query_openings_and_proofs:
+                dummy_component_polynomials_query_openings,
+            query_phase_openings_and_proofs: dummy_query_phase_openings,
             ..
         } = dummy_proof.pcs_proof.pcs_proof;
 
         let BasefoldProof {
             univariate_messages,
             fri_commitments,
-            component_polynomials_query_openings,
-            query_phase_openings,
+            component_polynomials_query_openings_and_proofs,
+            query_phase_openings_and_proofs,
             ..
         } = proof.pcs_proof.pcs_proof;
 
@@ -354,12 +392,12 @@ mod tests {
         assert_eq!(dummy_fri_commitments.len(), fri_commitments.len());
         assert_eq!(
             dummy_component_polynomials_query_openings.len(),
-            component_polynomials_query_openings.len()
+            component_polynomials_query_openings_and_proofs.len()
         );
-        assert_eq!(dummy_query_phase_openings.len(), query_phase_openings.len());
+        assert_eq!(dummy_query_phase_openings.len(), query_phase_openings_and_proofs.len());
 
         for (dummy_opening, opening) in
-            dummy_query_phase_openings.iter().zip(query_phase_openings.iter())
+            dummy_query_phase_openings.iter().zip(query_phase_openings_and_proofs.iter())
         {
             assert_eq!(dummy_opening.values.shape(), opening.values.shape());
             assert_eq!(dummy_opening.proof.paths.shape(), opening.proof.paths.shape());
@@ -367,7 +405,7 @@ mod tests {
 
         for (dummy_opening, opening) in dummy_component_polynomials_query_openings
             .iter()
-            .zip(component_polynomials_query_openings.iter())
+            .zip(component_polynomials_query_openings_and_proofs.iter())
         {
             assert_eq!(dummy_opening.values.shape(), opening.values.shape());
             assert_eq!(dummy_opening.proof.paths.shape(), opening.proof.paths.shape());

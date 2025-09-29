@@ -1,5 +1,6 @@
 use derive_where::derive_where;
 use slop_tensor::TransposeBackend;
+use std::iter::once;
 use std::{fmt::Debug, sync::Arc};
 use tracing::Instrument;
 
@@ -16,6 +17,7 @@ use slop_sumcheck::{
     reduce_sumcheck_to_evaluation, ComponentPolyEvalBackend, SumCheckPolyFirstRoundBackend,
     SumcheckPolyBackend,
 };
+use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 use thiserror::Error;
 
 use crate::{
@@ -95,6 +97,7 @@ pub struct JaggedProverData<GC: IopCtx, C: JaggedProverComponents<GC>> {
     pub column_counts: Arc<Vec<usize>>,
     /// The number of columns added as a result of padding in the undedrlying stacked PCS.
     pub padding_column_count: usize,
+    pub original_commitment: GC::Digest,
 }
 
 #[derive(Debug, Error)]
@@ -171,14 +174,25 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
         column_counts.push(num_added_cols - 1);
         column_counts.push(1);
 
+        let (hasher, compressor) = GC::default_hasher_and_compressor();
+
+        let hash = hasher.hash_iter(
+            once(GC::F::from_canonical_usize(row_counts.len()))
+                .chain(row_counts.clone().into_iter().map(GC::F::from_canonical_usize))
+                .chain(column_counts.clone().into_iter().map(GC::F::from_canonical_usize)),
+        );
+
+        let final_commitment = compressor.compress([commitment, hash]);
+
         let jagged_prover_data = JaggedProverData {
             pcs_prover_data: data,
             row_counts: Arc::new(row_counts),
             column_counts: Arc::new(column_counts),
             padding_column_count: num_added_cols,
+            original_commitment: commitment,
         };
 
-        Ok((commitment, jagged_prover_data))
+        Ok((final_commitment, jagged_prover_data))
     }
 
     pub async fn prove_trusted_evaluations(
@@ -314,9 +328,16 @@ where {
             )
             .instrument(tracing::debug_span!("jagged evaluation proof"))
             .await;
+        let (row_counts, column_counts): (Rounds<_>, Rounds<_>) = prover_data
+            .iter()
+            .map(|data| {
+                (Clone::clone(data.row_counts.as_ref()), Clone::clone(data.column_counts.as_ref()))
+            })
+            .unzip();
 
-        let added_columns =
-            prover_data.iter().map(|data| data.padding_column_count).collect::<Vec<_>>();
+        let original_commitments: Rounds<_> =
+            prover_data.iter().map(|data| data.original_commitment).collect();
+
         let stacked_prover_data =
             prover_data.into_iter().map(|data| data.pcs_prover_data).collect::<Rounds<_>>();
 
@@ -332,12 +353,19 @@ where {
             .await
             .unwrap();
 
+        let row_counts_and_column_counts: Rounds<Vec<(usize, usize)>> = row_counts
+            .into_iter()
+            .zip(column_counts.into_iter())
+            .map(|(r, c)| r.into_iter().zip(c.into_iter()).collect())
+            .collect();
+
         Ok(JaggedPcsProof {
             pcs_proof,
             sumcheck_proof,
             jagged_eval_proof,
             params: params.into_verifier_params(),
-            added_columns,
+            row_counts_and_column_counts,
+            merkle_tree_commitments: original_commitments,
         })
     }
 }

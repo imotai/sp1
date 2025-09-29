@@ -3,11 +3,10 @@ use std::{
     marker::PhantomData, mem::ManuallyDrop, ops::Deref, sync::Arc,
 };
 
-use derive_where::derive_where;
 use itertools::Itertools;
 use p3_merkle_tree::{compress_and_inject, first_digest_layer};
 use serde::{Deserialize, Serialize};
-use slop_algebra::{Field, PackedField, PackedValue};
+use slop_algebra::{AbstractField, Field, PackedField, PackedValue};
 use slop_alloc::{Backend, CpuBackend};
 use slop_baby_bear::{baby_bear_poseidon2::BabyBearDegree4Duplex, BabyBear};
 use slop_challenger::IopCtx;
@@ -18,13 +17,9 @@ use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 use slop_tensor::Tensor;
 
-use crate::{
-    DefaultMerkleTreeConfig, MerkleTreeConfig, MerkleTreeTcs, MerkleTreeTcsProof,
-    Poseidon2BabyBearConfig, Poseidon2KoalaBearConfig,
-};
+use crate::{MerkleTreeTcs, MerkleTreeTcsProof};
 
 pub trait TensorCsProver<GC: IopCtx, A: Backend>: 'static + Send + Sync {
-    type MerkleConfig: MerkleTreeConfig<GC>;
     type ProverData: 'static + Send + Sync + Debug + Clone;
     type ProverError: Error;
 
@@ -57,20 +52,14 @@ pub trait ComputeTcsOpenings<GC: IopCtx, A: Backend>: TensorCsProver<GC, A> {
         T: OwnedBorrow<Tensor<GC::F, A>>;
 }
 
-#[derive_where(Default; M : DefaultMerkleTreeConfig<GC>)]
-pub struct FieldMerkleTreeProver<
-    P,
-    PW,
-    GC: IopCtx,
-    M: MerkleTreeConfig<GC>,
-    const DIGEST_ELEMS: usize,
-> {
-    tcs: Arc<MerkleTreeTcs<GC, M>>,
+#[derive(Default)]
+pub struct FieldMerkleTreeProver<P, PW, GC: IopCtx, const DIGEST_ELEMS: usize> {
+    tcs: Arc<MerkleTreeTcs<GC>>,
     _phantom: PhantomData<(P, PW)>,
 }
 
-impl<P, PW, GC: IopCtx, M: MerkleTreeConfig<GC>, const DIGEST_ELEMS: usize> std::fmt::Debug
-    for FieldMerkleTreeProver<P, PW, GC, M, DIGEST_ELEMS>
+impl<P, PW, GC: IopCtx, const DIGEST_ELEMS: usize> std::fmt::Debug
+    for FieldMerkleTreeProver<P, PW, GC, DIGEST_ELEMS>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "FieldMerkleTreeProver")
@@ -86,11 +75,9 @@ pub struct FieldMerkleTreeDigests<W, const DIGEST_ELEMS: usize> {
     pub digest_layers: Arc<Vec<Vec<[W; DIGEST_ELEMS]>>>,
 }
 
-impl<P, PW, GC: IopCtx, M: MerkleTreeConfig<GC>, const DIGEST_ELEMS: usize>
-    FieldMerkleTreeProver<P, PW, GC, M, DIGEST_ELEMS>
-{
+impl<P, PW, GC: IopCtx, const DIGEST_ELEMS: usize> FieldMerkleTreeProver<P, PW, GC, DIGEST_ELEMS> {
     #[inline]
-    pub fn new(tcs: MerkleTreeTcs<GC, M>) -> Self {
+    pub fn new(tcs: MerkleTreeTcs<GC>) -> Self {
         Self { tcs: Arc::new(tcs), _phantom: PhantomData }
     }
 }
@@ -99,7 +86,6 @@ pub type Poseidon2BabyBear16Prover = FieldMerkleTreeProver<
     <BabyBear as Field>::Packing,
     <BabyBear as Field>::Packing,
     BabyBearDegree4Duplex,
-    Poseidon2BabyBearConfig,
     8,
 >;
 
@@ -107,31 +93,28 @@ pub type Poseidon2KoalaBear16Prover = FieldMerkleTreeProver<
     <KoalaBear as Field>::Packing,
     <KoalaBear as Field>::Packing,
     KoalaBearDegree4Duplex,
-    Poseidon2KoalaBearConfig,
     8,
 >;
 
-impl<P, PW, GC: IopCtx, M, const DIGEST_ELEMS: usize> TensorCsProver<GC, CpuBackend>
-    for FieldMerkleTreeProver<P, PW, GC, M, DIGEST_ELEMS>
+impl<P, PW, GC: IopCtx, const DIGEST_ELEMS: usize> TensorCsProver<GC, CpuBackend>
+    for FieldMerkleTreeProver<P, PW, GC, DIGEST_ELEMS>
 where
     P: PackedField<Scalar = GC::F>,
     PW: PackedValue,
     GC::Digest: Into<[PW::Value; DIGEST_ELEMS]> + From<[PW::Value; DIGEST_ELEMS]>,
-    M: MerkleTreeConfig<GC>,
-    M::Hasher: CryptographicHasher<P::Scalar, [PW::Value; DIGEST_ELEMS]>
+    GC::Hasher: CryptographicHasher<P::Scalar, [PW::Value; DIGEST_ELEMS]>
         + CryptographicHasher<P::Scalar, GC::Digest>,
-    M::Hasher: CryptographicHasher<P, [PW; DIGEST_ELEMS]>,
-    M::Hasher: Sync,
-    M::Compressor: PseudoCompressionFunction<[PW::Value; DIGEST_ELEMS], 2>
+    GC::Hasher: CryptographicHasher<P, [PW; DIGEST_ELEMS]>,
+    GC::Hasher: Sync,
+    GC::Compressor: PseudoCompressionFunction<[PW::Value; DIGEST_ELEMS], 2>
         + PseudoCompressionFunction<GC::Digest, 2>,
-    M::Compressor: PseudoCompressionFunction<[PW; DIGEST_ELEMS], 2>,
-    M::Compressor: Sync,
+    GC::Compressor: PseudoCompressionFunction<[PW; DIGEST_ELEMS], 2>,
+    GC::Compressor: Sync,
     PW::Value: Eq + std::fmt::Debug,
     [PW::Value; DIGEST_ELEMS]: Serialize + for<'de> Deserialize<'de>,
 {
-    type MerkleConfig = M;
     type ProverError = Infallible;
-    type ProverData = FieldMerkleTreeDigests<PW::Value, DIGEST_ELEMS>;
+    type ProverData = (FieldMerkleTreeDigests<PW::Value, DIGEST_ELEMS>, GC::Digest, usize, usize);
 
     async fn commit_tensors<T>(
         &self,
@@ -141,6 +124,19 @@ where
         T: OwnedBorrow<Tensor<GC::F, CpuBackend>>,
     {
         let tcs = self.tcs.clone();
+
+        let height =
+            Borrow::<Tensor<_>>::borrow(tensors.first().cloned().unwrap().as_ref()).sizes()[0];
+        let widths = tensors.iter().map(|t| {
+            let t_ref: &T = t.borrow();
+            let t_ref: &Tensor<GC::F, CpuBackend> = t_ref.borrow();
+            t_ref.sizes()[1]
+        });
+
+        let total_width = widths.sum::<usize>();
+        assert!(tensors
+            .iter()
+            .all(|t| Borrow::<Tensor<_>>::borrow(t.as_ref()).sizes()[0] == height));
         let (tx, rx) = tokio::sync::oneshot::channel::<
             Result<([PW::Value; DIGEST_ELEMS], Self::ProverData), Self::ProverError>,
         >();
@@ -175,6 +171,9 @@ where
                 "matrix heights that round up to the same power of two must be equal"
             );
 
+            // Sorting the trees by height, but this is expected to be a no-op because of the assertions
+            // at the top of the function.
+
             let mut leaves_largest_first =
                 leaves.iter().sorted_by_key(|l| Reverse(l.height())).peekable();
 
@@ -187,7 +186,7 @@ where
             let mut digest_layers = vec![first_digest_layer::<
                 P,
                 PW,
-                M::Hasher,
+                GC::Hasher,
                 RowMajorMatrix<P::Scalar>,
                 DIGEST_ELEMS,
             >(&tcs.hasher, tallest_matrices)];
@@ -207,8 +206,8 @@ where
                 let next_digests = compress_and_inject::<
                     P,
                     PW,
-                    M::Hasher,
-                    M::Compressor,
+                    GC::Hasher,
+                    GC::Compressor,
                     RowMajorMatrix<P::Scalar>,
                     DIGEST_ELEMS,
                 >(
@@ -219,7 +218,15 @@ where
 
             let digests = FieldMerkleTreeDigests { digest_layers: Arc::new(digest_layers) };
             let root = digests.digest_layers.last().unwrap()[0];
-            tx.send(Ok((root, digests))).ok().unwrap();
+            let log_height = height.next_power_of_two().ilog2() as usize;
+            let hash: [PW::Value; DIGEST_ELEMS] = tcs.hasher.hash_iter([
+                GC::F::from_canonical_usize(log_height),
+                GC::F::from_canonical_usize(total_width),
+            ]);
+            let compressed_root = tcs.compressor.compress([root, hash]);
+            tx.send(Ok((compressed_root, (digests, root.into(), log_height, total_width))))
+                .ok()
+                .unwrap();
         });
         let (a, b) = rx.await.unwrap()?;
         Ok((a.into(), b))
@@ -230,11 +237,12 @@ where
         data: Self::ProverData,
         indices: &[usize],
     ) -> Result<MerkleTreeTcsProof<GC::Digest>, Self::ProverError> {
-        let height = data.digest_layers.len() - 1;
+        let height = data.0.digest_layers.len() - 1;
         let path_storage = indices
             .iter()
             .flat_map(|idx| {
-                data.digest_layers
+                data.0
+                    .digest_layers
                     .iter()
                     .take(height)
                     .enumerate()
@@ -242,27 +250,31 @@ where
             })
             .collect::<Vec<_>>();
         let paths = Tensor::from(path_storage).reshape([indices.len(), height]);
-        let proof = MerkleTreeTcsProof { paths };
+        let proof = MerkleTreeTcsProof {
+            log_tensor_height: data.2,
+            width: data.3,
+            merkle_root: data.1,
+            paths,
+        };
         Ok(proof)
     }
 }
 
-impl<P, PW, GC, M, const DIGEST_ELEMS: usize> ComputeTcsOpenings<GC, CpuBackend>
-    for FieldMerkleTreeProver<P, PW, GC, M, DIGEST_ELEMS>
+impl<P, PW, GC, const DIGEST_ELEMS: usize> ComputeTcsOpenings<GC, CpuBackend>
+    for FieldMerkleTreeProver<P, PW, GC, DIGEST_ELEMS>
 where
     GC: IopCtx,
     GC::Digest: Into<[PW::Value; DIGEST_ELEMS]> + From<[PW::Value; DIGEST_ELEMS]>,
     P: PackedField<Scalar = GC::F>,
     PW: PackedValue,
-    M: MerkleTreeConfig<GC>,
-    M::Hasher: CryptographicHasher<P::Scalar, [PW::Value; DIGEST_ELEMS]>
+    GC::Hasher: CryptographicHasher<P::Scalar, [PW::Value; DIGEST_ELEMS]>
         + CryptographicHasher<P::Scalar, GC::Digest>,
-    M::Hasher: CryptographicHasher<P, [PW; DIGEST_ELEMS]>,
-    M::Hasher: Sync,
-    M::Compressor: PseudoCompressionFunction<[PW::Value; DIGEST_ELEMS], 2>
+    GC::Hasher: CryptographicHasher<P, [PW; DIGEST_ELEMS]>,
+    GC::Hasher: Sync,
+    GC::Compressor: PseudoCompressionFunction<[PW::Value; DIGEST_ELEMS], 2>
         + PseudoCompressionFunction<GC::Digest, 2>,
-    M::Compressor: PseudoCompressionFunction<[PW; DIGEST_ELEMS], 2>,
-    M::Compressor: Sync,
+    GC::Compressor: PseudoCompressionFunction<[PW; DIGEST_ELEMS], 2>,
+    GC::Compressor: Sync,
     PW::Value: Eq + std::fmt::Debug,
     [PW::Value; DIGEST_ELEMS]: Serialize + for<'de> Deserialize<'de>,
 {
@@ -311,8 +323,6 @@ mod tests {
     use rand::{thread_rng, Rng};
     use slop_koala_bear::KoalaBear;
 
-    use crate::MerkleTreeOpening;
-
     use super::*;
 
     #[tokio::test]
@@ -320,7 +330,6 @@ mod tests {
         let mut rng = thread_rng();
 
         let height: usize = 1000;
-        let merkle_path_len = height.next_power_of_two().ilog2() as usize;
         let width = 25;
         let num_tensors = 10;
 
@@ -331,15 +340,14 @@ mod tests {
             .collect::<Message<_>>();
 
         let prover = Poseidon2BabyBear16Prover::default();
-        let (root, data) = prover.commit_tensors(tensors.clone()).await.unwrap();
+        let (commitment, data) = prover.commit_tensors(tensors.clone()).await.unwrap();
 
         let indices = (0..num_indices).map(|_| rng.gen_range(0..height)).collect_vec();
         let proof = prover.prove_openings_at_indices(data, &indices).await.unwrap();
         let openings = prover.compute_openings_at_indices(tensors, &indices).await;
 
-        let opening = MerkleTreeOpening { values: openings, proof };
-        let tcs = MerkleTreeTcs::<_, Poseidon2BabyBearConfig>::default();
-        tcs.verify_tensor_openings(&root, &indices, &opening, merkle_path_len).unwrap();
+        let tcs = MerkleTreeTcs::<BabyBearDegree4Duplex>::default();
+        tcs.verify_tensor_openings(&commitment, &indices, &openings, &proof).unwrap();
     }
 
     #[tokio::test]
@@ -357,20 +365,14 @@ mod tests {
             .collect::<Message<_>>();
 
         let prover = Poseidon2KoalaBear16Prover::default();
-        let (root, data) = prover.commit_tensors(tensors.clone()).await.unwrap();
+        let (commitment, data) = prover.commit_tensors(tensors.clone()).await.unwrap();
 
         let indices = (0..num_indices).map(|_| rng.gen_range(0..height)).collect_vec();
         let proof = prover.prove_openings_at_indices(data, &indices).await.unwrap();
         let openings = prover.compute_openings_at_indices(tensors, &indices).await;
 
-        let opening = MerkleTreeOpening { values: openings, proof };
-        let tcs = MerkleTreeTcs::<_, Poseidon2KoalaBearConfig>::default();
-        tcs.verify_tensor_openings(
-            &root,
-            &indices,
-            &opening,
-            height.next_power_of_two().ilog2() as usize,
-        )
-        .unwrap();
+        let tcs = MerkleTreeTcs::<KoalaBearDegree4Duplex>::default();
+
+        tcs.verify_tensor_openings(&commitment, &indices, &openings, &proof).unwrap();
     }
 }

@@ -1,36 +1,34 @@
+use std::iter::once;
+
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, UnivariatePolynomial};
-use slop_basefold::{BasefoldConfig, DefaultBasefoldConfig};
 use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger, IopCtx};
 use slop_commit::Rounds;
-use slop_merkle_tree::{MerkleTreeOpening, MerkleTreeTcs};
+use slop_merkle_tree::{MerkleTreeOpeningAndProof, MerkleTreeTcs};
 use slop_multilinear::{Mle, MultilinearPcsVerifier, Point};
 use slop_utils::reverse_bits_len;
-use std::{iter, marker::PhantomData};
 use thiserror::Error;
 
 use crate::{config::WhirProofShape, interleave_chain};
 
 #[derive(Clone)]
-pub struct Verifier<'a, GC, C>
+pub struct Verifier<GC>
 where
     GC: IopCtx,
-    C: BasefoldConfig<GC>,
 {
     pub config: WhirProofShape<GC::F>,
-    merkle_verifier: MerkleTreeTcs<GC, C::Tcs>,
-    _marker: PhantomData<&'a C>,
+    merkle_verifier: MerkleTreeTcs<GC>,
+    pub num_expected_commitments: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ParsedCommitment<GC, BC: BasefoldConfig<GC>>
+pub struct ParsedCommitment<GC>
 where
     GC: IopCtx,
 {
     pub commitment: Rounds<GC::Digest>,
     pub ood_points: Vec<Point<GC::EF>>,
     pub ood_answers: Vec<GC::EF>,
-    pub _marker: PhantomData<BC>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -57,28 +55,26 @@ pub type ProofOfWork<GC> = <<GC as IopCtx>::Challenger as GrindingChallenger>::W
 pub type ProverMessage<GC> = (SumcheckPoly<<GC as IopCtx>::EF>, ProofOfWork<GC>);
 
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(bound = "GC: IopCtx, C: BasefoldConfig<GC>")]
-pub struct WhirProof<GC, C>
+#[serde(bound = "GC: IopCtx")]
+pub struct WhirProof<GC>
 where
     GC: IopCtx,
-    C: BasefoldConfig<GC>,
 {
     pub config: WhirProofShape<GC::F>,
     // First sumcheck
     pub initial_sumcheck_polynomials: Vec<(SumcheckPoly<GC::EF>, ProofOfWork<GC>)>,
 
     // For internal rounds
-    pub commitments: Vec<ParsedCommitment<GC, C>>,
-    pub merkle_proofs: Vec<Rounds<MerkleTreeOpening<GC>>>,
+    pub commitments: Vec<ParsedCommitment<GC>>,
+    pub merkle_proofs: Vec<Rounds<MerkleTreeOpeningAndProof<GC>>>,
     pub query_proofs_of_work: Vec<ProofOfWork<GC>>,
     pub sumcheck_polynomials: Vec<Vec<ProverMessage<GC>>>,
 
     // Final round
     pub final_polynomial: Vec<GC::EF>,
-    pub final_merkle_proof: MerkleTreeOpening<GC>,
+    pub final_merkle_opening_and_proof: MerkleTreeOpeningAndProof<GC>,
     pub final_sumcheck_polynomials: Vec<ProverMessage<GC>>,
     pub final_pow: ProofOfWork<GC>,
-    pub _config: PhantomData<C>,
 }
 
 #[derive(Debug, Error)]
@@ -99,6 +95,8 @@ pub enum WhirProofError {
     FinalQueryMismatch,
     #[error("final eval error")]
     FinalEvalError,
+    #[error("invalid number of commitments: expected {0}, got {1}")]
+    InvalidNumberOfCommitments(usize, usize),
 }
 
 impl From<(SumcheckError, usize)> for WhirProofError {
@@ -128,16 +126,16 @@ pub fn map_to_pow<F: AbstractField>(mut elem: F, len: usize) -> Point<F> {
     res.into()
 }
 
-impl<'a, C, GC> Verifier<'a, GC, C>
+impl<GC> Verifier<GC>
 where
     GC: IopCtx,
-    C: BasefoldConfig<GC>,
 {
     pub const fn new(
-        merkle_verifier: MerkleTreeTcs<GC, C::Tcs>,
+        merkle_verifier: MerkleTreeTcs<GC>,
         config: WhirProofShape<GC::F>,
+        num_expected_commitments: usize,
     ) -> Self {
-        Self { _marker: PhantomData, merkle_verifier, config }
+        Self { merkle_verifier, config, num_expected_commitments }
     }
 
     pub fn observe_commitment(
@@ -159,11 +157,17 @@ where
         commitments: &[GC::Digest],
         num_variables: usize,
         claim: GC::EF,
-        proof: &WhirProof<GC, C>,
+        proof: &WhirProof<GC>,
         challenger: &mut GC::Challenger,
     ) -> Result<(Point<GC::EF>, GC::EF), WhirProofError> {
         let config = &proof.config;
         let n_rounds = config.round_parameters.len();
+        if commitments.len() != self.num_expected_commitments {
+            return Err(WhirProofError::InvalidNumberOfCommitments(
+                self.num_expected_commitments,
+                commitments.len(),
+            ));
+        }
 
         let ood_points: Vec<Point<GC::EF>> = (0..config.starting_ood_samples)
             .map(|_| {
@@ -295,8 +299,8 @@ where
                     .verify_tensor_openings(
                         merkle_commitment,
                         &id_query_indices,
-                        merkle_proof,
-                        domain_size,
+                        &merkle_proof.values,
+                        &merkle_proof.proof,
                     )
                     .map_err(|_| WhirProofError::InvalidMerkleAuthentication)?;
             }
@@ -343,9 +347,7 @@ where
             // Update the claimed sum using the STIR values and the OOD answers.
             claimed_sum = claim_batching_randomness
                 .powers()
-                .zip(
-                    iter::once(&claimed_sum).chain(&new_commitment.ood_answers).chain(&stir_values),
-                )
+                .zip(once(&claimed_sum).chain(&new_commitment.ood_answers).chain(&stir_values))
                 .map(|(r, &v)| r * v)
                 .sum();
 
@@ -410,13 +412,13 @@ where
             .verify_tensor_openings(
                 &prev_commitment.commitment[0],
                 &final_id_indices,
-                &proof.final_merkle_proof,
-                domain_size,
+                &proof.final_merkle_opening_and_proof.values,
+                &proof.final_merkle_opening_and_proof.proof,
             )
             .map_err(|_| WhirProofError::InvalidMerkleAuthentication)?;
 
         let final_merkle_read_values: Vec<Mle<GC::EF>> = proof
-            .final_merkle_proof
+            .final_merkle_opening_and_proof
             .values
             .clone()
             .into_buffer()
@@ -523,17 +525,20 @@ where
     }
 }
 
-impl<GC, C> MultilinearPcsVerifier<GC> for Verifier<'static, GC, C>
+impl<GC> MultilinearPcsVerifier<GC> for Verifier<GC>
 where
     GC: IopCtx,
-    C: DefaultBasefoldConfig<GC>,
 {
-    type Proof = WhirProof<GC, C>;
+    type Proof = WhirProof<GC>;
 
     type VerifierError = WhirProofError;
 
+    fn num_expected_commitments(&self) -> usize {
+        self.num_expected_commitments
+    }
+
     fn default_challenger(&self) -> <GC as IopCtx>::Challenger {
-        C::default_challenger(&C::default_verifier(1))
+        <GC as IopCtx>::default_challenger()
     }
 
     fn verify_trusted_evaluation(

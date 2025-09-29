@@ -1,9 +1,8 @@
 use slop_algebra::extension::{BinomiallyExtendable, HasTwoAdicBionmialExtension};
 use slop_algebra::PrimeField31;
-use slop_baby_bear::baby_bear_poseidon2::{BabyBearDegree4Duplex, Poseidon2BabyBearConfig};
-use slop_basefold::{Poseidon2Bn254FrBasefoldConfig, Poseidon2KoalaBear16BasefoldConfig};
+use slop_baby_bear::baby_bear_poseidon2::BabyBearDegree4Duplex;
 use slop_bn254::{Bn254Fr, Poseidon2Bn254GlobalConfig, BNGC, OUTER_DIGEST_SIZE};
-use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex, Poseidon2KoalaBearConfig};
+use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -16,14 +15,14 @@ use slop_algebra::{ExtensionField, Field, TwoAdicField};
 use slop_alloc::{Backend, CpuBackend};
 use slop_baby_bear::BabyBear;
 use slop_basefold::BasefoldVerifier;
-use slop_basefold::{BasefoldConfig, BasefoldProof, Poseidon2BabyBear16BasefoldConfig, RsCodeWord};
+use slop_basefold::{BasefoldProof, RsCodeWord};
 use slop_challenger::{CanSampleBits, FieldChallenger, IopCtx};
 use slop_commit::{Message, Rounds};
 use slop_dft::p3::Radix2DitParallel;
 use slop_futures::OwnedBorrow;
 use slop_merkle_tree::{
-    ComputeTcsOpenings, FieldMerkleTreeProver, MerkleTreeConfig, MerkleTreeOpening,
-    Poseidon2BabyBear16Prover, Poseidon2Bn254Config, Poseidon2KoalaBear16Prover, TensorCsProver,
+    ComputeTcsOpenings, FieldMerkleTreeProver, MerkleTreeOpeningAndProof,
+    Poseidon2BabyBear16Prover, Poseidon2KoalaBear16Prover, TensorCsProver,
 };
 use slop_multilinear::{
     Evaluations, Mle, MleBaseBackend, MleEvaluationBackend, MleFixedAtZeroBackend,
@@ -45,17 +44,12 @@ pub trait BasefoldProverComponents<GC: IopCtx<F: TwoAdicField>>:
         + MleBaseBackend<GC::EF>
         + MleFixedAtZeroBackend<GC::EF, GC::EF>
         + MleEvaluationBackend<GC::F, GC::EF>;
-    type Tcs: MerkleTreeConfig<GC>;
-
-    /// The Basefold configuration for which we can create proof for.
-    type Config: BasefoldConfig<GC, Tcs = Self::Tcs>;
 
     /// The encoder for encoding the Mle guts into codewords.
     type Encoder: ReedSolomonEncoder<GC::F, Self::A> + Clone + Debug + Send + Sync + 'static;
     /// The prover for the FRI proximity test.
     type FriProver: FriIoppProver<
             GC,
-            Self::Tcs,
             Self::Encoder,
             Self::A,
             Encoder = Self::Encoder,
@@ -65,8 +59,8 @@ pub trait BasefoldProverComponents<GC: IopCtx<F: TwoAdicField>>:
         + Sync
         + 'static;
     /// The TCS prover for committing to the encoded messages.
-    type TcsProver: TensorCsProver<GC, Self::A, MerkleConfig = Self::Tcs>
-        + ComputeTcsOpenings<GC, Self::A, MerkleConfig = Self::Tcs>
+    type TcsProver: TensorCsProver<GC, Self::A>
+        + ComputeTcsOpenings<GC, Self::A>
         + Debug
         + 'static
         + Send
@@ -78,7 +72,7 @@ pub trait BasefoldProverComponents<GC: IopCtx<F: TwoAdicField>>:
 pub trait DefaultBasefoldProver<GC: IopCtx<F: TwoAdicField>>:
     BasefoldProverComponents<GC> + Sized
 {
-    fn default_prover(verifier: &BasefoldVerifier<GC, Self::Config>) -> BasefoldProver<GC, Self>;
+    fn default_prover(verifier: &BasefoldVerifier<GC>) -> BasefoldProver<GC, Self>;
 }
 
 #[derive_where(Debug, Clone; <C::TcsProver as TensorCsProver<GC,C::A>>::ProverData: Debug + Clone)]
@@ -114,7 +108,6 @@ pub type BaseFoldConfigProverError<GC, C> = BasefoldProverError<
     >>::Error,
     <<C as BasefoldProverComponents<GC>>::FriProver as FriIoppProver<
         GC,
-        <C as BasefoldProverComponents<GC>>::Tcs,
         <C as BasefoldProverComponents<GC>>::Encoder,
         <C as BasefoldProverComponents<GC>>::A,
     >>::FriProverError,
@@ -135,7 +128,7 @@ pub struct BasefoldProver<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponen
 impl<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> MultilinearPcsBatchProver<GC>
     for BasefoldProver<GC, C>
 {
-    type Verifier = BasefoldVerifier<GC, C::Config>;
+    type Verifier = BasefoldVerifier<GC>;
     type ProverData = BasefoldProverData<GC, C>;
     type A = C::A;
     type ProverError = BaseFoldConfigProverError<GC, C>;
@@ -178,7 +171,7 @@ impl<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> BasefoldProve
     }
 
     #[inline]
-    pub fn new(verifier: &BasefoldVerifier<GC, C::Config>) -> Self
+    pub fn new(verifier: &BasefoldVerifier<GC>) -> Self
     where
         C: DefaultBasefoldProver<GC>,
     {
@@ -216,7 +209,7 @@ impl<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> BasefoldProve
         evaluation_claims: Rounds<Evaluations<GC::EF, C::A>>,
         prover_data: Rounds<BasefoldProverData<GC, C>>,
         challenger: &mut GC::Challenger,
-    ) -> Result<BasefoldProof<GC, C::Config>, BaseFoldConfigProverError<GC, C>> {
+    ) -> Result<BasefoldProof<GC>, BaseFoldConfigProverError<GC, C>> {
         // Get all the mles from all rounds in order.
         let mles = mle_rounds
             .iter()
@@ -301,7 +294,7 @@ impl<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> BasefoldProve
             .collect();
 
         // Open the original polynomials at the query indices.
-        let mut component_polynomials_query_openings = vec![];
+        let mut component_polynomials_query_openings_and_proofs = vec![];
         for prover_data in prover_data {
             let BasefoldProverData { encoded_messages, tcs_prover_data } = prover_data;
             let values =
@@ -312,12 +305,12 @@ impl<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> BasefoldProve
                 .await
                 .map_err(BaseFoldConfigProverError::<GC, C>::TcsCommitError)
                 .unwrap();
-            let opening = MerkleTreeOpening::<GC> { values, proof };
-            component_polynomials_query_openings.push(opening);
+            let opening = MerkleTreeOpeningAndProof::<GC> { values, proof };
+            component_polynomials_query_openings_and_proofs.push(opening);
         }
 
         // Provide openings for the FRI query phase.
-        let mut query_phase_openings = vec![];
+        let mut query_phase_openings_and_proofs = vec![];
         let mut indices = query_indices;
         for (leaves, data) in commit_phase_values.into_iter().zip_eq(commit_phase_data) {
             for index in indices.iter_mut() {
@@ -331,18 +324,17 @@ impl<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> BasefoldProve
                 .prove_openings_at_indices(data, &indices)
                 .await
                 .map_err(BaseFoldConfigProverError::<GC, C>::TcsCommitError)?;
-            let opening = MerkleTreeOpening { values, proof };
-            query_phase_openings.push(opening);
+            let opening = MerkleTreeOpeningAndProof { values, proof };
+            query_phase_openings_and_proofs.push(opening);
         }
 
         Ok(BasefoldProof {
             univariate_messages,
             fri_commitments,
-            component_polynomials_query_openings,
-            query_phase_openings,
+            component_polynomials_query_openings_and_proofs,
+            query_phase_openings_and_proofs,
             final_poly,
             pow_witness,
-            marker: PhantomData,
         })
     }
 }
@@ -354,15 +346,12 @@ impl BasefoldProverComponents<BabyBearDegree4Duplex>
     for Poseidon2BabyBear16BasefoldCpuProverComponents
 {
     type A = CpuBackend;
-    type Tcs = Poseidon2BabyBearConfig;
-    type Config = Poseidon2BabyBear16BasefoldConfig;
     type Encoder = CpuDftEncoder<BabyBear, Radix2DitParallel>;
     type FriProver = FriCpuProver<Self::Encoder, Self::TcsProver>;
     type TcsProver = FieldMerkleTreeProver<
         <BabyBear as Field>::Packing,
         <BabyBear as Field>::Packing,
         BabyBearDegree4Duplex,
-        Poseidon2BabyBearConfig,
         8,
     >;
     type PowProver = GrindingPowProver;
@@ -375,15 +364,12 @@ impl BasefoldProverComponents<KoalaBearDegree4Duplex>
     for Poseidon2KoalaBear16BasefoldCpuProverComponents
 {
     type A = CpuBackend;
-    type Tcs = Poseidon2KoalaBearConfig;
-    type Config = Poseidon2KoalaBear16BasefoldConfig;
     type Encoder = CpuDftEncoder<KoalaBear, Radix2DitParallel>;
     type FriProver = FriCpuProver<Self::Encoder, Self::TcsProver>;
     type TcsProver = FieldMerkleTreeProver<
         <KoalaBear as Field>::Packing,
         <KoalaBear as Field>::Packing,
         KoalaBearDegree4Duplex,
-        Poseidon2KoalaBearConfig,
         8,
     >;
     type PowProver = GrindingPowProver;
@@ -399,17 +385,10 @@ impl<
     for Poseidon2Bn254BasefoldCpuProverComponents<F>
 {
     type A = CpuBackend;
-    type Tcs = Poseidon2Bn254Config<F>;
-    type Config = Poseidon2Bn254FrBasefoldConfig<F, EF>;
     type Encoder = CpuDftEncoder<F, Radix2DitParallel>;
     type FriProver = FriCpuProver<Self::Encoder, Self::TcsProver>;
-    type TcsProver = FieldMerkleTreeProver<
-        F,
-        Bn254Fr,
-        Poseidon2Bn254GlobalConfig<F, EF>,
-        Poseidon2Bn254Config<F>,
-        OUTER_DIGEST_SIZE,
-    >;
+    type TcsProver =
+        FieldMerkleTreeProver<F, Bn254Fr, Poseidon2Bn254GlobalConfig<F, EF>, OUTER_DIGEST_SIZE>;
     type PowProver = GrindingPowProver;
 }
 
@@ -417,7 +396,7 @@ impl DefaultBasefoldProver<BabyBearDegree4Duplex>
     for Poseidon2BabyBear16BasefoldCpuProverComponents
 {
     fn default_prover(
-        verifier: &BasefoldVerifier<BabyBearDegree4Duplex, Poseidon2BabyBear16BasefoldConfig>,
+        verifier: &BasefoldVerifier<BabyBearDegree4Duplex>,
     ) -> BasefoldProver<BabyBearDegree4Duplex, Self> {
         let encoder =
             CpuDftEncoder { config: verifier.fri_config, dft: Arc::new(Radix2DitParallel) };
@@ -427,7 +406,6 @@ impl DefaultBasefoldProver<BabyBearDegree4Duplex>
                 <BabyBear as Field>::Packing,
                 <BabyBear as Field>::Packing,
                 BabyBearDegree4Duplex,
-                Poseidon2BabyBearConfig,
                 8,
             >,
         >(PhantomData);
@@ -442,7 +420,7 @@ impl DefaultBasefoldProver<KoalaBearDegree4Duplex>
     for Poseidon2KoalaBear16BasefoldCpuProverComponents
 {
     fn default_prover(
-        verifier: &BasefoldVerifier<KoalaBearDegree4Duplex, Poseidon2KoalaBear16BasefoldConfig>,
+        verifier: &BasefoldVerifier<KoalaBearDegree4Duplex>,
     ) -> BasefoldProver<KoalaBearDegree4Duplex, Self> {
         let encoder =
             CpuDftEncoder { config: verifier.fri_config, dft: Arc::new(Radix2DitParallel) };
@@ -452,7 +430,6 @@ impl DefaultBasefoldProver<KoalaBearDegree4Duplex>
                 <KoalaBear as Field>::Packing,
                 <KoalaBear as Field>::Packing,
                 KoalaBearDegree4Duplex,
-                Poseidon2KoalaBearConfig,
                 8,
             >,
         >(PhantomData);
@@ -470,28 +447,17 @@ impl<
     for Poseidon2Bn254BasefoldCpuProverComponents<F>
 {
     fn default_prover(
-        verifier: &BasefoldVerifier<BNGC<F, EF>, Poseidon2Bn254FrBasefoldConfig<F, EF>>,
+        verifier: &BasefoldVerifier<BNGC<F, EF>>,
     ) -> BasefoldProver<BNGC<F, EF>, Self> {
         let encoder =
             CpuDftEncoder { config: verifier.fri_config, dft: Arc::new(Radix2DitParallel) };
         let fri_prover = FriCpuProver::<
             CpuDftEncoder<F, Radix2DitParallel>,
-            FieldMerkleTreeProver<
-                F,
-                Bn254Fr,
-                BNGC<F, EF>,
-                Poseidon2Bn254Config<F>,
-                OUTER_DIGEST_SIZE,
-            >,
+            FieldMerkleTreeProver<F, Bn254Fr, BNGC<F, EF>, OUTER_DIGEST_SIZE>,
         >(PhantomData);
 
-        let tcs_prover = FieldMerkleTreeProver::<
-            F,
-            Bn254Fr,
-            BNGC<F, EF>,
-            Poseidon2Bn254Config<F>,
-            OUTER_DIGEST_SIZE,
-        >::default();
+        let tcs_prover =
+            FieldMerkleTreeProver::<F, Bn254Fr, BNGC<F, EF>, OUTER_DIGEST_SIZE>::default();
         let pow_prover = GrindingPowProver;
         BasefoldProver { encoder, fri_prover, tcs_prover, pow_prover }
     }
@@ -501,9 +467,7 @@ impl<
 mod tests {
     use futures::prelude::*;
     use rand::thread_rng;
-    use slop_basefold::{
-        BasefoldVerifier, DefaultBasefoldConfig, Poseidon2BabyBear16BasefoldConfig,
-    };
+    use slop_basefold::BasefoldVerifier;
     use slop_challenger::CanObserve;
     use slop_multilinear::{MleEval, MultilinearPcsBatchVerifier};
 
@@ -513,7 +477,6 @@ mod tests {
     async fn test_baby_bear_basefold_prover() {
         test_basefold_prover_backend::<
             BabyBearDegree4Duplex,
-            Poseidon2BabyBear16BasefoldConfig,
             Poseidon2BabyBear16BasefoldCpuProverComponents,
         >()
         .await;
@@ -523,7 +486,6 @@ mod tests {
     async fn test_koala_bear_basefold_prover() {
         test_basefold_prover_backend::<
             KoalaBearDegree4Duplex,
-            Poseidon2KoalaBear16BasefoldConfig,
             Poseidon2KoalaBear16BasefoldCpuProverComponents,
         >()
         .await;
@@ -531,8 +493,7 @@ mod tests {
 
     async fn test_basefold_prover_backend<
         GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>,
-        C: DefaultBasefoldConfig<GC>,
-        Prover: DefaultBasefoldProver<GC, Config = C, A = CpuBackend>,
+        Prover: DefaultBasefoldProver<GC, A = CpuBackend>,
     >()
     where
         rand::distributions::Standard: rand::distributions::Distribution<GC::F>,
@@ -553,10 +514,10 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let verifier = BasefoldVerifier::<GC, C>::new(log_blowup);
+        let verifier = BasefoldVerifier::<GC>::new(log_blowup, round_widths.len());
         let prover = BasefoldProver::<GC, Prover>::new(&verifier);
 
-        let mut challenger = verifier.challenger();
+        let mut challenger = GC::default_challenger();
         let mut commitments = vec![];
         let mut prover_data = Rounds::new();
         let mut eval_claims = Rounds::new();
@@ -584,7 +545,7 @@ mod tests {
             .await
             .unwrap();
 
-        let mut challenger = verifier.challenger();
+        let mut challenger = GC::default_challenger();
         for commitment in commitments.iter() {
             challenger.observe(*commitment);
         }

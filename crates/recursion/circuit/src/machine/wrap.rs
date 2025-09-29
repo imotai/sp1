@@ -2,9 +2,7 @@ use std::marker::PhantomData;
 
 use super::SP1ShapedWitnessVariable;
 use crate::{
-    basefold::{RecursiveBasefoldConfigImpl, RecursiveBasefoldProof, RecursiveBasefoldVerifier},
     challenger::CanObserveVariable,
-    jagged::RecursiveJaggedConfig,
     machine::{assert_complete, assert_root_public_values_valid, RootPublicValues},
     shard::RecursiveShardVerifier,
     zerocheck::RecursiveVerifierConstraintFolder,
@@ -23,30 +21,25 @@ use std::borrow::Borrow;
 /// The root verifier is simply a `SP1CompressVerifier` with an assertion that the `is_complete`
 /// flag is set to true.
 #[derive(Debug, Clone, Copy)]
-pub struct SP1WrapVerifier<GC, C, SC, A, JC> {
-    _phantom: PhantomData<(GC, C, SC, A, JC)>,
+pub struct SP1WrapVerifier<GC, C, A> {
+    _phantom: PhantomData<(GC, C, A)>,
 }
 
-impl<GC, C, SC, A, JC> SP1WrapVerifier<GC, C, SC, A, JC>
+impl<GC, C, A> SP1WrapVerifier<GC, C, A>
 where
-    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + Send + Sync,
-    SC: SP1FieldConfigVariable<C> + Send + Sync,
+    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>
+        + Send
+        + Sync
+        + SP1FieldConfigVariable<C>
+        + Send
+        + Sync,
     C: CircuitConfig,
     A: MachineAir<SP1Field> + for<'a> Air<RecursiveVerifierConstraintFolder<'a>>,
-    JC: RecursiveJaggedConfig<
-        F = SP1Field,
-        EF = SP1ExtensionField,
-        Circuit = C,
-        Commitment = SC::DigestVariable,
-        Challenger = SC::FriChallengerVariable,
-        BatchPcsProof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>,
-        BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-    >,
 {
     pub fn verify(
         builder: &mut Builder<C>,
-        machine: &RecursiveShardVerifier<GC, A, SC, C, JC>,
-        input: SP1ShapedWitnessVariable<C, SC, JC>,
+        machine: &RecursiveShardVerifier<GC, A, C>,
+        input: SP1ShapedWitnessVariable<C, GC>,
     ) {
         // Assert the the proof is not malformed.
         assert!(input.vks_and_proofs.len() == 1);
@@ -57,9 +50,9 @@ where
         builder.assert_felt_eq(input.is_complete, SP1Field::one());
         let public_values: &RootPublicValues<Felt<SP1Field>> =
             proof.public_values.as_slice().borrow();
-        assert_root_public_values_valid::<C, SC>(builder, public_values);
+        assert_root_public_values_valid::<C, GC>(builder, public_values);
 
-        let mut challenger = <SC as SP1FieldConfigVariable<C>>::challenger_variable(builder);
+        let mut challenger = <GC as SP1FieldConfigVariable<C>>::challenger_variable(builder);
         challenger.observe(builder, vk.preprocessed_commit);
         challenger.observe_slice(builder, vk.pc_start);
         challenger.observe_slice(builder, vk.initial_global_cumulative_sum.0.x.0);
@@ -75,6 +68,6 @@ where
 
         assert_complete(builder, &public_values.inner, input.is_complete);
 
-        SC::commit_recursion_public_values(builder, public_values.inner);
+        GC::commit_recursion_public_values(builder, public_values.inner);
     }
 }

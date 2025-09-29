@@ -2,7 +2,6 @@
 
 use itertools::Itertools;
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_basefold::Poseidon2Bn254FrBasefoldConfig;
 use slop_bn254::Bn254Fr;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_hypercube::{MachineVerifyingKey, ShardProof};
@@ -193,14 +192,8 @@ fn build_outer_circuit(
 ) -> Vec<Constraint> {
     let wrap_verifier = CpuSP1ProverComponents::wrap_verifier();
     let wrap_verifier = wrap_verifier.shard_verifier();
-    let recursive_wrap_verifier = crate::recursion::recursive_verifier::<
-        _,
-        Poseidon2Bn254FrBasefoldConfig<_, _>,
-        _,
-        OuterSC,
-        OuterConfig,
-        _,
-    >(wrap_verifier);
+    let recursive_wrap_verifier =
+        crate::recursion::recursive_verifier::<_, _, OuterSC, OuterConfig>(wrap_verifier);
 
     let wrap_span = tracing::debug_span!("build wrap circuit").entered();
     let mut builder = Builder::<OuterConfig>::default();
@@ -219,7 +212,11 @@ fn build_outer_circuit(
     let expected_commitment: [_; 1] = template_vk.preprocessed_commit.into();
     let expected_commitment = expected_commitment.map(|x| builder.eval(x));
     // Constrain `commit` to be the same as the template `vk`.
-    OuterSC::assert_digest_eq(&mut builder, expected_commitment, vk.preprocessed_commit);
+    SP1OuterGlobalContext::assert_digest_eq(
+        &mut builder,
+        expected_commitment,
+        vk.preprocessed_commit,
+    );
     // Constrain `pc_start` to be the same as the template `vk`.
     for (vk_pc, template_vk_pc) in vk.pc_start.iter().zip_eq(template_vk.pc_start.iter()) {
         builder.assert_felt_eq(*vk_pc, *template_vk_pc);

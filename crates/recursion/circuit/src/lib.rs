@@ -6,6 +6,7 @@ use hash::{FieldHasherVariable, Poseidon2SP1FieldHasherVariable};
 use itertools::izip;
 use slop_algebra::{AbstractExtensionField, AbstractField, PrimeField32};
 use slop_bn254::Bn254Fr;
+use slop_challenger::IopCtx;
 use slop_koala_bear::{
     KoalaBear_BEGIN_EXT_CONSTS, KoalaBear_END_EXT_CONSTS, KoalaBear_PARTIAL_CONSTS,
 };
@@ -19,7 +20,7 @@ use sp1_recursion_executor::{RecursionPublicValues, DIGEST_SIZE, NUM_BITS, PERMU
 use std::iter::{repeat, zip};
 use utils::{felt_bytes_to_bn254_var, felts_to_bn254_var, words_to_bytes};
 
-use sp1_hypercube::{SP1CoreJaggedConfig, SP1OuterConfig};
+use sp1_hypercube::SP1CoreJaggedConfig;
 pub mod basefold;
 pub mod challenger;
 pub mod dummy;
@@ -34,43 +35,15 @@ pub mod utils;
 pub mod witness;
 pub mod zerocheck;
 pub const D: usize = 4;
-use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
+use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext, SP1OuterGlobalContext};
 
 use crate::utils::felt_proof_nonce_to_bn254_var;
 
 pub type Digest<C, SC> = <SC as FieldHasherVariable<C>>::DigestVariable;
 
 pub type InnerSC = SP1CoreJaggedConfig;
-
-pub trait AsRecursive<C: CircuitConfig> {
-    type Recursive;
-}
-// pub trait SP1FieldFriConfig:
-//     JaggedConfig<
-//     F = SP1Field,
-//     EF = EF,
-//     Commitment = <MerkleTreeTcs<Self::MerkleTreeConfig> as TensorCs>::Commitment,
-//     BatchPcsProof = BasefoldProof<Self::BasefoldConfig>,
-//     Challenger = Self::FriChallenger,
-//     BatchPcsVerifier = BasefoldVerifier<Self::BasefoldConfig>,
-// >
-// {
-//     type BasefoldConfig: BasefoldConfig<
-//         F = SP1Field,
-//         EF = EF,
-//         Tcs = MerkleTreeTcs<Self::MerkleTreeConfig>,
-//         Commitment = <MerkleTreeTcs<Self::MerkleTreeConfig> as TensorCs>::Commitment,
-//         Challenger = Self::FriChallenger,
-//     >;
-//     type MerkleTreeConfig: MerkleTreeConfig<Data = SP1Field>;
-//     type FriChallenger: CanObserve<<Self::BasefoldConfig as BasefoldConfig>::Commitment>
-//         + CanSample<EF>
-//         + GrindingChallenger<Witness = SP1Field>
-//         + FieldChallenger<SP1Field>;
-// }
-
 pub trait SP1FieldConfigVariable<C: CircuitConfig>:
-    FieldHasherVariable<C> + Poseidon2SP1FieldHasherVariable<C> + Send + Sync
+    IopCtx + FieldHasherVariable<C> + Poseidon2SP1FieldHasherVariable<C> + Send + Sync
 {
     type FriChallengerVariable: FieldChallengerVariable<C, <C as CircuitConfig>::Bit>
         + CanObserveVariable<C, <Self as FieldHasherVariable<C>>::DigestVariable>
@@ -792,27 +765,6 @@ impl CircuitConfig for OuterConfig {
     }
 }
 
-// impl SP1FieldFriConfig for SP1CoreJaggedConfig {
-//     type BasefoldConfig = SP1BasefoldConfig;
-//     type MerkleTreeConfig = SP1MerkleTreeConfig;
-//     type FriChallenger = <Self as JaggedConfig>::Challenger;
-// }
-
-impl<C: CircuitConfig<Bit = Felt<SP1Field>>> SP1FieldConfigVariable<C> for SP1CoreJaggedConfig {
-    type FriChallengerVariable = DuplexChallengerVariable<C>;
-
-    fn challenger_variable(builder: &mut Builder<C>) -> Self::FriChallengerVariable {
-        DuplexChallengerVariable::new(builder)
-    }
-
-    fn commit_recursion_public_values(
-        builder: &mut Builder<C>,
-        public_values: RecursionPublicValues<Felt<SP1Field>>,
-    ) {
-        builder.commit_public_values_v2(public_values);
-    }
-}
-
 impl<C: CircuitConfig<Bit = Felt<SP1Field>>> SP1FieldConfigVariable<C> for SP1GlobalContext {
     type FriChallengerVariable = DuplexChallengerVariable<C>;
 
@@ -828,14 +780,8 @@ impl<C: CircuitConfig<Bit = Felt<SP1Field>>> SP1FieldConfigVariable<C> for SP1Gl
     }
 }
 
-// impl SP1FieldFriConfig for SP1OuterConfig {
-//     type BasefoldConfig = Poseidon2Bn254FrBasefoldConfig<SP1Field>;
-//     type MerkleTreeConfig = Poseidon2Bn254Config<SP1Field>;
-//     type FriChallenger = <Self as JaggedConfig>::Challenger;
-// }
-
 impl<C: CircuitConfig<N = Bn254Fr, Bit = Var<Bn254Fr>>> SP1FieldConfigVariable<C>
-    for SP1OuterConfig
+    for SP1OuterGlobalContext
 {
     type FriChallengerVariable = MultiField32ChallengerVariable<C>;
 
