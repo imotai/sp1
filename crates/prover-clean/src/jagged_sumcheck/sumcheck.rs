@@ -322,7 +322,7 @@ mod tests {
     use rayon::iter::{IntoParallelIterator, ParallelIterator};
     use slop_algebra::AbstractExtensionField;
     use slop_alloc::{Buffer, ToHost};
-    use slop_basefold::{BasefoldVerifier, Poseidon2KoalaBear16BasefoldConfig};
+    use slop_challenger::IopCtx;
     use slop_multilinear::{Mle, MultilinearPcsChallenger};
     use slop_sumcheck::partially_verify_sumcheck_proof;
 
@@ -330,7 +330,7 @@ mod tests {
     use slop_tensor::Tensor;
 
     use crate::{
-        config::{Ext, Felt},
+        config::{Ext, Felt, GC},
         jagged_sumcheck::*,
     };
 
@@ -443,9 +443,7 @@ mod tests {
         csl_cuda::run_in_place(|t| async move {
             // The data is organized as N consecutive tables of row count row_count[i] and column count column_count[i].
             for (i, (row_counts, column_counts)) in test_cases.iter().enumerate() {
-                type Config = Poseidon2KoalaBear16BasefoldConfig;
-                let verifier = BasefoldVerifier::<_, Config>::new(1);
-                let mut challenger = verifier.challenger();
+                let mut challenger = GC::default_challenger();
 
                 let log_max_row_count =
                     row_counts.iter().max().unwrap().next_power_of_two().ilog2();

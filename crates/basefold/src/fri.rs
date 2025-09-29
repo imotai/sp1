@@ -27,7 +27,7 @@ use slop_challenger::{CanObserve, FieldChallenger, IopCtx};
 use slop_commit::Message;
 use slop_futures::OwnedBorrow;
 use slop_koala_bear::KoalaBear;
-use slop_merkle_tree::{MerkleTreeConfig, TensorCsProver};
+use slop_merkle_tree::TensorCsProver;
 use slop_multilinear::{Mle, MleEval, MleFoldBackend};
 use slop_tensor::{Tensor, TransposeBackend};
 
@@ -161,13 +161,12 @@ where
     }
 }
 
-impl<GC: IopCtx, Tcs, E, P> FriIoppProver<GC, Tcs, E, TaskScope> for FriCudaProver<E, P>
+impl<GC: IopCtx, E, P> FriIoppProver<GC, E, TaskScope> for FriCudaProver<E, P>
 where
     GC::F: TwoAdicField,
     GC::EF: ExtensionField<GC::F> + TwoAdicField,
-    Tcs: MerkleTreeConfig<GC>,
     E: ReedSolomonEncoder<GC::F, TaskScope> + Clone,
-    P: TensorCsProver<GC, TaskScope, MerkleConfig = Tcs>,
+    P: TensorCsProver<GC, TaskScope>,
     TaskScope: MleBatchKernel<GC::F, GC::EF>
         + RsCodeWordBatchKernel<GC::F, GC::EF>
         + MleFoldBackend<GC::EF>
@@ -312,7 +311,7 @@ unsafe impl MleFlattenKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> fo
 mod tests {
     use futures::{future::join_all, prelude::*};
     use rand::Rng;
-    use slop_basefold::{BasefoldVerifier, Poseidon2KoalaBear16BasefoldConfig};
+    use slop_basefold::BasefoldVerifier;
     use slop_basefold_prover::{BasefoldProver, Poseidon2KoalaBear16BasefoldCpuProverComponents};
     use slop_koala_bear::KoalaBearDegree4Duplex;
     use slop_multilinear::Point;
@@ -331,7 +330,6 @@ mod tests {
         let codeword_size = 1 << (num_variables + log_blowup as u32);
         let point = Point::<BinomialExtensionField<KoalaBear, 4>>::rand(&mut rng, num_variables);
 
-        type C = Poseidon2KoalaBear16BasefoldConfig;
         type CudaProver = BasefoldProver<
             KoalaBearDegree4Duplex,
             Poseidon2KoalaBear16BasefoldCudaProverComponents,
@@ -340,7 +338,7 @@ mod tests {
             BasefoldProver<KoalaBearDegree4Duplex, Poseidon2KoalaBear16BasefoldCpuProverComponents>;
         type EF = BinomialExtensionField<KoalaBear, 4>;
 
-        let verifier = BasefoldVerifier::<_, C>::new(log_blowup);
+        let verifier = BasefoldVerifier::<KoalaBearDegree4Duplex>::new(log_blowup, widths.len());
         let cuda_prover = CudaProver::new(&verifier);
         let host_prover = HostProver::new(&verifier);
 
@@ -439,7 +437,7 @@ mod tests {
             type EF = BinomialExtensionField<KoalaBear, 4>;
 
             let initial_mle = Mle::<EF>::rand(&mut rng, 1, num_variables);
-            type C = Poseidon2KoalaBear16BasefoldConfig;
+            type GC = KoalaBearDegree4Duplex;
             type CudaProver = BasefoldProver<
                 KoalaBearDegree4Duplex,
                 Poseidon2KoalaBear16BasefoldCudaProverComponents,
@@ -449,7 +447,7 @@ mod tests {
                 Poseidon2KoalaBear16BasefoldCpuProverComponents,
             >;
 
-            let verifier = BasefoldVerifier::<_, C>::new(log_blowup);
+            let verifier = BasefoldVerifier::<GC>::new(log_blowup, 1);
             let cuda_prover = CudaProver::new(&verifier);
             let host_prover = HostProver::new(&verifier);
 
@@ -465,7 +463,7 @@ mod tests {
             let initial_codeword = RsCodeWord::clone(&initial_codeword[0]);
 
             // Batch the mles and codewords on the host.
-            let mut challenger = verifier.challenger();
+            let mut challenger = GC::default_challenger();
             let (host_beta, host_folded_mle, host_folded_codeword, host_commit, _, _) = host_prover
                 .fri_prover
                 .commit_phase_round(
@@ -478,7 +476,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let mut challenger = verifier.challenger();
+            let mut challenger = GC::default_challenger();
             let (beta, folded_mle, folded_codeword, commit, _, _) =
                 csl_cuda::spawn(move |t| async move {
                     let initial_mle = t.into_device(initial_mle).await.unwrap();

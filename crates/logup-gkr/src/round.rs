@@ -809,8 +809,10 @@ mod tests {
     use itertools::Itertools;
     use rayon::prelude::*;
     use slop_alloc::{Backend, CpuBackend, IntoHost};
-    use slop_basefold::{BasefoldVerifier, Poseidon2KoalaBear16BasefoldConfig};
 
+    use slop_challenger::IopCtx;
+
+    use slop_koala_bear::KoalaBearDegree4Duplex;
     use slop_sumcheck::partially_verify_sumcheck_proof;
     use std::iter::once;
 
@@ -1076,9 +1078,8 @@ mod tests {
     async fn test_logup_round_sumcheck_polynomial() {
         let mut rng = thread_rng();
 
-        type Config = Poseidon2KoalaBear16BasefoldConfig;
-        let verifier = BasefoldVerifier::<_, Config>::new(1);
-        let get_challenger = move || verifier.clone().challenger();
+        type Config = KoalaBearDegree4Duplex;
+        let get_challenger = move || Config::default_challenger();
 
         let interaction_row_counts: Vec<u32> = vec![
             1 << 10,
@@ -1310,11 +1311,10 @@ mod tests {
     async fn test_logup_gkr_round_prover() {
         let mut rng = thread_rng();
 
-        type Config = Poseidon2KoalaBear16BasefoldConfig;
+        type Config = KoalaBearDegree4Duplex;
         type Challenger =
             <slop_koala_bear::KoalaBearDegree4Duplex as slop_challenger::IopCtx>::Challenger;
-        let verifier = BasefoldVerifier::<_, Config>::new(1);
-        let get_challenger = move || verifier.clone().challenger();
+        let get_challenger = move || Config::default_challenger();
         type TraceGenerator = LogUpGkrCudaTraceGenerator<KoalaBear, EF, ()>;
         let trace_generator = TraceGenerator::default();
 

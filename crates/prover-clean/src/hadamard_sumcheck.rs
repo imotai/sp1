@@ -333,14 +333,15 @@ mod tests {
     use itertools::Itertools;
 
     use rand::SeedableRng;
-    use slop_basefold::BasefoldVerifier;
-    use slop_basefold::Poseidon2KoalaBear16BasefoldConfig;
-    use slop_challenger::CanSample;
+
+    use slop_challenger::{CanSample, IopCtx};
     use slop_jagged::HadamardProduct;
     use slop_jagged::LongMle;
     use slop_multilinear::Mle;
     use slop_sumcheck::partially_verify_sumcheck_proof;
     use slop_sumcheck::reduce_sumcheck_to_evaluation;
+
+    use crate::config::GC;
 
     use super::*;
     const NUM_SIMPLE_ITERATIONS: usize = 5;
@@ -394,8 +395,7 @@ mod tests {
                     .map(|(e_i, b_i)| *e_i * *b_i)
                     .sum::<Ext>();
 
-                let verifier = BasefoldVerifier::<_, Poseidon2KoalaBear16BasefoldConfig>::new(1);
-                let mut challenger = verifier.challenger();
+                let mut challenger = GC::default_challenger();
                 let _lambda: Ext = challenger.sample();
 
                 let base_device = t.into_device(base.clone()).await.unwrap();
@@ -546,8 +546,7 @@ mod tests {
                 .map(|(e_i, b_i)| *e_i * *b_i)
                 .sum::<Ext>();
 
-            let verifier = BasefoldVerifier::<_, Poseidon2KoalaBear16BasefoldConfig>::new(1);
-            let mut challenger = verifier.challenger();
+            let mut challenger = GC::default_challenger();
             let _lambda: Ext = challenger.sample();
 
             let ext1_device = t.into_device(ext1.clone()).await.unwrap();

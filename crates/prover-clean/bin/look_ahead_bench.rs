@@ -2,7 +2,7 @@ use std::{ffi::c_void, time::Duration};
 
 use csl_cuda::{CudaError, TaskScope};
 use csl_prover_clean::{
-    config::{Ext, Felt},
+    config::{Ext, Felt, GC},
     look_ahead::{Hadamard, RoundParams},
 };
 use slop_algebra::{
@@ -10,8 +10,7 @@ use slop_algebra::{
     UnivariatePolynomial,
 };
 use slop_alloc::{Buffer, ToHost};
-use slop_basefold::{BasefoldVerifier, Poseidon2KoalaBear16BasefoldConfig};
-use slop_challenger::{CanObserve, CanSample, FieldChallenger};
+use slop_challenger::{CanObserve, CanSample, FieldChallenger, IopCtx};
 use slop_sumcheck::{partially_verify_sumcheck_proof, PartialSumcheckProof};
 use slop_tensor::Tensor;
 
@@ -77,8 +76,6 @@ async fn main() {
         csl_cuda::run_in_place(|t| async move {
             let mut rng = rand::thread_rng();
 
-            let verifier = BasefoldVerifier::<_, Poseidon2KoalaBear16BasefoldConfig>::new(1);
-
             let mut times = Vec::with_capacity(NUM_ITERATIONS);
             for i in 0..NUM_ITERATIONS + WARMUP_ITERATIONS {
                 let p_h = Tensor::<Ext>::rand(&mut rng, [1 << num_variables]);
@@ -97,7 +94,7 @@ async fn main() {
 
                 let hadamard = Hadamard::new(p, q);
 
-                let mut challenger = verifier.challenger();
+                let mut challenger = GC::default_challenger();
 
                 t.synchronize().await.unwrap();
                 let time = tokio::time::Instant::now();
@@ -195,7 +192,7 @@ async fn main() {
                     times.push(elapsed);
                 }
 
-                let mut challenger = verifier.challenger();
+                let mut challenger = GC::default_challenger();
                 verify_sumcheck_proof(proof, final_evals, &mut challenger, num_variables);
             }
 

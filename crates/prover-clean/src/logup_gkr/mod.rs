@@ -118,12 +118,15 @@ pub async fn prove_round<C: FieldChallenger<Felt>>(
 
 #[cfg(test)]
 mod tests {
-    use crate::logup_gkr::utils::{
-        generate_test_data, get_polys_from_layer, random_first_layer, GkrTestData,
+    use crate::{
+        config::GC,
+        logup_gkr::utils::{
+            generate_test_data, get_polys_from_layer, random_first_layer, GkrTestData,
+        },
     };
     use itertools::Itertools;
     use slop_alloc::ToHost;
-    use slop_basefold::{BasefoldVerifier, Poseidon2KoalaBear16BasefoldConfig};
+    use slop_challenger::IopCtx;
     use slop_sumcheck::partially_verify_sumcheck_proof;
 
     use crate::logup_gkr::execution::{extract_outputs, gkr_transition, layer_transition};
@@ -221,10 +224,7 @@ mod tests {
     async fn test_logup_gkr_round_prover() {
         let mut rng = StdRng::seed_from_u64(1);
 
-        type Config = Poseidon2KoalaBear16BasefoldConfig;
-
-        let verifier = BasefoldVerifier::<_, Config>::new(1);
-        let get_challenger = move || verifier.clone().challenger();
+        let get_challenger = move || GC::default_challenger();
 
         let interaction_col_sizes: Vec<u32> = vec![
             99064, 99064, 99064, 188896, 188896, 188896, 85256, 107776, 107776, 25112, 25112,

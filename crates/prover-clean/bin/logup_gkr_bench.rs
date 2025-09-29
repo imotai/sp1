@@ -1,11 +1,10 @@
 use csl_cuda::{TaskScope, ToDevice};
-use csl_prover_clean::config::Ext;
+use csl_prover_clean::config::{Ext, GC};
 use csl_prover_clean::logup_gkr::{extract_outputs, gkr_transition, prove_round};
 use rand::{rngs::StdRng, SeedableRng};
 use serde::Deserialize;
 use slop_alloc::ToHost;
-use slop_basefold::{BasefoldVerifier, Poseidon2KoalaBear16BasefoldConfig};
-use slop_challenger::FieldChallenger;
+use slop_challenger::{FieldChallenger, IopCtx};
 use slop_multilinear::{Mle, Point};
 use slop_sumcheck::partially_verify_sumcheck_proof;
 use std::fs;
@@ -34,9 +33,7 @@ async fn run_benchmark_in_scope(
 ) -> (Duration, Duration) {
     let mut rng = StdRng::seed_from_u64(1);
 
-    type Config = Poseidon2KoalaBear16BasefoldConfig;
-    let verifier = BasefoldVerifier::<_, Config>::new(1);
-    let get_challenger = move || verifier.clone().challenger();
+    let get_challenger = move || GC::default_challenger();
 
     let layer = random_first_layer(&mut rng, interaction_col_sizes, Some(num_row_variables)).await;
     println!("Generated test data for {name}");

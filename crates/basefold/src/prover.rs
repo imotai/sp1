@@ -4,13 +4,10 @@ use csl_cuda::TaskScope;
 use csl_dft::SpparkDftKoalaBear;
 use csl_merkle_tree::{Poseidon2Bn254CudaProver, Poseidon2KoalaBear16CudaProver};
 use slop_algebra::extension::BinomialExtensionField;
-use slop_basefold::{
-    BasefoldVerifier, Poseidon2Bn254FrBasefoldConfig, Poseidon2KoalaBear16BasefoldConfig,
-};
+use slop_basefold::BasefoldVerifier;
 use slop_basefold_prover::{BasefoldProver, BasefoldProverComponents, DefaultBasefoldProver};
 use slop_bn254::BNGC;
-use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex, Poseidon2KoalaBearConfig};
-use slop_merkle_tree::Poseidon2Bn254Config;
+use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 
 use crate::{CudaDftEncoder, FriCudaProver, GrindingPowCudaProver};
 
@@ -21,8 +18,6 @@ impl BasefoldProverComponents<KoalaBearDegree4Duplex>
     for Poseidon2KoalaBear16BasefoldCudaProverComponents
 {
     type A = TaskScope;
-    type Tcs = Poseidon2KoalaBearConfig;
-    type Config = Poseidon2KoalaBear16BasefoldConfig;
     type Encoder = CudaDftEncoder<KoalaBear, SpparkDftKoalaBear>;
     type FriProver = FriCudaProver<Self::Encoder, Self::TcsProver>;
     type TcsProver = Poseidon2KoalaBear16CudaProver;
@@ -36,8 +31,6 @@ impl BasefoldProverComponents<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 
     for Poseidon2Bn254BasefoldCudaProverComponents
 {
     type A = TaskScope;
-    type Tcs = Poseidon2Bn254Config<KoalaBear>;
-    type Config = Poseidon2Bn254FrBasefoldConfig<KoalaBear, BinomialExtensionField<KoalaBear, 4>>;
     type Encoder = CudaDftEncoder<KoalaBear, SpparkDftKoalaBear>;
     type FriProver = FriCudaProver<Self::Encoder, Self::TcsProver>;
     type TcsProver = Poseidon2Bn254CudaProver;
@@ -48,7 +41,7 @@ impl DefaultBasefoldProver<KoalaBearDegree4Duplex>
     for Poseidon2KoalaBear16BasefoldCudaProverComponents
 {
     fn default_prover(
-        verifier: &BasefoldVerifier<KoalaBearDegree4Duplex, Self::Config>,
+        verifier: &BasefoldVerifier<KoalaBearDegree4Duplex>,
     ) -> BasefoldProver<KoalaBearDegree4Duplex, Self> {
         let dft = SpparkDftKoalaBear::default();
         let encoder = CudaDftEncoder { config: verifier.fri_config, dft };
@@ -63,10 +56,7 @@ impl DefaultBasefoldProver<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>
     for Poseidon2Bn254BasefoldCudaProverComponents
 {
     fn default_prover(
-        verifier: &BasefoldVerifier<
-            BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>,
-            Self::Config,
-        >,
+        verifier: &BasefoldVerifier<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>>,
     ) -> BasefoldProver<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>, Self> {
         let dft = SpparkDftKoalaBear::default();
         let encoder = CudaDftEncoder { config: verifier.fri_config, dft };
@@ -84,8 +74,8 @@ mod tests {
     use futures::prelude::*;
     use rand::thread_rng;
     use slop_alloc::{IntoHost, ToHost};
-    use slop_basefold::{BasefoldVerifier, Poseidon2KoalaBear16BasefoldConfig};
-    use slop_challenger::CanObserve;
+    use slop_basefold::BasefoldVerifier;
+    use slop_challenger::{CanObserve, IopCtx};
     use slop_commit::{Message, Rounds};
     use slop_koala_bear::KoalaBear;
     use slop_multilinear::{
@@ -98,7 +88,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_basefold_prover_backend() {
-        type C = Poseidon2KoalaBear16BasefoldConfig;
+        type GC = KoalaBearDegree4Duplex;
         type Prover = BasefoldProver<
             KoalaBearDegree4Duplex,
             Poseidon2KoalaBear16BasefoldCudaProverComponents,
@@ -121,12 +111,12 @@ mod tests {
                 })
                 .collect::<Vec<_>>();
 
-            let verifier = BasefoldVerifier::<_, C>::new(log_blowup);
+            let verifier = BasefoldVerifier::<GC>::new(log_blowup, round_widths.len());
             let prover = Prover::new(&verifier);
 
             let point = Point::<EF>::rand(&mut rng, num_variables);
 
-            let mut challenger = verifier.challenger();
+            let mut challenger = GC::default_challenger();
 
             let point_ref = point.clone();
             let (commitments, proof, eval_claims) = csl_cuda::spawn(move |t| async move {
@@ -194,7 +184,8 @@ mod tests {
             .await
             .unwrap();
 
-            let mut challenger = verifier.challenger();
+            let mut challenger = GC::default_challenger();
+            let eval_claims = eval_claims.into_iter().collect::<Vec<_>>();
             for commitment in commitments.iter() {
                 challenger.observe(*commitment);
             }
@@ -212,7 +203,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_stacked_prover_with_fixed_rate_interleave() {
-        type C = Poseidon2KoalaBear16BasefoldConfig;
+        type GC = KoalaBearDegree4Duplex;
         type Prover = BasefoldProver<
             KoalaBearDegree4Duplex,
             Poseidon2KoalaBear16BasefoldCudaProverComponents,
@@ -260,14 +251,15 @@ mod tests {
                 })
                 .collect::<Rounds<_>>();
 
-            let pcs_verifier = BasefoldVerifier::<_, C>::new(log_blowup);
+            let pcs_verifier =
+                BasefoldVerifier::<GC>::new(log_blowup, round_widths_and_log_heights.len());
             let pcs_prover = Prover::new(&pcs_verifier);
             let stacker = FixedRateInterleave::new(batch_size);
 
             let verifier = StackedPcsVerifier::new(pcs_verifier, log_stacking_height as u32);
             let prover = StackedPcsProver::new(pcs_prover, stacker, log_stacking_height as u32);
 
-            let mut challenger = verifier.pcs_verifier.challenger();
+            let mut challenger = GC::default_challenger();
             let mut commitments = vec![];
             let mut prover_data = Rounds::new();
             let mut batch_evaluations = Rounds::new();
@@ -341,7 +333,7 @@ mod tests {
                     time.elapsed()
                 );
 
-                let mut challenger = verifier.pcs_verifier.challenger();
+                let mut challenger = GC::default_challenger();
                 for commitment in commitments.iter() {
                     challenger.observe(*commitment);
                 }

@@ -24,7 +24,7 @@ slop-bn254 = { workspace = true }
 slop-commit = { workspace = true }
 slop-algebra = { workspace = true }
 slop-merkle-tree = { workspace = true }
-
+slop-symmetric = { workspace = true }
 thiserror = { workspace = true }
 
 tokio = { workspace = true }

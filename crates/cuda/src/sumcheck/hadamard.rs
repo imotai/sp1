@@ -193,10 +193,10 @@ mod tests {
     use itertools::Itertools;
     use rand::thread_rng;
     use slop_algebra::extension::BinomialExtensionField;
-    use slop_basefold::{BasefoldVerifier, Poseidon2KoalaBear16BasefoldConfig};
-    use slop_challenger::CanSample;
+
+    use slop_challenger::{CanSample, IopCtx};
     use slop_jagged::LongMle;
-    use slop_koala_bear::KoalaBear;
+    use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
     use slop_multilinear::Mle;
     use slop_sumcheck::{partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation};
 
@@ -205,8 +205,6 @@ mod tests {
     #[tokio::test]
     async fn test_hadamard_product_sumcheck() {
         let mut rng = thread_rng();
-
-        type C = Poseidon2KoalaBear16BasefoldConfig;
 
         type F = KoalaBear;
         type EF = BinomialExtensionField<KoalaBear, 4>;
@@ -255,9 +253,7 @@ mod tests {
                 let product = HadamardProduct { base, ext };
                 println!("product num_variables: {num_variables}");
 
-                let verifier = BasefoldVerifier::<_, C>::new(1);
-
-                let mut challenger = verifier.challenger();
+                let mut challenger = KoalaBearDegree4Duplex::default_challenger();
 
                 let lambda: EF = challenger.sample();
 
@@ -290,7 +286,7 @@ mod tests {
                 let claimed_eval = proof.point_and_eval.1;
                 assert_eq!(claimed_eval, exp_eval_ext * exp_eval_base);
 
-                let mut challenger = verifier.challenger();
+                let mut challenger = KoalaBearDegree4Duplex::default_challenger();
                 let _lambda: EF = challenger.sample();
                 assert!(partially_verify_sumcheck_proof::<F, EF, _>(
                     &proof,

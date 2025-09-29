@@ -62,9 +62,7 @@ mod tests {
     use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
     use slop_multilinear::{Evaluations, Mle, MleEval, PaddedMle, Point};
 
-    use slop_jagged::{
-        JaggedPcsVerifier, JaggedProver, KoalaBearPoseidon2, MachineJaggedPcsVerifier,
-    };
+    use slop_jagged::{JaggedPcsVerifier, JaggedProver, KoalaBearPoseidon2};
 
     use crate::Poseidon2KoalaBearJaggedCudaProverComponents;
 
@@ -143,14 +141,10 @@ mod tests {
                 log_blowup as usize,
                 log_stacking_height,
                 max_log_row_count as usize,
+                column_counts.len(),
             );
 
             let jagged_prover = Prover::from_verifier(&jagged_verifier);
-
-            let machine_verifier = MachineJaggedPcsVerifier::new(
-                &jagged_verifier,
-                vec![column_counts[0].clone(), column_counts[1].clone()],
-            );
 
             let eval_point = (0..max_log_row_count).map(|_| rng.gen::<EF>()).collect::<Point<_>>();
 
@@ -239,7 +233,7 @@ mod tests {
                 })
                 .collect::<Vec<_>>();
 
-            machine_verifier
+            jagged_verifier
                 .verify_trusted_evaluations(
                     &commitments,
                     eval_point_host.clone(),

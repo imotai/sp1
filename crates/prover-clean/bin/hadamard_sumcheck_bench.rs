@@ -1,12 +1,11 @@
 use csl_cuda::run_in_place;
 use csl_prover_clean::config::Ext;
+use csl_prover_clean::config::GC;
 use csl_prover_clean::hadamard_sumcheck::simple_hadamard_sumcheck;
 use itertools::Itertools;
 
 use rand::SeedableRng;
-use slop_basefold::BasefoldVerifier;
-use slop_basefold::Poseidon2KoalaBear16BasefoldConfig;
-use slop_challenger::CanSample;
+use slop_challenger::{CanSample, IopCtx};
 use slop_multilinear::Mle;
 
 const NUM_ITERATIONS: usize = 2;
@@ -26,9 +25,7 @@ async fn main() {
         run_in_place(|t| async move {
             let mut rng = rand::rngs::StdRng::seed_from_u64(0);
 
-            let verifier = BasefoldVerifier::<_, Poseidon2KoalaBear16BasefoldConfig>::new(1);
-
-            let mut challenger = verifier.challenger();
+            let mut challenger = GC::default_challenger();
 
             let _yuwen_lambda: Ext = challenger.sample();
             let base = Mle::<F>::rand(&mut rng, 1, num_variables);
@@ -42,8 +39,7 @@ async fn main() {
                 .map(|(e_i, b_i)| *e_i * *b_i)
                 .sum::<Ext>();
 
-            let verifier = BasefoldVerifier::<_, Poseidon2KoalaBear16BasefoldConfig>::new(1);
-            let mut challenger = verifier.challenger();
+            let mut challenger = GC::default_challenger();
 
             let _yuwen_lambda: Ext = challenger.sample();
 
@@ -117,8 +113,7 @@ async fn main() {
             }
 
             t.synchronize().await.unwrap();
-            let verifier = BasefoldVerifier::<_, Poseidon2KoalaBear16BasefoldConfig>::new(1);
-            let mut challenger = verifier.challenger();
+            let mut challenger = GC::default_challenger();
 
             // Warm up on the first element of all_ext1 and all_ext2
             let _yuwen_lambda: Ext = challenger.sample();

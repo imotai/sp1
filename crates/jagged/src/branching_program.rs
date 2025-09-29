@@ -185,15 +185,13 @@ mod tests {
         AbstractExtensionField, AbstractField,
     };
     use slop_alloc::{Buffer, CpuBackend, IntoHost, ToHost};
-    use slop_basefold::{
-        BasefoldConfig, DefaultBasefoldConfig, Poseidon2KoalaBear16BasefoldConfig,
-    };
-    use slop_challenger::{CanObserve, FieldChallenger};
+
+    use slop_challenger::{CanObserve, FieldChallenger, IopCtx};
     use slop_jagged::{
         all_bit_states, all_memory_states, transition_function, BranchingProgram,
         StateOrFail::{Fail, State},
     };
-    use slop_koala_bear::KoalaBear;
+    use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
     use slop_multilinear::Point;
     use slop_tensor::Tensor;
 
@@ -486,8 +484,7 @@ mod tests {
         let num_columns = 1400;
         const PREFIX_SUM_LENGTH: usize = 29;
         const MAX_HEIGHT: usize = 1 << 21;
-        let verifier = Poseidon2KoalaBear16BasefoldConfig::default_verifier(1);
-        let mut challenger = Poseidon2KoalaBear16BasefoldConfig::default_challenger(&verifier);
+        let mut challenger = KoalaBearDegree4Duplex::default_challenger();
 
         let mut sum_values = vec![EF::zero(); 6 * PREFIX_SUM_LENGTH];
         let challenger_for_device = challenger.clone();

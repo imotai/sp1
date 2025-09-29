@@ -23,12 +23,13 @@ use slop_algebra::{
     UnivariatePolynomial,
 };
 use slop_alloc::{Buffer, HasBackend, ToHost};
-use slop_challenger::FieldChallenger;
+use slop_challenger::{FieldChallenger, IopCtx};
 use slop_multilinear::{Mle, Point};
 use slop_sumcheck::PartialSumcheckProof;
 use slop_tensor::Tensor;
 
 use crate::{
+    config::GC,
     logup_gkr::utils::{FirstLayerPolynomial, GkrLayer, LogupRoundPolynomial, PolynomialLayer},
     JaggedMle,
 };
@@ -40,7 +41,6 @@ use crate::{
     DenseData,
 };
 use rayon::prelude::*;
-use slop_basefold::{BasefoldVerifier, Poseidon2KoalaBear16BasefoldConfig};
 use slop_sumcheck::partially_verify_sumcheck_proof;
 
 use crate::config::{Ext, Felt};
@@ -782,9 +782,7 @@ pub async fn bench_materialized_sumcheck<R: rand::Rng>(
     rng: &mut R,
     num_row_variables: Option<u32>,
 ) {
-    type Config = Poseidon2KoalaBear16BasefoldConfig;
-    let verifier = BasefoldVerifier::<_, Config>::new(1);
-    let get_challenger = move || verifier.clone().challenger();
+    let get_challenger = move || GC::default_challenger();
     let now = std::time::Instant::now();
 
     let (layer, test_data) =

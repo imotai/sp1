@@ -475,6 +475,7 @@ mod tests {
                 log_blowup as usize,
                 log_stacking_height,
                 max_log_row_count as usize,
+                row_counts.len(),
             );
 
             let jagged_prover = Prover::from_verifier(&jagged_verifier);
