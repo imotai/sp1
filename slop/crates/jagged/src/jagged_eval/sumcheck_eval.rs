@@ -83,7 +83,7 @@ where
         let result = partially_verify_sumcheck_proof(
             partial_sumcheck_proof,
             challenger,
-            2 * params.col_prefix_sums[0].len(),
+            2 * params.col_prefix_sums[0].dimension(),
             2,
         );
 
@@ -96,7 +96,7 @@ where
             .0
             .split_at(partial_sumcheck_proof.point_and_eval.0.dimension() / 2);
 
-        if first_half_z_index.len() != second_half_z_index.len() {
+        if first_half_z_index.dimension() != second_half_z_index.dimension() {
             return Err(JaggedEvalSumcheckError::IncorrectShape);
         }
 
@@ -119,11 +119,13 @@ where
                     let mut merged_prefix_sum = current_column_prefix_sum.clone();
                     merged_prefix_sum.extend(next_column_prefix_sum);
 
-                    if current_column_prefix_sum.len() != next_column_prefix_sum.len() {
+                    if current_column_prefix_sum.dimension() != next_column_prefix_sum.dimension() {
                         return Err(JaggedEvalSumcheckError::IncorrectShape);
                     }
 
-                    if merged_prefix_sum.len() != partial_sumcheck_proof.point_and_eval.0.len() {
+                    if merged_prefix_sum.dimension()
+                        != partial_sumcheck_proof.point_and_eval.0.dimension()
+                    {
                         return Err(JaggedEvalSumcheckError::IncorrectShape);
                     }
 

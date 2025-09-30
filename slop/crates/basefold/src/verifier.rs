@@ -155,7 +155,7 @@ where
 
         // Assert correctness of shape.
         if proof.fri_commitments.len() != proof.univariate_messages.len()
-            || proof.fri_commitments.len() != point.len()
+            || proof.fri_commitments.len() != point.dimension()
             || proof.univariate_messages.is_empty()
         {
             return Err(BaseFoldVerifierError::SumcheckFriLengthMismatch);

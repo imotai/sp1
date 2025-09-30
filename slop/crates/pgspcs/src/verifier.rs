@@ -41,7 +41,7 @@ impl<GC: IopCtx, MV: MultilinearPcsBatchVerifier<GC>> SparsePCSVerifier<GC, MV> 
             &proof.sparse_sumcheck_proof,
             challenger,
             proof.sparse_sumcheck_proof.point_and_eval.0.len(),
-            eval_point.len() + 1,
+            eval_point.dimension() + 1,
         )
         .map_err(VerifierError::SumcheckError)?;
 

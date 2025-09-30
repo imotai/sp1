@@ -56,7 +56,7 @@ impl<F: Field> SparsePolynomial<F> {
     where
         EF: ExtensionField<F>,
     {
-        assert_eq!(point.len(), self.num_variables);
+        assert_eq!(point.dimension(), self.num_variables);
         self.values
             .iter()
             .map(|(index, val)| {
