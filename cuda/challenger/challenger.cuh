@@ -112,7 +112,8 @@ class DuplexChallenger {
         return sample_bits(bits) == 0;
     }
 
-    __device__ __forceinline__ void grind(size_t bits, kb31_t* result, bool* found_flag, size_t n) {
+    __device__ __forceinline__ void
+    grind(size_t bits, kb31_t* result, volatile bool* found_flag, size_t n) {
         size_t idx = threadIdx.x + blockIdx.x * blockDim.x;
 
         size_t original_buffer_size = input_buffer_size;
