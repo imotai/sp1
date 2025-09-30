@@ -7,11 +7,11 @@ struct PairCol {
     F weight;
 
   public:
-    __device__ F get(F* preprocessed, F* main, size_t RowIdx, size_t height) {
+    __device__ F get(F* preprocessed, F* main, size_t rowIdx, size_t height) {
         if (is_preprocessed) {
-            return preprocessed[column_idx * height + RowIdx] * weight;
+            return preprocessed[column_idx * height + rowIdx] * weight;
         } else {
-            return main[column_idx * height + RowIdx] * weight;
+            return main[column_idx * height + rowIdx] * weight;
         }
     }
 };

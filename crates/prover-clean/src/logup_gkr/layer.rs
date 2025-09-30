@@ -140,8 +140,11 @@ impl JaggedGkrMle<TaskScope> {
 
 /// The first layer of the GKR circuit. This is a special case because the numerator is Felts, and the denominator is Ext.
 pub struct JaggedFirstGkrLayer<A: Backend> {
+    /// The numerator of the first layer. Has sizes [2, 1, 2 * height].
     pub numerator: Tensor<Felt, A>,
+    /// The denominator of the first layer. Has sizes [2, 1, 2 * height].
     pub denominator: Tensor<Ext, A>,
+    /// Half of the real height of the layer.
     pub height: usize,
 }
 

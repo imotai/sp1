@@ -1,12 +1,11 @@
 use csl_cuda::TaskScope;
-use slop_alloc::{Backend, CpuBackend};
+use slop_alloc::{Backend, CpuBackend, HasBackend};
 use slop_tensor::Tensor;
 use std::{collections::BTreeMap, iter::once};
 
 use slop_algebra::AbstractField;
 use slop_alloc::Buffer;
 use slop_multilinear::{Mle, Point};
-use sp1_hypercube::prover::Traces;
 use std::sync::Arc;
 
 use rand::Rng;
@@ -17,6 +16,7 @@ use crate::{
         interactions::Interactions,
         layer::{JaggedFirstGkrLayer, JaggedGkrLayer},
     },
+    tracegen::JaggedTraceMle,
     DenseData, JaggedMle,
 };
 
@@ -38,12 +38,59 @@ pub struct GkrLayerGeneric<Layer: DenseData<B>, B: Backend = TaskScope> {
 
 #[allow(clippy::type_complexity)]
 pub struct GkrInputData {
+    /// Interactions per chip, on host.
     pub interactions: BTreeMap<String, Arc<Interactions<Felt, CpuBackend>>>,
-    pub traces: Traces<Felt, TaskScope>,
-    pub preprocessed_traces: Traces<Felt, TaskScope>,
+    /// The jagged traces.
+    pub jagged_trace_data: Arc<JaggedTraceMle<TaskScope>>,
+    /// Some randomness used to initialize the denominators
     pub alpha: Ext,
+    /// Some randomness used to batch the interaction values.
     pub beta_seed: Point<Ext>,
+    /// The number of row variables.
+    pub num_row_variables: u32,
+    /// The backend.
+    pub backend: TaskScope,
 }
+
+impl GkrInputData {
+    /// Returns the height of the main trace for the given chip.
+    ///
+    /// Panics if the chip doesn't exist in the traces.
+    #[inline]
+    pub fn main_poly_height(&self, name: &str) -> usize {
+        let main_range = self.jagged_trace_data.dense_data.main_table_index.get(name).unwrap();
+        main_range.poly_size
+    }
+
+    /// Returns a pointer to the dense data for the preprocessed traces of the given chip.
+    ///
+    /// If the chip doesn't exist, returns the null pointer.
+    #[inline]
+    pub unsafe fn preprocessed_ptr(&self, name: &str) -> *const Felt {
+        match self.jagged_trace_data.dense_data.preprocessed_table_index.get(name) {
+            Some(range) => {
+                let base = self.jagged_trace_data.dense_data.dense.as_ptr();
+                base.add(range.dense_offset.start)
+            }
+            None => std::ptr::null(),
+        }
+    }
+
+    /// Returns a pointer to the dense data for the main traces of the given chip.
+    ///
+    /// If the chip doesn't exist, returns the null pointer.
+    #[inline]
+    pub unsafe fn main_ptr(&self, name: &str) -> *const Felt {
+        match self.jagged_trace_data.dense_data.main_table_index.get(name) {
+            Some(range) => {
+                let base = self.jagged_trace_data.dense_data.dense.as_ptr();
+                base.add(range.dense_offset.start)
+            }
+            None => std::ptr::null(),
+        }
+    }
+}
+
 pub struct FirstLayerData<F, EF, B: Backend> {
     pub numerator: Tensor<F, B>,
     pub denominator: Tensor<EF, B>,
@@ -58,6 +105,17 @@ pub enum GkrCircuitLayer<B: Backend = TaskScope> {
     Materialized(GkrLayer<B>),
     FirstLayer(FirstGkrLayer<B>),
     FirstLayerVirtual(GkrInputData),
+}
+
+impl HasBackend for GkrCircuitLayer<TaskScope> {
+    type Backend = TaskScope;
+    fn backend(&self) -> &TaskScope {
+        match self {
+            GkrCircuitLayer::Materialized(layer) => layer.jagged_mle.backend(),
+            GkrCircuitLayer::FirstLayer(layer) => layer.jagged_mle.backend(),
+            GkrCircuitLayer::FirstLayerVirtual(input_data) => &input_data.backend,
+        }
+    }
 }
 
 /// A polynomial layer of the GKR circuit.
@@ -82,6 +140,29 @@ impl FirstLayerPolynomial {
     }
 }
 
+/// A representation of the Logup GKR circuit on a GPU.
+///
+///
+pub struct LogUpCudaCircuit<A: Backend> {
+    /// The materialized layers of the circuit.
+    pub materialized_layers: Vec<GkrCircuitLayer<A>>,
+    /// The input data for the circuit.
+    pub input_data: GkrInputData,
+    /// The number of virtual layers.
+    ///
+    /// In practice, this is set to 1 when the circuit is initially generated with the first layer,
+    /// and 0 after the materialized layers are exhausted and we finish generating the first layer.
+    pub num_virtual_layers: usize,
+}
+
+impl HasBackend for LogUpCudaCircuit<TaskScope> {
+    type Backend = TaskScope;
+    fn backend(&self) -> &TaskScope {
+        &self.input_data.backend
+    }
+}
+
+/// A normal GKR round polynomial. Compare this to FirstLayerPolynomial.
 #[derive(Clone)]
 pub struct LogupRoundPolynomial {
     /// The values of the numerator and denominator polynomials.

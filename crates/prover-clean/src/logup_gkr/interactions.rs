@@ -60,17 +60,25 @@ impl<F: Field> Mul<F> for PairColDevice<F> {
 #[derive(Debug)]
 #[repr(C)]
 pub struct Interactions<F, A: Backend> {
+    /// Has length = total number of interactions.
     pub values_ptr: Buffer<usize, A>,
+    /// Has length = total number of interactions.
     pub multiplicities_ptr: Buffer<usize, A>,
+    /// Has length = total number of interactions * number of values per interaction.
     pub values_col_weights_ptr: Buffer<usize, A>,
-
+    /// Has length = total number of interactions * number of values per interaction * number of columns per value.
     pub values_col_weights: Buffer<PairColDevice<F>, A>,
+    /// Has length = total number of interactions * number of values per interaction.
     pub values_constants: Buffer<F, A>,
 
+    /// Has length = total number of interactions * number of multiplicity columns per interaction.
     pub mult_col_weights: Buffer<PairColDevice<F>, A>,
+    /// Has length = total number of interactions.
     pub mult_constants: Buffer<F, A>,
 
+    /// Has length = total number of interactions.
     pub arg_indices: Buffer<F, A>,
+    /// Has length = total number of interactions.
     pub is_send: Buffer<bool, A>,
 
     pub num_interactions: usize,
@@ -96,7 +104,7 @@ impl<F: Field> Interactions<F, CpuBackend> {
 
         // Put all of the interactions (for both send/receives) into a single list.
         // The ordering of the interactions is important to match with the CPU prover's ordering.
-        // It should local sends, local receives.
+        // It should be local sends, local receives.
         let interactions = {
             let sends = sends.iter().map(move |i| (i, true));
             let receives = receives.iter().map(move |i| (i, false));

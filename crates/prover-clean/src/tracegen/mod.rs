@@ -14,13 +14,21 @@ use slop_alloc::{Backend, Buffer, CopyIntoBackend, HasBackend, Slice};
 use slop_multilinear::Mle;
 use sp1_hypercube::{air::MachineAir, prover::ProverPermit, prover::ProverSemaphore, Machine};
 
-use sp1_hypercube::MachineRecord;
+use sp1_hypercube::{Chip, MachineRecord};
 use tracing::debug_span;
 use tracing::instrument::Instrument;
 
 use crate::config::Felt;
 use crate::DenseData;
 use crate::JaggedMle;
+
+#[derive(Clone, Debug)]
+pub struct TraceOffset {
+    /// Dense data offset.
+    pub dense_offset: Range<usize>,
+    /// The size of each polynomial in this trace.
+    pub poly_size: usize,
+}
 
 pub type JaggedTraceMle<B> = JaggedMle<TraceDenseData<B>, B>;
 
@@ -32,10 +40,10 @@ pub struct TraceDenseData<B: Backend> {
     pub preprocessed_offset: usize,
     /// The total number of columns in the preprocessed traces.
     pub preprocessed_cols: usize,
-    /// A mapping from chip name to the range of columns it occupies for preprocessed traces.
-    pub preprocessed_table_index: BTreeMap<String, Range<usize>>,
-    /// A mapping from chip name to the range of columns it occupies for main traces.
-    pub main_table_index: BTreeMap<String, Range<usize>>,
+    /// A mapping from chip name to the range of dense data it occupies for preprocessed traces.
+    pub preprocessed_table_index: BTreeMap<String, TraceOffset>,
+    /// A mapping from chip name to the range of dense data it occupies for main traces.
+    pub main_table_index: BTreeMap<String, TraceOffset>,
     /// A permit, for limiting access to the GPU memory.
     pub permit: ProverPermit,
 }
@@ -73,10 +81,18 @@ pub const MAX_COLS_PER_TRACE: usize = 1 << 14;
 
 /// The output of the host phase of the tracegen.
 pub struct HostPhaseTracegen<A> {
-    /// Which airs were touched in the host phase.
+    /// Which airs need to be generated on device.
     pub device_airs: Vec<Arc<A>>,
-    /// The traces generated in the host phase.
+    /// The real traces generated in the host phase.
     pub host_traces: futures::channel::mpsc::UnboundedReceiver<(String, Mle<Felt>)>,
+}
+
+/// Information about the traces generated in the host phase.
+pub struct HostPhaseShapeInfo<A> {
+    /// The traces generated in the host phase.
+    pub traces_by_name: BTreeMap<String, Trace<TaskScope>>,
+    /// The set of chips we need to generate traces for.
+    pub chip_set: BTreeSet<Chip<Felt, A>>,
 }
 
 /// Traces generated
@@ -85,6 +101,15 @@ pub enum Trace<B: Backend = TaskScope> {
     Real(Mle<Felt, B>),
     // Number of columns
     Padding(usize),
+}
+
+impl Trace<TaskScope> {
+    pub fn num_real_entries(&self) -> usize {
+        match self {
+            Trace::Real(mle) => mle.num_non_zero_entries(),
+            Trace::Padding(_) => 0,
+        }
+    }
 }
 
 /// Sets up the jagged traces.
@@ -97,7 +122,7 @@ async fn setup_jagged_traces(
     traces: BTreeMap<String, Trace>,
     initial_offset: usize,
     initial_cols: usize,
-) -> (usize, usize, BTreeMap<String, Range<usize>>) {
+) -> (usize, usize, BTreeMap<String, TraceOffset>) {
     let mut offset = initial_offset;
     let mut cols_so_far = initial_cols;
     let mut table_index = BTreeMap::new();
@@ -153,7 +178,13 @@ async fn setup_jagged_traces(
                     start_indices_dst_slice.copy_from_slice(start_indices_slice, &backend).unwrap();
                 }
 
-                table_index.insert(name.clone(), cols_so_far..cols_so_far + trace_num_cols);
+                table_index.insert(
+                    name.clone(),
+                    TraceOffset {
+                        dense_offset: offset..offset + trace_size,
+                        poly_size: trace_num_rows,
+                    },
+                );
                 offset += trace_size;
                 cols_so_far += trace_num_cols;
             }
@@ -182,7 +213,10 @@ async fn setup_jagged_traces(
                     start_indices_dst_slice.copy_from_slice(start_indices_slice, &backend).unwrap();
                 }
 
-                table_index.insert(name.clone(), cols_so_far..cols_so_far + *padding_cols);
+                table_index.insert(
+                    name.clone(),
+                    TraceOffset { dense_offset: offset..offset, poly_size: 0 },
+                );
                 cols_so_far += *padding_cols;
             }
         }
@@ -313,10 +347,11 @@ pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
     JaggedMle { dense_data: trace_dense_data, col_index, start_indices }
 }
 
+/// Returns a tuple of (host phase tracegen, shape info).
 fn host_main_tracegen<A>(
     machine: &Machine<Felt, A>,
     record: Arc<<A as MachineAir<Felt>>::Record>,
-) -> (HostPhaseTracegen<A>, BTreeMap<String, Trace<TaskScope>>)
+) -> (HostPhaseTracegen<A>, HostPhaseShapeInfo<A>)
 where
     A: CudaTracegenAir<Felt>,
 {
@@ -360,7 +395,11 @@ where
         })
         .collect::<BTreeMap<_, _>>();
 
-    (HostPhaseTracegen { device_airs, host_traces }, initial_traces)
+    let host_phase_shape_info = HostPhaseShapeInfo { traces_by_name: initial_traces, chip_set };
+
+    let host_phase_tracegen = HostPhaseTracegen { device_airs, host_traces };
+
+    (host_phase_tracegen, host_phase_shape_info)
 }
 
 /// Puts traces on device. Returns (traces, public values).
@@ -420,9 +459,11 @@ pub async fn main_tracegen<A: CudaTracegenAir<Felt>>(
     record: Arc<<A as MachineAir<Felt>>::Record>,
     jagged_traces: &mut JaggedTraceMle<TaskScope>,
     backend: &TaskScope,
-) -> Vec<Felt> {
+) -> (Vec<Felt>, BTreeSet<Chip<Felt, A>>) {
     // Start generating traces on host.
-    let (host_phase_tracegen, initial_traces) = host_main_tracegen(machine, record.clone());
+    let (host_phase_tracegen, host_phase_shape_info) = host_main_tracegen(machine, record.clone());
+
+    let HostPhaseShapeInfo { traces_by_name: initial_traces, chip_set } = host_phase_shape_info;
 
     // Now that the permit is acquired, we can begin the following two tasks:
     // - Copying host traces to the device.
@@ -460,7 +501,7 @@ pub async fn main_tracegen<A: CudaTracegenAir<Felt>>(
         col_index.set_len(final_offset >> 1);
         start_indices.set_len(final_cols + 1);
     }
-    public_values
+    (public_values, chip_set)
 }
 
 pub async fn full_tracegen<A: CudaTracegenAir<Felt>>(
@@ -470,11 +511,12 @@ pub async fn full_tracegen<A: CudaTracegenAir<Felt>>(
     max_trace_size: usize,
     prover_permits: ProverSemaphore,
     backend: &TaskScope,
-) -> (Vec<Felt>, JaggedTraceMle<TaskScope>) {
+) -> (Vec<Felt>, JaggedTraceMle<TaskScope>, BTreeSet<Chip<Felt, A>>) {
+    // TODO: do host preprocessed, host main, device preprocessed, device main.
     let mut jagged_mle =
         setup_tracegen(machine, program, max_trace_size, prover_permits, backend).await;
-    let public_values = main_tracegen(machine, record, &mut jagged_mle, backend).await;
-    (public_values, jagged_mle)
+    let (public_values, chip_set) = main_tracegen(machine, record, &mut jagged_mle, backend).await;
+    (public_values, jagged_mle, chip_set)
 }
 
 #[cfg(test)]
@@ -485,20 +527,15 @@ mod tests {
     use csl_tracegen::CudaTraceGenerator;
     use slop_alloc::IntoHost;
     use slop_multilinear::{Mle, Point};
-    use sp1_core_executor::SP1RecursionProof;
     use sp1_hypercube::prover::{ProverSemaphore, TraceGenerator};
-    use sp1_prover::{CompressAir, InnerSC, SP1CircuitWitness};
-    use sp1_recursion_circuit::machine::SP1ShapedWitnessValues;
-    use sp1_sdk::{CpuProver, Prover};
 
     use crate::{
         config::Ext,
         tracegen::full_tracegen,
+        tracegen_setup,
         zerocheck::{data::DenseBuffer, evaluate_jagged_mle_chunked},
         JaggedMle,
     };
-
-    const FIBONACCI_PROOF: &[u8] = include_bytes!("../../fib_proof.bin");
 
     use rand::rngs::StdRng;
     use rand::SeedableRng;
@@ -507,26 +544,7 @@ mod tests {
     /// Then, asserts that the jagged traces generated are the same as the traces in the old format.
     #[tokio::test]
     async fn test_jagged_tracegen() {
-        // This is basically the same as LocalProver::shrink
-        let client = CpuProver::new_unsound().await;
-        let machine = CompressAir::compress_machine();
-        let inner = client.inner();
-        let prover = inner.prover();
-
-        let compressed_proof: SP1RecursionProof<_, InnerSC> =
-            bincode::deserialize(FIBONACCI_PROOF).unwrap();
-
-        let SP1RecursionProof { vk: compressed_vk, proof: compressed_proof } = compressed_proof;
-        let input = SP1ShapedWitnessValues {
-            vks_and_proofs: vec![(compressed_vk.clone(), compressed_proof)],
-            is_complete: true,
-        };
-
-        let input = prover.recursion().make_merkle_proofs(input);
-        let witness = SP1CircuitWitness::Shrink(input);
-
-        let record = prover.recursion().execute(witness).unwrap();
-        let program = record.program.clone();
+        let (machine, record, program) = tracegen_setup!();
 
         // This tests core tracegen, which is more comprehensive, but since core records are so big,
         // it's not feasible to git commit them.
@@ -545,6 +563,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(4);
         run_in_place(|scope| async move {
             const CORE_MAX_LOG_ROW_COUNT: u32 = 22;
+            // TODO: this belongs somewhere else.
             const CORE_MAX_TRACE_SIZE: u32 = 1 << 29;
             let z_row: Point<Ext, _> = Point::rand(&mut rng, CORE_MAX_LOG_ROW_COUNT);
 
@@ -617,7 +636,7 @@ mod tests {
             let now = std::time::Instant::now();
 
             // Do tracegen with the new setup.
-            let (_public_values, jagged_trace_data) = full_tracegen(
+            let (_public_values, jagged_trace_data, _chip_set) = full_tracegen(
                 &machine,
                 program.clone(),
                 record,
@@ -626,8 +645,6 @@ mod tests {
                 &scope,
             )
             .await;
-
-            println!("jagged trace data: {:#?}", jagged_trace_data.dense_data.main_table_index);
 
             scope.synchronize().await.unwrap();
             println!("new traces generated in {:?}", now.elapsed());

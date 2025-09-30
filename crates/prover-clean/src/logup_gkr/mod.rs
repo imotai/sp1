@@ -1,22 +1,35 @@
-//! Each table has some associated lookups. Evaluating lookups for each table has a "jagged" structure, since each table might have a different height.
-//! Then, once we have run GKR for every table to completion, we join the results together with the "interactions layers".
+//! Each chip may have some associated lookups. We place each chip's traces together in a single "jagged" buffer, since each chip may have a different height.
+//! Then, once we have run GKR for every chip to completion, we join the results together with the "interactions layers".
 //!
-use csl_cuda::ToDevice;
-use slop_algebra::AbstractField;
-use slop_alloc::HasBackend;
-use slop_challenger::FieldChallenger;
-use slop_multilinear::{Mle, Point};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
-use sp1_hypercube::LogupGkrRoundProof;
+use csl_cuda::{TaskScope, ToDevice};
+use itertools::Itertools;
+use slop_algebra::AbstractField;
+use slop_alloc::{CanCopyFromRef, HasBackend, ToHost};
+use slop_challenger::FieldChallenger;
+use slop_multilinear::{partial_lagrange_blocking, Mle, MultilinearPcsChallenger, Point};
+use slop_sumcheck::partially_verify_sumcheck_proof;
+use tracing::Instrument;
+
+use sp1_hypercube::{
+    air::MachineAir, Chip, LogUpEvaluations, LogUpGkrOutput, LogupGkrProof, LogupGkrRoundProof,
+    LogupGkrVerificationError,
+};
 
 use crate::{
     config::{Ext, Felt},
-    logup_gkr::utils::FirstLayerPolynomial,
+    logup_gkr::utils::{FirstLayerPolynomial, LogUpCudaCircuit},
+    tracegen::JaggedTraceMle,
 };
 mod execution;
 mod interactions;
 mod layer;
 mod sumcheck;
+mod tracegen;
 mod utils;
 
 pub use utils::{
@@ -38,8 +51,10 @@ async fn prove_materialized_round<C: FieldChallenger<Felt>>(
     challenger: &mut C,
 ) -> LogupGkrRoundProof<Ext> {
     let lambda = challenger.sample_ext_element::<Ext>();
+    let claim = numerator_eval * lambda + denominator_eval;
     let (interaction_point, row_point) =
         eval_point.split_at(layer.num_interaction_variables as usize);
+
     let backend = layer.jagged_mle.backend().clone();
     let interaction_point = interaction_point.to_device_in(&backend).await.unwrap();
     let row_point = row_point.to_device_in(&backend).await.unwrap();
@@ -54,7 +69,6 @@ async fn prove_materialized_round<C: FieldChallenger<Felt>>(
         padding_adjustment: Ext::one(),
         point: eval_point.clone(),
     };
-    let claim = numerator_eval * lambda + denominator_eval;
 
     // Produce the sumcheck proof.
     let (sumcheck_proof, openings) =
@@ -72,8 +86,10 @@ async fn prove_first_round<C: FieldChallenger<Felt>>(
     challenger: &mut C,
 ) -> LogupGkrRoundProof<Ext> {
     let lambda = challenger.sample_ext_element::<Ext>();
+    let claim = numerator_eval * lambda + denominator_eval;
     let (interaction_point, row_point) =
         eval_point.split_at(layer.num_interaction_variables as usize);
+
     let backend = layer.jagged_mle.backend();
     let interaction_point = interaction_point.to_device_in(backend).await.unwrap();
     let row_point = row_point.to_device_in(backend).await.unwrap();
@@ -83,7 +99,6 @@ async fn prove_first_round<C: FieldChallenger<Felt>>(
     let sumcheck_poly =
         FirstLayerPolynomial { layer, eq_row, eq_interaction, lambda, point: eval_point.clone() };
 
-    let claim = numerator_eval * lambda + denominator_eval;
     // Produce the sumcheck proof.
     let (sumcheck_proof, openings) =
         sumcheck::first_round_sumcheck(sumcheck_poly, challenger, claim).await;
@@ -116,22 +131,407 @@ pub async fn prove_round<C: FieldChallenger<Felt>>(
     }
 }
 
+/// Proves the GKR circuit, layer by layer.
+pub async fn prove_gkr_circuit<C: FieldChallenger<Felt>>(
+    numerator_value: Ext,
+    denominator_value: Ext,
+    eval_point: Point<Ext>,
+    mut circuit: LogUpCudaCircuit<TaskScope>,
+    challenger: &mut C,
+) -> (Point<Ext>, Vec<LogupGkrRoundProof<Ext>>) {
+    let mut round_proofs = Vec::new();
+    // Follow the GKR protocol layer by layer.
+    let mut numerator_eval = numerator_value;
+    let mut denominator_eval = denominator_value;
+    let mut eval_point = eval_point;
+    while let Some(layer) = circuit.next().await {
+        // Generate the round proof.
+        let round_proof =
+            prove_round(layer, &eval_point, numerator_eval, denominator_eval, challenger).await;
+
+        // Observe the prover message.
+        challenger.observe_ext_element::<Ext>(round_proof.numerator_0);
+        challenger.observe_ext_element::<Ext>(round_proof.numerator_1);
+        challenger.observe_ext_element::<Ext>(round_proof.denominator_0);
+        challenger.observe_ext_element::<Ext>(round_proof.denominator_1);
+
+        // Get the evaluation point for the claims of the next round.
+        eval_point = round_proof.sumcheck_proof.point_and_eval.0.clone();
+
+        // Sample the last coordinate.
+        let last_coordinate = challenger.sample_ext_element::<Ext>();
+
+        // Compute the evaluation of the numerator and denominator at the last coordinate.
+        numerator_eval = round_proof.numerator_0
+            + (round_proof.numerator_1 - round_proof.numerator_0) * last_coordinate;
+        denominator_eval = round_proof.denominator_0
+            + (round_proof.denominator_1 - round_proof.denominator_0) * last_coordinate;
+        eval_point.add_dimension_back(last_coordinate);
+
+        // Add the round proof to the total
+        round_proofs.push(round_proof);
+    }
+    (eval_point, round_proofs)
+}
+
+/// End-to-end proves lookups for a given trace.
+pub async fn prove_logup_gkr<A: MachineAir<Felt>, C: MultilinearPcsChallenger<Felt>>(
+    chips: &BTreeSet<Chip<Felt, A>>,
+    jagged_trace_data: Arc<JaggedTraceMle<TaskScope>>,
+    backend: TaskScope,
+    num_row_variables: u32,
+    alpha: Ext,
+    beta_seed: Point<Ext>,
+    challenger: &mut C,
+) -> LogupGkrProof<Ext> {
+    let num_interactions =
+        chips.iter().map(|chip| chip.sends().len() + chip.receives().len()).sum::<usize>();
+    let num_interaction_variables = num_interactions.next_power_of_two().ilog2();
+
+    // Run the GKR circuit and get the output.
+    let (output, circuit) = tracegen::generate_gkr_circuit(
+        chips,
+        jagged_trace_data.clone(),
+        num_row_variables,
+        alpha,
+        beta_seed,
+        backend,
+    )
+    .await;
+
+    let LogUpGkrOutput { numerator, denominator } = &output;
+
+    // Copy the output to host and observe the claims.
+    let host_numerator = numerator.to_host().await.unwrap();
+    let host_denominator = denominator.to_host().await.unwrap();
+    for (n, d) in
+        host_numerator.guts().as_slice().iter().zip_eq(host_denominator.guts().as_slice().iter())
+    {
+        challenger.observe_ext_element(*n);
+        challenger.observe_ext_element(*d);
+    }
+    let output_host = LogUpGkrOutput { numerator: host_numerator, denominator: host_denominator };
+
+    // TODO: instead calculate from number of interactions.
+    let initial_number_of_variables = numerator.num_variables();
+    assert_eq!(initial_number_of_variables, num_interaction_variables + 1);
+    let first_eval_point = challenger.sample_point::<Ext>(initial_number_of_variables);
+
+    // Follow the GKR protocol layer by layer.
+    let first_point = numerator.backend().copy_to(&first_eval_point).await.unwrap();
+    let first_point_eq = Mle::partial_lagrange(&first_point).await;
+    let first_numerator_eval =
+        numerator.eval_at_eq(&first_point_eq).await.to_host().await.unwrap()[0];
+    let first_denominator_eval =
+        denominator.eval_at_eq(&first_point_eq).await.to_host().await.unwrap()[0];
+
+    let (eval_point, round_proofs) = prove_gkr_circuit(
+        first_numerator_eval,
+        first_denominator_eval,
+        first_eval_point,
+        circuit,
+        challenger,
+    )
+    .instrument(tracing::info_span!("prove GKR circuit"))
+    .await;
+
+    // Get the evaluations for each chip at the evaluation point of the last round.
+    let eval_point = eval_point.last_k(num_row_variables as usize);
+    let chip_evaluations = BTreeMap::new();
+    // let eval_point_b = numerator.backend().copy_to(&eval_point).await.unwrap();
+    // let eval_point_eq = Mle::partial_lagrange(&eval_point_b).await;
+
+    // TODO: This changes for the new trace format?
+    // for chip in chips.iter() {
+    //     let name = chip.name();
+    //     let main_trace = traces.get(&name).unwrap();
+    //     let preprocessed_trace = preprocessed_traces.get(&name);
+
+    //     let main_evaluation = main_trace.eval_at_eq(&eval_point, &eval_point_eq).await;
+    //     let preprocessed_evaluation = OptionFuture::from(
+    //         preprocessed_trace.as_ref().map(|t| t.eval_at_eq(&eval_point, &eval_point_eq)),
+    //     )
+    //     .await;
+    //     let main_evaluation = main_evaluation.to_host().await.unwrap();
+    //     let preprocessed_evaluation = OptionFuture::from(
+    //         preprocessed_evaluation.as_ref().map(|e| async { e.to_host().await.unwrap() }),
+    //     )
+    //     .await;
+    //     let openings = ChipEvaluation {
+    //         main_trace_evaluations: main_evaluation,
+    //         preprocessed_trace_evaluations: preprocessed_evaluation,
+    //     };
+    //     // Observe the openings.
+    //     if let Some(prep_eval) = openings.preprocessed_trace_evaluations.as_ref() {
+    //         for eval in prep_eval.deref().iter() {
+    //             challenger.observe_ext_element(*eval);
+    //         }
+    //     }
+    //     for eval in openings.main_trace_evaluations.deref().iter() {
+    //         challenger.observe_ext_element(*eval);
+    //     }
+
+    //     chip_evaluations.insert(name, openings);
+    // }
+
+    let logup_evaluations = LogUpEvaluations { point: eval_point, chip_openings: chip_evaluations };
+
+    LogupGkrProof { circuit_output: output_host, round_proofs, logup_evaluations }
+}
+
+/// Stripped logup_gkr verifier. Some parts of the proof are missing right now, so we can't verify everything.
+///
+/// TODO: delete once the per-chip evaluations are added to the proof
+#[allow(clippy::too_many_arguments)]
+pub fn verify_logup_gkr<A: MachineAir<Felt>>(
+    shard_chips: &BTreeSet<Chip<Felt, A>>,
+    _degrees: &BTreeMap<String, Point<Felt>>,
+    _alpha: Ext,
+    beta_seed: &Point<Ext>,
+    cumulative_sum: Ext,
+    max_log_row_count: usize,
+    proof: &LogupGkrProof<Ext>,
+    challenger: &mut impl FieldChallenger<Felt>,
+) -> Result<(), LogupGkrVerificationError<Ext>> {
+    let LogupGkrProof { circuit_output, round_proofs, logup_evaluations } = proof;
+
+    let LogUpGkrOutput { numerator, denominator } = circuit_output;
+
+    // Calculate the interaction number.
+    let num_of_interactions =
+        shard_chips.iter().map(|c| c.sends().len() + c.receives().len()).sum::<usize>();
+    let number_of_interaction_variables = num_of_interactions.next_power_of_two().ilog2();
+
+    let expected_size = 1 << (number_of_interaction_variables + 1);
+
+    if numerator.guts().dimensions.sizes() != [expected_size, 1]
+        || denominator.guts().dimensions.sizes() != [expected_size, 1]
+    {
+        return Err(LogupGkrVerificationError::InvalidShape);
+    }
+
+    // Observe the output claims.
+    for (n, d) in numerator.guts().as_slice().iter().zip_eq(denominator.guts().as_slice().iter()) {
+        challenger.observe_ext_element(*n);
+        challenger.observe_ext_element(*d);
+    }
+
+    if denominator.guts().as_slice().iter().any(slop_algebra::Field::is_zero) {
+        return Err(LogupGkrVerificationError::ZeroDenominator);
+    }
+
+    // Verify that the cumulative sum matches the claimed one.
+    let output_cumulative_sum = numerator
+        .guts()
+        .as_slice()
+        .iter()
+        .zip_eq(denominator.guts().as_slice().iter())
+        .map(|(n, d)| *n / *d)
+        .sum::<Ext>();
+    if output_cumulative_sum != cumulative_sum {
+        return Err(LogupGkrVerificationError::CumulativeSumMismatch(
+            output_cumulative_sum,
+            cumulative_sum,
+        ));
+    }
+
+    // Assert that the size of the first layer matches the expected one.
+    let initial_number_of_variables = numerator.num_variables();
+    if initial_number_of_variables != number_of_interaction_variables + 1 {
+        return Err(LogupGkrVerificationError::InvalidFirstLayerDimension(
+            initial_number_of_variables,
+            number_of_interaction_variables + 1,
+        ));
+    }
+    // Sample the first evaluation point.
+    let first_eval_point = challenger.sample_point::<Ext>(initial_number_of_variables);
+
+    // Follow the GKR protocol layer by layer.
+    let mut numerator_eval = numerator.blocking_eval_at(&first_eval_point)[0];
+    let mut denominator_eval = denominator.blocking_eval_at(&first_eval_point)[0];
+    let mut eval_point = first_eval_point;
+
+    if round_proofs.len() + 1 != max_log_row_count {
+        return Err(LogupGkrVerificationError::InvalidShape);
+    }
+
+    for (i, round_proof) in round_proofs.iter().enumerate() {
+        // Get the batching challenge for combining the claims.
+        let lambda = challenger.sample_ext_element::<Ext>();
+        // Check that the claimed sum is consistent with the previous round values.
+        let expected_claim = numerator_eval * lambda + denominator_eval;
+        if round_proof.sumcheck_proof.claimed_sum != expected_claim {
+            return Err(LogupGkrVerificationError::InconsistentSumcheckClaim(i));
+        }
+        // Verify the sumcheck proof.
+        partially_verify_sumcheck_proof(
+            &round_proof.sumcheck_proof,
+            challenger,
+            i + number_of_interaction_variables as usize + 1,
+            3,
+        )?;
+        // Verify that the evaluation claim is consistent with the prover messages.
+        let (point, final_eval) = round_proof.sumcheck_proof.point_and_eval.clone();
+        let eq_eval = Mle::full_lagrange_eval(&point, &eval_point);
+        let numerator_sumcheck_eval = round_proof.numerator_0 * round_proof.denominator_1
+            + round_proof.numerator_1 * round_proof.denominator_0;
+        let denominator_sumcheck_eval = round_proof.denominator_0 * round_proof.denominator_1;
+        let expected_final_eval =
+            eq_eval * (numerator_sumcheck_eval * lambda + denominator_sumcheck_eval);
+        if final_eval != expected_final_eval {
+            return Err(LogupGkrVerificationError::InconsistentEvaluation(i));
+        }
+
+        // Observe the prover message.
+        challenger.observe_ext_element(round_proof.numerator_0);
+        challenger.observe_ext_element(round_proof.numerator_1);
+        challenger.observe_ext_element(round_proof.denominator_0);
+        challenger.observe_ext_element(round_proof.denominator_1);
+
+        // Get the evaluation point for the claims of the next round.
+        eval_point = round_proof.sumcheck_proof.point_and_eval.0.clone();
+        // Sample the last coordinate and add to the point.
+        let last_coordinate = challenger.sample_ext_element::<Ext>();
+        eval_point.add_dimension_back(last_coordinate);
+        // Update the evaluation of the numerator and denominator at the last coordinate.
+        numerator_eval = round_proof.numerator_0
+            + (round_proof.numerator_1 - round_proof.numerator_0) * last_coordinate;
+        denominator_eval = round_proof.denominator_0
+            + (round_proof.denominator_1 - round_proof.denominator_0) * last_coordinate;
+    }
+
+    // Verify that the last layer evaluations are consistent with the evaluations of the traces.
+    let (_interaction_point, trace_point) =
+        eval_point.split_at(number_of_interaction_variables as usize);
+    // Assert that the number of trace variables matches the expected one.
+    let trace_variables = trace_point.dimension();
+    if trace_variables != max_log_row_count {
+        return Err(LogupGkrVerificationError::InvalidLastLayerDimension(
+            trace_variables,
+            max_log_row_count,
+        ));
+    }
+
+    // Assert that the trace point is the same as the claimed opening point
+    let LogUpEvaluations { point, chip_openings: _ } = logup_evaluations;
+    if point != &trace_point {
+        println!(
+            "point: {:?}, trace_point: {:?}",
+            point.values().to_vec().len(),
+            trace_point.values().to_vec().len()
+        );
+        return Err(LogupGkrVerificationError::TracePointMismatch);
+    }
+
+    let _betas = partial_lagrange_blocking(beta_seed);
+
+    // Compute the expected opening of the last layer numerator and denominator values from the
+    // trace openings.
+    // let mut numerator_values = Vec::with_capacity(num_of_interactions);
+    // let mut denominator_values = Vec::with_capacity(num_of_interactions);
+    // let mut point_extended = point.clone();
+    // point_extended.add_dimension(Ext::zero());
+    // for ((chip, openings), threshold) in
+    //     shard_chips.iter().zip_eq(chip_openings.values()).zip_eq(degrees.values())
+    // {
+    //     // Observe the opening
+    //     if let Some(prep_eval) = openings.preprocessed_trace_evaluations.as_ref() {
+    //         for eval in prep_eval.deref().iter() {
+    //             challenger.observe_ext_element(*eval);
+    //         }
+    //         if prep_eval.evaluations().sizes() != [chip.air.preprocessed_width()] {
+    //             return Err(LogupGkrVerificationError::InvalidShape);
+    //         }
+    //     } else if chip.air.preprocessed_width() != 0 {
+    //         return Err(LogupGkrVerificationError::InvalidShape);
+    //     }
+    //     for eval in openings.main_trace_evaluations.deref().iter() {
+    //         challenger.observe_ext_element(*eval);
+    //     }
+    //     if openings.main_trace_evaluations.evaluations().sizes() != [chip.air.width()] {
+    //         return Err(LogupGkrVerificationError::InvalidShape);
+    //     }
+
+    //     if threshold.dimension() != point_extended.dimension() {
+    //         return Err(LogupGkrVerificationError::InvalidShape);
+    //     }
+
+    //     let geq_eval = full_geq(threshold, &point_extended);
+    //     let ChipEvaluation { main_trace_evaluations, preprocessed_trace_evaluations } = openings;
+    //     for (interaction, is_send) in
+    //         chip.sends().iter().map(|s| (s, true)).chain(chip.receives().iter().map(|r| (r, false)))
+    //     {
+    //         let (real_numerator, real_denominator) = interaction.eval(
+    //             preprocessed_trace_evaluations.as_ref(),
+    //             main_trace_evaluations,
+    //             alpha,
+    //             betas.as_slice(),
+    //         );
+    //         let padding_trace_opening =
+    //             MleEval::from(vec![EF::zero(); main_trace_evaluations.num_polynomials()]);
+    //         let padding_preprocessed_opening = preprocessed_trace_evaluations
+    //             .as_ref()
+    //             .map(|eval| MleEval::from(vec![EF::zero(); eval.num_polynomials()]));
+    //         let (padding_numerator, padding_denominator) = interaction.eval(
+    //             padding_preprocessed_opening.as_ref(),
+    //             &padding_trace_opening,
+    //             alpha,
+    //             betas.as_slice(),
+    //         );
+
+    //         let numerator_eval = real_numerator - padding_numerator * geq_eval;
+    //         let denominator_eval = real_denominator + (EF::one() - padding_denominator) * geq_eval;
+    //         let numerator_eval = if is_send { numerator_eval } else { -numerator_eval };
+    //         numerator_values.push(numerator_eval);
+    //         denominator_values.push(denominator_eval);
+    //     }
+    // }
+    // // Convert the values to a multilinear polynomials.
+    // // Pad the numerator values with zeros.
+    // numerator_values.resize(1 << interaction_point.dimension(), EF::zero());
+    // let numerator = Mle::from(numerator_values);
+    // // Pad the denominator values with ones.
+    // denominator_values.resize(1 << interaction_point.dimension(), EF::one());
+    // let denominator = Mle::from(denominator_values);
+
+    // let expected_numerator_eval = numerator.blocking_eval_at(&interaction_point)[0];
+    // let expected_denominator_eval = denominator.blocking_eval_at(&interaction_point)[0];
+    // if numerator_eval != expected_numerator_eval {
+    //     return Err(LogupGkrVerificationError::NumeratorEvaluationMismatch(
+    //         numerator_eval,
+    //         expected_numerator_eval,
+    //     ));
+    // }
+    // if denominator_eval != expected_denominator_eval {
+    //     return Err(LogupGkrVerificationError::DenominatorEvaluationMismatch(
+    //         denominator_eval,
+    //         expected_denominator_eval,
+    //     ));
+    // }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::tracegen::full_tracegen;
     use crate::{
         config::GC,
         logup_gkr::utils::{
             generate_test_data, get_polys_from_layer, random_first_layer, GkrTestData,
         },
     };
+    use csl_cuda::run_in_place;
     use itertools::Itertools;
     use slop_alloc::ToHost;
     use slop_challenger::IopCtx;
     use slop_sumcheck::partially_verify_sumcheck_proof;
+    use sp1_hypercube::prover::ProverSemaphore;
+    use std::{collections::BTreeMap, sync::Arc};
 
     use crate::logup_gkr::execution::{extract_outputs, gkr_transition, layer_transition};
 
     use super::*;
+    use crate::tracegen_setup;
 
     use rand::{rngs::StdRng, SeedableRng};
 
@@ -233,7 +633,6 @@ mod tests {
             25112, 25112, 25112, 25112, 25112, 25112, 56360, 56360, 56360, 56360, 56360, 56360, 4,
             169496, 169496, 169496, 169496, 169496,
         ];
-        // let interaction_col_sizes: Vec<u32> = vec![32, 32, 32, 32];
         let layer = random_first_layer(&mut rng, interaction_col_sizes, Some(19)).await;
         println!("generated test data");
 
@@ -382,5 +781,83 @@ mod tests {
         })
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_logup_gkr_e2e() {
+        let (machine, record, program) = tracegen_setup!();
+
+        // // This tests core tracegen, which is more comprehensive, but since core records are so big,
+        // // it's not feasible to git commit them.
+
+        // // Load the record and program from the test artifacts
+        // let root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        // let record_compressed_bytes = std::fs::read(format!("{}/record_1.bin", &root)).unwrap();
+        // let record = zstd::decode_all(record_compressed_bytes.as_slice()).unwrap();
+        // let record: sp1_core_executor::ExecutionRecord = bincode::deserialize(&record).unwrap();
+        // let program = Arc::new(
+        //     sp1_core_executor::Program::from_elf(&format!("{}/test_program.bin", &root)).unwrap(),
+        // );
+
+        // let machine = sp1_core_machine::riscv::RiscvAir::<crate::config::Felt>::machine();
+
+        run_in_place(|scope| async move {
+            const CORE_MAX_LOG_ROW_COUNT: u32 = 22;
+            const CORE_MAX_TRACE_SIZE: u32 = 1 << 29;
+            let semaphore = ProverSemaphore::new(1);
+
+            // *********** Generate traces using the host tracegen. ***********
+            let (_public_values, jagged_trace_data, shard_chips) = full_tracegen(
+                &machine,
+                program.clone(),
+                Arc::new(record),
+                CORE_MAX_TRACE_SIZE as usize,
+                semaphore.clone(),
+                &scope,
+            )
+            .await;
+
+            // *********** Generate logupGKR traces and prove end to end ***********
+            let mut challenger = GC::default_challenger();
+
+            let alpha = challenger.sample_ext_element();
+            let max_interaction_arity = shard_chips
+                .iter()
+                .flat_map(|c| c.sends().iter().chain(c.receives().iter()))
+                .map(|i| i.values.len() + 1)
+                .max()
+                .unwrap();
+            let beta_seed_dim = max_interaction_arity.next_power_of_two().ilog2();
+            let beta_seed = challenger.sample_point(beta_seed_dim);
+
+            let proof = super::prove_logup_gkr(
+                &shard_chips,
+                Arc::new(jagged_trace_data),
+                scope.clone(),
+                CORE_MAX_LOG_ROW_COUNT,
+                alpha,
+                beta_seed.clone(),
+                &mut challenger.clone(),
+            )
+            .await;
+
+            // TODO: fix this when we add chip evaluations.
+            let degrees = BTreeMap::new();
+
+            // Note that cumulative_sum is always zero for compress proofs, and it is
+            // coincidentally zero for the core trace used for testing too.
+            super::verify_logup_gkr(
+                &shard_chips,
+                &degrees,
+                alpha,
+                &beta_seed,
+                Ext::zero(),
+                CORE_MAX_LOG_ROW_COUNT as usize,
+                &proof,
+                &mut challenger.clone(),
+            )
+            .unwrap();
+        })
+        .await;
     }
 }
