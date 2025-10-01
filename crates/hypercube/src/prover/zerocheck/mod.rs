@@ -17,7 +17,7 @@ use slop_sumcheck::{
 };
 pub use sum_as_poly::*;
 
-use crate::{air::MachineAir, ConstraintSumcheckFolder};
+use crate::{air::MachineAir, debug::DebugConstraintBuilder, ConstraintSumcheckFolder};
 
 /// A zerocheck backend. This trait is automatically implemented for any backend satisfying the
 /// required bounds.
@@ -82,6 +82,7 @@ pub trait ZerocheckAir<F: Field, EF: ExtensionField<F>>:
     + Air<SymbolicAirBuilder<F>>
     + for<'b> Air<ConstraintSumcheckFolder<'b, F, F, EF>>
     + for<'b> Air<ConstraintSumcheckFolder<'b, F, EF, EF>>
+    + for<'b> Air<DebugConstraintBuilder<'b, F, EF>>
 {
 }
 
@@ -90,6 +91,7 @@ impl<F: Field, EF: ExtensionField<F>, A> ZerocheckAir<F, EF> for A where
         + Air<SymbolicAirBuilder<F>>
         + for<'b> Air<ConstraintSumcheckFolder<'b, F, F, EF>>
         + for<'b> Air<ConstraintSumcheckFolder<'b, F, EF, EF>>
+        + for<'b> Air<DebugConstraintBuilder<'b, F, EF>>
 {
 }
 

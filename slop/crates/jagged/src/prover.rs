@@ -204,8 +204,7 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
     ) -> Result<
         JaggedPcsProof<GC, C::Config>,
         JaggedProverError<<C::BatchPcsProver as MultilinearPcsProver<GC>>::ProverError>,
-    >
-where {
+    > {
         let num_col_variables = prover_data
             .iter()
             .map(|data| data.column_counts.iter().sum::<usize>())

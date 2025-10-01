@@ -7,11 +7,11 @@ use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
-use sp1_core_executor::{ExecutionRecord, Program};
+use sp1_core_executor::Program;
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::air::{MachineAir, SP1AirBuilder};
 
-use crate::utils::{next_multiple_of_32, zeroed_f_vec};
+use crate::utils::zeroed_f_vec;
 
 /// The number of main trace columns for `AddiChip`.
 pub const NUM_MINIMAL_ADD_COLS: usize = size_of::<MinimalAddCols<u8>>();
@@ -36,7 +36,7 @@ impl<F> BaseAir<F> for MinimalAddChip {
 }
 
 impl<F: PrimeField32> MachineAir<F> for MinimalAddChip {
-    type Record = ExecutionRecord;
+    type Record = Vec<(u32, u32, u32)>;
 
     type Program = Program;
 
@@ -45,19 +45,17 @@ impl<F: PrimeField32> MachineAir<F> for MinimalAddChip {
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
-        let nb_rows =
-            next_multiple_of_32(input.addi_events.len(), input.fixed_log2_rows::<F, _>(self));
-        Some(nb_rows)
+        Some(input.len().next_multiple_of(32))
     }
 
     fn generate_trace(
         &self,
-        input: &ExecutionRecord,
-        _: &mut ExecutionRecord,
+        input: &Vec<(u32, u32, u32)>,
+        _: &mut Vec<(u32, u32, u32)>,
     ) -> RowMajorMatrix<F> {
         // Generate the rows for the trace.
-        let chunk_size = std::cmp::max(input.addi_events.len() / num_cpus::get(), 1);
-        let mut values = zeroed_f_vec(input.addi_events.len() * NUM_MINIMAL_ADD_COLS);
+        let chunk_size = std::cmp::max(input.len() / num_cpus::get(), 1);
+        let mut values = zeroed_f_vec(input.len() * NUM_MINIMAL_ADD_COLS);
 
         values.chunks_mut(chunk_size * NUM_MINIMAL_ADD_COLS).enumerate().par_bridge().for_each(
             |(i, rows)| {
@@ -65,40 +63,21 @@ impl<F: PrimeField32> MachineAir<F> for MinimalAddChip {
                     let idx = i * chunk_size + j;
                     let cols: &mut MinimalAddCols<F> = row.borrow_mut();
 
-                    if idx < input.addi_events.len() {
-                        let event = input.addi_events[idx];
-                        cols.op_a = F::from_canonical_u64(event.0.a);
-                        cols.op_b = F::from_canonical_u64(event.0.b);
-                        cols.op_c = F::from_canonical_u64(event.0.c);
+                    if idx < input.len() {
+                        let event = input[idx];
+                        cols.op_a = F::from_canonical_u32(event.0);
+                        cols.op_b = F::from_canonical_u32(event.1);
+                        cols.op_c = F::from_canonical_u32(event.2);
                     }
                 });
             },
         );
-
-        let padded_row_template = {
-            let mut row = [F::zero(); NUM_MINIMAL_ADD_COLS];
-            let cols: &mut MinimalAddCols<F> = row.as_mut_slice().borrow_mut();
-            cols.op_a = F::one();
-            cols.op_b = F::zero();
-            cols.op_c = F::zero();
-            row
-        };
-
-        debug_assert!(padded_row_template.len() == NUM_MINIMAL_ADD_COLS);
-        for i in input.shift_left_events.len() * NUM_MINIMAL_ADD_COLS..values.len() {
-            values[i] = padded_row_template[i % NUM_MINIMAL_ADD_COLS];
-        }
-
         // Convert the trace to a row major matrix.
         RowMajorMatrix::new(values, NUM_MINIMAL_ADD_COLS)
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
-        if let Some(shape) = shard.shape.as_ref() {
-            shape.included::<F, _>(self)
-        } else {
-            !shard.addi_events.is_empty()
-        }
+        !shard.is_empty()
     }
 }
 
@@ -115,229 +94,253 @@ where
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     #![allow(clippy::print_stdout)]
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::print_stdout)]
 
-//     use std::sync::Arc;
+    use std::sync::Arc;
 
-//     use itertools::Itertools;
-//     use slop_uni_stark::get_symbolic_constraints;
-//     use rand::Rng;
-//     use slop_air::Air;
-//     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
-//     use slop_alloc::CpuBackend;
-//     use slop_basefold::{BasefoldConfig, DefaultBasefoldConfig,
-// };
-//     use slop_matrix::dense::RowMajorMatrixView;
-//     use slop_multilinear::{full_geq, Mle, PaddedMle, Padding, Point, VirtualGeq};
-//     use slop_sumcheck::{partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation};
-//     use sp1_core_executor::{
-//         events::{AluEvent, MemoryReadRecord, MemoryRecordEnum},
-//         ExecutionRecord, ITypeRecord, Instruction, Opcode, Program, DEFAULT_PC_INC,
-//     };
-//     use sp1_hypercube::{
-//         air::MachineAir,
-//         prover::{ZeroCheckPoly, ZerocheckCpuProverData, ZerocheckProverData},
-//         AirOpenedValues, SP1CoreJaggedConfig, Chip, ChipOpenedValues, ConstraintSumcheckFolder,
-//         ShardVerifier, PROOF_MAX_NUM_PVS,
-//     };
+    use itertools::Itertools;
+    use rand::Rng;
+    use slop_air::Air;
+    use slop_algebra::{extension::BinomialExtensionField, AbstractField};
+    use slop_alloc::CpuBackend;
+    use slop_challenger::IopCtx;
+    use slop_matrix::dense::{RowMajorMatrix, RowMajorMatrixView};
+    use slop_multilinear::{full_geq, Mle, PaddedMle, Padding, Point, VirtualGeq};
+    use slop_sumcheck::{partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation};
+    use slop_uni_stark::get_symbolic_constraints;
+    use sp1_hypercube::{
+        air::MachineAir,
+        debug_constraints,
+        prover::{ZeroCheckPoly, ZerocheckCpuProverData, ZerocheckProverData},
+        AirOpenedValues, Chip, ChipOpenedValues, ConstraintSumcheckFolder, SP1CoreJaggedConfig,
+        ShardVerifier, PROOF_MAX_NUM_PVS,
+    };
+    use sp1_primitives::{SP1Field, SP1GlobalContext};
 
-//     use crate::alu::minimal_add::{MinimalAddChip, NUM_MINIMAL_ADD_COLS};
+    use crate::utils::{setup_logger, MinimalAddChip, NUM_MINIMAL_ADD_COLS};
 
-//     type F = sp1_primitives::SP1Field;
-//     type EF = BinomialExtensionField<F, 4>;
+    type F = sp1_primitives::SP1Field;
+    type EF = BinomialExtensionField<F, 4>;
 
-//     #[tokio::test]
-//     async fn test_zerocheck() {
-//         let mut rng = rand::thread_rng();
-//         let air = MinimalAddChip::default();
-//         let num_real_entries = 65;
-//         let num_variables = 7;
+    #[tokio::test]
+    async fn test_zerocheck() {
+        setup_logger();
+        let mut rng = rand::thread_rng();
+        let air = MinimalAddChip::default();
+        let num_real_entries = 65;
+        let num_variables = 7;
 
-//         let mut shard = ExecutionRecord::default();
+        let mut shard = Vec::new();
 
-//         let instructions =
-//             vec![Instruction::new(Opcode::ADDI, 29, 0, 5, false, true); num_real_entries];
-//         let program = Program::new(instructions, 0, 0);
+        for _ in 0..num_real_entries {
+            let operand_1 = rand::thread_rng().gen_range(0..(u16::MAX as u32));
+            let operand_2 = rand::thread_rng().gen_range(0..(u16::MAX as u32));
 
-//         shard.program = Arc::new(program);
+            let result = operand_1.wrapping_add(operand_2) + 1;
 
-//         for i in 0..num_real_entries {
-//             let operand_1 = rand::thread_rng().gen_range(0..(u16::MAX as u32));
-//             let operand_2 = rand::thread_rng().gen_range(0..(u16::MAX as u32));
+            shard.push((result, operand_1, operand_2));
+        }
 
-//             let result = operand_1.wrapping_add(operand_2) + 1;
+        let virtually_padded_trace =
+            MinimalAddChip::generate_trace(&MinimalAddChip, &shard, &mut Vec::new());
 
-//             shard.addi_events.push((
-//                 AluEvent::new(
-//                     (i as u32) * DEFAULT_PC_INC,
-//                     0,
-//                     Opcode::ADDI,
-//                     result,
-//                     operand_1,
-//                     operand_2,
-//                     false,
-//                 ),
-//                 ITypeRecord {
-//                     a: MemoryRecordEnum::Read(MemoryReadRecord {
-//                         value: 0,
-//                         shard: 0,
-//                         timestamp: 0,
-//                         prev_shard: 0,
-//                         prev_timestamp: 0,
-//                     }),
-//                     b: MemoryRecordEnum::Read(MemoryReadRecord {
-//                         value: 0,
-//                         shard: 0,
-//                         timestamp: 0,
-//                         prev_shard: 0,
-//                         prev_timestamp: 0,
-//                     }),
-//                 },
-//             ));
-//         }
+        assert!(<MinimalAddChip as MachineAir<F>>::preprocessed_width(&air) == 0);
 
-//         let virtually_padded_trace = MinimalAddChip::generate_trace(
-//             &MinimalAddChip,
-//             &shard,
-//             &mut ExecutionRecord::default(),
-//         );
+        let alpha = rng.gen::<EF>();
+        let gkr_power = rng.gen::<EF>();
 
-//         assert!(<MinimalAddChip as MachineAir<F>>::preprocessed_width(&air) == 0);
+        let num_constraints = get_symbolic_constraints::<F, _>(&air, 0, PROOF_MAX_NUM_PVS).len();
 
-//         let alpha = rng.gen::<EF>();
-//         let gkr_power = rng.gen::<EF>();
+        let mut alpha_powers = alpha.powers().take(num_constraints).collect::<Vec<_>>();
 
-//         let num_constraints = get_symbolic_constraints::<F, _>(&air, 0, PROOF_MAX_NUM_PVS).len();
+        alpha_powers.reverse();
 
-//         let mut alpha_powers = alpha.powers().take(num_constraints).collect::<Vec<_>>();
+        let gkr_powers = gkr_power.powers().take(NUM_MINIMAL_ADD_COLS).collect::<Vec<_>>();
 
-//         alpha_powers.reverse();
+        let prover_data = ZerocheckCpuProverData::default();
 
-//         let gkr_powers = gkr_power.powers().take(NUM_MINIMAL_ADD_COLS).collect::<Vec<_>>();
+        let main_trace = PaddedMle::new(
+            Some(Arc::new(virtually_padded_trace.clone().into())),
+            num_variables,
+            Padding::Constant((F::zero(), NUM_MINIMAL_ADD_COLS, CpuBackend)),
+        );
 
-//         let prover_data = ZerocheckCpuProverData::default();
+        let virtual_geq =
+            VirtualGeq::new(num_real_entries as u32, F::one(), F::zero(), num_variables);
 
-//         let main_trace = PaddedMle::new(
-//             Some(Arc::new(virtually_padded_trace.clone().into())),
-//             num_variables,
-//             Padding::Constant((F::zero(), NUM_MINIMAL_ADD_COLS, CpuBackend)),
-//         );
+        let air_data = prover_data
+            .round_prover(
+                Arc::new(air),
+                Arc::new(vec![F::zero(); PROOF_MAX_NUM_PVS]),
+                Arc::new(alpha_powers.clone()),
+                Arc::new(gkr_powers.clone()),
+            )
+            .await;
 
-//         let virtual_geq =
-//             VirtualGeq::new(num_real_entries as u32, F::one(), F::zero(), num_variables);
+        let dummy_main = vec![F::zero(); NUM_MINIMAL_ADD_COLS];
 
-//         let air_data = prover_data
-//             .round_prover(
-//                 Arc::new(air),
-//                 Arc::new(vec![F::zero(); PROOF_MAX_NUM_PVS]),
-//                 Arc::new(alpha_powers.clone()),
-//                 Arc::new(gkr_powers.clone()),
-//             )
-//             .await;
+        let mut folder = ConstraintSumcheckFolder {
+            preprocessed: RowMajorMatrixView::new_row(&[]),
+            main: RowMajorMatrixView::new_row(&dummy_main),
+            accumulator: EF::zero(),
+            public_values: &vec![F::zero(); PROOF_MAX_NUM_PVS],
+            constraint_index: 0,
+            powers_of_alpha: &alpha_powers,
+        };
 
-//         let dummy_main = vec![F::zero(); NUM_MINIMAL_ADD_COLS];
+        let air = MinimalAddChip::default();
 
-//         let mut folder = ConstraintSumcheckFolder {
-//             preprocessed: RowMajorMatrixView::new_row(&[]),
-//             main: RowMajorMatrixView::new_row(&dummy_main),
-//             accumulator: EF::zero(),
-//             public_values: &vec![F::zero(); PROOF_MAX_NUM_PVS],
-//             constraint_index: 0,
-//             powers_of_alpha: &alpha_powers,
-//         };
+        air.eval(&mut folder);
+        let padded_row_adjustment = folder.accumulator;
 
-//         let air = MinimalAddChip::default();
+        let zeta = Point::rand(&mut rng, num_variables);
 
-//         air.eval(&mut folder);
-//         let padded_row_adjustment = folder.accumulator;
+        let gkr_openings = main_trace.eval_at(&zeta).await;
 
-//         let zeta = Point::rand(&mut rng, num_variables);
+        let sumcheck_claim = gkr_openings
+            .evaluations()
+            .as_slice()
+            .iter()
+            .zip_eq(gkr_powers.iter())
+            .map(|(a, b)| *a * *b)
+            .sum::<EF>();
 
-//         let gkr_openings = main_trace.eval_at(&zeta).await;
+        let zerocheck_poly = ZeroCheckPoly::<F, F, EF, _, CpuBackend>::new(
+            air_data,
+            zeta.clone(),
+            None,
+            main_trace.clone(),
+            EF::one(),
+            EF::zero(),
+            padded_row_adjustment,
+            virtual_geq,
+        );
 
-//         let sumcheck_claim = gkr_openings
-//             .evaluations()
-//             .as_slice()
-//             .iter()
-//             .zip_eq(gkr_powers.iter())
-//             .map(|(a, b)| *a * *b)
-//             .sum::<EF>();
+        let claims = vec![sumcheck_claim];
+        let t = 1;
+        let lambda = EF::zero();
 
-//         let zerocheck_poly = ZeroCheckPoly::<F, F, EF, _, CpuBackend>::new(
-//             air_data,
-//             zeta.clone(),
-//             None,
-//             main_trace.clone(),
-//             EF::one(),
-//             EF::zero(),
-//             padded_row_adjustment,
-//             virtual_geq,
-//         );
+        let mut challenger = SP1GlobalContext::default_challenger();
 
-//         let claims = vec![sumcheck_claim];
-//         let t = 1;
-//         let lambda = EF::zero();
+        let (proof, column_openings) =
+            reduce_sumcheck_to_evaluation(vec![zerocheck_poly], &mut challenger, claims, t, lambda)
+                .await;
 
-//         let mut challenger = MyBaseFoldConfig::default_challenger(
-//             &MyBaseFoldConfig::default_verifier(1),
-//         );
+        let chip_eval_claim = proof.point_and_eval.1;
+        let chip_eval_point = proof.point_and_eval.0.clone();
 
-//         let (proof, column_openings) =
-//             reduce_sumcheck_to_evaluation(vec![zerocheck_poly], &mut challenger, claims, t,
-// lambda)                 .await;
+        let column_openings = &column_openings[0];
 
-//         let chip_eval_claim = proof.point_and_eval.1;
-//         let chip_eval_point = proof.point_and_eval.0.clone();
+        assert_eq!(column_openings, &main_trace.eval_at(&chip_eval_point).await.to_vec());
 
-//         let column_openings = &column_openings[0];
+        let opening = ChipOpenedValues::<F, EF> {
+            preprocessed: AirOpenedValues { local: vec![] },
+            main: AirOpenedValues { local: column_openings.clone() },
+            local_cumulative_sum: EF::zero(),
+            degree: Point::from_usize(num_real_entries as usize, num_variables as usize + 1),
+        };
 
-//         assert_eq!(column_openings, &main_trace.eval_at(&chip_eval_point).await.to_vec());
+        let openings_batch = column_openings
+            .iter()
+            .zip_eq(gkr_powers.iter())
+            .map(|(opening, power)| *opening * *power)
+            .sum::<EF>();
 
-//         let opening = ChipOpenedValues::<F, EF> {
-//             preprocessed: AirOpenedValues { local: vec![], next: vec![] },
-//             main: AirOpenedValues { local: column_openings.clone(), next: vec![] },
-//             local_cumulative_sum: EF::zero(),
-//             degree: Point::from_usize(num_real_entries as usize, num_variables as usize + 1),
-//         };
+        let public_values = vec![F::zero(); PROOF_MAX_NUM_PVS];
 
-//         let openings_batch = column_openings
-//             .iter()
-//             .zip_eq(gkr_powers.iter())
-//             .map(|(opening, power)| *opening * *power)
-//             .sum::<EF>();
+        let zerocheck_eq_val = Mle::full_lagrange_eval(&zeta, &chip_eval_point);
 
-//         let public_values = vec![F::zero(); PROOF_MAX_NUM_PVS];
+        let mut challenger = SP1GlobalContext::default_challenger();
 
-//         let zerocheck_eq_val = Mle::full_lagrange_eval(&zeta, &chip_eval_point);
+        let padded_row_adjustment =
+            ShardVerifier::<SP1GlobalContext,SP1CoreJaggedConfig, _>::compute_padded_row_adjustment(
+                &Chip::new(MinimalAddChip::default()),
+                alpha,
+                &public_values,
+            );
 
-//         let padded_row_adjustment =
-//             ShardVerifier::<SP1CoreJaggedConfig, _>::compute_padded_row_adjustment(
-//                 &Chip::new(MinimalAddChip::default()),
-//                 alpha,
-//                 &public_values,
-//             );
+        let mut point_extended = chip_eval_point.clone();
+        point_extended.add_dimension(EF::zero());
 
-//         let mut point_extended = chip_eval_point.clone();
-//         point_extended.add_dimension(EF::zero());
+        let geq_val = full_geq(&opening.degree, &point_extended);
 
-//         let geq_val = full_geq(&opening.degree, &point_extended);
+        let eval = ShardVerifier::<SP1GlobalContext, SP1CoreJaggedConfig, _>::eval_constraints(
+            &Chip::new(MinimalAddChip::default()),
+            &opening,
+            alpha,
+            &public_values,
+        );
 
-//         let eval = ShardVerifier::<SP1CoreJaggedConfig, _>::eval_constraints(
-//             &Chip::new(MinimalAddChip::default()),
-//             &opening,
-//             alpha,
-//             &public_values,
-//         );
+        let constraint_eval = eval - padded_row_adjustment * geq_val;
 
-//         let constraint_eval = eval - padded_row_adjustment * geq_val;
+        partially_verify_sumcheck_proof(&proof, &mut challenger, num_variables as usize, 4)
+            .unwrap();
+        assert_eq!(chip_eval_claim, zerocheck_eq_val * (constraint_eval + openings_batch));
+    }
 
-//         let mut challenger = MyBaseFoldConfig::default_challenger(
-//             &MyBaseFoldConfig::default_verifier(1),
-//         );
+    #[tokio::test]
+    async fn test_debug_constraints() {
+        setup_logger();
+        let num_real_entries = 65;
 
-//         partially_verify_sumcheck_proof(&proof, &mut challenger).unwrap();
-//         assert_eq!(chip_eval_claim, zerocheck_eq_val * (constraint_eval + openings_batch));
-//     }
-// }
+        let mut shard = Vec::new();
+
+        for _ in 0..num_real_entries {
+            let operand_1 = rand::thread_rng().gen_range(0..(u16::MAX as u32));
+            let operand_2 = rand::thread_rng().gen_range(0..(u16::MAX as u32));
+
+            let result = operand_1.wrapping_add(operand_2) + 1;
+
+            shard.push((result, operand_1, operand_2));
+        }
+
+        let virtually_padded_trace: RowMajorMatrix<SP1Field> =
+            MinimalAddChip::generate_trace(&MinimalAddChip, &shard, &mut Vec::new());
+
+        let main_trace: Mle<SP1Field> = Mle::from(virtually_padded_trace);
+
+        debug_constraints::<SP1GlobalContext, MinimalAddChip, _>(
+            &Chip::new(MinimalAddChip::default()),
+            None,
+            &main_trace,
+            &[],
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_debug_constraints_failing() {
+        setup_logger();
+        let num_real_entries = 65;
+
+        let mut shard = Vec::new();
+
+        for i in 0..num_real_entries {
+            let operand_1 = rand::thread_rng().gen_range(0..(u16::MAX as u32));
+            let operand_2 = rand::thread_rng().gen_range(0..(u16::MAX as u32));
+
+            let mut result = operand_1.wrapping_add(operand_2) + 1;
+
+            if i == 27 {
+                result += 42;
+            }
+
+            shard.push((result, operand_1, operand_2));
+        }
+
+        let virtually_padded_trace: RowMajorMatrix<SP1Field> =
+            MinimalAddChip::generate_trace(&MinimalAddChip, &shard, &mut Vec::new());
+
+        let main_trace: Mle<SP1Field> = Mle::from(virtually_padded_trace);
+
+        debug_constraints::<SP1GlobalContext, MinimalAddChip, _>(
+            &Chip::new(MinimalAddChip::default()),
+            None,
+            &main_trace,
+            &[],
+        )
+        .await;
+    }
+}

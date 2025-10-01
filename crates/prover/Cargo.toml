@@ -105,6 +105,7 @@ required-features = ["tokio/rt-multi-thread"]
 native-gnark = ["sp1-recursion-gnark-ffi/native"]
 debug = ["sp1-core-machine/debug"]
 bigint-rug = ["sp1-core-machine/bigint-rug"]
+debug-constraints = ["sp1-hypercube/debug-constraints"]
 unsound = []
 
 [lints]

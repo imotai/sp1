@@ -65,6 +65,10 @@ slop-algebra = { workspace = true }
 slop-matrix = { workspace = true }
 tiny-keccak = { workspace = true, features = ["keccak"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+slop-alloc = { workspace = true }
+slop-basefold = { workspace = true }
+slop-multilinear = { workspace = true }
+slop-sumcheck = { workspace = true }
 
 [build-dependencies]
 sp1-hypercube = { workspace = true }
@@ -73,6 +77,8 @@ sp1-primitives = { workspace = true }
 [features]
 debug = []
 bigint-rug = ["sp1-curves/bigint-rug"]
+
+debug-constraints = ["sp1-hypercube/debug-constraints"]
 
 [lib]
 path = "src/lib.rs"

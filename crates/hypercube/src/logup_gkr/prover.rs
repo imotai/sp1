@@ -10,8 +10,8 @@ use slop_algebra::{ExtensionField, Field};
 use slop_alloc::{Backend, CanCopyFromRef, CanCopyIntoRef, CpuBackend, ToHost};
 use slop_challenger::{FieldChallenger, IopCtx};
 use slop_multilinear::{
-    Mle, MleBaseBackend, MleEvaluationBackend, MultilinearPcsChallenger, PartialLagrangeBackend,
-    Point, PointBackend,
+    Mle, MleBaseBackend, MleEvaluationBackend, MultilinearPcsChallenger, PaddedMle,
+    PartialLagrangeBackend, Point, PointBackend,
 };
 use slop_tensor::AddAssignBackend;
 use tracing::Instrument;
@@ -75,7 +75,8 @@ pub trait LogUpGkrProverComponents<GC: IopCtx>: 'static + Send + Sync {
         + PartialLagrangeBackend<GC::EF>
         + PointBackend<GC::EF>
         + AddAssignBackend<GC::EF>
-        + CanCopyIntoRef<Mle<GC::EF, Self::B>, CpuBackend, Output = Mle<GC::EF>>;
+        + CanCopyIntoRef<Mle<GC::EF, Self::B>, CpuBackend, Output = Mle<GC::EF>>
+        + CanCopyIntoRef<PaddedMle<GC::F, Self::B>, CpuBackend, Output = PaddedMle<GC::F>>;
 
     /// TODO
     type CircuitLayer: 'static + Send + Sync;
@@ -179,6 +180,41 @@ impl<GC: IopCtx, GkrComponents: LogUpGkrProverComponents<GC>> LogUpGkrProver<GC>
         let num_interactions =
             chips.iter().map(|chip| chip.sends().len() + chip.receives().len()).sum::<usize>();
         let num_interaction_variables = num_interactions.next_power_of_two().ilog2();
+
+        #[cfg(feature = "debug-constraints")]
+        {
+            use crate::{
+                air::InteractionScope, debug_interactions_with_all_chips, InteractionKind,
+            };
+
+            let mut host_preprocessed_traces = BTreeMap::new();
+
+            for (name, preprocessed_trace) in preprocessed_traces.iter() {
+                let host_preprocessed_trace =
+                    Self::B::copy_to_dst(&CpuBackend, preprocessed_trace).await.unwrap();
+                host_preprocessed_traces.insert(name.clone(), host_preprocessed_trace);
+            }
+
+            let mut host_traces = BTreeMap::new();
+            for (name, trace) in traces.iter() {
+                let host_trace = Self::B::copy_to_dst(&CpuBackend, trace).await.unwrap();
+                host_traces.insert(name.clone(), host_trace);
+            }
+
+            let host_traces = Traces { named_traces: host_traces };
+
+            let host_preprocessed_traces = Traces { named_traces: host_preprocessed_traces };
+
+            debug_interactions_with_all_chips::<GC::F, Self::A>(
+                &chips.iter().cloned().collect::<Vec<_>>(),
+                &host_preprocessed_traces,
+                &host_traces,
+                public_values.clone(),
+                InteractionKind::all_kinds(),
+                InteractionScope::Local,
+            );
+        }
+
         // Run the GKR circuit and get the output.
         let (output, circuit) = self
             .trace_generator

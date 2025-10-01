@@ -4,8 +4,8 @@ use slop_air::AirBuilder;
 use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_uni_stark::SymbolicAirBuilder;
 use sp1_hypercube::{
-    air::SP1AirBuilder, ConstraintSumcheckFolder, GenericVerifierConstraintFolder,
-    InteractionBuilder,
+    air::SP1AirBuilder, ConstraintSumcheckFolder, DebugConstraintBuilder,
+    GenericVerifierConstraintFolder, InteractionBuilder,
 };
 
 use crate::{
@@ -132,6 +132,11 @@ impl<AB: TrivialOperationBuilder, O: SP1Operation<AB>> SP1OperationBuilder<O> fo
 impl<F: Field> TrivialOperationBuilder for InteractionBuilder<F> {}
 
 impl<F: Field> TrivialOperationBuilder for SymbolicAirBuilder<F> {}
+
+impl<F: Field, EF: ExtensionField<F>> TrivialOperationBuilder
+    for DebugConstraintBuilder<'_, F, EF>
+{
+}
 
 impl<
         'a,

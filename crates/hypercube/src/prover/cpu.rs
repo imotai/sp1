@@ -19,9 +19,9 @@ use super::{
     ShardProverComponents, ZerocheckAir, ZerocheckCpuProverData,
 };
 use crate::{
-    air::MachineAir, prover::MachineProverComponents, ConstraintSumcheckFolder, GkrProverImpl,
-    LogupGkrCpuProverComponents, LogupGkrCpuRoundProver, LogupGkrCpuTraceGenerator,
-    SP1CoreJaggedConfig, ShardVerifier,
+    air::MachineAir, debug::DebugConstraintBuilder, prover::MachineProverComponents,
+    ConstraintSumcheckFolder, GkrProverImpl, LogupGkrCpuProverComponents, LogupGkrCpuRoundProver,
+    LogupGkrCpuTraceGenerator, SP1CoreJaggedConfig, ShardVerifier,
 };
 
 /// The components of a CPU shard prover.
@@ -42,6 +42,7 @@ where
         + Air<SymbolicAirBuilder<GC::F>>
         + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::F, GC::EF>>
         + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::EF, GC::EF>>
+        + for<'b> Air<DebugConstraintBuilder<'b, GC::F, GC::EF>>
         + MachineAir<GC::F>,
 {
     type Config = <PcsComponents as JaggedProverComponents<GC>>::Config;
@@ -75,6 +76,7 @@ where
         + Air<SymbolicAirBuilder<GC::F>>
         + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::F, GC::EF>>
         + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::EF, GC::EF>>
+        + for<'b> Air<DebugConstraintBuilder<'b, GC::F, GC::EF>>
         + MachineAir<GC::F>,
 {
     inner: MachineProverBuilder<GC, CpuMachineProverComponents<GC, PcsComponents, A>>,
@@ -89,6 +91,7 @@ where
         + Air<SymbolicAirBuilder<GC::F>>
         + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::F, GC::EF>>
         + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::EF, GC::EF>>
+        + for<'b> Air<DebugConstraintBuilder<'b, GC::F, GC::EF>>
         + MachineAir<GC::F>,
 {
     type Target = MachineProverBuilder<GC, CpuMachineProverComponents<GC, PcsComponents, A>>;
@@ -107,6 +110,7 @@ where
         + Air<SymbolicAirBuilder<GC::F>>
         + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::F, GC::EF>>
         + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::EF, GC::EF>>
+        + for<'b> Air<DebugConstraintBuilder<'b, GC::F, GC::EF>>
         + MachineAir<GC::F>,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
@@ -124,6 +128,7 @@ where
         + Air<SymbolicAirBuilder<GC::F>>
         + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::F, GC::EF>>
         + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::EF, GC::EF>>
+        + for<'b> Air<DebugConstraintBuilder<'b, GC::F, GC::EF>>
         + MachineAir<GC::F>,
 {
     type Program = <A as MachineAir<GC::F>>::Program;

@@ -39,6 +39,7 @@ mod util;
 mod verifier;
 mod word;
 pub use chip::*;
+pub use debug::{debug_constraints, debug_constraints_all_chips, DebugConstraintBuilder};
 pub use folder::*;
 pub use logup_gkr::*;
 pub use lookup::*;

@@ -1,280 +1,272 @@
-// use std::{
-//     borrow::Borrow,
-//     panic::{self, AssertUnwindSafe},
-//     process::exit,
-// };
+use std::{borrow::Borrow, collections::BTreeMap};
 
-// use rayon::iter::ParallelBridge;
-// use rayon::iter::ParallelIterator;
-// use slop_air::{
-//     Air, AirBuilder, AirBuilderWithPublicValues, ExtensionBuilder, PairBuilder,
-//     PermutationAirBuilder,
-// };
-// use slop_algebra::{AbstractField, ExtensionField, Field, PrimeField32};
-// use slop_matrix::{
-//     dense::{RowMajorMatrix, RowMajorMatrixView},
-//     stack::VerticalPair,
-//     Matrix,
-// };
+use rayon::prelude::*;
+use slop_air::{
+    Air, AirBuilder, AirBuilderWithPublicValues, ExtensionBuilder, PairBuilder,
+    PermutationAirBuilder,
+};
+use slop_algebra::{ExtensionField, Field};
+use slop_alloc::{Backend, CanCopyIntoRef, CpuBackend, ToHost};
+use slop_challenger::IopCtx;
+use slop_matrix::{
+    dense::{RowMajorMatrix, RowMajorMatrixView},
+    Matrix,
+};
+use slop_multilinear::{Mle, MleBaseBackend};
 
-// use crate::{
-//     air::{EmptyMessageBuilder, MachineAir, MultiTableAirBuilder},
-//     septic_digest::SepticDigest,
-//     Chip, MachineConfig,
-// };
+use crate::{
+    air::{EmptyMessageBuilder, MachineAir},
+    prover::Traces,
+    Chip,
+};
 
-// /// Checks that the constraints of the given AIR are satisfied, including the permutation trace.
-// ///
-// /// Note that this does not actually verify the proof.
-// #[allow(clippy::too_many_arguments)]
-// pub fn debug_constraints<F: Field, EF: ExtensionField<F>, A>(
-//     chip: &Chip<F, A>,
-//     preprocessed: Option<&RowMajorMatrix<F>>,
-//     main: &RowMajorMatrix<F>,
-//     perm: &RowMajorMatrix<EF>,
-//     perm_challenges: &[EF],
-//     public_values: &[F],
-//     local_cumulative_sum: &EF,
-//     global_cumulative_sum: &SepticDigest<F>,
-// ) where
-//     A: MachineAir<F> + for<'a> Air<DebugConstraintBuilder<'a, F, EF>>,
-// {
-//     assert_eq!(main.height(), perm.height());
-//     let height = main.height();
-//     if height == 0 {
-//         return;
-//     }
+/// Checks that the constraints of the given AIR are satisfied, including the permutation trace.
+///
+/// Note that this does not actually verify the proof.
+#[allow(clippy::too_many_arguments)]
+pub async fn debug_constraints<GC, A, BE>(
+    chip: &Chip<GC::F, A>,
+    preprocessed: Option<&Mle<GC::F, BE>>,
+    main: &Mle<GC::F, BE>,
+    public_values: &[GC::F],
+) -> Vec<(usize, Vec<usize>, Vec<GC::F>)>
+where
+    BE: Backend + CanCopyIntoRef<Mle<GC::F, BE>, CpuBackend, Output = Mle<GC::F, CpuBackend>>,
+    GC: IopCtx,
+    A: MachineAir<GC::F> + for<'a> Air<DebugConstraintBuilder<'a, GC::F, GC::EF>>,
+{
+    let host_main = BE::copy_to_dst(&CpuBackend, main).await.unwrap();
+    let main: RowMajorMatrix<GC::F> = host_main.into_guts().try_into().unwrap();
+    let preprocessed: Option<RowMajorMatrix<GC::F>> = if let Some(pre) = preprocessed {
+        Some(pre.to_host().await.unwrap().into_guts().try_into().unwrap())
+    } else {
+        None
+    };
+    let height = main.height();
+    if height == 0 {
+        return Vec::new();
+    }
 
-//     // Check that constraints are satisfied.
-//     (0..height).par_bridge().for_each(|i| {
-//         let i_next = (i + 1) % height;
+    // Check that constraints are satisfied.
+    let mut failed_rows = (0..height)
+        .par_bridge()
+        .filter_map(|i| {
+            let main_local = main.row_slice(i);
+            let main_local = &(*main_local);
+            let preprocessed_local = if let Some(preprocessed) = preprocessed.as_ref() {
+                let row = preprocessed.row_slice(i);
+                let row: &[_] = (*row).borrow();
+                row.to_vec()
+            } else {
+                Vec::new()
+            };
 
-//         let main_local = main.row_slice(i);
-//         let main_local = &(*main_local);
-//         let main_next = main.row_slice(i_next);
-//         let main_next = &(*main_next);
-//         let preprocessed_local = if let Some(preprocessed) = preprocessed {
-//             let row = preprocessed.row_slice(i);
-//             let row: &[_] = (*row).borrow();
-//             row.to_vec()
-//         } else {
-//             Vec::new()
-//         };
-//         let preprocessed_next = if let Some(preprocessed) = preprocessed {
-//             let row = preprocessed.row_slice(i_next);
-//             let row: &[_] = (*row).borrow();
-//             row.to_vec()
-//         } else {
-//             Vec::new()
-//         };
-//         let perm_local = perm.row_slice(i);
-//         let perm_local = &(*perm_local);
-//         let perm_next = perm.row_slice(i_next);
-//         let perm_next = &(*perm_next);
+            let mut builder = DebugConstraintBuilder {
+                preprocessed: RowMajorMatrixView::new_row(&preprocessed_local),
+                main: RowMajorMatrixView::new_row(main_local),
+                public_values,
+                failing_constraints: Vec::new(),
+                num_constraints_evaluated: 0,
+                phantom: std::marker::PhantomData,
+            };
+            chip.eval(&mut builder);
+            if !builder.failing_constraints.is_empty() {
+                Some((i, builder.failing_constraints, main_local.to_vec()))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
 
-//         let mut builder = DebugConstraintBuilder {
-//             preprocessed: VerticalPair::new(
-//                 RowMajorMatrixView::new_row(&preprocessed_local),
-//                 RowMajorMatrixView::new_row(&preprocessed_local),
-//             ),
-//             main: VerticalPair::new(
-//                 RowMajorMatrixView::new_row(main_local),
-//                 RowMajorMatrixView::new_row(main_next),
-//             ),
-//             perm: VerticalPair::new(
-//                 RowMajorMatrixView::new_row(perm_local),
-//                 RowMajorMatrixView::new_row(perm_next),
-//             ),
-//             perm_challenges,
-//             local_cumulative_sum,
-//             global_cumulative_sum,
-//             is_first_row: F::zero(),
-//             is_last_row: F::zero(),
-//             is_transition: F::one(),
-//             public_values,
-//         };
-//         if i == 0 {
-//             builder.is_first_row = F::one();
-//         }
-//         if i == height - 1 {
-//             builder.is_last_row = F::one();
-//             builder.is_transition = F::zero();
-//         }
-//         let result = catch_unwind_silent(AssertUnwindSafe(|| {
-//             chip.eval(&mut builder);
-//         }));
-//         if result.is_err() {
-//             eprintln!("local: {main_local:?}");
-//             eprintln!("next:  {main_next:?}");
-//             eprintln!("failed at row {} of chip {}", i, chip.name());
-//             exit(1);
-//         }
-//     });
-// }
+    failed_rows.sort_unstable();
 
-// fn catch_unwind_silent<F: FnOnce() -> R + panic::UnwindSafe, R>(f: F) -> std::thread::Result<R> {
-//     let prev_hook = panic::take_hook();
-//     panic::set_hook(Box::new(|_| {}));
-//     let result = panic::catch_unwind(f);
-//     panic::set_hook(prev_hook);
-//     result
-// }
+    failed_rows
+}
 
-// /// Checks that all the interactions between the chips has been satisfied.
-// ///
-// /// Note that this does not actually verify the proof.
-// pub fn debug_cumulative_sums<F: Field, EF: ExtensionField<F>>(perms: &[RowMajorMatrix<EF>]) {
-//     let sum: EF = perms.iter().map(|perm| *perm.row_slice(perm.height() -
-// 1).last().unwrap()).sum();     assert_eq!(sum, EF::zero());
-// }
+/// Checks that the constraints of all the given AIRs are satisfied on the proposed witnesses sent
+/// in `main` and `preprocessed`.
+pub async fn debug_constraints_all_chips<GC, A, BE>(
+    chips: &[Chip<GC::F, A>],
+    preprocessed: &Traces<GC::F, BE>,
+    main: &Traces<GC::F, BE>,
+    public_values: &[GC::F],
+) where
+    BE: Backend + CanCopyIntoRef<Mle<GC::F, BE>, CpuBackend, Output = Mle<GC::F, CpuBackend>>,
+    GC: IopCtx,
+    A: MachineAir<GC::F> + for<'a> Air<DebugConstraintBuilder<'a, GC::F, GC::EF>>,
+    BE: MleBaseBackend<GC::F>,
+{
+    let mut result = BTreeMap::new();
+    for chip in chips.iter() {
+        let preprocessed_trace =
+            preprocessed.get(&chip.air.name()).map(|t| t.inner().as_ref().unwrap().as_ref());
+        let maybe_main_trace = main.get(&chip.air.name()).unwrap().inner().as_ref();
 
-// /// A builder for debugging constraints.
-// pub struct DebugConstraintBuilder<'a, F: Field, EF: ExtensionField<F>> {
-//     pub(crate) preprocessed: VerticalPair<RowMajorMatrixView<'a, F>, RowMajorMatrixView<'a, F>>,
-//     pub(crate) main: VerticalPair<RowMajorMatrixView<'a, F>, RowMajorMatrixView<'a, F>>,
-//     pub(crate) perm: VerticalPair<RowMajorMatrixView<'a, EF>, RowMajorMatrixView<'a, EF>>,
-//     pub(crate) local_cumulative_sum: &'a EF,
-//     pub(crate) is_first_row: F,
-//     pub(crate) is_last_row: F,
-//     pub(crate) is_transition: F,
-//     pub(crate) public_values: &'a [F],
-// }
+        if maybe_main_trace.is_none() {
+            continue;
+        }
+        let main_trace = maybe_main_trace.unwrap().as_ref();
+        let failed_rows = crate::debug_constraints::<GC, A, BE>(
+            chip,
+            preprocessed_trace,
+            main_trace,
+            public_values,
+        )
+        .await;
+        if !failed_rows.is_empty() {
+            result.insert(chip.name(), failed_rows);
+        }
+    }
 
-// impl<F, EF> ExtensionBuilder for DebugConstraintBuilder<'_, F, EF>
-// where
-//     F: Field,
-//     EF: ExtensionField<F>,
-// {
-//     type EF = EF;
-//     type VarEF = EF;
-//     type ExprEF = EF;
+    for (chip_name, failed_rows) in result {
+        if !failed_rows.is_empty() {
+            tracing::error!("======== CONSTRAINTS FAILED ON CHIP '{}' ========", chip_name);
+            tracing::error!("Total failing rows: {}", failed_rows.len());
+            tracing::error!("Printing information for up to three failing rows:");
+        }
 
-//     fn assert_zero_ext<I>(&mut self, x: I)
-//     where
-//         I: Into<Self::ExprEF>,
-//     {
-//         assert_eq!(x.into(), EF::zero(), "constraints must evaluate to zero");
-//     }
-// }
+        for i in 0..3.min(failed_rows.len()) {
+            // Print up to three failing rows.
+            let (row_idx, failing_constraints, row) = &failed_rows[i];
 
-// impl<'a, F, EF> PermutationAirBuilder for DebugConstraintBuilder<'a, F, EF>
-// where
-//     F: Field,
-//     EF: ExtensionField<F>,
-// {
-//     type MP = VerticalPair<RowMajorMatrixView<'a, EF>, RowMajorMatrixView<'a, EF>>;
+            tracing::error!("--------------------------------------------------");
+            tracing::error!("row {} failed", row_idx);
+            tracing::error!("constraint indices failed {:?}", failing_constraints);
+            tracing::error!("row values: {:?}", row);
+            tracing::error!("--------------------------------------------------");
+        }
+        if !failed_rows.is_empty() {
+            tracing::error!("==================================================");
+        }
+    }
+}
 
-//     type RandomVar = EF;
+/// A builder for debugging constraints.
+pub struct DebugConstraintBuilder<'a, F: Field, EF: ExtensionField<F>> {
+    pub(crate) preprocessed: RowMajorMatrixView<'a, F>,
+    pub(crate) main: RowMajorMatrixView<'a, F>,
+    pub(crate) public_values: &'a [F],
+    failing_constraints: Vec<usize>,
+    num_constraints_evaluated: usize,
+    phantom: std::marker::PhantomData<EF>,
+}
 
-//     fn permutation(&self) -> Self::MP {
-//         self.perm
-//     }
+impl<F, EF> ExtensionBuilder for DebugConstraintBuilder<'_, F, EF>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+{
+    type EF = EF;
+    type VarEF = EF;
+    type ExprEF = EF;
 
-//     fn permutation_randomness(&self) -> &[Self::EF] {
-//         self.perm_challenges
-//     }
-// }
+    fn assert_zero_ext<I>(&mut self, _x: I)
+    where
+        I: Into<Self::ExprEF>,
+    {
+        panic!("Extension fields not supported in debug builder, SP1 Hypercube traces are over base field");
+    }
+}
 
-// impl<F, EF> PairBuilder for DebugConstraintBuilder<'_, F, EF>
-// where
-//     F: Field,
-//     EF: ExtensionField<F>,
-// {
-//     fn preprocessed(&self) -> Self::M {
-//         self.preprocessed
-//     }
-// }
+impl<'a, F, EF> PermutationAirBuilder for DebugConstraintBuilder<'a, F, EF>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+{
+    type MP = RowMajorMatrixView<'a, EF>;
 
-// impl<F, EF> DebugConstraintBuilder<'_, F, EF>
-// where
-//     F: Field,
-//     EF: ExtensionField<F>,
-// {
-//     #[allow(clippy::unused_self)]
-//     #[inline]
-//     fn debug_constraint(&self, x: F, y: F) {
-//         if x != y {
-//             let backtrace = std::backtrace::Backtrace::force_capture();
-//             eprintln!("constraint failed: {x:?} != {y:?}\n{backtrace}");
-//             panic!();
-//         }
-//     }
-// }
+    type RandomVar = EF;
 
-// impl<'a, F, EF> AirBuilder for DebugConstraintBuilder<'a, F, EF>
-// where
-//     F: Field,
-//     EF: ExtensionField<F>,
-// {
-//     type F = F;
-//     type Expr = F;
-//     type Var = F;
-//     type M = VerticalPair<RowMajorMatrixView<'a, F>, RowMajorMatrixView<'a, F>>;
+    fn permutation(&self) -> Self::MP {
+        unimplemented!()
+    }
 
-//     fn is_first_row(&self) -> Self::Expr {
-//         self.is_first_row
-//     }
+    fn permutation_randomness(&self) -> &[Self::EF] {
+        unimplemented!()
+    }
+}
 
-//     fn is_last_row(&self) -> Self::Expr {
-//         self.is_last_row
-//     }
+impl<F, EF> PairBuilder for DebugConstraintBuilder<'_, F, EF>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+{
+    fn preprocessed(&self) -> Self::M {
+        self.preprocessed
+    }
+}
 
-//     fn is_transition_window(&self, size: usize) -> Self::Expr {
-//         if size == 2 {
-//             self.is_transition
-//         } else {
-//             panic!("only supports a window size of 2")
-//         }
-//     }
+impl<F, EF> DebugConstraintBuilder<'_, F, EF>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+{
+    #[allow(clippy::unused_self)]
+    #[inline]
+    fn debug_constraint(&mut self, x: F, y: F) {
+        if x != y {
+            self.failing_constraints.push(self.num_constraints_evaluated);
+        }
+        self.num_constraints_evaluated += 1;
+    }
+}
 
-//     fn main(&self) -> Self::M {
-//         self.main
-//     }
+impl<'a, F, EF> AirBuilder for DebugConstraintBuilder<'a, F, EF>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+{
+    type F = F;
+    type Expr = F;
+    type Var = F;
+    type M = RowMajorMatrixView<'a, F>;
 
-//     fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
-//         self.debug_constraint(x.into(), F::zero());
-//     }
+    fn is_first_row(&self) -> Self::Expr {
+        unimplemented!()
+    }
 
-//     fn assert_one<I: Into<Self::Expr>>(&mut self, x: I) {
-//         self.debug_constraint(x.into(), F::one());
-//     }
+    fn is_last_row(&self) -> Self::Expr {
+        unimplemented!()
+    }
 
-//     fn assert_eq<I1: Into<Self::Expr>, I2: Into<Self::Expr>>(&mut self, x: I1, y: I2) {
-//         self.debug_constraint(x.into(), y.into());
-//     }
+    fn is_transition_window(&self, _size: usize) -> Self::Expr {
+        unimplemented!()
+    }
 
-//     /// Assert that `x` is a boolean, i.e. either 0 or 1.
-//     fn assert_bool<I: Into<Self::Expr>>(&mut self, x: I) {
-//         let x = x.into();
-//         if x != F::zero() && x != F::one() {
-//             let backtrace = std::backtrace::Backtrace::force_capture();
-//             eprintln!("constraint failed: {x:?} is not a bool\n{backtrace}");
-//             panic!();
-//         }
-//     }
-// }
+    fn main(&self) -> Self::M {
+        self.main
+    }
 
-// impl<'a, F, EF> MultiTableAirBuilder<'a> for DebugConstraintBuilder<'a, F, EF>
-// where
-//     F: Field,
-//     EF: ExtensionField<F>,
-// {
-//     type LocalSum = EF;
+    fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
+        self.debug_constraint(x.into(), F::zero());
+    }
 
-//     fn local_cumulative_sum(&self) -> &'a Self::LocalSum {
-//         self.local_cumulative_sum
-//     }
-// }
+    fn assert_one<I: Into<Self::Expr>>(&mut self, x: I) {
+        self.debug_constraint(x.into(), F::one());
+    }
 
-// impl<F: Field, EF: ExtensionField<F>> EmptyMessageBuilder for DebugConstraintBuilder<'_, F, EF>
-// {}
+    fn assert_eq<I1: Into<Self::Expr>, I2: Into<Self::Expr>>(&mut self, x: I1, y: I2) {
+        self.debug_constraint(x.into(), y.into());
+    }
 
-// impl<F: Field, EF: ExtensionField<F>> AirBuilderWithPublicValues
-//     for DebugConstraintBuilder<'_, F, EF>
-// {
-//     type PublicVar = F;
+    /// Assert that `x` is a boolean, i.e. either 0 or 1.
+    fn assert_bool<I: Into<Self::Expr>>(&mut self, x: I) {
+        let x = x.into();
+        if x != F::zero() && x != F::one() {
+            self.failing_constraints.push(self.num_constraints_evaluated);
+        }
+        self.num_constraints_evaluated += 1;
+    }
+}
 
-//     fn public_values(&self) -> &[Self::PublicVar] {
-//         self.public_values
-//     }
-// }
+impl<F: Field, EF: ExtensionField<F>> EmptyMessageBuilder for DebugConstraintBuilder<'_, F, EF> {}
+
+impl<F: Field, EF: ExtensionField<F>> AirBuilderWithPublicValues
+    for DebugConstraintBuilder<'_, F, EF>
+{
+    type PublicVar = F;
+
+    fn public_values(&self) -> &[Self::PublicVar] {
+        self.public_values
+    }
+}

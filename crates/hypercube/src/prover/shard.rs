@@ -11,13 +11,13 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
 use slop_algebra::{AbstractField, Field};
-use slop_alloc::{Backend, Buffer, CanCopyFrom, CanCopyFromRef, CpuBackend};
+use slop_alloc::{Backend, Buffer, CanCopyFrom, CanCopyFromRef, CanCopyIntoRef, CpuBackend};
 use slop_challenger::{CanObserve, FieldChallenger, IopCtx};
 use slop_commit::Rounds;
 use slop_jagged::{JaggedBackend, JaggedProver, JaggedProverComponents, JaggedProverData};
 use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{
-    Evaluations, HostEvaluationBackend, MleEval, Point, PointBackend, VirtualGeq,
+    Evaluations, HostEvaluationBackend, Mle, MleEval, PaddedMle, Point, PointBackend, VirtualGeq,
 };
 use slop_sumcheck::{reduce_sumcheck_to_evaluation, PartialSumcheckProof};
 use slop_tensor::Tensor;
@@ -125,7 +125,9 @@ pub trait ShardProverComponents<GC: IopCtx>: 'static + Send + Sync + Sized {
         + HostEvaluationBackend<GC::F, GC::EF>
         + HostEvaluationBackend<GC::F, GC::F>
         + HostEvaluationBackend<GC::EF, GC::EF>
-        + CanCopyFrom<Buffer<GC::EF>, CpuBackend, Output = Buffer<GC::EF, Self::B>>;
+        + CanCopyFrom<Buffer<GC::EF>, CpuBackend, Output = Buffer<GC::EF, Self::B>>
+        + CanCopyIntoRef<Mle<GC::F, Self::B>, CpuBackend, Output = Mle<GC::F>>
+        + CanCopyIntoRef<PaddedMle<GC::F, Self::B>, CpuBackend, Output = PaddedMle<GC::F>>;
 
     /// The machine configuration for which this prover can make proofs for.
     type Config: MachineConfig<GC>;
@@ -699,6 +701,17 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
         let batching_challenge = challenger.sample_ext_element::<GC::EF>();
         // Get the challenge for batching the evaluations from the GKR proof.
         let gkr_opening_batch_challenge = challenger.sample_ext_element::<GC::EF>();
+
+        #[cfg(feature = "debug-constraints")]
+        {
+            crate::debug::debug_constraints_all_chips::<GC, _, _>(
+                &shard_chips.iter().cloned().collect::<Vec<_>>(),
+                &pk.preprocessed_data.preprocessed_traces,
+                &traces,
+                &public_values,
+            )
+            .await;
+        }
 
         // Generate the zerocheck proof.
         let (shard_open_values, zerocheck_partial_sumcheck_proof) = self

@@ -29,7 +29,7 @@ impl<Challenger: Clone + Send + Sync, A: Send + Sync> FromChallenger<Challenger,
 pub trait IopCtx:
     Clone + 'static + Send + Sync + Serialize + for<'de> Deserialize<'de> + Debug + Default
 {
-    type F: Field;
+    type F: Field + Ord;
     type EF: ExtensionField<Self::F>;
     type Digest: 'static
         + Copy
