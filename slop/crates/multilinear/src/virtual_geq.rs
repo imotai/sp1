@@ -72,19 +72,15 @@ impl<F: Field> VirtualGeq<F> {
         }
     }
 
-    /// "Index into" the virtual polynomial. The vector is length 2^num_vars, but we allow indexing
-    /// into the 2^{num_vars} entry, to represent a geq polynomial where the threshold is set its
-    /// maximum possible value.
+    /// "Index into" the virtual polynomial. The vector is length 2^num_vars.
     pub fn eval_at_usize(&self, index: usize) -> F {
-        assert!(index <= (1 << self.num_vars));
+        assert!(index < (1 << self.num_vars));
         if index < self.threshold as usize {
             F::zero()
         } else if index == self.threshold as usize {
             self.eq_coefficient + self.geq_coefficient
-        } else if index < (1 << self.num_vars) {
-            self.geq_coefficient
         } else {
-            F::zero()
+            self.geq_coefficient
         }
     }
 }
