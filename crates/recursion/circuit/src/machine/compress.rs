@@ -9,7 +9,7 @@ use itertools::Itertools;
 
 use slop_air::Air;
 
-use slop_algebra::AbstractField;
+use slop_algebra::{AbstractField, PrimeField32};
 use slop_challenger::IopCtx;
 
 use serde::{Deserialize, Serialize};
@@ -20,7 +20,7 @@ use sp1_primitives::{SP1Field, SP1GlobalContext};
 use sp1_recursion_executor::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS};
 
 use sp1_hypercube::{
-    air::{MachineAir, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
+    air::{MachineAir, ShardRange, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
     MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE,
 };
 
@@ -66,19 +66,22 @@ pub struct SP1ShapedWitnessValues<GC: IopCtx, SC: MachineConfig<GC>> {
     pub is_complete: bool,
 }
 
-// GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
-// A: MachineAir<SP1Field>,
-// SC: SP1FieldConfigVariable<C> + MachineConfig<GC>,
-// C: CircuitConfig,
-// JC: RecursiveJaggedConfig<
-//     F = SP1Field,
-//     EF = SP1ExtensionField,
-//     Circuit = C,
-//     Commitment = SC::DigestVariable,
-//     Challenger = SC::FriChallengerVariable,
-//     BatchPcsProof = RecursiveBasefoldProof<RecursiveBasefoldConfigImpl<C, SC>>,
-//     BatchPcsVerifier = RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
-// >,
+impl<GC: IopCtx, SC: MachineConfig<GC>> SP1ShapedWitnessValues<GC, SC> {
+    pub fn range(&self) -> ShardRange
+    where
+        GC::F: PrimeField32,
+    {
+        let start_pv: &RecursionPublicValues<GC::F> =
+            self.vks_and_proofs[0].1.public_values.as_slice().borrow();
+        let end_pv: &RecursionPublicValues<GC::F> =
+            self.vks_and_proofs[self.vks_and_proofs.len() - 1].1.public_values.as_slice().borrow();
+
+        let start = start_pv.range().start();
+        let end = end_pv.range().end();
+
+        (start..end).into()
+    }
+}
 
 impl<C, SC, A> SP1CompressVerifier<C, SC, A>
 where
@@ -129,6 +132,7 @@ where
             array::from_fn(|_| array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() }));
         let mut deferred_proofs_digest: [Felt<_>; POSEIDON_NUM_WORDS] =
             array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
+        let mut deferred_proof_index: Felt<_> = unsafe { MaybeUninit::zeroed().assume_init() };
         let mut reconstruct_deferred_digest: [Felt<_>; POSEIDON_NUM_WORDS] =
             core::array::from_fn(|_| unsafe { MaybeUninit::zeroed().assume_init() });
         let mut global_cumulative_sums = Vec::new();
@@ -224,6 +228,11 @@ where
                     current_public_values.prev_deferred_proofs_digest;
                 deferred_proofs_digest = current_public_values.prev_deferred_proofs_digest;
 
+                // Initialize the deferred proof index.
+                compress_public_values.prev_deferred_proof =
+                    current_public_values.prev_deferred_proof;
+                deferred_proof_index = current_public_values.prev_deferred_proof;
+
                 // Initiallize start pc.
                 compress_public_values.pc_start = current_public_values.pc_start;
                 pc = current_public_values.pc_start;
@@ -302,6 +311,10 @@ where
                 builder.assert_felt_eq(*limb, *current_limb);
             }
             deferred_proofs_digest = current_public_values.deferred_proofs_digest;
+
+            // Assert that the `prev_deferred_proof` is equal to the current one, then update.
+            builder.assert_felt_eq(deferred_proof_index, current_public_values.prev_deferred_proof);
+            deferred_proof_index = current_public_values.deferred_proof;
 
             // Assert that the start pc is equal to the current pc, then update.
             for (limb, current_limb) in pc.iter().zip(current_public_values.pc_start.iter()) {
@@ -418,6 +431,8 @@ where
         compress_public_values.last_finalize_page_idx = finalize_page_idx;
         // Set the start reconstruct deferred digest to be the last reconstruct deferred digest.
         compress_public_values.end_reconstruct_deferred_digest = reconstruct_deferred_digest;
+        // Set the deferred proof index to be the last deferred proof index.
+        compress_public_values.deferred_proof = deferred_proof_index;
         // Set sp1_vk digest to the one from the proof values.
         compress_public_values.sp1_vk_digest = sp1_vk_digest;
         // Reflect the vk root.

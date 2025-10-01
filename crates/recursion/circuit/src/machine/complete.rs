@@ -37,6 +37,7 @@ pub(crate) fn assert_complete<C: Config>(
         commit_syscall,
         prev_commit_deferred_syscall,
         commit_deferred_syscall,
+        prev_deferred_proof,
         ..
     } = public_values;
 
@@ -121,6 +122,8 @@ pub(crate) fn assert_complete<C: Config>(
     {
         builder.assert_felt_eq(is_complete * (*end_digest - *deferred_digest), SP1Field::zero());
     }
+    // The initial deferred proof index should be equal to zero
+    builder.assert_felt_eq(is_complete * *prev_deferred_proof, SP1Field::zero());
 
     // Assert that the starting `prev_exit_code` is equal to 0.
     builder.assert_felt_eq(is_complete * *prev_exit_code, SP1Field::zero());

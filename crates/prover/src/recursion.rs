@@ -871,6 +871,7 @@ pub(crate) fn dummy_deferred_input<C: RecursionProverComponents>(
         sp1_vk_digest: [SP1Field::zero(); DIGEST_SIZE],
         end_pc: [SP1Field::zero(); 3],
         proof_nonce: [SP1Field::zero(); PROOF_NONCE_NUM_WORDS],
+        deferred_proof_index: SP1Field::zero(),
     }
 }
 

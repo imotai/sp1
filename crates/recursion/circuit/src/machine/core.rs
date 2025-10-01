@@ -5,16 +5,16 @@ use std::{
 
 use itertools::Itertools;
 use slop_air::Air;
-use slop_algebra::AbstractField;
+use slop_algebra::{AbstractField, PrimeField32};
 use slop_challenger::IopCtx;
 use sp1_primitives::{SP1Field, SP1GlobalContext};
 
 use serde::{Deserialize, Serialize};
 use sp1_core_machine::riscv::RiscvAir;
 
-use sp1_hypercube::air::PublicValues;
+use sp1_hypercube::air::{PublicValues, SP1CorePublicValues};
 
-use sp1_hypercube::{MachineConfig, MachineVerifyingKey, ShardProof};
+use sp1_hypercube::{air::ShardRange, MachineConfig, MachineVerifyingKey, ShardProof};
 
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
@@ -35,6 +35,7 @@ pub struct SP1RecursionWitnessVariable<C: CircuitConfig, SC: SP1FieldConfigVaria
     pub vk: MachineVerifyingKeyVariable<C, SC>,
     pub shard_proofs: Vec<ShardProofVariable<C, SC>>,
     pub reconstruct_deferred_digest: [Felt<SP1Field>; DIGEST_SIZE],
+    pub num_deferred_proofs: Felt<SP1Field>,
     pub is_complete: Felt<SP1Field>,
     pub vk_root: [Felt<SP1Field>; DIGEST_SIZE],
 }
@@ -49,6 +50,27 @@ pub struct SP1NormalizeWitnessValues<GC: IopCtx, SC: MachineConfig<GC>> {
     pub is_complete: bool,
     pub vk_root: [GC::F; DIGEST_SIZE],
     pub reconstruct_deferred_digest: [GC::F; 8],
+    pub num_deferred_proofs: GC::F,
+}
+
+impl<GC: IopCtx, SC: MachineConfig<GC>> SP1NormalizeWitnessValues<GC, SC> {
+    pub fn range(&self) -> ShardRange
+    where
+        GC::F: PrimeField32,
+    {
+        let start_pv: &SP1CorePublicValues<GC::F> =
+            self.shard_proofs[0].public_values.as_slice().borrow();
+        let end_pv: &SP1CorePublicValues<GC::F> =
+            self.shard_proofs[self.shard_proofs.len() - 1].public_values.as_slice().borrow();
+
+        let start = start_pv.range().start();
+        let end = end_pv.range().end();
+
+        let mut range: ShardRange = (start..end).into();
+        let num_deferred_proofs = self.num_deferred_proofs.as_canonical_u32() as u64;
+        range.deferred_proof_range = (num_deferred_proofs, num_deferred_proofs);
+        range
+    }
 }
 
 /// A program for recursively verifying a batch of SP1 proofs.
@@ -89,6 +111,7 @@ where
             is_complete,
             vk_root,
             reconstruct_deferred_digest,
+            num_deferred_proofs,
         } = input;
 
         // Assert that the number of proofs is one.
@@ -164,6 +187,8 @@ where
             recursion_public_values.prev_deferred_proofs_digest =
                 public_values.prev_deferred_proofs_digest;
             recursion_public_values.deferred_proofs_digest = public_values.deferred_proofs_digest;
+            recursion_public_values.prev_deferred_proof = num_deferred_proofs;
+            recursion_public_values.deferred_proof = num_deferred_proofs;
             recursion_public_values.pc_start = public_values.pc_start;
             recursion_public_values.next_pc = public_values.next_pc;
             recursion_public_values.initial_timestamp = public_values.initial_timestamp;

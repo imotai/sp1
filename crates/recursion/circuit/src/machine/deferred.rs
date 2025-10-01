@@ -11,9 +11,9 @@ use crate::machine::{
     SP1MerkleProofWitnessVariable,
 };
 use slop_air::Air;
-use slop_algebra::AbstractField;
+use slop_algebra::{AbstractField, PrimeField32};
 use sp1_hypercube::{
-    air::{MachineAir, POSEIDON_NUM_WORDS, PROOF_NONCE_NUM_WORDS},
+    air::{MachineAir, ShardRange, POSEIDON_NUM_WORDS, PROOF_NONCE_NUM_WORDS},
     septic_curve::SepticCurve,
     septic_digest::SepticDigest,
     MachineConfig, MachineVerifyingKey, ShardProof,
@@ -56,6 +56,28 @@ pub struct SP1DeferredWitnessValues<
     pub sp1_vk_digest: [GC::F; DIGEST_SIZE],
     pub end_pc: [GC::F; 3],
     pub proof_nonce: [GC::F; PROOF_NONCE_NUM_WORDS],
+    pub deferred_proof_index: GC::F,
+}
+
+impl<GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + FieldHasher, SC: MachineConfig<GC>>
+    SP1DeferredWitnessValues<GC, SC>
+{
+    /// The deferred proof range.
+    ///
+    /// The deferred proofs are put at the "start" and assigned initial and final timestamp equal to
+    /// `1`. The rest of the range values are set to zero.
+    pub fn range(&self) -> ShardRange {
+        let prev_deferred_proof = self.deferred_proof_index.as_canonical_u32() as u64;
+        let deferred_proof = prev_deferred_proof + self.vks_and_proofs.len() as u64;
+        ShardRange {
+            timestamp_range: (1, 1),
+            initialized_address_range: (0, 0),
+            finalized_address_range: (0, 0),
+            initialized_page_index_range: (0, 0),
+            finalized_page_index_range: (0, 0),
+            deferred_proof_range: (prev_deferred_proof, deferred_proof),
+        }
+    }
 }
 
 #[allow(clippy::type_complexity)]
@@ -69,6 +91,7 @@ pub struct SP1DeferredWitnessVariable<
     pub sp1_vk_digest: [Felt<SP1Field>; DIGEST_SIZE],
     pub end_pc: [Felt<SP1Field>; 3],
     pub proof_nonce: [Felt<SP1Field>; PROOF_NONCE_NUM_WORDS],
+    pub deferred_proof_index: Felt<SP1Field>,
 }
 
 impl<GC, C, A> SP1DeferredVerifier<GC, C, A>
@@ -105,6 +128,7 @@ where
             sp1_vk_digest,
             end_pc,
             proof_nonce,
+            deferred_proof_index,
         } = input;
 
         // First, verify the merkle tree proofs.
@@ -124,6 +148,9 @@ where
         // Initialize the consistency check variable.
         let mut reconstruct_deferred_digest: [Felt<SP1Field>; POSEIDON_NUM_WORDS] =
             start_reconstruct_deferred_digest;
+
+        // Save the number of deferred proofs before consuming the vector.
+        let num_deferred_proofs = SP1Field::from_canonical_usize(vks_and_proofs.len());
 
         for (vk, shard_proof) in vks_and_proofs {
             // Prepare a challenger.
@@ -216,6 +243,10 @@ where
         deferred_public_values.commit_deferred_syscall = zero;
         // Assign the deferred proof digests.
         deferred_public_values.end_reconstruct_deferred_digest = reconstruct_deferred_digest;
+        // Set the deferred proof index.
+        deferred_public_values.prev_deferred_proof = deferred_proof_index;
+        deferred_public_values.deferred_proof =
+            builder.eval(deferred_proof_index + num_deferred_proofs);
         // Set the is_complete flag.
         deferred_public_values.is_complete = zero;
         deferred_public_values.proof_nonce = proof_nonce;

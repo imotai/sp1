@@ -121,6 +121,7 @@ impl SP1NormalizeInputShape {
             is_complete: false,
             vk_root: [SP1Field::zero(); DIGEST_SIZE],
             reconstruct_deferred_digest: [SP1Field::zero(); 8],
+            num_deferred_proofs: SP1Field::zero(),
         }
     }
 }

@@ -93,12 +93,14 @@ impl Witnessable<InnerConfig> for SP1NormalizeWitnessValues<SP1GlobalContext, SP
         let reconstruct_deferred_digest = self.reconstruct_deferred_digest.read(builder);
         let is_complete = InnerVal::from_bool(self.is_complete).read(builder);
         let vk_root = self.vk_root.read(builder);
+        let num_deferred_proofs = self.num_deferred_proofs.read(builder);
         SP1RecursionWitnessVariable {
             vk,
             shard_proofs,
             is_complete,
             reconstruct_deferred_digest,
             vk_root,
+            num_deferred_proofs,
         }
     }
 
@@ -108,6 +110,7 @@ impl Witnessable<InnerConfig> for SP1NormalizeWitnessValues<SP1GlobalContext, SP
         self.reconstruct_deferred_digest.write(witness);
         self.is_complete.write(witness);
         self.vk_root.write(witness);
+        self.num_deferred_proofs.write(witness);
     }
 }
 
@@ -150,6 +153,7 @@ where
         let sp1_vk_digest = self.sp1_vk_digest.read(builder);
         let end_pc = self.end_pc.read(builder);
         let proof_nonce = self.proof_nonce.read(builder);
+        let deferred_proof_index = self.deferred_proof_index.read(builder);
 
         SP1DeferredWitnessVariable {
             vks_and_proofs,
@@ -158,6 +162,7 @@ where
             sp1_vk_digest,
             end_pc,
             proof_nonce,
+            deferred_proof_index,
         }
     }
 
@@ -168,6 +173,7 @@ where
         self.sp1_vk_digest.write(witness);
         self.end_pc.write(witness);
         self.proof_nonce.write(witness);
+        self.deferred_proof_index.write(witness);
     }
 }
 

@@ -1,5 +1,8 @@
 use core::{fmt::Debug, mem::size_of};
-use std::borrow::{Borrow, BorrowMut};
+use std::{
+    borrow::{Borrow, BorrowMut},
+    ops::Range,
+};
 
 use deepsize2::DeepSizeOf;
 use itertools::Itertools;
@@ -162,6 +165,8 @@ impl PublicValues<u32, u64, u64, u32> {
     }
 
     /// Get the range of the shard.
+    ///
+    /// TODO: deprecate this once recursion is fully streaming.
     #[must_use]
     pub fn range(&self) -> ShardRange {
         ShardRange {
@@ -173,6 +178,7 @@ impl PublicValues<u32, u64, u64, u32> {
                 self.previous_finalize_page_idx,
                 self.last_finalize_page_idx,
             ),
+            deferred_proof_range: (0, 0),
         }
     }
 
@@ -276,13 +282,16 @@ impl PublicValues<u32, u64, u64, u32> {
 /// The representation of the timestamp is given in big endian by bit decomposition of bits
 /// (16, 8, 8, 16)
 #[inline]
-fn timestamp_from_limbs<F: PrimeField32>(limbs: &[F; 4]) -> u64 {
+pub fn timestamp_from_limbs<F: PrimeField32>(limbs: &[F; 4]) -> u64 {
     let mut timestamp = (limbs[0].as_canonical_u32() as u64) << 32;
     timestamp += (limbs[1].as_canonical_u32() as u64) << 24;
     timestamp += (limbs[2].as_canonical_u32() as u64) << 16;
     timestamp += limbs[3].as_canonical_u32() as u64;
     timestamp
 }
+
+/// A type alias for the public values of the SP1 core proof.
+pub type SP1CorePublicValues<F> = PublicValues<[F; 4], [F; 3], [F; 4], F>;
 
 impl<F: PrimeField32> PublicValues<[F; 4], [F; 3], [F; 4], F> {
     /// Returns the commit digest as a vector of little-endian bytes.
@@ -377,6 +386,7 @@ impl<F: PrimeField32> PublicValues<[F; 4], [F; 3], [F; 4], F> {
             (self.previous_init_page_idx(), self.last_init_page_idx());
         let finalized_page_index_range =
             (self.previous_finalize_page_idx(), self.last_finalize_page_idx());
+        let deferred_proof_range = (0, 0);
 
         ShardRange {
             timestamp_range,
@@ -384,6 +394,7 @@ impl<F: PrimeField32> PublicValues<[F; 4], [F; 3], [F; 4], F> {
             finalized_address_range,
             initialized_page_index_range,
             finalized_page_index_range,
+            deferred_proof_range,
         }
     }
 }
@@ -613,6 +624,44 @@ impl<F: AbstractField> From<PublicValues<u32, u64, u64, u32>>
     }
 }
 
+/// A shard boundary is a single shard that is being proven.
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
+#[repr(C)]
+pub struct ShardBoundary {
+    /// The timestamp.
+    pub timestamp: u64,
+    /// The initialized address.
+    pub initialized_address: u64,
+    /// The finalized address.
+    pub finalized_address: u64,
+    /// The initialized page index.
+    pub initialized_page_index: u64,
+    /// The finalized page index.
+    pub finalized_page_index: u64,
+    /// The deferred proof index
+    pub deferred_proof: u64,
+}
+
+impl ShardBoundary {
+    /// Returns the initial shard boundary.
+    ///
+    /// The initial shard boundary has timestamp set to 1, the other values are set to 0.
+    #[inline]
+    #[must_use]
+    pub fn initial() -> Self {
+        Self {
+            timestamp: 1,
+            initialized_address: 0,
+            finalized_address: 0,
+            initialized_page_index: 0,
+            finalized_page_index: 0,
+            deferred_proof: 0,
+        }
+    }
+}
+
 /// The range of the shard with respect to the program execution ordering.
 #[derive(
     Serialize, Deserialize, Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord, Hash,
@@ -629,6 +678,60 @@ pub struct ShardRange {
     pub initialized_page_index_range: (u64, u64),
     /// The finalized page index range of the shard
     pub finalized_page_index_range: (u64, u64),
+    /// The deferred proof index range of the shard
+    pub deferred_proof_range: (u64, u64),
+}
+
+impl From<Range<ShardBoundary>> for ShardRange {
+    fn from(value: Range<ShardBoundary>) -> Self {
+        Self {
+            timestamp_range: (value.start.timestamp, value.end.timestamp),
+            initialized_address_range: (
+                value.start.initialized_address,
+                value.end.initialized_address,
+            ),
+            finalized_address_range: (value.start.finalized_address, value.end.finalized_address),
+            initialized_page_index_range: (
+                value.start.initialized_page_index,
+                value.end.initialized_page_index,
+            ),
+            finalized_page_index_range: (
+                value.start.finalized_page_index,
+                value.end.finalized_page_index,
+            ),
+            deferred_proof_range: (value.start.deferred_proof, value.end.deferred_proof),
+        }
+    }
+}
+
+impl ShardRange {
+    /// Returns the start boundary of the shard.
+    #[must_use]
+    #[inline]
+    pub fn start(&self) -> ShardBoundary {
+        ShardBoundary {
+            timestamp: self.timestamp_range.0,
+            initialized_address: self.initialized_address_range.0,
+            finalized_address: self.finalized_address_range.0,
+            initialized_page_index: self.initialized_page_index_range.0,
+            finalized_page_index: self.finalized_page_index_range.0,
+            deferred_proof: self.deferred_proof_range.0,
+        }
+    }
+
+    /// Returns the end boundary of the shard.
+    #[must_use]
+    #[inline]
+    pub fn end(&self) -> ShardBoundary {
+        ShardBoundary {
+            timestamp: self.timestamp_range.1,
+            initialized_address: self.initialized_address_range.1,
+            finalized_address: self.finalized_address_range.1,
+            initialized_page_index: self.initialized_page_index_range.1,
+            finalized_page_index: self.finalized_page_index_range.1,
+            deferred_proof: self.deferred_proof_range.1,
+        }
+    }
 }
 
 impl core::fmt::Display for ShardRange {

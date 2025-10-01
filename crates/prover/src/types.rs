@@ -6,7 +6,9 @@ use slop_algebra::{AbstractField, PrimeField, PrimeField32};
 use slop_bn254::Bn254Fr;
 use slop_challenger::IopCtx;
 use sp1_core_machine::io::SP1Stdin;
-use sp1_hypercube::{ChipDimensions, MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE};
+use sp1_hypercube::{
+    air::ShardRange, ChipDimensions, MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE,
+};
 use sp1_primitives::{io::SP1PublicValues, poseidon2_hash, SP1Field, SP1GlobalContext};
 use sp1_recursion_circuit::{
     machine::{
@@ -238,4 +240,20 @@ pub enum SP1CircuitWitness {
     Compress(SP1ShapedWitnessValues<SP1GlobalContext, InnerSC>),
     Shrink(SP1CompressWithVKeyWitnessValues<InnerSC>),
     Wrap(SP1CompressWithVKeyWitnessValues<InnerSC>),
+}
+
+impl SP1CircuitWitness {
+    pub fn range(&self) -> ShardRange {
+        match self {
+            SP1CircuitWitness::Core(input) => input.range(),
+            SP1CircuitWitness::Deferred(input) => input.range(),
+            SP1CircuitWitness::Compress(input) => input.range(),
+            SP1CircuitWitness::Shrink(_) => {
+                unimplemented!("Shrink witness does not need to have a range")
+            }
+            SP1CircuitWitness::Wrap(_) => {
+                unimplemented!("Wrap witness does not need to have a range")
+            }
+        }
+    }
 }
