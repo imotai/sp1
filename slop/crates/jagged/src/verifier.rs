@@ -81,7 +81,7 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
         let (row_counts, column_counts): (Vec<Vec<usize>>, Vec<Vec<usize>>) =
             row_counts_and_column_counts.iter().map(|r_c| r_c.clone().into_iter().unzip()).unzip();
 
-        if params.col_prefix_sums.is_empty() || params.max_log_row_count != self.max_log_row_count {
+        if params.col_prefix_sums.is_empty() {
             return Err(JaggedPcsVerifierError::IncorrectShape);
         }
 

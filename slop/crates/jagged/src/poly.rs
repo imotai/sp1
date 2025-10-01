@@ -180,7 +180,6 @@ pub struct JaggedLittlePolynomialProverParams {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct JaggedLittlePolynomialVerifierParams<K> {
     pub col_prefix_sums: Vec<Point<K>>,
-    pub max_log_row_count: usize,
 }
 
 impl<F: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierParams<F> {
@@ -330,10 +329,7 @@ impl JaggedLittlePolynomialProverParams {
         let log_m = log2_ceil_usize(*self.col_prefix_sums_usize.last().unwrap());
         let col_prefix_sums =
             self.col_prefix_sums_usize.iter().map(|&x| Point::from_usize(x, log_m + 1)).collect();
-        JaggedLittlePolynomialVerifierParams {
-            col_prefix_sums,
-            max_log_row_count: self.max_log_row_count,
-        }
+        JaggedLittlePolynomialVerifierParams { col_prefix_sums }
     }
 }
 

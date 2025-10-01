@@ -59,7 +59,6 @@ pub fn dummy_pcs_proof(
     log_stacking_height: usize,
     log_blowup: usize,
     total_machine_cols: usize,
-    max_log_row_count: usize,
     column_counts_and_added_cols: Rounds<(Vec<usize>, usize)>,
 ) -> JaggedPcsProof<SP1GlobalContext, SP1CoreJaggedConfig> {
     let (column_counts, added_cols): (Rounds<Vec<usize>>, Vec<usize>) =
@@ -113,7 +112,7 @@ pub fn dummy_pcs_proof(
         .map(|_| Point::<InnerVal>::from_usize(0, total_num_variables + 1))
         .collect::<Vec<_>>();
 
-    let jagged_params = JaggedLittlePolynomialVerifierParams { col_prefix_sums, max_log_row_count };
+    let jagged_params = JaggedLittlePolynomialVerifierParams { col_prefix_sums };
 
     let partial_sumcheck_proof = dummy_sumcheck_proof(total_num_variables, 2);
 
@@ -297,7 +296,6 @@ mod tests {
             log_stacking_height as usize,
             log_blowup,
             column_counts.iter().flat_map(|x| x.iter()).sum(),
-            max_log_row_count as usize,
             column_counts
                 .clone()
                 .into_iter()
@@ -349,7 +347,6 @@ mod tests {
 
         // Check the params are the correct shape.
         assert_eq!(dummy_proof.params.col_prefix_sums.len(), proof.params.col_prefix_sums.len());
-        assert_eq!(dummy_proof.params.max_log_row_count, proof.params.max_log_row_count);
         for (col_prefix_sum, dummy_col_prefix_sum) in
             proof.params.col_prefix_sums.iter().zip(dummy_proof.params.col_prefix_sums.iter())
         {

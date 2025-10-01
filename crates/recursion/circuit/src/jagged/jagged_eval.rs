@@ -25,7 +25,6 @@ impl<C: CircuitConfig> IntoSymbolic<C> for JaggedLittlePolynomialVerifierParams<
                 .iter()
                 .map(|x| <Point<Felt<SP1Field>> as IntoSymbolic<C>>::as_symbolic(x))
                 .collect::<Vec<_>>(),
-            max_log_row_count: self.max_log_row_count,
         }
     }
 }
@@ -68,7 +67,6 @@ impl<C: CircuitConfig> RecursiveJaggedEvalConfig<C, ()> for RecursiveTrivialJagg
                 .iter()
                 .map(|x| x.iter().map(|y| SymbolicExt::from(*y)).collect())
                 .collect::<Vec<_>>(),
-            max_log_row_count: params.max_log_row_count,
         };
         let z_row =
             <Point<Ext<SP1Field, SP1ExtensionField>> as IntoSymbolic<C>>::as_symbolic(&z_row);

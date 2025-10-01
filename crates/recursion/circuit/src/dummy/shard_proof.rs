@@ -55,7 +55,6 @@ pub fn dummy_shard_proof<A: MachineAir<SP1Field>>(
         log_stacking_height,
         log_blowup,
         total_machine_cols,
-        max_log_row_count,
         once(shard_chips.iter().map(MachineAir::preprocessed_width).filter(|x| *x > 0).collect())
             .chain(once(shard_chips.iter().map(|chip| chip.air.width()).collect::<Vec<_>>()))
             .zip(added_cols.iter().copied())

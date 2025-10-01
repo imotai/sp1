@@ -49,7 +49,6 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C>
                 .iter()
                 .map(|x| (*x).read(builder))
                 .collect::<Vec<_>>(),
-            max_log_row_count: self.max_log_row_count,
         }
     }
 
