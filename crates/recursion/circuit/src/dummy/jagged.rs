@@ -116,17 +116,9 @@ pub fn dummy_pcs_proof(
 
     let partial_sumcheck_proof = dummy_sumcheck_proof(total_num_variables, 2);
 
-    // Add 2 because the there is a dummy column after the preprocessed and main rounds to round
-    // area to a multiple of `1<<log_stacking_height`.
-    let branching_program_evals =
-        vec![InnerChallenge::zero(); total_machine_cols + added_cols.iter().sum::<usize>()];
-
     let eval_sumcheck_proof = dummy_sumcheck_proof(2 * (total_num_variables + 1), 2);
 
-    let jagged_eval_proof = JaggedSumcheckEvalProof {
-        branching_program_evals,
-        partial_sumcheck_proof: eval_sumcheck_proof,
-    };
+    let jagged_eval_proof = JaggedSumcheckEvalProof { partial_sumcheck_proof: eval_sumcheck_proof };
 
     let new_column_counts: Rounds<Vec<usize>> = column_counts
         .into_iter()
@@ -323,10 +315,7 @@ mod tests {
         }
 
         // Check the jagged eval proof is the right shape.
-        assert_eq!(
-            dummy_proof.jagged_eval_proof.branching_program_evals.len(),
-            proof.jagged_eval_proof.branching_program_evals.len()
-        );
+
         assert_eq!(
             dummy_proof.jagged_eval_proof.partial_sumcheck_proof.univariate_polys.len(),
             proof.jagged_eval_proof.partial_sumcheck_proof.univariate_polys.len()

@@ -21,7 +21,6 @@ use super::{
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JaggedSumcheckEvalProof<F> {
-    pub branching_program_evals: Vec<F>,
     pub partial_sumcheck_proof: PartialSumcheckProof<F>,
 }
 
@@ -52,27 +51,14 @@ where
         proof: &JaggedSumcheckEvalProof<EF>,
         challenger: &mut Challenger,
     ) -> Result<EF, JaggedEvalSumcheckError<EF>> {
-        let JaggedSumcheckEvalProof { branching_program_evals, partial_sumcheck_proof } = proof;
+        let JaggedSumcheckEvalProof { partial_sumcheck_proof } = proof;
         // Calculate the partial lagrange from z_col point.
         let z_col_partial_lagrange = Mle::blocking_partial_lagrange(z_col);
         let z_col_partial_lagrange = z_col_partial_lagrange.guts().as_slice();
 
-        if z_col_partial_lagrange.len() < branching_program_evals.len() {
-            return Err(JaggedEvalSumcheckError::IncorrectShape);
-        }
+        let jagged_eval = partial_sumcheck_proof.claimed_sum;
 
-        if branching_program_evals.len() + 1 != params.col_prefix_sums.len() {
-            return Err(JaggedEvalSumcheckError::IncorrectShape);
-        }
-
-        // Calcuate the jagged eval from the branching program eval claims.
-        let jagged_eval = z_col_partial_lagrange
-            .iter()
-            .zip(branching_program_evals.iter())
-            .map(|(partial_lagrange, branching_program_eval)| {
-                *partial_lagrange * *branching_program_eval
-            })
-            .sum::<EF>();
+        challenger.observe_ext_element(jagged_eval);
 
         // Check the evaluation is the claimed sum of the sumcheck.
         if jagged_eval != partial_sumcheck_proof.claimed_sum {
@@ -218,12 +204,14 @@ where
 
         // Compute the full eval of the jagged poly.
         let verifier_params = params.clone().into_verifier_params();
-        let (expected_sum, branching_program_evals) =
+        let expected_sum =
             verifier_params.full_jagged_little_polynomial_evaluation(z_row, z_col, z_trace);
 
         let log_m = log2_ceil_usize(*params.col_prefix_sums_usize.last().unwrap());
 
         let mut sum_values = Tensor::zeros_in([3, 2 * (log_m + 1)], backend.clone()).into_buffer();
+
+        challenger.observe_ext_element(expected_sum);
 
         let mut device_challenger =
             <DeviceChallenger as FromChallenger<Challenger, A>>::from_challenger(
@@ -231,7 +219,7 @@ where
             )
             .await;
 
-        let (partial_sumcheck_proof, _) = prove_jagged_eval_sumcheck(
+        let partial_sumcheck_proof = prove_jagged_eval_sumcheck(
             jagged_eval_sc_poly,
             &mut device_challenger,
             expected_sum,
@@ -250,6 +238,6 @@ where
             let _: EF = challenger.sample_ext_element();
         }
 
-        JaggedSumcheckEvalProof { branching_program_evals, partial_sumcheck_proof }
+        JaggedSumcheckEvalProof { partial_sumcheck_proof }
     }
 }

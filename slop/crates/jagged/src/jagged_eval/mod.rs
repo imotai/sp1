@@ -103,7 +103,7 @@ mod tests {
             JaggedLittlePolynomialProverParams::new(row_counts.to_vec(), log_max_row_count);
         let verifier_params: JaggedLittlePolynomialVerifierParams<F> =
             prover_params.clone().into_verifier_params();
-        let (expected_sum, _) =
+        let expected_sum =
             verifier_params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_index);
 
         let batch_eval_poly = JaggedEvalSumcheckPoly::<
@@ -127,7 +127,7 @@ mod tests {
 
         let mut sum_values = Buffer::from(vec![EF::zero(); 6 * z_index.dimension()]);
 
-        let (sc_proof, _) = prove_jagged_eval_sumcheck(
+        let sc_proof = prove_jagged_eval_sumcheck(
             batch_eval_poly,
             &mut challenger,
             expected_sum,

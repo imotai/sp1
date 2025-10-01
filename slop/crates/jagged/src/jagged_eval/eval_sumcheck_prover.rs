@@ -26,7 +26,7 @@ pub async fn prove_jagged_eval_sumcheck<
     claim: EF,
     t: usize,
     sum_values: &mut Buffer<EF, A>,
-) -> (PartialSumcheckProof<EF>, Vec<Vec<EF>>) {
+) -> PartialSumcheckProof<EF> {
     let num_variables = poly.num_variables();
 
     // The first round of sumcheck.
@@ -64,20 +64,15 @@ pub async fn prove_jagged_eval_sumcheck<
         })
         .collect::<Vec<_>>();
 
-    let component_poly_evals = polys_cursor.get_component_poly_evals().await;
-
     // Move the randomness point to the CPU.
     let point_host = unsafe { polys_cursor.rho.values().copy_into_host_vec() };
 
     let final_claim: EF =
         univariate_polys.last().unwrap().eval_at_point(point_host.first().copied().unwrap());
 
-    (
-        PartialSumcheckProof {
-            univariate_polys,
-            claimed_sum: claim,
-            point_and_eval: (point_host.into(), final_claim),
-        },
-        vec![component_poly_evals],
-    )
+    PartialSumcheckProof {
+        univariate_polys,
+        claimed_sum: claim,
+        point_and_eval: (point_host.into(), final_claim),
+    }
 }

@@ -12,7 +12,8 @@ use sp1_recursion_compiler::{
 };
 
 use crate::{
-    sumcheck::verify_sumcheck, symbolic::IntoSymbolic, CircuitConfig, SP1FieldConfigVariable,
+    challenger::FieldChallengerVariable, sumcheck::verify_sumcheck, symbolic::IntoSymbolic,
+    CircuitConfig, SP1FieldConfigVariable,
 };
 
 impl<C: CircuitConfig> IntoSymbolic<C> for JaggedLittlePolynomialVerifierParams<Felt<SP1Field>> {
@@ -74,9 +75,10 @@ impl<C: CircuitConfig> RecursiveJaggedEvalConfig<C, ()> for RecursiveTrivialJagg
             <Point<Ext<SP1Field, SP1ExtensionField>> as IntoSymbolic<C>>::as_symbolic(&z_col);
         let z_trace =
             <Point<Ext<SP1Field, SP1ExtensionField>> as IntoSymbolic<C>>::as_symbolic(&z_trace);
+
         // Need to use a single threaded rayon pool.
         let pool = ThreadPoolBuilder::new().num_threads(1).build().unwrap();
-        let (result, _) = pool.install(|| {
+        let result = pool.install(|| {
             params_ef.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_trace)
         });
         (result, vec![])
@@ -109,19 +111,15 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>>
         let z_trace =
             <Point<Ext<SP1Field, SP1ExtensionField>> as IntoSymbolic<C>>::as_symbolic(&z_trace);
 
-        let JaggedSumcheckEvalProof { branching_program_evals, partial_sumcheck_proof } = proof;
+        let JaggedSumcheckEvalProof { partial_sumcheck_proof } = proof;
         // Calculate the partial lagrange from z_col point.
         let z_col_partial_lagrange = Mle::blocking_partial_lagrange(&z_col);
         let z_col_partial_lagrange = z_col_partial_lagrange.guts().as_slice();
 
         // Calculate the jagged eval from the branching program eval claims.
-        let jagged_eval = z_col_partial_lagrange
-            .iter()
-            .zip(branching_program_evals.iter())
-            .map(|(partial_lagrange, branching_program_eval)| {
-                *partial_lagrange * *branching_program_eval
-            })
-            .sum::<SymbolicExt<SP1Field, SP1ExtensionField>>();
+        let jagged_eval = partial_sumcheck_proof.claimed_sum;
+
+        challenger.observe_ext_element(builder, jagged_eval);
 
         builder.assert_ext_eq(jagged_eval, partial_sumcheck_proof.claimed_sum);
 
@@ -168,7 +166,7 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>>
         builder
             .assert_ext_eq(jagged_eval_sc_expected_eval, partial_sumcheck_proof.point_and_eval.1);
 
-        (jagged_eval, prefix_sum_felts)
+        (jagged_eval.into(), prefix_sum_felts)
     }
 }
 
@@ -370,7 +368,7 @@ mod tests {
             (0..log2_ceil_usize(row_counts.len())).map(|_| rng.gen::<EF>()).collect();
         let z_trace: Point<EF> = (0..log_m + 1).map(|_| rng.gen::<EF>()).collect();
 
-        let (expected_result, _) =
+        let expected_result =
             verifier_params.full_jagged_little_polynomial_evaluation(&z_row, &z_col, &z_trace);
 
         trivial_jagged_eval(&verifier_params, &z_row, &z_col, &z_trace, expected_result, true);

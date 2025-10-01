@@ -20,19 +20,11 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C> for JaggedSumcheckEvalP
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         JaggedSumcheckEvalProof {
-            branching_program_evals: self
-                .branching_program_evals
-                .iter()
-                .map(|x| x.read(builder))
-                .collect(),
             partial_sumcheck_proof: self.partial_sumcheck_proof.read(builder),
         }
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
-        for x in &self.branching_program_evals {
-            x.write(witness);
-        }
         self.partial_sumcheck_proof.write(witness);
     }
 }
