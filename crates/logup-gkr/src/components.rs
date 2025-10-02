@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use csl_cuda::{PartialLagrangeKernel, TaskScope};
+use csl_cuda::{transpose::DeviceTransposeKernel, PartialLagrangeKernel, TaskScope};
 use slop_algebra::{ExtensionField, Field};
 use slop_challenger::IopCtx;
 use slop_multilinear::MleEvaluationBackend;
@@ -51,7 +51,7 @@ pub struct LogupGkrCudaProverComponents<GC, A>(PhantomData<(GC, A)>);
 impl<GC, A> LogupGkrCudaProverComponents<GC, A>
 where
     GC: IopCtx,
-    TaskScope: GkrCudaBackend<GC::F, GC::EF>,
+    TaskScope: GkrCudaBackend<GC::F, GC::EF> + DeviceTransposeKernel<GC::F>,
     A: MachineAir<GC::F>,
 {
     pub fn default_prover() -> GkrProverImpl<GC, Self> {
@@ -65,7 +65,7 @@ impl<GC, A> LogUpGkrProverComponents<GC> for LogupGkrCudaProverComponents<GC, A>
 where
     GC: IopCtx,
     A: MachineAir<GC::F>,
-    TaskScope: GkrCudaBackend<GC::F, GC::EF>,
+    TaskScope: GkrCudaBackend<GC::F, GC::EF> + DeviceTransposeKernel<GC::F>,
 {
     type A = A;
     type B = TaskScope;

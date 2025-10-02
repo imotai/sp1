@@ -15,28 +15,27 @@ class DuplexChallenger {
 
     kb31_t* sponge_state;
     kb31_t* input_buffer;
-    size_t input_buffer_size;
+    size_t* buffer_sizes;
     kb31_t* output_buffer;
-    size_t output_buffer_size;
 
     __device__ void duplexing() {
         // Assert input size doesn't exceed RATE
-        assert(input_buffer_size <= RATE);
+        assert(buffer_sizes[0] <= RATE);
 
         // Copy input buffer elements to sponge state
-        for (size_t i = 0; i < input_buffer_size; i++) {
+        for (size_t i = 0; i < buffer_sizes[0]; i++) {
             sponge_state[i] = input_buffer[i];
         }
 
         // Clear input buffer.
-        input_buffer_size = 0;
+        buffer_sizes[0] = 0;
 
         // Apply the permutation to the sponge state and store the output in the output buffer.
         poseidon2::KoalaBearHasher hasher;
         hasher.permute(sponge_state, output_buffer);
 
         // Copy the output buffer to the sponge state.
-        output_buffer_size = RATE;
+        buffer_sizes[1] = RATE;
         for (size_t i = 0; i < WIDTH; i++) {
             sponge_state[i] = output_buffer[i];
             if (i >= RATE) {
@@ -50,25 +49,24 @@ class DuplexChallenger {
 
     __device__ __forceinline__ kb31_t getVal(size_t idx) { return sponge_state[idx % 16]; }
 
-    __device__ __forceinline__ DuplexChallenger load(kb31_t* shared) {
+    __device__ __forceinline__ DuplexChallenger load(kb31_t* shared, size_t* buffer_sizes) {
         DuplexChallenger challenger;
         challenger.sponge_state = shared;
         challenger.input_buffer = shared + WIDTH;
         challenger.output_buffer = shared + WIDTH + RATE;
-        challenger.input_buffer_size = input_buffer_size;
-        challenger.output_buffer_size = output_buffer_size;
+        challenger.buffer_sizes = buffer_sizes;
         return challenger;
     }
 
     __device__ __forceinline__ void observe(kb31_t* value) {
         // Clear the output buffer.
-        output_buffer_size = 0;
+        buffer_sizes[1] = 0;
 
         // Push value to the input buffer.
-        input_buffer_size += 1;
-        input_buffer[input_buffer_size - 1] = *value;
+        buffer_sizes[0] += 1;
+        input_buffer[buffer_sizes[0] - 1] = *value;
 
-        if (input_buffer_size == RATE) {
+        if (buffer_sizes[0] == RATE) {
             duplexing();
         }
     }
@@ -82,12 +80,12 @@ class DuplexChallenger {
 
     __device__ __forceinline__ kb31_t sample() {
         kb31_t result;
-        if (input_buffer_size != 0 || output_buffer_size == 0) {
+        if (buffer_sizes[0] != 0 || buffer_sizes[1] == 0) {
             duplexing();
         }
         // Pop the last element of the buffer.
-        result = output_buffer[output_buffer_size - 1];
-        output_buffer_size -= 1;
+        result = output_buffer[buffer_sizes[1] - 1];
+        buffer_sizes[1] -= 1;
         return result;
     }
 
@@ -116,8 +114,8 @@ class DuplexChallenger {
     grind(size_t bits, kb31_t* result, volatile bool* found_flag, size_t n) {
         size_t idx = threadIdx.x + blockIdx.x * blockDim.x;
 
-        size_t original_buffer_size = input_buffer_size;
-        size_t original_output_buffer_size = output_buffer_size;
+        size_t original_buffer_size = buffer_sizes[0];
+        size_t original_output_buffer_size = buffer_sizes[1];
         __shared__ kb31_t challenger_state[NUM_ELEMENTS];
 
         if (threadIdx.x == 0) {
@@ -137,14 +135,15 @@ class DuplexChallenger {
 
         // Local copy of challenger state for each thread in each iteration.
         kb31_t local_state[NUM_ELEMENTS];
+        size_t buffer_sizes[2];
         for (size_t i = idx; i < n && !*found_flag; i += blockDim.x * gridDim.x) {
-            input_buffer_size = original_buffer_size;
-            output_buffer_size = original_output_buffer_size;
+            buffer_sizes[0] = original_buffer_size;
+            buffer_sizes[1] = original_output_buffer_size;
             // Reset the local state to the shared state.
             for (size_t j = 0; j < NUM_ELEMENTS; j++) {
                 local_state[j] = challenger_state[j];
             }
-            DuplexChallenger temp_challenger = load(local_state);
+            DuplexChallenger temp_challenger = load(local_state, buffer_sizes);
 
 
             kb31_t witness = kb31_t((int)i);
@@ -164,27 +163,24 @@ class MultiField32Challenger {
 
     bn254_t* sponge_state;
     kb31_t* input_buffer;
-    size_t input_buffer_size;
+    size_t* buffer_sizes;
     kb31_t* output_buffer;
-    size_t output_buffer_size;
-    size_t num_duplex_elms;
-    size_t num_f_elms;
 
     __device__ void duplexing() {
         // Assert input size doesn't exceed RATE
-        assert(num_f_elms == 4);
-        assert(input_buffer_size <= num_duplex_elms * RATE);
+        assert(buffer_sizes[3] == 4);
+        assert(buffer_sizes[0] <= buffer_sizes[2] * RATE);
 
         // Copy input buffer elements to sponge state
-        for (size_t i = 0; i < input_buffer_size; i += num_duplex_elms) {
-            size_t end = min(input_buffer_size, i + num_duplex_elms);
+        for (size_t i = 0; i < buffer_sizes[0]; i += buffer_sizes[2]) {
+            size_t end = min(buffer_sizes[0], i + buffer_sizes[2]);
             bn254_t reduced =
                 poseidon2_bn254_3::reduceKoalaBear(input_buffer + i, nullptr, end - i, 0);
-            sponge_state[i / num_duplex_elms] = reduced;
+            sponge_state[i / buffer_sizes[2]] = reduced;
         }
 
         // Clear input buffer.
-        input_buffer_size = 0;
+        buffer_sizes[0] = 0;
 
         // Apply the permutation to the sponge state and store the output in the output buffer.
         poseidon2::Bn254Hasher hasher;
@@ -196,7 +192,7 @@ class MultiField32Challenger {
         hasher.permute(sponge_state, next_state);
 
         // Copy the output buffer to the sponge state.
-        output_buffer_size = RATE * num_f_elms;
+        buffer_sizes[1] = RATE * buffer_sizes[3];
         for (size_t i = 0; i < WIDTH; i++) {
             sponge_state[i] = next_state[i];
             bn254_t x = next_state[i];
@@ -225,13 +221,13 @@ class MultiField32Challenger {
   public:
     __device__ __forceinline__ void observe(kb31_t* value) {
         // Clear the output buffer.
-        output_buffer_size = 0;
+        buffer_sizes[1] = 0;
 
         // Push value to the input buffer.
-        input_buffer_size += 1;
-        input_buffer[input_buffer_size - 1] = *value;
+        buffer_sizes[0] += 1;
+        input_buffer[buffer_sizes[0] - 1] = *value;
 
-        if (input_buffer_size == num_duplex_elms * RATE) {
+        if (buffer_sizes[0] == buffer_sizes[2] * RATE) {
             duplexing();
         }
     }
@@ -245,12 +241,12 @@ class MultiField32Challenger {
 
     __device__ __forceinline__ kb31_t sample() {
         kb31_t result;
-        if (input_buffer_size != 0 || output_buffer_size == 0) {
+        if (buffer_sizes[0] != 0 || buffer_sizes[1] == 0) {
             duplexing();
         }
         // Pop the last element of the buffer.
-        result = output_buffer[output_buffer_size - 1];
-        output_buffer_size -= 1;
+        result = output_buffer[buffer_sizes[1] - 1];
+        buffer_sizes[1] -= 1;
         return result;
     }
 

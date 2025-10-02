@@ -9,11 +9,9 @@ use slop_symmetric::CryptographicPermutation;
 pub struct MultiField32Challenger<F, PF, B: Backend> {
     pub sponge_state: Buffer<PF, B>,
     pub input_buffer: Buffer<F, B>,
-    pub input_buffer_size: usize,
+    // [input_buffer_size, output_buffer_size, num_duplex_elms, num_f_elms]
+    pub buffer_sizes: Buffer<usize, B>,
     pub output_buffer: Buffer<F, B>,
-    pub output_buffer_size: usize,
-    pub num_duplex_elms: usize,
-    pub num_f_elms: usize,
 }
 
 impl<
@@ -48,30 +46,23 @@ impl<
     fn from(challenger: slop_challenger::MultiField32Challenger<F, PF, P, WIDTH, RATE>) -> Self {
         let mut input_buffer = challenger.input_buffer;
         let input_buffer_size = input_buffer.len();
-        assert!(input_buffer_size <= RATE * challenger.num_f_elms);
-        input_buffer.resize(WIDTH, F::zero());
+        assert!(input_buffer_size <= RATE * challenger.num_duplex_elms);
+        input_buffer.resize(WIDTH * challenger.num_duplex_elms, F::zero());
         let mut output_buffer = challenger.output_buffer;
         let output_buffer_size = output_buffer.len();
         assert!(output_buffer_size <= WIDTH * challenger.num_f_elms);
-        output_buffer.resize(WIDTH, F::zero());
+        output_buffer.resize(WIDTH * challenger.num_f_elms, F::zero());
         let sponge_state = challenger.sponge_state;
-        assert!(sponge_state.len() == WIDTH);
 
         let input_buffer = Buffer::from(input_buffer);
         let output_buffer = Buffer::from(output_buffer);
         let sponge_state = Buffer::from(sponge_state.to_vec());
         let num_duplex_elms = challenger.num_duplex_elms;
         let num_f_elms = challenger.num_f_elms;
+        let buffer_sizes =
+            Buffer::from(vec![input_buffer_size, output_buffer_size, num_duplex_elms, num_f_elms]);
 
-        Self {
-            input_buffer,
-            input_buffer_size,
-            output_buffer,
-            output_buffer_size,
-            sponge_state,
-            num_duplex_elms,
-            num_f_elms,
-        }
+        Self { input_buffer, buffer_sizes, output_buffer, sponge_state }
     }
 }
 
@@ -88,11 +79,8 @@ impl<F, PF, B: Backend> HasBackend for MultiField32Challenger<F, PF, B> {
 pub struct MultiField32ChallengerRawMut<F, PF> {
     pub sponge_state: *mut PF,
     pub input_buffer: *mut F,
-    pub input_buffer_size: usize,
+    pub buffer_sizes: *mut usize,
     pub output_buffer: *mut F,
-    pub output_buffer_size: usize,
-    pub num_duplex_elms: usize,
-    pub num_f_elms: usize,
 }
 
 impl<F, PF> MultiField32Challenger<F, PF, TaskScope> {
@@ -100,11 +88,8 @@ impl<F, PF> MultiField32Challenger<F, PF, TaskScope> {
         MultiField32ChallengerRawMut {
             sponge_state: self.sponge_state.as_mut_ptr(),
             input_buffer: self.input_buffer.as_mut_ptr(),
-            input_buffer_size: self.input_buffer_size,
+            buffer_sizes: self.buffer_sizes.as_mut_ptr(),
             output_buffer: self.output_buffer.as_mut_ptr(),
-            output_buffer_size: self.output_buffer_size,
-            num_duplex_elms: self.num_duplex_elms,
-            num_f_elms: self.num_f_elms,
         }
     }
 }
@@ -121,15 +106,8 @@ impl<F: PrimeField32, PF: Field> CopyIntoBackend<TaskScope, CpuBackend>
         let input_buffer = self.input_buffer.copy_into_backend(backend).await?;
         let output_buffer = self.output_buffer.copy_into_backend(backend).await?;
         let sponge_state = self.sponge_state.copy_into_backend(backend).await?;
-        Ok(MultiField32Challenger {
-            input_buffer,
-            input_buffer_size: self.input_buffer_size,
-            output_buffer,
-            output_buffer_size: self.output_buffer_size,
-            sponge_state,
-            num_duplex_elms: self.num_duplex_elms,
-            num_f_elms: self.num_f_elms,
-        })
+        let buffer_sizes = self.buffer_sizes.copy_into_backend(backend).await?;
+        Ok(MultiField32Challenger { input_buffer, buffer_sizes, output_buffer, sponge_state })
     }
 }
 
@@ -145,14 +123,7 @@ impl<F: Field, PF: Field> CopyIntoBackend<CpuBackend, TaskScope>
         let input_buffer = self.input_buffer.copy_into_backend(backend).await?;
         let output_buffer = self.output_buffer.copy_into_backend(backend).await?;
         let sponge_state = self.sponge_state.copy_into_backend(backend).await?;
-        Ok(MultiField32Challenger {
-            input_buffer,
-            input_buffer_size: self.input_buffer_size,
-            output_buffer,
-            output_buffer_size: self.output_buffer_size,
-            sponge_state,
-            num_duplex_elms: self.num_duplex_elms,
-            num_f_elms: self.num_f_elms,
-        })
+        let buffer_sizes = self.buffer_sizes.copy_into_backend(backend).await?;
+        Ok(MultiField32Challenger { input_buffer, buffer_sizes, output_buffer, sponge_state })
     }
 }

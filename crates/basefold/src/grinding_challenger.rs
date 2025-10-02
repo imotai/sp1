@@ -48,9 +48,8 @@ where
         DuplexChallengerRawMut {
             sponge_state: self.sponge_state.as_mut_ptr(),
             input_buffer: self.input_buffer.as_mut_ptr(),
-            input_buffer_size: self.input_buffer_size,
+            buffer_sizes: self.buffer_sizes.as_mut_ptr(),
             output_buffer: self.output_buffer.as_mut_ptr(),
-            output_buffer_size: self.output_buffer_size,
         }
     }
 }
@@ -115,11 +114,8 @@ where
         MultiField32ChallengerRawMut {
             sponge_state: self.sponge_state.as_mut_ptr(),
             input_buffer: self.input_buffer.as_mut_ptr(),
-            input_buffer_size: self.input_buffer_size,
+            buffer_sizes: self.buffer_sizes.as_mut_ptr(),
             output_buffer: self.output_buffer.as_mut_ptr(),
-            output_buffer_size: self.output_buffer_size,
-            num_duplex_elms: self.num_duplex_elms,
-            num_f_elms: self.num_f_elms,
         }
     }
 }

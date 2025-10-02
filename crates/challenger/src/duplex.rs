@@ -9,9 +9,8 @@ use slop_symmetric::CryptographicPermutation;
 pub struct DuplexChallenger<F, B: Backend> {
     pub sponge_state: Buffer<F, B>,
     pub input_buffer: Buffer<F, B>,
-    pub input_buffer_size: usize,
+    pub buffer_sizes: Buffer<usize, B>,
     pub output_buffer: Buffer<F, B>,
-    pub output_buffer_size: usize,
 }
 
 impl<
@@ -56,7 +55,12 @@ impl<
         let output_buffer = Buffer::from(output_buffer);
         let sponge_state = Buffer::from(sponge_state.to_vec());
 
-        Self { input_buffer, input_buffer_size, output_buffer, output_buffer_size, sponge_state }
+        Self {
+            input_buffer,
+            buffer_sizes: Buffer::from(vec![input_buffer_size, output_buffer_size]),
+            output_buffer,
+            sponge_state,
+        }
     }
 }
 
@@ -73,9 +77,8 @@ impl<F, B: Backend> HasBackend for DuplexChallenger<F, B> {
 pub struct DuplexChallengerRawMut<F> {
     pub sponge_state: *mut F,
     pub input_buffer: *mut F,
-    pub input_buffer_size: usize,
+    pub buffer_sizes: *mut usize,
     pub output_buffer: *mut F,
-    pub output_buffer_size: usize,
 }
 
 impl<F> DuplexChallenger<F, TaskScope> {
@@ -83,9 +86,8 @@ impl<F> DuplexChallenger<F, TaskScope> {
         DuplexChallengerRawMut {
             sponge_state: self.sponge_state.as_mut_ptr(),
             input_buffer: self.input_buffer.as_mut_ptr(),
-            input_buffer_size: self.input_buffer_size,
+            buffer_sizes: self.buffer_sizes.as_mut_ptr(),
             output_buffer: self.output_buffer.as_mut_ptr(),
-            output_buffer_size: self.output_buffer_size,
         }
     }
 }
@@ -100,13 +102,8 @@ impl<F: Field> CopyIntoBackend<TaskScope, CpuBackend> for DuplexChallenger<F, Cp
         let input_buffer = self.input_buffer.copy_into_backend(backend).await?;
         let output_buffer = self.output_buffer.copy_into_backend(backend).await?;
         let sponge_state = self.sponge_state.copy_into_backend(backend).await?;
-        Ok(DuplexChallenger {
-            input_buffer,
-            input_buffer_size: self.input_buffer_size,
-            output_buffer,
-            output_buffer_size: self.output_buffer_size,
-            sponge_state,
-        })
+        let buffer_sizes = self.buffer_sizes.copy_into_backend(backend).await?;
+        Ok(DuplexChallenger { input_buffer, buffer_sizes, output_buffer, sponge_state })
     }
 }
 
@@ -120,12 +117,7 @@ impl<F: Field> CopyIntoBackend<CpuBackend, TaskScope> for DuplexChallenger<F, Ta
         let input_buffer = self.input_buffer.copy_into_backend(backend).await?;
         let output_buffer = self.output_buffer.copy_into_backend(backend).await?;
         let sponge_state = self.sponge_state.copy_into_backend(backend).await?;
-        Ok(DuplexChallenger {
-            input_buffer,
-            input_buffer_size: self.input_buffer_size,
-            output_buffer,
-            output_buffer_size: self.output_buffer_size,
-            sponge_state,
-        })
+        let buffer_sizes = self.buffer_sizes.copy_into_backend(backend).await?;
+        Ok(DuplexChallenger { input_buffer, buffer_sizes, output_buffer, sponge_state })
     }
 }
