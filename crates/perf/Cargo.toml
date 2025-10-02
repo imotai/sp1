@@ -45,5 +45,7 @@ bigint-rug = [
     "csl-prover/bigint-rug",
 ]
 
+debug-constraints = ["sp1-core-machine/debug-constraints"]
+
 [lints]
 workspace = true
