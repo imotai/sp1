@@ -15,7 +15,7 @@ use csl_prover_clean::logup_gkr::{random_first_layer, FirstGkrLayer, GkrCircuitL
 
 #[derive(Deserialize)]
 struct Workload {
-    interaction_col_sizes: Vec<u32>,
+    interaction_row_counts: Vec<u32>,
     num_row_variables: u32,
 }
 
@@ -27,7 +27,7 @@ fn load_workloads_from_json() -> Vec<Workload> {
 
 async fn run_benchmark_in_scope(
     t: &TaskScope,
-    interaction_col_sizes: Vec<u32>,
+    interaction_row_counts: Vec<u32>,
     num_row_variables: u32,
     name: String,
 ) -> (Duration, Duration) {
@@ -35,26 +35,16 @@ async fn run_benchmark_in_scope(
 
     let get_challenger = move || GC::default_challenger();
 
-    let layer = random_first_layer(&mut rng, interaction_col_sizes, Some(num_row_variables)).await;
+    let layer = random_first_layer(&mut rng, interaction_row_counts, Some(num_row_variables)).await;
     println!("Generated test data for {name}");
 
-    let FirstGkrLayer {
-        jagged_mle,
-        interaction_col_sizes,
-        num_interaction_variables,
-        num_row_variables,
-    } = layer;
+    let FirstGkrLayer { jagged_mle, num_interaction_variables, num_row_variables } = layer;
 
     let first_eval_point = Point::<Ext>::rand(&mut rng, num_interaction_variables + 1);
 
     let jagged_mle = jagged_mle.into_device(t).await.unwrap();
 
-    let layer = FirstGkrLayer {
-        jagged_mle,
-        interaction_col_sizes,
-        num_interaction_variables,
-        num_row_variables,
-    };
+    let layer = FirstGkrLayer { jagged_mle, num_interaction_variables, num_row_variables };
 
     let layer = GkrCircuitLayer::FirstLayer(layer);
 
@@ -193,9 +183,9 @@ const ONLY_SUMCHECK: bool = false;
 async fn main() {
     if ONLY_SUMCHECK {
         let mut rng = StdRng::seed_from_u64(0);
-        // let interaction_col_sizes: Vec<u32> = vec![4; 66];
-        // bench_materialized_sumcheck(interaction_col_sizes, &mut rng).await;
-        let mut interaction_col_sizes: Vec<u32> = vec![
+        // let interaction_row_counts: Vec<u32> = vec![4; 66];
+        // bench_materialized_sumcheck(interaction_row_counts, &mut rng).await;
+        let mut interaction_row_counts: Vec<u32> = vec![
             14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216,
             14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 362856, 362856, 362856,
             362856, 362856, 362856, 362856, 362856, 362856, 362856, 362856, 362856, 362856, 362856,
@@ -246,8 +236,8 @@ async fn main() {
             29160, 29160, 29160,
         ];
         for _ in 0..9 {
-            bench_materialized_sumcheck(interaction_col_sizes.clone(), &mut rng, None).await;
-            interaction_col_sizes.iter_mut().for_each(|x| {
+            bench_materialized_sumcheck(interaction_row_counts.clone(), &mut rng, None).await;
+            interaction_row_counts.iter_mut().for_each(|x| {
                 *x /= 2;
                 if *x <= 2 {
                     *x = 4;
@@ -256,7 +246,7 @@ async fn main() {
                     *x += 1;
                 }
             });
-            println!("interaction_col_sizes: {interaction_col_sizes:?}");
+            println!("interaction_row_counts: {interaction_row_counts:?}");
             println!("-----------------------------------------------------------")
         }
 
@@ -279,12 +269,12 @@ async fn main() {
 
         for (i, workload) in workloads.into_iter().enumerate() {
             let layer_name = format!("Layer {i}");
-            if workload.interaction_col_sizes.iter().any(|&x| x & 1 != 0) {
+            if workload.interaction_row_counts.iter().any(|&x| x & 1 != 0) {
                 panic!("layer {i} has odd interaction col counts");
             }
             let (trace_time, proof_time) = run_benchmark_in_scope(
                 &t,
-                workload.interaction_col_sizes,
+                workload.interaction_row_counts,
                 workload.num_row_variables,
                 layer_name,
             )

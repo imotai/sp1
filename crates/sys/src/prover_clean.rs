@@ -34,6 +34,7 @@ extern "C" {
     pub fn hadamard_fix_last_variable_and_sum_as_poly_base_ext_kernel() -> KernelPtr;
     pub fn hadamard_fix_last_variable_and_sum_as_poly_ext_ext_kernel() -> KernelPtr;
 
+    pub fn fix_last_variable_felt_ext_kernel() -> KernelPtr;
     pub fn fix_last_variable_ext_ext_kernel() -> KernelPtr;
 
     // ******** LogUp GKR kernels - Round operations ********

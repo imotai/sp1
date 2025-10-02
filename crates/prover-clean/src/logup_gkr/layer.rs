@@ -90,7 +90,7 @@ impl JaggedGkrMle<CpuBackend> {
         self,
         backend: &TaskScope,
     ) -> Result<JaggedGkrMle<TaskScope>, LayerError> {
-        let JaggedMle { dense_data, col_index, start_indices } = self;
+        let JaggedMle { dense_data, col_index, start_indices, column_heights } = self;
 
         let layer = dense_data
             .layer
@@ -109,13 +109,13 @@ impl JaggedGkrMle<CpuBackend> {
             .await
             .map_err(|e| LayerError::HostToDeviceTransferError(e.to_string()))?;
 
-        Ok(JaggedMle::new(jagged_gkr_layer_device, col_index, start_indices))
+        Ok(JaggedMle::new(jagged_gkr_layer_device, col_index, start_indices, column_heights))
     }
 }
 
 impl JaggedGkrMle<TaskScope> {
     pub async fn into_host(self) -> Result<JaggedGkrMle<CpuBackend>, LayerError> {
-        let JaggedMle { dense_data, col_index, start_indices } = self;
+        let JaggedMle { dense_data, col_index, start_indices, column_heights } = self;
 
         let layer = dense_data
             .layer
@@ -134,7 +134,7 @@ impl JaggedGkrMle<TaskScope> {
             .await
             .map_err(|e| LayerError::DeviceToHostTransferError(e.to_string()))?;
 
-        Ok(JaggedMle::new(jagged_gkr_layer_host, col_index, start_indices))
+        Ok(JaggedMle::new(jagged_gkr_layer_host, col_index, start_indices, column_heights))
     }
 }
 
@@ -211,7 +211,7 @@ impl JaggedFirstGkrMle<CpuBackend> {
         self,
         backend: &TaskScope,
     ) -> Result<JaggedFirstGkrMle<TaskScope>, LayerError> {
-        let JaggedMle { dense_data, col_index, start_indices } = self;
+        let JaggedMle { dense_data, col_index, start_indices, column_heights } = self;
 
         let numerator = dense_data
             .numerator
@@ -238,13 +238,13 @@ impl JaggedFirstGkrMle<CpuBackend> {
             .await
             .map_err(|e| LayerError::HostToDeviceTransferError(e.to_string()))?;
 
-        Ok(JaggedMle::new(jagged_gkr_layer_device, col_index, start_indices))
+        Ok(JaggedMle::new(jagged_gkr_layer_device, col_index, start_indices, column_heights))
     }
 }
 
 impl JaggedFirstGkrMle<TaskScope> {
     pub async fn into_host(self) -> Result<JaggedFirstGkrMle<CpuBackend>, LayerError> {
-        let JaggedMle { dense_data, col_index, start_indices } = self;
+        let JaggedMle { dense_data, col_index, start_indices, column_heights } = self;
 
         let numerator = dense_data
             .numerator
@@ -271,6 +271,6 @@ impl JaggedFirstGkrMle<TaskScope> {
             .await
             .map_err(|e| LayerError::DeviceToHostTransferError(e.to_string()))?;
 
-        Ok(JaggedMle::new(jagged_gkr_layer_host, col_index, start_indices))
+        Ok(JaggedMle::new(jagged_gkr_layer_host, col_index, start_indices, column_heights))
     }
 }

@@ -4,19 +4,19 @@ use std::future::ready;
 use std::ops::Range;
 use std::sync::Arc;
 
-use csl_cuda::TaskScope;
+use csl_cuda::{IntoDevice, TaskScope};
 use csl_tracegen::CudaTracegenAir;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use slop_air::BaseAir;
-use slop_alloc::{Backend, Buffer, CopyIntoBackend, HasBackend, Slice};
+use slop_algebra::Field;
+use slop_alloc::{Backend, Buffer, CopyIntoBackend, CpuBackend, HasBackend, Slice, ToHost};
 use slop_multilinear::Mle;
-use sp1_hypercube::{air::MachineAir, prover::ProverPermit, prover::ProverSemaphore, Machine};
+
+use sp1_hypercube::{air::MachineAir, Machine};
 
 use sp1_hypercube::{Chip, MachineRecord};
-use tracing::debug_span;
-use tracing::instrument::Instrument;
 
 use crate::config::Felt;
 use crate::DenseData;
@@ -28,14 +28,16 @@ pub struct TraceOffset {
     pub dense_offset: Range<usize>,
     /// The size of each polynomial in this trace.
     pub poly_size: usize,
+    /// Number of polynomials in this trace.
+    pub num_polys: usize,
 }
 
-pub type JaggedTraceMle<B> = JaggedMle<TraceDenseData<B>, B>;
+pub type JaggedTraceMle<F, B> = JaggedMle<TraceDenseData<F, B>, B>;
 
 /// Jagged representation of the traces.
-pub struct TraceDenseData<B: Backend> {
+pub struct TraceDenseData<F: Field, B: Backend> {
     /// The dense representation of the traces.
-    pub dense: Buffer<Felt, B>,
+    pub dense: Buffer<F, B>,
     /// The dense offset of the preprocessed traces.
     pub preprocessed_offset: usize,
     /// The total number of columns in the preprocessed traces.
@@ -44,27 +46,56 @@ pub struct TraceDenseData<B: Backend> {
     pub preprocessed_table_index: BTreeMap<String, TraceOffset>,
     /// A mapping from chip name to the range of dense data it occupies for main traces.
     pub main_table_index: BTreeMap<String, TraceOffset>,
-    /// A permit, for limiting access to the GPU memory.
-    pub permit: ProverPermit,
+}
+
+impl<F: Field, B: Backend> HasBackend for TraceDenseData<F, B> {
+    type Backend = B;
+    fn backend(&self) -> &B {
+        self.dense.backend()
+    }
+}
+
+impl<F: Field> JaggedTraceMle<F, TaskScope> {
+    pub fn main_poly_height(&self, name: &str) -> Option<usize> {
+        self.dense_data.main_table_index.get(name).map(|offset| offset.poly_size)
+    }
+
+    pub fn preprocessed_poly_height(&self, name: &str) -> Option<usize> {
+        self.dense_data.preprocessed_table_index.get(name).map(|offset| offset.poly_size)
+    }
+
+    pub fn main_num_polys(&self, name: &str) -> Option<usize> {
+        self.dense_data
+            .main_table_index
+            .get(name)
+            .map(|offset| (offset.dense_offset.end - offset.dense_offset.start) / offset.poly_size)
+    }
+
+    pub fn preprocessed_num_polys(&self, name: &str) -> Option<usize> {
+        self.dense_data
+            .preprocessed_table_index
+            .get(name)
+            .map(|offset| (offset.dense_offset.end - offset.dense_offset.start) / offset.poly_size)
+    }
 }
 
 /// The raw pointer to the dense data, for use in CUDA FFI calls.
 #[allow(dead_code)]
 #[repr(C)]
-pub struct TraceDenseDataRaw {
-    dense: *const Felt,
+pub struct TraceDenseDataRaw<F> {
+    dense: *const F,
 }
 
 /// The raw pointer to the dense data, for use in CUDA FFI calls.
 #[allow(dead_code)]
 #[repr(C)]
-pub struct TraceDenseDataMutRaw {
-    dense: *mut Felt,
+pub struct TraceDenseDataMutRaw<F> {
+    dense: *mut F,
 }
 
-impl<B: Backend> DenseData<B> for TraceDenseData<B> {
-    type DenseDataRaw = TraceDenseDataRaw;
-    type DenseDataMutRaw = TraceDenseDataMutRaw;
+impl<F: Field, B: Backend> DenseData<B> for TraceDenseData<F, B> {
+    type DenseDataRaw = TraceDenseDataRaw<F>;
+    type DenseDataMutRaw = TraceDenseDataMutRaw<F>;
 
     fn as_ptr(&self) -> Self::DenseDataRaw {
         TraceDenseDataRaw { dense: self.dense.as_ptr() }
@@ -72,6 +103,55 @@ impl<B: Backend> DenseData<B> for TraceDenseData<B> {
 
     fn as_mut_ptr(&mut self) -> Self::DenseDataMutRaw {
         TraceDenseDataMutRaw { dense: self.dense.as_mut_ptr() }
+    }
+}
+
+impl<F: Field> JaggedTraceMle<F, CpuBackend> {
+    pub async fn into_device(self, t: &TaskScope) -> JaggedTraceMle<F, TaskScope> {
+        JaggedTraceMle {
+            dense_data: self.dense_data.into_device_in(t).await,
+            col_index: self.col_index.into_device_in(t).await.unwrap(),
+            start_indices: self.start_indices.into_device_in(t).await.unwrap(),
+            column_heights: self.column_heights,
+        }
+    }
+}
+
+// Todo: better error handling
+impl<F: Field> TraceDenseData<F, CpuBackend> {
+    pub async fn into_device_in(self, t: &TaskScope) -> TraceDenseData<F, TaskScope> {
+        TraceDenseData {
+            dense: self.dense.into_device_in(t).await.unwrap(),
+            preprocessed_offset: self.preprocessed_offset,
+            preprocessed_cols: self.preprocessed_cols,
+            preprocessed_table_index: self.preprocessed_table_index,
+            main_table_index: self.main_table_index,
+        }
+    }
+}
+
+impl<F: Field> JaggedTraceMle<F, TaskScope> {
+    pub async fn into_host(self) -> JaggedTraceMle<F, CpuBackend> {
+        let host_dense = self.dense_data.into_host().await;
+        JaggedTraceMle {
+            dense_data: host_dense,
+            col_index: self.col_index.to_host().await.unwrap(),
+            start_indices: self.start_indices.to_host().await.unwrap(),
+            column_heights: self.column_heights,
+        }
+    }
+}
+
+impl<F: Field> TraceDenseData<F, TaskScope> {
+    pub async fn into_host(self) -> TraceDenseData<F, CpuBackend> {
+        let host_dense = self.dense.to_host().await.unwrap();
+        TraceDenseData {
+            dense: host_dense,
+            preprocessed_offset: self.preprocessed_offset,
+            preprocessed_cols: self.preprocessed_cols,
+            preprocessed_table_index: self.preprocessed_table_index,
+            main_table_index: self.main_table_index,
+        }
     }
 }
 
@@ -119,6 +199,7 @@ async fn setup_jagged_traces(
     dense_data: &mut Buffer<Felt, TaskScope>,
     col_index: &mut Buffer<u32, TaskScope>,
     start_indices: &mut Buffer<u32, TaskScope>,
+    column_heights: &mut Vec<u32>,
     traces: BTreeMap<String, Trace>,
     initial_offset: usize,
     initial_cols: usize,
@@ -165,6 +246,9 @@ async fn setup_jagged_traces(
                     current_start_indices.push((offset + trace_size) as u32 >> 1);
                 }
 
+                let current_column_heights = vec![(trace_num_rows >> 1) as u32; trace_num_cols];
+                column_heights.extend_from_slice(&current_column_heights);
+
                 let current_start_indices_device =
                     current_start_indices.copy_into_backend(&backend).await.unwrap();
                 let start_indices_slice: &Slice<u32, _> = &current_start_indices_device[..];
@@ -183,6 +267,7 @@ async fn setup_jagged_traces(
                     TraceOffset {
                         dense_offset: offset..offset + trace_size,
                         poly_size: trace_num_rows,
+                        num_polys: trace_num_cols,
                     },
                 );
                 offset += trace_size;
@@ -209,13 +294,19 @@ async fn setup_jagged_traces(
                 } else {
                     &mut start_indices[cols_so_far..cols_so_far + *padding_cols]
                 };
+
+                column_heights.extend_from_slice(&vec![0; *padding_cols]);
                 unsafe {
                     start_indices_dst_slice.copy_from_slice(start_indices_slice, &backend).unwrap();
                 }
 
                 table_index.insert(
                     name.clone(),
-                    TraceOffset { dense_offset: offset..offset, poly_size: 0 },
+                    TraceOffset {
+                        dense_offset: offset..offset,
+                        poly_size: 0,
+                        num_polys: *padding_cols,
+                    },
                 );
                 cols_so_far += *padding_cols;
             }
@@ -294,16 +385,13 @@ pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
     machine: &Machine<Felt, A>,
     program: Arc<<A as MachineAir<Felt>>::Program>,
     max_trace_size: usize,
-    prover_permits: ProverSemaphore,
     backend: &TaskScope,
-) -> JaggedTraceMle<TaskScope> {
+) -> JaggedTraceMle<Felt, TaskScope> {
     // Generate traces on host.
     let host_phase_tracegen = host_preprocessed_tracegen(machine, Arc::clone(&program));
 
-    // Wait for a prover to be available.
-    let permit = prover_permits.acquire().instrument(debug_span!("acquire")).await.unwrap();
+    // TODO: concurrency control. Acquire a semaphore.
 
-    // Now that the permit is acquired, we can begin the following two tasks:
     // - Copying host traces to the device.
     // - Generating traces on the device.
     let preprocessed_traces =
@@ -317,6 +405,7 @@ pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
 
     let mut start_indices: Buffer<u32, TaskScope> =
         Buffer::with_capacity_in(MAX_COLS_PER_TRACE, backend.clone());
+    let mut column_heights: Vec<u32> = Vec::with_capacity(MAX_COLS_PER_TRACE);
 
     unsafe {
         dense_data.assume_init();
@@ -329,22 +418,22 @@ pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
         &mut dense_data,
         &mut col_index,
         &mut start_indices,
+        &mut column_heights,
         preprocessed_traces,
         0,
         0,
     )
     .await;
 
-    let trace_dense_data: TraceDenseData<TaskScope> = TraceDenseData {
+    let trace_dense_data: TraceDenseData<Felt, TaskScope> = TraceDenseData {
         dense: dense_data,
         preprocessed_offset,
         preprocessed_cols,
         preprocessed_table_index,
         main_table_index: BTreeMap::new(),
-        permit,
     };
 
-    JaggedMle { dense_data: trace_dense_data, col_index, start_indices }
+    JaggedMle { dense_data: trace_dense_data, col_index, start_indices, column_heights }
 }
 
 /// Returns a tuple of (host phase tracegen, shape info).
@@ -457,7 +546,7 @@ async fn device_main_tracegen<A: CudaTracegenAir<Felt>>(
 pub async fn main_tracegen<A: CudaTracegenAir<Felt>>(
     machine: &Machine<Felt, A>,
     record: Arc<<A as MachineAir<Felt>>::Record>,
-    jagged_traces: &mut JaggedTraceMle<TaskScope>,
+    jagged_traces: &mut JaggedTraceMle<Felt, TaskScope>,
     backend: &TaskScope,
 ) -> (Vec<Felt>, BTreeSet<Chip<Felt, A>>) {
     // Start generating traces on host.
@@ -472,7 +561,8 @@ pub async fn main_tracegen<A: CudaTracegenAir<Felt>>(
         device_main_tracegen(host_phase_tracegen, record, initial_traces, backend).await;
 
     // At this point, all traces are on device. Now we need to copy them into the Jagged MLE struct.
-    let JaggedMle { dense_data: trace_dense_data, col_index, start_indices } = jagged_traces;
+    let JaggedMle { dense_data: trace_dense_data, col_index, start_indices, column_heights } =
+        jagged_traces;
 
     let TraceDenseData {
         dense: dense_data,
@@ -487,6 +577,7 @@ pub async fn main_tracegen<A: CudaTracegenAir<Felt>>(
         dense_data,
         col_index,
         start_indices,
+        column_heights,
         traces,
         *preprocessed_offset,
         *preprocessed_cols,
@@ -509,12 +600,10 @@ pub async fn full_tracegen<A: CudaTracegenAir<Felt>>(
     program: Arc<<A as MachineAir<Felt>>::Program>,
     record: Arc<<A as MachineAir<Felt>>::Record>,
     max_trace_size: usize,
-    prover_permits: ProverSemaphore,
     backend: &TaskScope,
-) -> (Vec<Felt>, JaggedTraceMle<TaskScope>, BTreeSet<Chip<Felt, A>>) {
+) -> (Vec<Felt>, JaggedTraceMle<Felt, TaskScope>, BTreeSet<Chip<Felt, A>>) {
     // TODO: do host preprocessed, host main, device preprocessed, device main.
-    let mut jagged_mle =
-        setup_tracegen(machine, program, max_trace_size, prover_permits, backend).await;
+    let mut jagged_mle = setup_tracegen(machine, program, max_trace_size, backend).await;
     let (public_values, chip_set) = main_tracegen(machine, record, &mut jagged_mle, backend).await;
     (public_values, jagged_mle, chip_set)
 }
@@ -525,6 +614,7 @@ mod tests {
 
     use csl_cuda::{run_in_place, sys::prover_clean::jagged_eval_kernel_chunked_felt, ToDevice};
     use csl_tracegen::CudaTraceGenerator;
+    use serial_test::serial;
     use slop_alloc::IntoHost;
     use slop_multilinear::{Mle, Point};
     use sp1_hypercube::prover::{ProverSemaphore, TraceGenerator};
@@ -543,22 +633,9 @@ mod tests {
     /// Takes a pre-generated proof and vk, and generates traces for the shrink program.
     /// Then, asserts that the jagged traces generated are the same as the traces in the old format.
     #[tokio::test]
+    #[serial]
     async fn test_jagged_tracegen() {
         let (machine, record, program) = tracegen_setup::setup().await;
-
-        // This tests core tracegen, which is more comprehensive, but since core records are so big,
-        // it's not feasible to git commit them.
-
-        // // Load the record and program from the test artifacts
-        // let root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-        // let record_compressed_bytes = std::fs::read(format!("{}/record_1.bin", &root)).unwrap();
-        // let record = zstd::decode_all(record_compressed_bytes.as_slice()).unwrap();
-        // let record: sp1_core_executor::ExecutionRecord = bincode::deserialize(&record).unwrap();
-        // let program = Arc::new(
-        //     sp1_core_executor::Program::from_elf(&format!("{}/test_program.bin", &root)).unwrap(),
-        // );
-
-        // let machine = sp1_core_machine::riscv::RiscvAir::<crate::config::Felt>::machine();
 
         let mut rng = StdRng::seed_from_u64(4);
         run_in_place(|scope| async move {
@@ -641,7 +718,6 @@ mod tests {
                 program.clone(),
                 record,
                 CORE_MAX_TRACE_SIZE as usize,
-                semaphore.clone(),
                 &scope,
             )
             .await;
@@ -655,6 +731,7 @@ mod tests {
                 zerocheck_dense,
                 jagged_trace_data.col_index,
                 jagged_trace_data.start_indices,
+                jagged_trace_data.column_heights,
             );
 
             let num_dense_cols = zerocheck_jagged_mle.start_indices.len() - 1;

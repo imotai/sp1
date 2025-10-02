@@ -519,10 +519,12 @@ mod tests {
                 let jagged_first_round_poly: JaggedFirstRoundPoly =
                     JaggedFirstRoundPoly::new(base_device, eq_z_col, eq_z_row, dense_size >> 1);
 
+                // There's no fix_last_variable for jagged sumcheck, so we can put a dummy column_heights in this test.
                 let jagged_mle = JaggedFirstRoundPolyMle::new(
                     jagged_first_round_poly,
                     col_index_device,
                     start_indices_device,
+                    Vec::new(),
                 );
 
                 let jagged_first_round_sumcheck_poly = JaggedFirstRoundSumcheckPoly {

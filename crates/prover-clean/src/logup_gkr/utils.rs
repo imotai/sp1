@@ -28,8 +28,6 @@ use crate::{
 pub struct GkrLayerGeneric<Layer: DenseData<B>, B: Backend = TaskScope> {
     /// A jagged MLE containing the polynomials p_0, p_1, q_0, q_1 evaluated at the layer size.
     pub jagged_mle: JaggedMle<Layer, B>,
-    /// The number of rows / 2 for each interaction.
-    pub interaction_col_sizes: Vec<u32>,
     /// The number of row variables.
     pub num_row_variables: u32,
     /// The total number of interaction variables
@@ -41,7 +39,7 @@ pub struct GkrInputData {
     /// Interactions per chip, on host.
     pub interactions: BTreeMap<String, Arc<Interactions<Felt, CpuBackend>>>,
     /// The jagged traces.
-    pub jagged_trace_data: Arc<JaggedTraceMle<TaskScope>>,
+    pub jagged_trace_data: Arc<JaggedTraceMle<Felt, TaskScope>>,
     /// Some randomness used to initialize the denominators
     pub alpha: Ext,
     /// Some randomness used to batch the interaction values.
@@ -57,9 +55,8 @@ impl GkrInputData {
     ///
     /// Panics if the chip doesn't exist in the traces.
     #[inline]
-    pub fn main_poly_height(&self, name: &str) -> usize {
-        let main_range = self.jagged_trace_data.dense_data.main_table_index.get(name).unwrap();
-        main_range.poly_size
+    pub fn main_poly_height(&self, name: &str) -> Option<usize> {
+        self.jagged_trace_data.main_poly_height(name)
     }
 
     /// Returns a pointer to the dense data for the preprocessed traces of the given chip.
@@ -199,11 +196,11 @@ pub struct GkrTestData {
 /// Padded to num_row_variables if provided.
 pub async fn random_first_layer<R: Rng>(
     rng: &mut R,
-    interaction_col_sizes: Vec<u32>,
+    interaction_row_counts: Vec<u32>,
     num_row_variables: Option<u32>,
 ) -> FirstGkrLayer<CpuBackend> {
     let max_row_variables =
-        interaction_col_sizes.iter().max().copied().unwrap().next_power_of_two().ilog2() + 1;
+        interaction_row_counts.iter().max().copied().unwrap().next_power_of_two().ilog2() + 1;
 
     let num_row_variables = if let Some(num_vars) = num_row_variables {
         assert!(num_vars >= max_row_variables);
@@ -212,16 +209,16 @@ pub async fn random_first_layer<R: Rng>(
         max_row_variables
     };
 
-    let num_interaction_variables = interaction_col_sizes.len().next_power_of_two().ilog2();
+    let num_interaction_variables = interaction_row_counts.len().next_power_of_two().ilog2();
 
     let interaction_start_indices = once(0)
-        .chain(interaction_col_sizes.iter().scan(0u32, |acc, x| {
+        .chain(interaction_row_counts.iter().scan(0u32, |acc, x| {
             *acc += x;
             Some(*acc)
         }))
         .collect::<Buffer<_>>();
     let height = interaction_start_indices.last().copied().unwrap() as usize;
-    let col_index = interaction_col_sizes
+    let col_index = interaction_row_counts
         .iter()
         .enumerate()
         .flat_map(|(i, c)| vec![i as u32; *c as usize])
@@ -231,14 +228,10 @@ pub async fn random_first_layer<R: Rng>(
     let denominator = Tensor::<Ext>::rand(rng, [2, 1, height << 1]);
     let layer_data = JaggedFirstGkrLayer::new(numerator, denominator, height);
 
-    let jagged_mle = JaggedMle::new(layer_data, col_index, interaction_start_indices);
+    let jagged_mle =
+        JaggedMle::new(layer_data, col_index, interaction_start_indices, interaction_row_counts);
 
-    FirstGkrLayer {
-        jagged_mle,
-        interaction_col_sizes,
-        num_interaction_variables,
-        num_row_variables,
-    }
+    FirstGkrLayer { jagged_mle, num_interaction_variables, num_row_variables }
 }
 
 /// Generates a random layer from an rng, and some interaction row counts.
@@ -246,11 +239,11 @@ pub async fn random_first_layer<R: Rng>(
 /// Padded to num_row_variables if provided.
 pub async fn random_layer<R: Rng>(
     rng: &mut R,
-    interaction_col_sizes: Vec<u32>,
+    interaction_row_counts: Vec<u32>,
     num_row_variables: Option<u32>,
 ) -> GkrLayer<CpuBackend> {
     let max_row_variables =
-        interaction_col_sizes.iter().max().copied().unwrap().next_power_of_two().ilog2() + 1;
+        interaction_row_counts.iter().max().copied().unwrap().next_power_of_two().ilog2() + 1;
 
     let num_row_variables = if let Some(num_vars) = num_row_variables {
         assert!(num_vars >= max_row_variables);
@@ -259,16 +252,16 @@ pub async fn random_layer<R: Rng>(
         max_row_variables
     };
 
-    let num_interaction_variables = interaction_col_sizes.len().next_power_of_two().ilog2();
+    let num_interaction_variables = interaction_row_counts.len().next_power_of_two().ilog2();
 
     let interaction_start_indices = once(0)
-        .chain(interaction_col_sizes.iter().scan(0u32, |acc, x| {
+        .chain(interaction_row_counts.iter().scan(0u32, |acc, x| {
             *acc += x;
             Some(*acc)
         }))
         .collect::<Buffer<_>>();
     let height = interaction_start_indices.last().copied().unwrap() as usize;
-    let col_index = interaction_col_sizes
+    let col_index = interaction_row_counts
         .iter()
         .enumerate()
         .flat_map(|(i, c)| {
@@ -282,8 +275,12 @@ pub async fn random_layer<R: Rng>(
     let jagged_gkr_layer = JaggedGkrLayer::new(layer_data, height);
 
     GkrLayer {
-        jagged_mle: JaggedMle::new(jagged_gkr_layer, col_index, interaction_start_indices),
-        interaction_col_sizes,
+        jagged_mle: JaggedMle::new(
+            jagged_gkr_layer,
+            col_index,
+            interaction_start_indices,
+            interaction_row_counts,
+        ),
         num_interaction_variables,
         num_row_variables,
     }
@@ -292,10 +289,10 @@ pub async fn random_layer<R: Rng>(
 /// Generates test data for a layer.
 pub async fn generate_test_data<R: Rng>(
     rng: &mut R,
-    interaction_col_sizes: Vec<u32>,
+    interaction_row_counts: Vec<u32>,
     num_row_variables: Option<u32>,
 ) -> (GkrLayer<CpuBackend>, GkrTestData) {
-    let layer = random_layer(rng, interaction_col_sizes, num_row_variables).await;
+    let layer = random_layer(rng, interaction_row_counts, num_row_variables).await;
     let test_data = get_polys_from_layer(&layer).await;
     (layer, test_data)
 }
@@ -304,8 +301,7 @@ pub async fn generate_test_data<R: Rng>(
 /// Materializes padding for each row to 2^num_row_variables.
 pub async fn get_polys_from_layer(layer: &GkrLayer<CpuBackend>) -> GkrTestData {
     let GkrLayer {
-        jagged_mle: JaggedMle { dense_data: layer_data, .. },
-        interaction_col_sizes,
+        jagged_mle: JaggedMle { dense_data: layer_data, column_heights: interaction_row_counts, .. },
         num_interaction_variables,
         num_row_variables,
         ..
@@ -314,7 +310,7 @@ pub async fn get_polys_from_layer(layer: &GkrLayer<CpuBackend>) -> GkrTestData {
     let full_padded_height = 1usize << num_row_variables;
     let get_mle = |values: Vec<Ext>,
                    padding: Ext,
-                   interaction_col_sizes: &[u32],
+                   interaction_row_counts: &[u32],
                    num_interaction_variables: u32,
                    full_padded_height: usize| {
         let total_size = (1 << num_interaction_variables) * full_padded_height;
@@ -326,7 +322,7 @@ pub async fn get_polys_from_layer(layer: &GkrLayer<CpuBackend>) -> GkrTestData {
         let mut read_offset = 0;
 
         // Process each interaction in forward order
-        for (i, &row_count) in interaction_col_sizes.iter().enumerate() {
+        for (i, &row_count) in interaction_row_counts.iter().enumerate() {
             let h = (row_count as usize) << 1;
             let write_start = i * full_padded_height;
 
@@ -348,17 +344,17 @@ pub async fn get_polys_from_layer(layer: &GkrLayer<CpuBackend>) -> GkrTestData {
     let data_2 = layer_data.layer.get(2).unwrap().get(0).unwrap().as_slice().to_vec();
     let data_3 = layer_data.layer.get(3).unwrap().get(0).unwrap().as_slice().to_vec();
 
-    let interaction_col_sizes = interaction_col_sizes.clone();
-    let irc1 = interaction_col_sizes.clone();
-    let irc2 = interaction_col_sizes.clone();
-    let irc3 = interaction_col_sizes.clone();
+    let interaction_row_counts = interaction_row_counts.clone();
+    let irc1 = interaction_row_counts.clone();
+    let irc2 = interaction_row_counts.clone();
+    let irc3 = interaction_row_counts.clone();
     let num_interaction_vars = *num_interaction_variables;
 
     let (numerator_0, numerator_1, denominator_0, denominator_1) = tokio::join!(
         tokio::task::spawn_blocking(move || get_mle(
             data_0,
             Ext::zero(),
-            &interaction_col_sizes,
+            &interaction_row_counts,
             num_interaction_vars,
             full_padded_height
         )),

@@ -23,9 +23,9 @@ struct CircuitValues {
         CircuitValues values;
         // Load the numerator and denominator values
         //  numerator[i] = layer[0, i]
-        //  numerator[i + height] = layer[2, i]
+        //  numerator[i + 2 * height] = layer[2, i]
         //  denominator[i] = layer[4, i]
-        //  denominator[i] = layer[6, i]
+        //  denominator[i + 2 * height] = layer[6, i]
 
         // height is half of the number of entries in the layer, because even and odd indices belong
         // to the same row, since each row has to be even length.
@@ -43,9 +43,9 @@ struct CircuitValues {
         CircuitValues values;
         // Load the numerator and denominator values
         //  numerator[i] = layer[0, i]
-        //  numerator[i + height] = layer[2, i]
+        //  numerator[i + 2 * height] = layer[2, i]
         //  denominator[i] = layer[4, i]
-        //  denominator[i] = layer[6, i]
+        //  denominator[i + 2 * height] = layer[6, i]
 
         // height is half of the number of entries in the layer, because even and odd indices belong
         // to the same row.

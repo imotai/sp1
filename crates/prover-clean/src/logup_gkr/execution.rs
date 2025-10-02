@@ -1,5 +1,3 @@
-use std::iter::once;
-
 use csl_cuda::{
     args,
     sys::prover_clean::{
@@ -31,18 +29,8 @@ pub async fn layer_transition(layer: &GkrLayer) -> GkrLayer {
     let backend = layer.jagged_mle.backend();
     let height = layer.jagged_mle.dense_data.height;
 
-    // If this is not the last layer, we need to fix the last variable and create a
-    // new circuit layer.
-    let output_interaction_col_sizes =
-        layer.interaction_col_sizes.iter().map(|count| count.div_ceil(4) * 2).collect::<Vec<_>>();
-
-    // The output indices is just the prefix sum of the interaction row counts.
-    let output_interaction_start_indices = once(0)
-        .chain(output_interaction_col_sizes.iter().scan(0u32, |acc, x| {
-            *acc += x;
-            Some(*acc)
-        }))
-        .collect::<Buffer<_>>();
+    let (output_interaction_start_indices, output_interaction_row_counts) =
+        layer.jagged_mle.next_start_indices_and_column_heights();
 
     let output_height = output_interaction_start_indices.last().copied().unwrap() as usize;
     let output_interaction_start_indices =
@@ -62,8 +50,12 @@ pub async fn layer_transition(layer: &GkrLayer) -> GkrLayer {
     let block_dim = BLOCK_SIZE;
 
     let device_output_gkr_layer = JaggedGkrLayer::new(output_layer, output_height);
-    let mut output_jagged_mle =
-        JaggedMle::new(device_output_gkr_layer, output_col_index, output_interaction_start_indices);
+    let mut output_jagged_mle = JaggedMle::new(
+        device_output_gkr_layer,
+        output_col_index,
+        output_interaction_start_indices,
+        output_interaction_row_counts,
+    );
 
     unsafe {
         output_jagged_mle.dense_data.assume_init();
@@ -82,7 +74,6 @@ pub async fn layer_transition(layer: &GkrLayer) -> GkrLayer {
 
     GkrLayer {
         jagged_mle: output_jagged_mle,
-        interaction_col_sizes: output_interaction_col_sizes,
         num_row_variables: layer.num_row_variables - 1,
         num_interaction_variables: layer.num_interaction_variables,
     }
@@ -95,15 +86,8 @@ pub async fn first_layer_transition(layer: &FirstGkrLayer) -> GkrLayer {
 
     // If this is not the last layer, we need to fix the last variable and create a
     // new circuit layer.
-    let output_interaction_col_sizes =
-        layer.interaction_col_sizes.iter().map(|count| count.div_ceil(4) * 2).collect::<Vec<_>>();
-    // The output indices is just the prefix sum of the interaction row counts.
-    let output_interaction_start_indices = once(0)
-        .chain(output_interaction_col_sizes.iter().scan(0u32, |acc, x| {
-            *acc += x;
-            Some(*acc)
-        }))
-        .collect::<Buffer<_>>();
+    let (output_interaction_start_indices, output_interaction_row_counts) =
+        layer.jagged_mle.next_start_indices_and_column_heights();
     let output_height = output_interaction_start_indices.last().copied().unwrap() as usize;
     let output_interaction_start_indices =
         output_interaction_start_indices.to_device_in(backend).await.unwrap();
@@ -114,8 +98,12 @@ pub async fn first_layer_transition(layer: &FirstGkrLayer) -> GkrLayer {
     let output_col_index: Buffer<u32, _> = Buffer::with_capacity_in(output_height, backend.clone());
 
     let output_gkr_layer = JaggedGkrLayer::new(output_layer, output_height);
-    let mut output_jagged_mle =
-        JaggedMle::new(output_gkr_layer, output_col_index, output_interaction_start_indices);
+    let mut output_jagged_mle = JaggedMle::new(
+        output_gkr_layer,
+        output_col_index,
+        output_interaction_start_indices,
+        output_interaction_row_counts,
+    );
 
     // populate the new layer
     const BLOCK_SIZE: usize = 256;
@@ -140,7 +128,6 @@ pub async fn first_layer_transition(layer: &FirstGkrLayer) -> GkrLayer {
     }
     GkrLayer {
         jagged_mle: output_jagged_mle,
-        interaction_col_sizes: output_interaction_col_sizes,
         num_row_variables: layer.num_row_variables - 1,
         num_interaction_variables: layer.num_interaction_variables,
     }

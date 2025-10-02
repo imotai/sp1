@@ -1,39 +1,63 @@
 use crate::config::Ext;
-use crate::zerocheck::data::DenseBuffer;
+use crate::tracegen::JaggedTraceMle;
+use crate::tracegen::TraceDenseData;
+use crate::tracegen::TraceOffset;
 use crate::zerocheck::data::JaggedDenseMle;
 use csl_cuda::args;
 use csl_cuda::sys::runtime::KernelPtr;
 use csl_cuda::TaskScope;
 use csl_cuda::ToDevice;
+use slop_algebra::ExtensionField;
 use slop_algebra::Field;
 use slop_alloc::Buffer;
 use slop_alloc::HasBackend;
 use slop_multilinear::Mle;
 use slop_multilinear::Point;
 use slop_tensor::Tensor;
-use std::iter::once;
+use std::collections::BTreeMap;
 
 pub mod data;
 
 pub async fn evaluate_jagged_fix_last_variable<F: Field>(
-    jagged_mle: JaggedDenseMle<F, TaskScope>,
+    jagged_mle: &JaggedTraceMle<F, TaskScope>,
     value: Ext,
-    input_heights: Vec<u32>,
     kernel: unsafe extern "C" fn() -> KernelPtr,
-) -> (JaggedDenseMle<Ext, TaskScope>, Vec<u32>) {
+) -> JaggedTraceMle<Ext, TaskScope>
+where
+    Ext: ExtensionField<F>,
+{
     let backend = jagged_mle.dense().backend();
 
-    let length = input_heights.iter().sum::<u32>();
-    let output_heights =
-        input_heights.iter().map(|height| height.div_ceil(4) * 2).collect::<Vec<u32>>();
-    let new_start_idx = once(0)
-        .chain(output_heights.iter().scan(0u32, |acc, x| {
-            *acc += x;
-            Some(*acc)
-        }))
-        .collect::<Vec<_>>();
-    let new_total_length = *new_start_idx.last().unwrap() * 2;
-    let buffer_start_idx = Buffer::from(new_start_idx);
+    fn update_offset(
+        old_map: &BTreeMap<String, TraceOffset>,
+        starting_offset: usize,
+    ) -> (BTreeMap<String, TraceOffset>, usize) {
+        let mut current_offset = starting_offset;
+        let mut next_table_index = BTreeMap::new();
+        for (chip, old_offset) in old_map.iter() {
+            let next_poly_size = old_offset.poly_size.div_ceil(4) * 2;
+            let upper = current_offset + next_poly_size * old_offset.num_polys;
+            let next_offset = TraceOffset {
+                dense_offset: current_offset..upper,
+                poly_size: next_poly_size,
+                num_polys: old_offset.num_polys,
+            };
+            next_table_index.insert(chip.clone(), next_offset.clone());
+            current_offset = upper;
+        }
+        (next_table_index, current_offset)
+    }
+    let (next_preprocessed_table_index, next_preprocessed_offset) =
+        update_offset(&jagged_mle.dense_data.preprocessed_table_index, 0);
+
+    let (next_main_table_index, _next_main_offset) =
+        update_offset(&jagged_mle.dense_data.main_table_index, next_preprocessed_offset);
+
+    let length = jagged_mle.column_heights.iter().sum::<u32>();
+
+    let (buffer_start_idx, output_heights) = jagged_mle.next_start_indices_and_column_heights();
+    let new_total_length = buffer_start_idx.last().unwrap() * 2;
+
     let output_start_idx = buffer_start_idx.to_device_in(backend).await.unwrap();
 
     let new_data =
@@ -43,8 +67,16 @@ pub async fn evaluate_jagged_fix_last_variable<F: Field>(
         backend.clone(),
     );
 
+    let next_trace_data = TraceDenseData {
+        dense: new_data,
+        preprocessed_offset: next_preprocessed_offset,
+        preprocessed_cols: jagged_mle.dense_data.preprocessed_cols,
+        preprocessed_table_index: next_preprocessed_table_index,
+        main_table_index: next_main_table_index,
+    };
+
     let mut next_jagged_mle =
-        JaggedDenseMle::new(DenseBuffer { data: new_data }, new_cols, output_start_idx);
+        JaggedTraceMle::new(next_trace_data, new_cols, output_start_idx, output_heights);
 
     const BLOCK_SIZE: usize = 256;
     const CHUNK_SIZE: usize = 1 << 16;
@@ -53,13 +85,13 @@ pub async fn evaluate_jagged_fix_last_variable<F: Field>(
     let block_dim = BLOCK_SIZE;
 
     unsafe {
-        next_jagged_mle.dense_data.assume_init();
+        next_jagged_mle.dense_data.dense.assume_init();
         next_jagged_mle.col_index.assume_init();
         let args = args!(jagged_mle.as_raw(), next_jagged_mle.as_mut_raw(), length, value);
         backend.launch_kernel(kernel(), grid_size, block_dim, &args, 0).unwrap();
     }
 
-    (next_jagged_mle, output_heights)
+    next_jagged_mle
 }
 
 pub async fn evaluate_jagged_mle_chunked<F: Field>(
@@ -114,6 +146,9 @@ pub async fn evaluate_jagged_mle_chunked<F: Field>(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+    use std::collections::BTreeSet;
+
     use csl_cuda::run_in_place;
     use csl_cuda::sys::prover_clean::fix_last_variable_jagged_ext;
     use csl_cuda::sys::prover_clean::fix_last_variable_jagged_felt;
@@ -127,6 +162,9 @@ mod tests {
     use sp1_hypercube::log2_ceil_usize;
 
     use crate::config::Ext;
+    use crate::tracegen::JaggedTraceMle;
+    use crate::tracegen::TraceDenseData;
+    use crate::tracegen::TraceOffset;
     use crate::zerocheck::data::DenseBuffer;
     use crate::zerocheck::data::JaggedDenseMle;
     use crate::zerocheck::evaluate_jagged_fix_last_variable;
@@ -207,7 +245,7 @@ mod tests {
     // 3. Col Index corresponding to the dense data, for use in a JaggedMle.
     // 4. Start indices for every column, for use in a JaggedMle.
     fn get_input(
-        sizes: Vec<(u32, u32)>,
+        sizes: &[(u32, u32)],
     ) -> (Vec<Mle<KoalaBear>>, Vec<KoalaBear>, Vec<u32>, Vec<u32>) {
         let mut rng = rand::thread_rng();
         let sum_length = sizes.iter().map(|(a, b)| a * b).sum::<u32>();
@@ -221,14 +259,14 @@ mod tests {
             .collect::<Vec<_>>();
         let mut mles = vec![];
         for (row, col) in sizes {
-            assert_eq!(row % 4, 0);
-            for _ in 0..col {
+            assert_eq!(*row % 4, 0);
+            for _ in 0..*col {
                 mles.push(Mle::from_buffer(Buffer::from(
-                    data[2 * cnt..2 * cnt + row as usize].to_vec(),
+                    data[2 * cnt..2 * cnt + *row as usize].to_vec(),
                 )));
-                cols[cnt..cnt + row as usize / 2].fill(col_idx);
-                cnt += row as usize / 2;
-                start_idx[(col_idx + 1) as usize] = start_idx[col_idx as usize] + row / 2;
+                cols[cnt..cnt + *row as usize / 2].fill(col_idx);
+                cnt += *row as usize / 2;
+                start_idx[(col_idx + 1) as usize] = start_idx[col_idx as usize] + *row / 2;
                 col_idx += 1;
             }
         }
@@ -236,7 +274,7 @@ mod tests {
     }
 
     async fn mle_evaluation_test(table_sizes: Vec<(u32, u32)>) {
-        let (mles, data, cols, start_idx) = get_input(table_sizes);
+        let (mles, data, cols, start_idx) = get_input(&table_sizes);
 
         let mut rng = rand::thread_rng();
 
@@ -264,6 +302,7 @@ mod tests {
                 DenseBuffer { data: data.clone() },
                 cols.clone(),
                 start_idx.clone(),
+                Vec::new(),
             )
             .into_device(&t)
             .await
@@ -292,6 +331,7 @@ mod tests {
                 DenseBuffer { data: data.clone() },
                 cols.clone(),
                 start_idx.clone(),
+                Vec::new(),
             )
             .into_device(&t)
             .await
@@ -324,14 +364,42 @@ mod tests {
     // Instead of encoding all of the column evaluations as an MLE, this test directly
     // compares all column evaluations to the expected value from host.
     async fn mle_individual_evaluation_test(table_sizes: Vec<(u32, u32)>) {
-        let (mles, data, cols, start_idx) = get_input(table_sizes);
+        let mut rng = rand::thread_rng();
+        // Make (# of tables) chip names.
+        let chip_names =
+            (0..table_sizes.len()).map(|i| format!("chip_{}", i)).collect::<BTreeSet<_>>();
+
+        // Arbitrarily choose the first 1/4 of the tables to be preprocessed.
+        let preprocessed_boundary = table_sizes.len() / 4;
+
+        let mut current_offset = 0;
+        let mut preprocessed_cols = 0;
+        let mut preprocessed_offset = 0;
+        let mut preprocessed_table_index = BTreeMap::new();
+        let mut main_table_index = BTreeMap::new();
+        for (i, (chip, table_size)) in chip_names.iter().zip(table_sizes.iter()).enumerate() {
+            let upper = current_offset + (table_size.0 * table_size.1) as usize;
+            let trace_offset = TraceOffset {
+                dense_offset: current_offset..upper,
+                poly_size: table_size.0 as usize,
+                num_polys: table_size.1 as usize,
+            };
+            if i < preprocessed_boundary {
+                preprocessed_table_index.insert(chip.clone(), trace_offset);
+                preprocessed_cols += table_size.1;
+                preprocessed_offset += table_size.0 * table_size.1;
+            } else {
+                main_table_index.insert(chip.clone(), trace_offset);
+            }
+            current_offset = upper;
+        }
+
+        let (mles, data, cols, start_idx) = get_input(&table_sizes);
 
         let mut input_heights = vec![];
         for i in 1..start_idx.len() {
             input_heights.push(start_idx[i] - start_idx[i - 1]);
         }
-
-        let mut rng = rand::thread_rng();
 
         let row_variable: usize = 22;
         let z_row = Point::<Ext>::rand(&mut rng, row_variable as u32);
@@ -346,21 +414,26 @@ mod tests {
         let cols = Buffer::from(cols);
         let start_idx = Buffer::from(start_idx);
         run_in_place(|t| async move {
-            let jagged_mle = JaggedDenseMle::new(
-                DenseBuffer { data: data.clone() },
+            let jagged_mle = JaggedTraceMle::new(
+                TraceDenseData {
+                    dense: data.clone(),
+                    preprocessed_offset: preprocessed_offset as usize,
+                    preprocessed_cols: preprocessed_cols as usize,
+                    preprocessed_table_index,
+                    main_table_index,
+                },
                 cols.clone(),
                 start_idx.clone(),
+                input_heights.clone(),
             )
             .into_device(&t)
-            .await
-            .unwrap();
+            .await;
 
             t.synchronize().await.unwrap();
             let now = std::time::Instant::now();
-            let (mut jagged_mle, mut input_heights) = evaluate_jagged_fix_last_variable(
-                jagged_mle,
+            let mut jagged_mle = evaluate_jagged_fix_last_variable(
+                &jagged_mle,
                 *z_row[row_variable - 1],
-                input_heights,
                 fix_last_variable_jagged_felt,
             )
             .await;
@@ -371,10 +444,9 @@ mod tests {
 
             for i in (0..row_variable - 1).rev() {
                 let now = std::time::Instant::now();
-                (jagged_mle, input_heights) = evaluate_jagged_fix_last_variable(
-                    jagged_mle,
+                jagged_mle = evaluate_jagged_fix_last_variable(
+                    &jagged_mle,
                     *z_row[i],
-                    input_heights,
                     fix_last_variable_jagged_ext,
                 )
                 .await;
@@ -383,7 +455,7 @@ mod tests {
                 println!("time for round {}: {elapsed:?}", row_variable - i);
             }
 
-            let result = unsafe { jagged_mle.dense_data.data.copy_into_host_vec() };
+            let result = unsafe { jagged_mle.dense_data.dense.copy_into_host_vec() };
             let mut idx = 0;
             for i in 0..eval.len() {
                 if input_heights[i] == 0 {

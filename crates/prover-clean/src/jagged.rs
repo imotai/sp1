@@ -1,3 +1,6 @@
+use std::iter::once;
+
+use csl_cuda::TaskScope;
 use slop_alloc::{Backend, Buffer, HasBackend};
 
 #[derive(Clone, Debug)]
@@ -7,6 +10,8 @@ pub struct JaggedMle<D: DenseData<A>, A: Backend> {
     pub col_index: Buffer<u32, A>,
     /// start_indices[i] is the index of the first element of the i'th column.
     pub start_indices: Buffer<u32, A>,
+    /// column_heights[i] is half of the height of the i'th column.
+    pub column_heights: Vec<u32>,
     pub dense_data: D,
 }
 
@@ -48,8 +53,13 @@ impl<D: DenseData<A>, A: Backend> JaggedMle<D, A> {
         }
     }
 
-    pub fn new(dense_data: D, col_index: Buffer<u32, A>, start_indices: Buffer<u32, A>) -> Self {
-        Self { dense_data, col_index, start_indices }
+    pub fn new(
+        dense_data: D,
+        col_index: Buffer<u32, A>,
+        start_indices: Buffer<u32, A>,
+        column_heights: Vec<u32>,
+    ) -> Self {
+        Self { dense_data, col_index, start_indices, column_heights }
     }
 
     pub fn dense(&self) -> &D {
@@ -78,6 +88,23 @@ impl<D: DenseData<A>, A: Backend> JaggedMle<D, A> {
 
     pub fn into_parts(self) -> (D, Buffer<u32, A>, Buffer<u32, A>) {
         (self.dense_data, self.col_index, self.start_indices)
+    }
+}
+
+impl<D: DenseData<TaskScope>> JaggedMle<D, TaskScope> {
+    /// Computes the next start indices and column heights for use in jagged fix last variable.
+    pub fn next_start_indices_and_column_heights(&self) -> (Buffer<u32>, Vec<u32>) {
+        let output_heights =
+            self.column_heights.iter().map(|height| height.div_ceil(4) * 2).collect::<Vec<u32>>();
+
+        let new_start_idx = once(0)
+            .chain(output_heights.iter().scan(0u32, |acc, x| {
+                *acc += x;
+                Some(*acc)
+            }))
+            .collect::<Vec<_>>();
+        let buffer_start_idx = Buffer::from(new_start_idx);
+        (buffer_start_idx, output_heights)
     }
 }
 

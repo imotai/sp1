@@ -3,27 +3,38 @@
 //!
 use std::{
     collections::{BTreeMap, BTreeSet},
+    ops::Deref,
     sync::Arc,
 };
 
-use csl_cuda::{TaskScope, ToDevice};
+use csl_cuda::{
+    sys::prover_clean::{fix_last_variable_jagged_ext, fix_last_variable_jagged_felt},
+    TaskScope, ToDevice,
+};
 use itertools::Itertools;
 use slop_algebra::AbstractField;
 use slop_alloc::{CanCopyFromRef, HasBackend, ToHost};
 use slop_challenger::FieldChallenger;
-use slop_multilinear::{partial_lagrange_blocking, Mle, MultilinearPcsChallenger, Point};
+use slop_multilinear::{
+    full_geq, partial_lagrange_blocking, Mle, MleEval, MultilinearPcsChallenger, Point,
+};
 use slop_sumcheck::partially_verify_sumcheck_proof;
+use slop_tensor::Tensor;
 use tracing::Instrument;
 
 use sp1_hypercube::{
-    air::MachineAir, Chip, LogUpEvaluations, LogUpGkrOutput, LogupGkrProof, LogupGkrRoundProof,
-    LogupGkrVerificationError,
+    air::MachineAir, Chip, ChipEvaluation, LogUpEvaluations, LogUpGkrOutput, LogupGkrProof,
+    LogupGkrRoundProof, LogupGkrVerificationError,
 };
 
 use crate::{
     config::{Ext, Felt},
-    logup_gkr::utils::{FirstLayerPolynomial, LogUpCudaCircuit},
+    logup_gkr::{
+        tracegen::generate_gkr_circuit,
+        utils::{FirstLayerPolynomial, LogUpCudaCircuit},
+    },
     tracegen::JaggedTraceMle,
+    zerocheck::evaluate_jagged_fix_last_variable,
 };
 mod execution;
 mod interactions;
@@ -177,7 +188,7 @@ pub async fn prove_gkr_circuit<C: FieldChallenger<Felt>>(
 /// End-to-end proves lookups for a given trace.
 pub async fn prove_logup_gkr<A: MachineAir<Felt>, C: MultilinearPcsChallenger<Felt>>(
     chips: &BTreeSet<Chip<Felt, A>>,
-    jagged_trace_data: Arc<JaggedTraceMle<TaskScope>>,
+    jagged_trace_data: Arc<JaggedTraceMle<Felt, TaskScope>>,
     backend: TaskScope,
     num_row_variables: u32,
     alpha: Ext,
@@ -189,7 +200,7 @@ pub async fn prove_logup_gkr<A: MachineAir<Felt>, C: MultilinearPcsChallenger<Fe
     let num_interaction_variables = num_interactions.next_power_of_two().ilog2();
 
     // Run the GKR circuit and get the output.
-    let (output, circuit) = tracegen::generate_gkr_circuit(
+    let (output, circuit) = generate_gkr_circuit(
         chips,
         jagged_trace_data.clone(),
         num_row_variables,
@@ -236,43 +247,66 @@ pub async fn prove_logup_gkr<A: MachineAir<Felt>, C: MultilinearPcsChallenger<Fe
     .await;
 
     // Get the evaluations for each chip at the evaluation point of the last round.
+    // We accomplish this by doing jagged fix last variable on the evaluation point.
     let eval_point = eval_point.last_k(num_row_variables as usize);
-    let chip_evaluations = BTreeMap::new();
-    // let eval_point_b = numerator.backend().copy_to(&eval_point).await.unwrap();
-    // let eval_point_eq = Mle::partial_lagrange(&eval_point_b).await;
+    let mut chip_evaluations = BTreeMap::new();
 
-    // TODO: This changes for the new trace format?
-    // for chip in chips.iter() {
-    //     let name = chip.name();
-    //     let main_trace = traces.get(&name).unwrap();
-    //     let preprocessed_trace = preprocessed_traces.get(&name);
+    let mut next_input_jagged_trace_mle = evaluate_jagged_fix_last_variable(
+        &jagged_trace_data,
+        *eval_point.last().unwrap(),
+        fix_last_variable_jagged_felt,
+    )
+    .await;
+    for alpha in eval_point.iter().rev().skip(1) {
+        next_input_jagged_trace_mle = evaluate_jagged_fix_last_variable(
+            &next_input_jagged_trace_mle,
+            *alpha,
+            fix_last_variable_jagged_ext,
+        )
+        .await;
+    }
 
-    //     let main_evaluation = main_trace.eval_at_eq(&eval_point, &eval_point_eq).await;
-    //     let preprocessed_evaluation = OptionFuture::from(
-    //         preprocessed_trace.as_ref().map(|t| t.eval_at_eq(&eval_point, &eval_point_eq)),
-    //     )
-    //     .await;
-    //     let main_evaluation = main_evaluation.to_host().await.unwrap();
-    //     let preprocessed_evaluation = OptionFuture::from(
-    //         preprocessed_evaluation.as_ref().map(|e| async { e.to_host().await.unwrap() }),
-    //     )
-    //     .await;
-    //     let openings = ChipEvaluation {
-    //         main_trace_evaluations: main_evaluation,
-    //         preprocessed_trace_evaluations: preprocessed_evaluation,
-    //     };
-    //     // Observe the openings.
-    //     if let Some(prep_eval) = openings.preprocessed_trace_evaluations.as_ref() {
-    //         for eval in prep_eval.deref().iter() {
-    //             challenger.observe_ext_element(*eval);
-    //         }
-    //     }
-    //     for eval in openings.main_trace_evaluations.deref().iter() {
-    //         challenger.observe_ext_element(*eval);
-    //     }
+    let host_dense = next_input_jagged_trace_mle.dense_data.dense.to_host().await.unwrap().to_vec();
 
-    //     chip_evaluations.insert(name, openings);
-    // }
+    // Take every fourth element of host_dense, since the intermediate evaluations are padding.
+    let host_dense = host_dense.into_iter().step_by(4).collect::<Vec<_>>();
+
+    let mut preprocessed_so_far = 0;
+    let mut main_so_far = jagged_trace_data.dense().preprocessed_cols;
+
+    for chip in chips.iter() {
+        let name = chip.name();
+
+        let main_num_polys = jagged_trace_data.main_num_polys(&name).unwrap();
+        let main_evaluation = host_dense[main_so_far..main_so_far + main_num_polys].to_vec();
+        let main_evaluation = MleEval::new(Tensor::from(main_evaluation));
+        main_so_far += main_num_polys;
+
+        let preprocessed_evaluation =
+            jagged_trace_data.preprocessed_num_polys(&name).map(|num_polys| {
+                let preprocessed_evaluation =
+                    host_dense[preprocessed_so_far..preprocessed_so_far + num_polys].to_vec();
+
+                preprocessed_so_far += num_polys;
+                MleEval::new(Tensor::from(preprocessed_evaluation))
+            });
+
+        let openings = ChipEvaluation {
+            main_trace_evaluations: main_evaluation,
+            preprocessed_trace_evaluations: preprocessed_evaluation,
+        };
+        // Observe the openings.
+        if let Some(prep_eval) = openings.preprocessed_trace_evaluations.as_ref() {
+            for eval in prep_eval.deref().iter() {
+                challenger.observe_ext_element(*eval);
+            }
+        }
+        for eval in openings.main_trace_evaluations.deref().iter() {
+            challenger.observe_ext_element(*eval);
+        }
+
+        chip_evaluations.insert(name, openings);
+    }
 
     let logup_evaluations = LogUpEvaluations { point: eval_point, chip_openings: chip_evaluations };
 
@@ -285,8 +319,8 @@ pub async fn prove_logup_gkr<A: MachineAir<Felt>, C: MultilinearPcsChallenger<Fe
 #[allow(clippy::too_many_arguments)]
 pub fn verify_logup_gkr<A: MachineAir<Felt>>(
     shard_chips: &BTreeSet<Chip<Felt, A>>,
-    _degrees: &BTreeMap<String, Point<Felt>>,
-    _alpha: Ext,
+    degrees: &BTreeMap<String, Point<Felt>>,
+    alpha: Ext,
     beta_seed: &Point<Ext>,
     cumulative_sum: Ext,
     max_log_row_count: usize,
@@ -401,7 +435,7 @@ pub fn verify_logup_gkr<A: MachineAir<Felt>>(
     }
 
     // Verify that the last layer evaluations are consistent with the evaluations of the traces.
-    let (_interaction_point, trace_point) =
+    let (interaction_point, trace_point) =
         eval_point.split_at(number_of_interaction_variables as usize);
     // Assert that the number of trace variables matches the expected one.
     let trace_variables = trace_point.dimension();
@@ -413,104 +447,98 @@ pub fn verify_logup_gkr<A: MachineAir<Felt>>(
     }
 
     // Assert that the trace point is the same as the claimed opening point
-    let LogUpEvaluations { point, chip_openings: _ } = logup_evaluations;
+    let LogUpEvaluations { point, chip_openings } = logup_evaluations;
     if point != &trace_point {
-        println!(
-            "point: {:?}, trace_point: {:?}",
-            point.values().to_vec().len(),
-            trace_point.values().to_vec().len()
-        );
         return Err(LogupGkrVerificationError::TracePointMismatch);
     }
 
-    let _betas = partial_lagrange_blocking(beta_seed);
+    let betas = partial_lagrange_blocking(beta_seed);
 
     // Compute the expected opening of the last layer numerator and denominator values from the
     // trace openings.
-    // let mut numerator_values = Vec::with_capacity(num_of_interactions);
-    // let mut denominator_values = Vec::with_capacity(num_of_interactions);
-    // let mut point_extended = point.clone();
-    // point_extended.add_dimension(Ext::zero());
-    // for ((chip, openings), threshold) in
-    //     shard_chips.iter().zip_eq(chip_openings.values()).zip_eq(degrees.values())
-    // {
-    //     // Observe the opening
-    //     if let Some(prep_eval) = openings.preprocessed_trace_evaluations.as_ref() {
-    //         for eval in prep_eval.deref().iter() {
-    //             challenger.observe_ext_element(*eval);
-    //         }
-    //         if prep_eval.evaluations().sizes() != [chip.air.preprocessed_width()] {
-    //             return Err(LogupGkrVerificationError::InvalidShape);
-    //         }
-    //     } else if chip.air.preprocessed_width() != 0 {
-    //         return Err(LogupGkrVerificationError::InvalidShape);
-    //     }
-    //     for eval in openings.main_trace_evaluations.deref().iter() {
-    //         challenger.observe_ext_element(*eval);
-    //     }
-    //     if openings.main_trace_evaluations.evaluations().sizes() != [chip.air.width()] {
-    //         return Err(LogupGkrVerificationError::InvalidShape);
-    //     }
+    let mut numerator_values = Vec::with_capacity(num_of_interactions);
+    let mut denominator_values = Vec::with_capacity(num_of_interactions);
+    let mut point_extended = point.clone();
+    point_extended.add_dimension(Ext::zero());
+    for ((chip, openings), threshold) in
+        shard_chips.iter().zip_eq(chip_openings.values()).zip_eq(degrees.values())
+    {
+        // Observe the opening
+        if let Some(prep_eval) = openings.preprocessed_trace_evaluations.as_ref() {
+            for eval in prep_eval.deref().iter() {
+                challenger.observe_ext_element(*eval);
+            }
+            if prep_eval.evaluations().sizes() != [chip.air.preprocessed_width()] {
+                return Err(LogupGkrVerificationError::InvalidShape);
+            }
+        } else if chip.air.preprocessed_width() != 0 {
+            return Err(LogupGkrVerificationError::InvalidShape);
+        }
+        for eval in openings.main_trace_evaluations.deref().iter() {
+            challenger.observe_ext_element(*eval);
+        }
+        if openings.main_trace_evaluations.evaluations().sizes() != [chip.air.width()] {
+            return Err(LogupGkrVerificationError::InvalidShape);
+        }
 
-    //     if threshold.dimension() != point_extended.dimension() {
-    //         return Err(LogupGkrVerificationError::InvalidShape);
-    //     }
+        if threshold.dimension() != point_extended.dimension() {
+            return Err(LogupGkrVerificationError::InvalidShape);
+        }
 
-    //     let geq_eval = full_geq(threshold, &point_extended);
-    //     let ChipEvaluation { main_trace_evaluations, preprocessed_trace_evaluations } = openings;
-    //     for (interaction, is_send) in
-    //         chip.sends().iter().map(|s| (s, true)).chain(chip.receives().iter().map(|r| (r, false)))
-    //     {
-    //         let (real_numerator, real_denominator) = interaction.eval(
-    //             preprocessed_trace_evaluations.as_ref(),
-    //             main_trace_evaluations,
-    //             alpha,
-    //             betas.as_slice(),
-    //         );
-    //         let padding_trace_opening =
-    //             MleEval::from(vec![EF::zero(); main_trace_evaluations.num_polynomials()]);
-    //         let padding_preprocessed_opening = preprocessed_trace_evaluations
-    //             .as_ref()
-    //             .map(|eval| MleEval::from(vec![EF::zero(); eval.num_polynomials()]));
-    //         let (padding_numerator, padding_denominator) = interaction.eval(
-    //             padding_preprocessed_opening.as_ref(),
-    //             &padding_trace_opening,
-    //             alpha,
-    //             betas.as_slice(),
-    //         );
+        let geq_eval = full_geq(threshold, &point_extended);
+        let ChipEvaluation { main_trace_evaluations, preprocessed_trace_evaluations } = openings;
+        for (interaction, is_send) in
+            chip.sends().iter().map(|s| (s, true)).chain(chip.receives().iter().map(|r| (r, false)))
+        {
+            let (real_numerator, real_denominator) = interaction.eval(
+                preprocessed_trace_evaluations.as_ref(),
+                main_trace_evaluations,
+                alpha,
+                betas.as_slice(),
+            );
+            let padding_trace_opening =
+                MleEval::from(vec![Ext::zero(); main_trace_evaluations.num_polynomials()]);
+            let padding_preprocessed_opening = preprocessed_trace_evaluations
+                .as_ref()
+                .map(|eval| MleEval::from(vec![Ext::zero(); eval.num_polynomials()]));
+            let (padding_numerator, padding_denominator) = interaction.eval(
+                padding_preprocessed_opening.as_ref(),
+                &padding_trace_opening,
+                alpha,
+                betas.as_slice(),
+            );
 
-    //         let numerator_eval = real_numerator - padding_numerator * geq_eval;
-    //         let denominator_eval = real_denominator + (EF::one() - padding_denominator) * geq_eval;
-    //         let numerator_eval = if is_send { numerator_eval } else { -numerator_eval };
-    //         numerator_values.push(numerator_eval);
-    //         denominator_values.push(denominator_eval);
-    //     }
-    // }
-    // // Convert the values to a multilinear polynomials.
-    // // Pad the numerator values with zeros.
-    // numerator_values.resize(1 << interaction_point.dimension(), EF::zero());
-    // let numerator = Mle::from(numerator_values);
-    // // Pad the denominator values with ones.
-    // denominator_values.resize(1 << interaction_point.dimension(), EF::one());
-    // let denominator = Mle::from(denominator_values);
+            let numerator_eval = real_numerator - padding_numerator * geq_eval;
+            let denominator_eval = real_denominator + (Ext::one() - padding_denominator) * geq_eval;
+            let numerator_eval = if is_send { numerator_eval } else { -numerator_eval };
+            numerator_values.push(numerator_eval);
+            denominator_values.push(denominator_eval);
+        }
+    }
+    // Convert the values to a multilinear polynomials.
+    // Pad the numerator values with zeros.
+    numerator_values.resize(1 << interaction_point.dimension(), Ext::zero());
+    let numerator = Mle::from(numerator_values);
+    // Pad the denominator values with ones.
+    denominator_values.resize(1 << interaction_point.dimension(), Ext::one());
+    let denominator = Mle::from(denominator_values);
 
-    // let expected_numerator_eval = numerator.blocking_eval_at(&interaction_point)[0];
-    // let expected_denominator_eval = denominator.blocking_eval_at(&interaction_point)[0];
-    // if numerator_eval != expected_numerator_eval {
-    //     return Err(LogupGkrVerificationError::NumeratorEvaluationMismatch(
-    //         numerator_eval,
-    //         expected_numerator_eval,
-    //     ));
-    // }
-    // if denominator_eval != expected_denominator_eval {
-    //     return Err(LogupGkrVerificationError::DenominatorEvaluationMismatch(
-    //         denominator_eval,
-    //         expected_denominator_eval,
-    //     ));
-    // }
+    let expected_numerator_eval = numerator.blocking_eval_at(&interaction_point)[0];
+    let expected_denominator_eval = denominator.blocking_eval_at(&interaction_point)[0];
+    if numerator_eval != expected_numerator_eval {
+        return Err(LogupGkrVerificationError::NumeratorEvaluationMismatch(
+            numerator_eval,
+            expected_numerator_eval,
+        ));
+    }
+    if denominator_eval != expected_denominator_eval {
+        return Err(LogupGkrVerificationError::DenominatorEvaluationMismatch(
+            denominator_eval,
+            expected_denominator_eval,
+        ));
+    }
     Ok(())
 }
-
 #[cfg(test)]
 mod tests {
     use crate::test_utils::tracegen_setup;
@@ -523,12 +551,12 @@ mod tests {
     };
     use csl_cuda::run_in_place;
     use itertools::Itertools;
+    use serial_test::serial;
     use slop_alloc::ToHost;
-    use slop_challenger::IopCtx;
+    use slop_challenger::{FieldChallenger, IopCtx};
     use slop_sumcheck::partially_verify_sumcheck_proof;
-    use sp1_hypercube::prover::ProverSemaphore;
     use sp1_hypercube::ShardVerifier;
-    use std::{collections::BTreeMap, sync::Arc};
+    use std::sync::Arc;
 
     use crate::logup_gkr::execution::{extract_outputs, gkr_transition, layer_transition};
 
@@ -537,37 +565,27 @@ mod tests {
     use rand::{rngs::StdRng, SeedableRng};
 
     #[tokio::test]
+    #[serial]
     async fn test_logup_gkr_circuit_transition() {
         let mut rng = StdRng::seed_from_u64(1);
 
-        let interaction_col_sizes: Vec<u32> =
+        let interaction_row_counts: Vec<u32> =
             vec![(1 << 10) + 32, (1 << 10) - 2, 1 << 6, 1 << 8, (1 << 10) + 2];
-        let (layer, test_data) = generate_test_data(&mut rng, interaction_col_sizes, None).await;
+        let (layer, test_data) = generate_test_data(&mut rng, interaction_row_counts, None).await;
         let GkrTestData { numerator_0, numerator_1, denominator_0, denominator_1 } = test_data;
 
-        let GkrLayer {
-            jagged_mle,
-            interaction_col_sizes,
-            num_interaction_variables,
-            num_row_variables,
-        } = layer;
+        let GkrLayer { jagged_mle, num_interaction_variables, num_row_variables } = layer;
 
         csl_cuda::spawn(move |t| async move {
             let jagged_mle = jagged_mle.into_device(&t).await.unwrap();
 
-            let layer = GkrLayer {
-                jagged_mle,
-                interaction_col_sizes,
-                num_interaction_variables,
-                num_row_variables,
-            };
+            let layer = GkrLayer { jagged_mle, num_interaction_variables, num_row_variables };
 
             // Test a single transition.
             let next_layer = layer_transition(&layer).await;
 
             let GkrLayer {
                 jagged_mle: next_layer_data,
-                interaction_col_sizes,
                 num_interaction_variables,
                 num_row_variables,
             } = next_layer;
@@ -576,7 +594,6 @@ mod tests {
 
             let next_layer_host = GkrLayer {
                 jagged_mle: next_layer_data,
-                interaction_col_sizes,
                 num_interaction_variables,
                 num_row_variables,
             };
@@ -622,27 +639,23 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_logup_gkr_round_prover() {
         let mut rng = StdRng::seed_from_u64(1);
 
         let get_challenger = move || GC::default_challenger();
 
-        let interaction_col_sizes: Vec<u32> = vec![
+        let interaction_row_counts: Vec<u32> = vec![
             99064, 99064, 99064, 188896, 188896, 188896, 85256, 107776, 107776, 25112, 25112,
             25112, 25112, 25112, 25112, 25112, 25112, 25112, 25112, 25112, 25112, 25112, 25112,
             25112, 25112, 25112, 25112, 25112, 25112, 25112, 25112, 25112, 25112, 25112, 25112,
             25112, 25112, 25112, 25112, 25112, 25112, 56360, 56360, 56360, 56360, 56360, 56360, 4,
             169496, 169496, 169496, 169496, 169496,
         ];
-        let layer = random_first_layer(&mut rng, interaction_col_sizes, Some(19)).await;
+        let layer = random_first_layer(&mut rng, interaction_row_counts, Some(19)).await;
         println!("generated test data");
 
-        let FirstGkrLayer {
-            jagged_mle,
-            interaction_col_sizes,
-            num_interaction_variables,
-            num_row_variables,
-        } = layer;
+        let FirstGkrLayer { jagged_mle, num_interaction_variables, num_row_variables } = layer;
 
         println!("num row variables: {}", num_row_variables);
 
@@ -651,12 +664,7 @@ mod tests {
         csl_cuda::spawn(move |t| async move {
             let jagged_mle = jagged_mle.into_device(&t).await.unwrap();
 
-            let layer = FirstGkrLayer {
-                jagged_mle,
-                interaction_col_sizes,
-                num_interaction_variables,
-                num_row_variables,
-            };
+            let layer = FirstGkrLayer { jagged_mle, num_interaction_variables, num_row_variables };
             let layer = GkrCircuitLayer::FirstLayer(layer);
 
             t.synchronize().await.unwrap();
@@ -785,27 +793,13 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_logup_gkr_e2e() {
         let (machine, record, program) = tracegen_setup::setup().await;
-
-        // // This tests core tracegen, which is more comprehensive, but since core records are so big,
-        // // it's not feasible to git commit them.
-
-        // // Load the record and program from the test artifacts
-        // let root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-        // let record_compressed_bytes = std::fs::read(format!("{}/record_1.bin", &root)).unwrap();
-        // let record = zstd::decode_all(record_compressed_bytes.as_slice()).unwrap();
-        // let record: sp1_core_executor::ExecutionRecord = bincode::deserialize(&record).unwrap();
-        // let program = Arc::new(
-        //     sp1_core_executor::Program::from_elf(&format!("{}/test_program.bin", &root)).unwrap(),
-        // );
-
-        // let machine = sp1_core_machine::riscv::RiscvAir::<crate::config::Felt>::machine();
 
         run_in_place(|scope| async move {
             const CORE_MAX_LOG_ROW_COUNT: u32 = 22;
             const CORE_MAX_TRACE_SIZE: u32 = 1 << 29;
-            let semaphore = ProverSemaphore::new(1);
 
             // *********** Generate traces using the host tracegen. ***********
             let (public_values, jagged_trace_data, shard_chips) = full_tracegen(
@@ -813,12 +807,11 @@ mod tests {
                 program.clone(),
                 Arc::new(record),
                 CORE_MAX_TRACE_SIZE as usize,
-                semaphore.clone(),
                 &scope,
             )
             .await;
 
-            // *********** Generate logupGKR traces and prove end to end ***********
+            // *********** Generate LogupGKR traces and prove end to end ***********
             let mut challenger = GC::default_challenger();
 
             let alpha = challenger.sample_ext_element();
@@ -832,6 +825,8 @@ mod tests {
             let beta_seed = challenger.sample_point(beta_seed_dim);
             let pv_challenge: Ext = challenger.sample_ext_element();
 
+            let jagged_trace_data = Arc::new(jagged_trace_data);
+
             let shard_verifier: ShardVerifier<GC, _, _> = ShardVerifier::from_basefold_parameters(
                 1,
                 21,
@@ -842,10 +837,9 @@ mod tests {
             let cumulative_sum: Ext = shard_verifier
                 .verify_public_values(pv_challenge, &alpha, &beta_seed, &public_values)
                 .unwrap();
-
             let proof = super::prove_logup_gkr(
                 &shard_chips,
-                Arc::new(jagged_trace_data),
+                jagged_trace_data.clone(),
                 scope.clone(),
                 CORE_MAX_LOG_ROW_COUNT,
                 alpha,
@@ -854,8 +848,16 @@ mod tests {
             )
             .await;
 
-            // TODO: fix this when we add chip evaluations.
-            let degrees = BTreeMap::new();
+            let degrees = shard_chips
+                .iter()
+                .map(|c| {
+                    let poly_size = jagged_trace_data.main_poly_height(&c.name()).unwrap();
+
+                    let threshold_point =
+                        Point::from_usize(poly_size, CORE_MAX_LOG_ROW_COUNT as usize + 1);
+                    (c.name(), threshold_point)
+                })
+                .collect();
 
             super::verify_logup_gkr(
                 &shard_chips,

@@ -37,7 +37,7 @@ pub async fn generate_first_layer(input_data: &GkrInputData, backend: &TaskScope
         .interactions
         .iter()
         .flat_map(|(name, interactions)| {
-            let real_height = input_data.main_poly_height(name);
+            let real_height = input_data.main_poly_height(name).unwrap();
             // For padding reasons, `height` always needs to be at least 2.
             let height = std::cmp::max(real_height, 8);
             // Divide by 2 because each row has even height, so we only store length / 2.
@@ -83,7 +83,7 @@ pub async fn generate_first_layer(input_data: &GkrInputData, backend: &TaskScope
         let betas = unsafe { betas.owned_unchecked() };
 
         let handle = backend.run_in_place(move |scope| async move {
-            let real_height = input_data.main_poly_height(name);
+            let real_height = input_data.main_poly_height(name).unwrap();
 
             // To fit the padding requirement, each trace must have even height.
             assert_eq!(real_height % 2, 0);
@@ -148,17 +148,16 @@ pub async fn generate_first_layer(input_data: &GkrInputData, backend: &TaskScope
     let height = numerator.sizes()[2] / 2;
     let jagged_layer = JaggedFirstGkrLayer { numerator, denominator, height };
 
-    let jagged_mle =
-        JaggedFirstGkrMle::new(jagged_layer, interaction_data, interaction_start_indices);
+    let jagged_mle = JaggedFirstGkrMle::new(
+        jagged_layer,
+        interaction_data,
+        interaction_start_indices,
+        interaction_row_counts,
+    );
 
     let num_interaction_variables = interaction_offset.next_power_of_two().ilog2();
 
-    FirstGkrLayer {
-        jagged_mle,
-        interaction_col_sizes: interaction_row_counts,
-        num_row_variables,
-        num_interaction_variables,
-    }
+    FirstGkrLayer { jagged_mle, num_row_variables, num_interaction_variables }
 }
 
 impl LogUpCudaCircuit<TaskScope> {
@@ -181,7 +180,7 @@ impl LogUpCudaCircuit<TaskScope> {
 /// Generates a GKR circuit from the given chips and jagged trace data.
 pub async fn generate_gkr_circuit<A: MachineAir<Felt>>(
     chips: &BTreeSet<Chip<Felt, A>>,
-    jagged_trace_data: Arc<JaggedTraceMle<TaskScope>>,
+    jagged_trace_data: Arc<JaggedTraceMle<Felt, TaskScope>>,
     num_row_variables: u32,
     alpha: Ext,
     beta_seed: Point<Ext>,

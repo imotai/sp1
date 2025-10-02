@@ -78,7 +78,7 @@ impl JaggedDenseMle<Felt, CpuBackend> {
         self,
         backend: &TaskScope,
     ) -> Result<JaggedDenseMle<Felt, TaskScope>, TransferError> {
-        let JaggedMle { dense_data, col_index, start_indices } = self;
+        let JaggedMle { dense_data, col_index, start_indices, column_heights } = self;
 
         let data = dense_data
             .data
@@ -98,7 +98,7 @@ impl JaggedDenseMle<Felt, CpuBackend> {
             .await
             .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?;
 
-        Ok(JaggedMle::new(jagged_dense_mle_device, col_index, start_indices))
+        Ok(JaggedMle::new(jagged_dense_mle_device, col_index, start_indices, column_heights))
     }
 }
 
@@ -107,7 +107,7 @@ impl JaggedDenseMle<Ext, CpuBackend> {
         self,
         backend: &TaskScope,
     ) -> Result<JaggedDenseMle<Ext, TaskScope>, TransferError> {
-        let JaggedMle { dense_data, col_index, start_indices } = self;
+        let JaggedMle { dense_data, col_index, start_indices, column_heights } = self;
 
         let data = dense_data
             .data
@@ -127,13 +127,13 @@ impl JaggedDenseMle<Ext, CpuBackend> {
             .await
             .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?;
 
-        Ok(JaggedMle::new(jagged_dense_mle_device, col_index, start_indices))
+        Ok(JaggedMle::new(jagged_dense_mle_device, col_index, start_indices, column_heights))
     }
 }
 
 impl JaggedDenseMle<Ext, TaskScope> {
     pub async fn into_host(self) -> Result<JaggedDenseMle<Ext, CpuBackend>, TransferError> {
-        let JaggedMle { dense_data, col_index, start_indices } = self;
+        let JaggedMle { dense_data, col_index, start_indices, column_heights } = self;
 
         let data = dense_data
             .data
@@ -152,6 +152,6 @@ impl JaggedDenseMle<Ext, TaskScope> {
             .await
             .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
 
-        Ok(JaggedMle::new(jagged_dense_mle_host, col_index, start_indices))
+        Ok(JaggedMle::new(jagged_dense_mle_host, col_index, start_indices, column_heights))
     }
 }

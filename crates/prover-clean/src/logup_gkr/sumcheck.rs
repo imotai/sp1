@@ -1,7 +1,5 @@
 //! Gkr is composed of rounds. Each round corresponds to a layer. Each round is a sumcheck.
 //! For the first layer, the numerator is a base field element and the denominator over extension field elements, so it requires some special treatment.
-use std::iter::once;
-
 use csl_cuda::{
     args,
     sys::prover_clean::{
@@ -280,21 +278,10 @@ async fn fix_and_sum_first_layer(
 
     let backend = poly.layer.jagged_mle.backend();
     let height = poly.layer.jagged_mle.dense_data.height >> 1;
-    // If this is not the last layer, we need to fix the last variable and create a
-    // new circuit layer.
-    let output_interaction_col_sizes = poly
-        .layer
-        .interaction_col_sizes
-        .iter()
-        .map(|count| count.div_ceil(4) * 2)
-        .collect::<Vec<_>>();
-    // The output indices is just the prefix sum of the interaction row counts.
-    let output_interaction_start_indices = once(0)
-        .chain(output_interaction_col_sizes.iter().scan(0u32, |acc, x| {
-            *acc += x;
-            Some(*acc)
-        }))
-        .collect::<Buffer<_>>();
+
+    // Compute the next layer's start indices and column heights.
+    let (output_interaction_start_indices, output_interaction_row_counts) =
+        poly.layer.jagged_mle.next_start_indices_and_column_heights();
     let output_height = output_interaction_start_indices.last().copied().unwrap() as usize;
     let output_interaction_start_indices =
         output_interaction_start_indices.to_device_in(backend).await.unwrap();
@@ -306,8 +293,12 @@ async fn fix_and_sum_first_layer(
         Buffer::with_capacity_in(output_height, backend.clone());
 
     let output_jagged_layer = JaggedGkrLayer::new(output_layer, output_height);
-    let mut output_jagged_mle =
-        JaggedMle::new(output_jagged_layer, output_col_index, output_interaction_start_indices);
+    let mut output_jagged_mle = JaggedMle::new(
+        output_jagged_layer,
+        output_col_index,
+        output_interaction_start_indices,
+        output_interaction_row_counts,
+    );
 
     // Fix the eq_row variables
     let eq_row = poly.eq_row.fix_last_variable(alpha).await;
@@ -350,7 +341,6 @@ async fn fix_and_sum_first_layer(
 
     let output_layer = GkrLayer {
         jagged_mle: output_jagged_mle,
-        interaction_col_sizes: output_interaction_col_sizes,
         num_row_variables: poly.layer.num_row_variables - 1,
         num_interaction_variables: poly.layer.num_interaction_variables,
     };
@@ -535,18 +525,8 @@ async fn fix_and_sum_materialized_round(
                     let eq_row = poly.eq_row.fix_last_variable(alpha).await;
                     eq_row
                 });
-                let output_interaction_col_sizes = circuit
-                    .interaction_col_sizes
-                    .iter()
-                    .map(|count| count.div_ceil(4) * 2) // Make sure that the row counts are always even.
-                    .collect::<Vec<_>>();
-                // The output indices is just the prefix sum of the interaction row counts.
-                let output_interaction_start_indices = once(0)
-                    .chain(output_interaction_col_sizes.iter().scan(0u32, |acc, x| {
-                        *acc += x;
-                        Some(*acc)
-                    }))
-                    .collect::<Buffer<_>>();
+                let (output_interaction_start_indices, output_interaction_row_counts) =
+                    circuit.jagged_mle.next_start_indices_and_column_heights();
                 let output_height =
                     output_interaction_start_indices.last().copied().unwrap() as usize;
                 let output_interaction_start_indices =
@@ -563,6 +543,7 @@ async fn fix_and_sum_materialized_round(
                     output_jagged_layer,
                     output_col_index,
                     output_interaction_start_indices,
+                    output_interaction_row_counts,
                 );
 
                 // populate the new layer
@@ -604,7 +585,6 @@ async fn fix_and_sum_materialized_round(
 
                 let output_layer = GkrLayer {
                     jagged_mle: output_jagged_mle,
-                    interaction_col_sizes: output_interaction_col_sizes,
                     num_row_variables: circuit.num_row_variables - 1,
                     num_interaction_variables: circuit.num_interaction_variables,
                 };
@@ -778,7 +758,7 @@ where
 }
 
 pub async fn bench_materialized_sumcheck<R: rand::Rng>(
-    interaction_col_sizes: Vec<u32>,
+    interaction_row_counts: Vec<u32>,
     rng: &mut R,
     num_row_variables: Option<u32>,
 ) {
@@ -786,18 +766,13 @@ pub async fn bench_materialized_sumcheck<R: rand::Rng>(
     let now = std::time::Instant::now();
 
     let (layer, test_data) =
-        generate_test_data(rng, interaction_col_sizes, num_row_variables).await;
+        generate_test_data(rng, interaction_row_counts, num_row_variables).await;
 
     println!("generate test data took {}s", now.elapsed().as_secs_f64());
 
     let GkrTestData { numerator_0, numerator_1, denominator_0, denominator_1 } = test_data;
 
-    let GkrLayer {
-        jagged_mle,
-        interaction_col_sizes,
-        num_interaction_variables,
-        num_row_variables,
-    } = layer;
+    let GkrLayer { jagged_mle, num_interaction_variables, num_row_variables } = layer;
 
     println!("num_row_variables: {num_row_variables}");
     println!("num_interaction_variables: {num_interaction_variables}");
@@ -818,12 +793,7 @@ pub async fn bench_materialized_sumcheck<R: rand::Rng>(
 
         println!("moving to device took {}s", now.elapsed().as_secs_f64());
 
-        let layer = GkrLayer {
-            jagged_mle,
-            interaction_col_sizes,
-            num_interaction_variables,
-            num_row_variables,
-        };
+        let layer = GkrLayer { jagged_mle, num_interaction_variables, num_row_variables };
 
         let polynomial = LogupRoundPolynomial {
             layer: PolynomialLayer::CircuitLayer(layer),
@@ -922,17 +892,12 @@ mod tests {
     async fn test_logup_round_polynomial_fix_last_variable() {
         let mut rng = StdRng::seed_from_u64(0);
 
-        let interaction_col_sizes: Vec<u32> =
+        let interaction_row_counts: Vec<u32> =
             vec![(1 << 8) + 2, (1 << 10) + 2, 1 << 8, 1 << 6, 1 << 10, 1 << 8, (1 << 6) + 2];
-        let (layer, test_data) = generate_test_data(&mut rng, interaction_col_sizes, None).await;
+        let (layer, test_data) = generate_test_data(&mut rng, interaction_row_counts, None).await;
         let GkrTestData { numerator_0, numerator_1, denominator_0, denominator_1 } = test_data;
 
-        let GkrLayer {
-            jagged_mle,
-            interaction_col_sizes,
-            num_interaction_variables,
-            num_row_variables,
-        } = layer;
+        let GkrLayer { jagged_mle, num_interaction_variables, num_row_variables } = layer;
 
         let poly_point =
             Point::<Ext>::rand(&mut rng, num_row_variables + num_interaction_variables + 1);
@@ -953,12 +918,7 @@ mod tests {
             let eq_row = Mle::partial_lagrange(&row_point).await;
             let eq_interaction = Mle::partial_lagrange(&interaction_point).await;
 
-            let layer = GkrLayer {
-                jagged_mle,
-                interaction_col_sizes,
-                num_interaction_variables,
-                num_row_variables,
-            };
+            let layer = GkrLayer { jagged_mle, num_interaction_variables, num_row_variables };
 
             let mut polynomial = LogupRoundPolynomial {
                 layer: PolynomialLayer::CircuitLayer(layer),
@@ -997,7 +957,7 @@ mod tests {
     #[tokio::test]
     async fn test_logup_round_sumcheck_polynomial() {
         let mut rng = StdRng::seed_from_u64(0);
-        // let interaction_col_sizes: Vec<u32> = vec![
+        // let interaction_row_counts: Vec<u32> = vec![
         //     14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216,
         //     14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 362856, 362856, 362856,
         //     362856, 362856, 362856, 362856, 362856, 362856, 362856, 362856, 362856, 362856, 362856,
@@ -1047,8 +1007,8 @@ mod tests {
         //     8, 8, 8, 8, 8, 8, 29160, 29160, 29160, 29160, 29160, 29160, 29160, 29160, 29160, 29160,
         //     29160, 29160, 29160,
         // ];
-        let interaction_col_sizes: Vec<u32> = vec![92, 100, 278, 220, 82, 82];
+        let interaction_row_counts: Vec<u32> = vec![92, 100, 278, 220, 82, 82];
 
-        bench_materialized_sumcheck(interaction_col_sizes, &mut rng, None).await;
+        bench_materialized_sumcheck(interaction_row_counts, &mut rng, None).await;
     }
 }

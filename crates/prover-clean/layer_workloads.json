@@ -1,6 +1,6 @@
 [
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       14216,
       14216,
       14216,
@@ -735,7 +735,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       14696,
       14696,
       14696,
@@ -1470,7 +1470,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       14400,
       14400,
       14400,
@@ -2205,7 +2205,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       17976,
       17976,
       17976,
@@ -2940,7 +2940,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       15424,
       15424,
       15424,
@@ -3675,7 +3675,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       9600,
       9600,
       9600,
@@ -4410,7 +4410,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       18912,
       18912,
       18912,
@@ -5145,7 +5145,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -5464,7 +5464,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       20392,
       20392,
       20392,
@@ -6199,7 +6199,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16240,
       16240,
       16240,
@@ -6934,7 +6934,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       7608,
       7608,
       7608,
@@ -7669,7 +7669,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -7988,7 +7988,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -8307,7 +8307,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       47768,
       47768,
       47768,
@@ -9042,7 +9042,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -9361,7 +9361,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       74240,
       74240,
       74240,
@@ -10096,7 +10096,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       77776,
       77776,
       77776,
@@ -10831,7 +10831,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -11995,7 +11995,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       71208,
       71208,
       71208,
@@ -12730,7 +12730,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       76656,
       76656,
       76656,
@@ -13465,7 +13465,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       74752,
       74752,
       74752,
@@ -14200,7 +14200,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       74544,
       74544,
       74544,
@@ -14935,7 +14935,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       75472,
       75472,
       75472,
@@ -15670,7 +15670,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       78408,
       78408,
       78408,
@@ -16405,7 +16405,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       81184,
       81184,
       81184,
@@ -17140,7 +17140,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       79288,
       79288,
       79288,
@@ -17875,7 +17875,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       82136,
       82136,
       82136,
@@ -18610,7 +18610,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       79672,
       79672,
       79672,
@@ -19345,7 +19345,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       81024,
       81024,
       81024,
@@ -20080,7 +20080,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       76632,
       76632,
       76632,
@@ -20815,7 +20815,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       60560,
       60560,
       60560,
@@ -21550,7 +21550,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       40232,
       40232,
       40232,
@@ -22285,7 +22285,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -22604,7 +22604,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       32512,
       32512,
       32512,
@@ -23339,7 +23339,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -23658,7 +23658,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       28656,
       28656,
       28656,
@@ -24393,7 +24393,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       30624,
       30624,
       30624,
@@ -25128,7 +25128,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -25447,7 +25447,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       25312,
       25312,
       25312,
@@ -26182,7 +26182,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       15976,
       15976,
       15976,
@@ -27108,7 +27108,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -28267,7 +28267,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -29431,7 +29431,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -29750,7 +29750,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -30069,7 +30069,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -30119,7 +30119,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -30169,7 +30169,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -30219,7 +30219,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -30269,7 +30269,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -30319,7 +30319,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -30369,7 +30369,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       16384,
       16384,
       16384,
@@ -30419,7 +30419,7 @@
     "num_row_variables": 21
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -30477,7 +30477,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -30535,7 +30535,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -30593,7 +30593,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -30651,7 +30651,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -30709,7 +30709,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -30767,7 +30767,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -30825,7 +30825,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -30883,7 +30883,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -30941,7 +30941,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -30999,7 +30999,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31057,7 +31057,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31115,7 +31115,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31173,7 +31173,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31231,7 +31231,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31289,7 +31289,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31347,7 +31347,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31405,7 +31405,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31463,7 +31463,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31521,7 +31521,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31579,7 +31579,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31637,7 +31637,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31695,7 +31695,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31753,7 +31753,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31811,7 +31811,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31869,7 +31869,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31927,7 +31927,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -31985,7 +31985,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32043,7 +32043,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32101,7 +32101,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32159,7 +32159,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32217,7 +32217,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32275,7 +32275,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32333,7 +32333,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32391,7 +32391,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32449,7 +32449,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32507,7 +32507,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32565,7 +32565,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32623,7 +32623,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32681,7 +32681,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32739,7 +32739,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32797,7 +32797,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32855,7 +32855,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32913,7 +32913,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -32971,7 +32971,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33029,7 +33029,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33087,7 +33087,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33145,7 +33145,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33203,7 +33203,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33261,7 +33261,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33319,7 +33319,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33377,7 +33377,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33435,7 +33435,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33493,7 +33493,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33551,7 +33551,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33609,7 +33609,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33667,7 +33667,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33725,7 +33725,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33783,7 +33783,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33841,7 +33841,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33899,7 +33899,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -33957,7 +33957,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -34015,7 +34015,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -34073,7 +34073,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -34131,7 +34131,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -34189,7 +34189,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -34247,7 +34247,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
@@ -34305,7 +34305,7 @@
     "num_row_variables": 19
   },
   {
-    "interaction_col_sizes": [
+    "interaction_row_counts": [
       99064,
       99064,
       99064,
