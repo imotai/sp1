@@ -2,38 +2,61 @@
 
 #[cfg(test)]
 pub mod tracegen_setup {
+    use sp1_core_executor::{ExecutionRecord, Program, SP1Context, SP1CoreOpts};
+    use sp1_core_machine::{executor::MachineExecutor, io::SP1Stdin, riscv::RiscvAir};
+    use sp1_hypercube::Machine;
+    use std::sync::Arc;
+    use tokio::sync::mpsc;
 
-    pub const FIBONACCI_PROOF: &[u8] = include_bytes!("../fib_proof.bin");
+    use crate::config::Felt;
 
-    /// Macro to setup shrink circuit test data.
+    pub const FIBONACCI_ELF: &[u8] =
+        include_bytes!("../../prover/programs/fibonacci/riscv64im-succinct-zkvm-elf");
+
+    /// Setup core execution test data by executing fibonacci program.
     ///
-    /// A macro is nice here because we don't have to specify types, and we can easily switch to using core records without introducing complicated traits.
-    #[macro_export]
-    macro_rules! tracegen_setup {
-        () => {{
-            let client = sp1_sdk::CpuProver::new_unsound().await;
-            let machine = sp1_prover::CompressAir::<$crate::config::Felt>::compress_machine();
-            let inner = <sp1_sdk::CpuProver as sp1_sdk::Prover>::inner(&client);
-            let prover = inner.prover();
+    /// This implementation directly executes the Fibonacci ELF to generate
+    /// execution records.
+    ///
+    /// Returns (machine, record, program) for use in core execution tracegen tests.
+    ///
+    /// Note: This generates ExecutionRecord, not recursion/compression records.
+    pub async fn setup() -> (Machine<Felt, RiscvAir<Felt>>, ExecutionRecord, Arc<Program>) {
+        // 1. Load program from ELF
+        let program = Arc::new(
+            Program::from(FIBONACCI_ELF)
+                .expect("Failed to load Fibonacci ELF - file may be corrupted"),
+        );
 
-            let compressed_proof: sp1_core_executor::SP1RecursionProof<_, sp1_prover::InnerSC> =
-                bincode::deserialize($crate::test_utils::tracegen_setup::FIBONACCI_PROOF).unwrap();
+        // 2. Create stdin with fibonacci input
+        let mut stdin = SP1Stdin::new();
+        stdin.write(&1000u32);
 
-            let sp1_core_executor::SP1RecursionProof { vk: compressed_vk, proof: compressed_proof } = compressed_proof;
-            let input = sp1_recursion_circuit::machine::SP1ShapedWitnessValues {
-                vks_and_proofs: vec![(compressed_vk.clone(), compressed_proof)],
-                is_complete: true,
-            };
+        // 3. Create executor and channel
+        let opts = SP1CoreOpts::default();
+        let executor = MachineExecutor::<Felt>::new(
+            2 * 1024 * 1024 * 1024, // 2GB buffer
+            2,                      // 2 workers
+            opts,
+        );
+        let (records_tx, mut records_rx) = mpsc::unbounded_channel();
 
-            let input = prover.recursion().make_merkle_proofs(input);
-            let witness = sp1_prover::SP1CircuitWitness::Shrink(input);
+        // 4. Execute program (spawns async, sends records to channel)
+        let context = SP1Context::default();
+        executor
+            .execute(program.clone(), stdin, context, records_tx)
+            .await
+            .expect("Fibonacci program execution failed");
 
-            let record = prover.recursion().execute(witness).unwrap();
-            let program = record.program.clone();
+        // 5. Collect first record
+        let (record, _permit) = records_rx
+            .recv()
+            .await
+            .expect("No execution records received - executor may have failed");
 
-            (machine, record, program)
-        }};
+        // 6. Get machine
+        let machine = RiscvAir::<Felt>::machine();
+
+        (machine, record, program)
     }
-
-    pub use tracegen_setup;
 }

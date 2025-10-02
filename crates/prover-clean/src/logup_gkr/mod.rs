@@ -513,6 +513,7 @@ pub fn verify_logup_gkr<A: MachineAir<Felt>>(
 
 #[cfg(test)]
 mod tests {
+    use crate::test_utils::tracegen_setup;
     use crate::tracegen::full_tracegen;
     use crate::{
         config::GC,
@@ -526,12 +527,12 @@ mod tests {
     use slop_challenger::IopCtx;
     use slop_sumcheck::partially_verify_sumcheck_proof;
     use sp1_hypercube::prover::ProverSemaphore;
+    use sp1_hypercube::ShardVerifier;
     use std::{collections::BTreeMap, sync::Arc};
 
     use crate::logup_gkr::execution::{extract_outputs, gkr_transition, layer_transition};
 
     use super::*;
-    use crate::tracegen_setup;
 
     use rand::{rngs::StdRng, SeedableRng};
 
@@ -785,7 +786,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_logup_gkr_e2e() {
-        let (machine, record, program) = tracegen_setup!();
+        let (machine, record, program) = tracegen_setup::setup().await;
 
         // // This tests core tracegen, which is more comprehensive, but since core records are so big,
         // // it's not feasible to git commit them.
@@ -807,7 +808,7 @@ mod tests {
             let semaphore = ProverSemaphore::new(1);
 
             // *********** Generate traces using the host tracegen. ***********
-            let (_public_values, jagged_trace_data, shard_chips) = full_tracegen(
+            let (public_values, jagged_trace_data, shard_chips) = full_tracegen(
                 &machine,
                 program.clone(),
                 Arc::new(record),
@@ -829,6 +830,18 @@ mod tests {
                 .unwrap();
             let beta_seed_dim = max_interaction_arity.next_power_of_two().ilog2();
             let beta_seed = challenger.sample_point(beta_seed_dim);
+            let pv_challenge: Ext = challenger.sample_ext_element();
+
+            let shard_verifier: ShardVerifier<GC, _, _> = ShardVerifier::from_basefold_parameters(
+                1,
+                21,
+                CORE_MAX_LOG_ROW_COUNT as usize,
+                machine,
+            );
+
+            let cumulative_sum: Ext = shard_verifier
+                .verify_public_values(pv_challenge, &alpha, &beta_seed, &public_values)
+                .unwrap();
 
             let proof = super::prove_logup_gkr(
                 &shard_chips,
@@ -844,14 +857,12 @@ mod tests {
             // TODO: fix this when we add chip evaluations.
             let degrees = BTreeMap::new();
 
-            // Note that cumulative_sum is always zero for compress proofs, and it is
-            // coincidentally zero for the core trace used for testing too.
             super::verify_logup_gkr(
                 &shard_chips,
                 &degrees,
                 alpha,
                 &beta_seed,
-                Ext::zero(),
+                -cumulative_sum,
                 CORE_MAX_LOG_ROW_COUNT as usize,
                 &proof,
                 &mut challenger.clone(),

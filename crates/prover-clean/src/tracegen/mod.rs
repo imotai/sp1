@@ -531,8 +531,8 @@ mod tests {
 
     use crate::{
         config::Ext,
+        test_utils::tracegen_setup,
         tracegen::full_tracegen,
-        tracegen_setup,
         zerocheck::{data::DenseBuffer, evaluate_jagged_mle_chunked},
         JaggedMle,
     };
@@ -544,7 +544,7 @@ mod tests {
     /// Then, asserts that the jagged traces generated are the same as the traces in the old format.
     #[tokio::test]
     async fn test_jagged_tracegen() {
-        let (machine, record, program) = tracegen_setup!();
+        let (machine, record, program) = tracegen_setup::setup().await;
 
         // This tests core tracegen, which is more comprehensive, but since core records are so big,
         // it's not feasible to git commit them.
