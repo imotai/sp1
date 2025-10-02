@@ -6,13 +6,13 @@ on:
   push:
     branches: [main, dev, multilinear_v6]
   # TODO: Enable once recursion crates are fixed for multilinear.
-  # pull_request:
-  #   branches:
-  #     - "**"
-  #   paths:
-  #     - "crates/**"
-  #     - "Cargo.toml"
-  #     - ".github/workflows/**"
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - ".github/workflows/**"
   merge_group:
 
 jobs:

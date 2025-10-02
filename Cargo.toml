@@ -26,6 +26,7 @@ members = [
   "crates/recursion/circuit",
   "crates/recursion/compiler",
   "crates/recursion/executor",
+  "crates/recursion/gnark-cli",
   "crates/recursion/gnark-ffi",
   "crates/recursion/machine",
   "crates/sdk",
@@ -67,7 +68,6 @@ members = [
 exclude = [
   "examples/target",
   "crates/eval",
-  "crates/recursion/gnark-cli",
   # "crates/verifier",
 ]
 resolver = "2"
