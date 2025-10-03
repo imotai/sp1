@@ -7,10 +7,7 @@ use std::{
     sync::Arc,
 };
 
-use csl_cuda::{
-    sys::prover_clean::{fix_last_variable_jagged_ext, fix_last_variable_jagged_felt},
-    TaskScope, ToDevice,
-};
+use csl_cuda::{TaskScope, ToDevice};
 use itertools::Itertools;
 use slop_algebra::AbstractField;
 use slop_alloc::{CanCopyFromRef, HasBackend, ToHost};
@@ -34,7 +31,7 @@ use crate::{
         utils::{FirstLayerPolynomial, LogUpCudaCircuit},
     },
     tracegen::JaggedTraceMle,
-    zerocheck::evaluate_jagged_fix_last_variable,
+    zerocheck::primitives::evaluate_jagged_fix_last_variable,
 };
 mod execution;
 mod interactions;
@@ -251,19 +248,11 @@ pub async fn prove_logup_gkr<A: MachineAir<Felt>, C: MultilinearPcsChallenger<Fe
     let eval_point = eval_point.last_k(num_row_variables as usize);
     let mut chip_evaluations = BTreeMap::new();
 
-    let mut next_input_jagged_trace_mle = evaluate_jagged_fix_last_variable(
-        &jagged_trace_data,
-        *eval_point.last().unwrap(),
-        fix_last_variable_jagged_felt,
-    )
-    .await;
+    let mut next_input_jagged_trace_mle =
+        evaluate_jagged_fix_last_variable(&jagged_trace_data, *eval_point.last().unwrap()).await;
     for alpha in eval_point.iter().rev().skip(1) {
-        next_input_jagged_trace_mle = evaluate_jagged_fix_last_variable(
-            &next_input_jagged_trace_mle,
-            *alpha,
-            fix_last_variable_jagged_ext,
-        )
-        .await;
+        next_input_jagged_trace_mle =
+            evaluate_jagged_fix_last_variable(&next_input_jagged_trace_mle, *alpha).await;
     }
 
     let host_dense = next_input_jagged_trace_mle.dense_data.dense.to_host().await.unwrap().to_vec();

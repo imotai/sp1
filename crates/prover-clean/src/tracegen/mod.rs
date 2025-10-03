@@ -623,7 +623,7 @@ mod tests {
         config::Ext,
         test_utils::tracegen_setup,
         tracegen::full_tracegen,
-        zerocheck::{data::DenseBuffer, evaluate_jagged_mle_chunked},
+        zerocheck::{data::DenseBuffer, primitives::evaluate_jagged_mle_chunked},
         JaggedMle,
     };
 
