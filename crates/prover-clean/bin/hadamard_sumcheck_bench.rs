@@ -1,7 +1,7 @@
 use csl_cuda::run_in_place;
 use csl_prover_clean::config::Ext;
 use csl_prover_clean::config::GC;
-use csl_prover_clean::hadamard_sumcheck::simple_hadamard_sumcheck;
+use csl_prover_clean::hadamard::simple_hadamard_sumcheck;
 use itertools::Itertools;
 
 use rand::SeedableRng;
