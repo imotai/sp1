@@ -182,6 +182,10 @@ pub trait MultilinearPcsBatchProver<GC: IopCtx>: 'static + Debug + Send + Sync {
         mles: Message<Mle<GC::F, Self::A>>,
     ) -> impl Future<Output = Result<(GC::Digest, Self::ProverData), Self::ProverError>> + Send;
 
+    /// Prove a collection of evaluations of multilinear polynomials. The signature of this function
+    /// enables the prover to group the evaluations in each round by "table", if desired.
+    /// When passed to the verifier, however, the evaluations within each `Evaluations` should be
+    /// concatenated into a single `MleEval` per round.
     fn prove_trusted_evaluations(
         &self,
         eval_point: Point<GC::EF>,
