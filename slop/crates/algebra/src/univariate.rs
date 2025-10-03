@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::ops::{Add, Mul};
 
 use p3_field::{AbstractField, Field};
@@ -78,9 +79,12 @@ impl<K: Field> Add for UnivariatePolynomial<K> {
     }
 }
 
+/// Provide the polynomial that interpolates the given points `xs.zip_eq(ys)`.
+///
+/// Panics if `xs` contains duplicate points or if `xs.len() != ys.len()`.
 pub fn interpolate_univariate_polynomial<K: Field>(xs: &[K], ys: &[K]) -> UnivariatePolynomial<K> {
     let mut result = UnivariatePolynomial::new(vec![K::zero()]);
-    for (i, (x, y)) in xs.iter().zip(ys).enumerate() {
+    for (i, (x, y)) in xs.iter().zip_eq(ys).enumerate() {
         let (denominator, numerator) = xs.iter().enumerate().filter(|(j, _)| *j != i).fold(
             (K::one(), UnivariatePolynomial::new(vec![*y])),
             |(denominator, numerator), (_, xj)| {

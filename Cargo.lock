@@ -4287,6 +4287,7 @@ dependencies = [
 name = "slop-algebra"
 version = "6.0.0"
 dependencies = [
+ "itertools 0.13.0",
  "p3-field 0.1.0",
  "serde",
  "slop-baby-bear",
