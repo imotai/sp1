@@ -86,7 +86,7 @@ where
             return Err(JaggedEvalSumcheckError::IncorrectShape);
         }
 
-        if params.col_prefix_sums.len() > z_col_partial_lagrange.len() {
+        if params.col_prefix_sums.len() - 1 > z_col_partial_lagrange.len() {
             return Err(JaggedEvalSumcheckError::IncorrectShape);
         }
 
