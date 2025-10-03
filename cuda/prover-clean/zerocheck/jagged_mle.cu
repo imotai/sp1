@@ -15,6 +15,32 @@ __global__ void fixLastVariableJagged(
     }
 }
 
+__global__ void initializeJaggedInfo(
+    JaggedMle<InfoBuffer> jaggedMle,
+    const uint32_t* values,
+    uint32_t length,
+    uint32_t num_info
+) {
+    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < length;
+         i += blockDim.x * gridDim.x) {
+        uint32_t c = upper_bound_u32(jaggedMle.startIndices, num_info + 1, i) - 1;
+        jaggedMle.denseData.data[i << 1] = values[c];
+        jaggedMle.denseData.data[i << 1 | 1] = values[c];
+        jaggedMle.colIndex[i] = c;
+    }
+}
+
+__global__ void fixLastVariableJaggedInfo(
+    const JaggedMle<InfoBuffer> inputJaggedMle,
+    JaggedMle<InfoBuffer> outputJaggedMle, 
+    uint32_t length
+) {
+    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < length;
+         i += blockDim.x * gridDim.x) {
+        inputJaggedMle.fixLastVariableTwoPaddingInfo(outputJaggedMle, i);
+    }
+}
+
 template <typename F> 
 __global__ void jaggedEvalChunked(
     const JaggedMle<DenseBuffer<F>> inputJaggedMle,
@@ -27,11 +53,18 @@ __global__ void jaggedEvalChunked(
     inputJaggedMle.evaluate(row_coefficient, col_coefficient, L, num_cols, output_evals);
 }
 
+extern "C" void* initialize_jagged_info() {
+    return (void*)initializeJaggedInfo;
+}
+
 extern "C" void* fix_last_variable_jagged_felt() {
     return (void*)fixLastVariableJagged<felt_t>;
 }
 extern "C" void* fix_last_variable_jagged_ext() {
     return (void*)fixLastVariableJagged<ext_t>;
+}
+extern "C" void* fix_last_variable_jagged_info() {
+    return (void*)fixLastVariableJaggedInfo;
 }
 
 extern "C" void* jagged_eval_kernel_chunked_felt() {

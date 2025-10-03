@@ -1127,6 +1127,7 @@ name = "csl-prover-clean"
 version = "1.2.0"
 dependencies = [
  "bincode",
+ "csl-air",
  "csl-cuda",
  "csl-tracegen",
  "futures",
@@ -1146,11 +1147,13 @@ dependencies = [
  "slop-futures",
  "slop-jagged",
  "slop-koala-bear",
+ "slop-matrix",
  "slop-multilinear",
  "slop-sumcheck",
  "slop-tensor",
  "sp1-core-executor",
  "sp1-core-machine",
+ "sp1-derive",
  "sp1-hypercube",
  "sp1-prover",
  "sp1-recursion-circuit",

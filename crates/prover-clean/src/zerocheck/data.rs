@@ -9,6 +9,7 @@ use slop_alloc::{Backend, CpuBackend};
 use thiserror::Error;
 
 pub type JaggedDenseMle<F, B> = JaggedMle<DenseBuffer<F, B>, B>;
+pub type JaggedDenseInfo<B> = JaggedMle<InfoBuffer<B>, B>;
 
 #[derive(Error, Debug)]
 pub enum TransferError {
@@ -25,6 +26,11 @@ pub struct DenseBuffer<F, B: Backend = TaskScope> {
     pub data: Buffer<F, B>,
 }
 
+#[derive(Clone)]
+pub struct InfoBuffer<B: Backend = TaskScope> {
+    pub data: Buffer<u32, B>,
+}
+
 /// We allow dead code here because this is just a wrapper for a c struct.
 #[allow(dead_code)]
 pub struct DenseBufferRaw<F> {
@@ -32,8 +38,18 @@ pub struct DenseBufferRaw<F> {
 }
 
 #[allow(dead_code)]
+pub struct InfoBufferRaw {
+    data: *const u32,
+}
+
+#[allow(dead_code)]
 pub struct DenseBufferMutRaw<F> {
     data: *mut F,
+}
+
+#[allow(dead_code)]
+pub struct InfoBufferMutRaw {
+    data: *mut u32,
 }
 
 impl<F, A: Backend> DenseBuffer<F, A> {
@@ -54,7 +70,33 @@ impl<F, A: Backend> DenseBuffer<F, A> {
     }
 }
 
+impl<A: Backend> InfoBuffer<A> {
+    #[inline]
+    pub fn new(data: Buffer<u32, A>) -> Self {
+        Self { data }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[inline]
+    pub unsafe fn assume_init(&mut self) {
+        self.data.assume_init();
+    }
+
+    #[inline]
+    pub fn into_parts(self) -> Buffer<u32, A> {
+        self.data
+    }
+}
+
 impl<F, A: Backend> HasBackend for DenseBuffer<F, A> {
+    type Backend = A;
+
+    fn backend(&self) -> &Self::Backend {
+        self.data.backend()
+    }
+}
+
+impl<A: Backend> HasBackend for InfoBuffer<A> {
     type Backend = A;
 
     fn backend(&self) -> &Self::Backend {
@@ -70,6 +112,17 @@ impl<F, A: Backend> DenseData<A> for DenseBuffer<F, A> {
     }
     fn as_mut_ptr(&mut self) -> Self::DenseDataMutRaw {
         DenseBufferMutRaw { data: self.data.as_mut_ptr() }
+    }
+}
+
+impl<A: Backend> DenseData<A> for InfoBuffer<A> {
+    type DenseDataRaw = InfoBufferRaw;
+    type DenseDataMutRaw = InfoBufferMutRaw;
+    fn as_ptr(&self) -> Self::DenseDataRaw {
+        InfoBufferRaw { data: self.data.as_ptr() }
+    }
+    fn as_mut_ptr(&mut self) -> Self::DenseDataMutRaw {
+        InfoBufferMutRaw { data: self.data.as_mut_ptr() }
     }
 }
 
@@ -131,6 +184,60 @@ impl JaggedDenseMle<Ext, CpuBackend> {
     }
 }
 
+impl JaggedDenseInfo<CpuBackend> {
+    pub async fn into_device(
+        self,
+        backend: &TaskScope,
+    ) -> Result<JaggedDenseInfo<TaskScope>, TransferError> {
+        let JaggedMle { dense_data, col_index, start_indices, column_heights } = self;
+
+        let data = dense_data
+            .data
+            .into_device_in(backend)
+            .await
+            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?;
+
+        let jagged_dense_info_device = InfoBuffer::new(data);
+
+        let col_index = col_index
+            .into_device_in(backend)
+            .await
+            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?;
+
+        let start_indices = start_indices
+            .into_device_in(backend)
+            .await
+            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?;
+
+        Ok(JaggedMle::new(jagged_dense_info_device, col_index, start_indices, column_heights))
+    }
+}
+
+impl JaggedDenseMle<Felt, TaskScope> {
+    pub async fn into_host(self) -> Result<JaggedDenseMle<Felt, CpuBackend>, TransferError> {
+        let JaggedMle { dense_data, col_index, start_indices, column_heights } = self;
+
+        let data = dense_data
+            .data
+            .to_host()
+            .await
+            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
+        let jagged_dense_mle_host = DenseBuffer::new(data);
+
+        let col_index = col_index
+            .to_host()
+            .await
+            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
+
+        let start_indices = start_indices
+            .to_host()
+            .await
+            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
+
+        Ok(JaggedMle::new(jagged_dense_mle_host, col_index, start_indices, column_heights))
+    }
+}
+
 impl JaggedDenseMle<Ext, TaskScope> {
     pub async fn into_host(self) -> Result<JaggedDenseMle<Ext, CpuBackend>, TransferError> {
         let JaggedMle { dense_data, col_index, start_indices, column_heights } = self;
@@ -153,5 +260,30 @@ impl JaggedDenseMle<Ext, TaskScope> {
             .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
 
         Ok(JaggedMle::new(jagged_dense_mle_host, col_index, start_indices, column_heights))
+    }
+}
+
+impl JaggedDenseInfo<TaskScope> {
+    pub async fn into_host(self) -> Result<JaggedDenseInfo<CpuBackend>, TransferError> {
+        let JaggedMle { dense_data, col_index, start_indices, column_heights } = self;
+
+        let data = dense_data
+            .data
+            .to_host()
+            .await
+            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
+        let jagged_dense_info_host = InfoBuffer::new(data);
+
+        let col_index = col_index
+            .to_host()
+            .await
+            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
+
+        let start_indices = start_indices
+            .to_host()
+            .await
+            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
+
+        Ok(JaggedMle::new(jagged_dense_info_host, col_index, start_indices, column_heights))
     }
 }

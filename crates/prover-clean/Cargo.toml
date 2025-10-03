@@ -10,6 +10,8 @@ categories.workspace = true
 [dependencies]
 # cuslop
 csl-cuda = { workspace = true }
+csl-air = { workspace = true }
+sp1-derive = { workspace = true }
 csl-tracegen = { workspace = true }
 
 # slop
@@ -17,6 +19,7 @@ slop-air = { workspace = true }
 slop-algebra = { workspace = true }
 slop-alloc = { workspace = true }
 slop-tensor = { workspace = true }
+slop-matrix = { workspace = true }
 slop-multilinear = { workspace = true }
 slop-sumcheck = { workspace = true }
 slop-challenger = { workspace = true }

@@ -16,9 +16,28 @@ extern "C" {
     pub fn jagged_eval_kernel_chunked_felt() -> KernelPtr;
     pub fn jagged_eval_kernel_chunked_ext() -> KernelPtr;
 
+    // JaggedInfo kernels
+    pub fn initialize_jagged_info() -> KernelPtr;
+    pub fn fix_last_variable_jagged_info() -> KernelPtr;
+
     // Basic jagged fix last variable
     pub fn fix_last_variable_jagged_felt() -> KernelPtr;
     pub fn fix_last_variable_jagged_ext() -> KernelPtr;
+
+    // Jagged Zerocheck Kernels
+    pub fn jagged_constraint_poly_eval_32_koala_bear_kernel() -> KernelPtr;
+    pub fn jagged_constraint_poly_eval_64_koala_bear_kernel() -> KernelPtr;
+    pub fn jagged_constraint_poly_eval_128_koala_bear_kernel() -> KernelPtr;
+    pub fn jagged_constraint_poly_eval_256_koala_bear_kernel() -> KernelPtr;
+    pub fn jagged_constraint_poly_eval_512_koala_bear_kernel() -> KernelPtr;
+    pub fn jagged_constraint_poly_eval_1024_koala_bear_kernel() -> KernelPtr;
+
+    pub fn jagged_constraint_poly_eval_32_koala_bear_extension_kernel() -> KernelPtr;
+    pub fn jagged_constraint_poly_eval_64_koala_bear_extension_kernel() -> KernelPtr;
+    pub fn jagged_constraint_poly_eval_128_koala_bear_extension_kernel() -> KernelPtr;
+    pub fn jagged_constraint_poly_eval_256_koala_bear_extension_kernel() -> KernelPtr;
+    pub fn jagged_constraint_poly_eval_512_koala_bear_extension_kernel() -> KernelPtr;
+    pub fn jagged_constraint_poly_eval_1024_koala_bear_extension_kernel() -> KernelPtr;
 
     // Zerocheck kernels
     pub fn zerocheck_sum_as_poly_base_ext_kernel() -> KernelPtr;

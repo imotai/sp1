@@ -89,6 +89,38 @@ struct JaggedMle {
         return restrictedIndex;
     }
 
+    __forceinline__ __device__ size_t
+    fixLastVariableTwoPaddingInfo(JaggedMle<OutputDenseData>& output, size_t i) const {
+        size_t colIdx = this->colIndex[i];
+        size_t startIdx = this->startIndices[colIdx];
+        size_t interactionHeight = this->startIndices[colIdx + 1] - startIdx;
+
+        size_t rowIdx = i - startIdx;
+
+        size_t zeroIdx = i << 1;
+        size_t restrictedIndex = (output.startIndices[colIdx] << 1) + rowIdx;
+
+        uint32_t info = this->denseData.fixLastVariable(output.denseData, restrictedIndex, zeroIdx);
+
+        // If this row does not have a length that is a multiple of four, the next row will have an
+        // odd length. So we need to add some extra padding to the next row.
+        size_t remainderModFour = interactionHeight & 3;
+        bool isLast = (interactionHeight - 1) == rowIdx;
+        if (remainderModFour && isLast) {
+            this->denseData.pad_const(output.denseData, restrictedIndex + 1, info);
+            this->denseData.pad_const(output.denseData, restrictedIndex + 2, info);
+
+            // We also need to update the outputcolIndex.
+            output.colIndex[(restrictedIndex >> 1) + 1] = colIdx;
+        }
+
+        if (rowIdx & 1) {
+            output.colIndex[restrictedIndex >> 1] = colIdx;
+        }
+
+        return restrictedIndex;
+    }
+
     __device__ void evaluate(
         const ext_t* __restrict__ row_coefficient,
         const ext_t* __restrict__ col_coefficient,
