@@ -114,12 +114,12 @@ pub fn all_bit_states() -> Vec<BitState<bool>> {
     (0..2)
         .flat_map(|row_bit| {
             (0..2).flat_map(move |index_bit| {
-                (0..2).flat_map(move |last_col_bit| {
-                    (0..2).map(move |curr_col_bit| BitState {
+                (0..2).flat_map(move |curr_col_bit| {
+                    (0..2).map(move |next_col_bit| BitState {
                         row_bit: row_bit != 0,
                         index_bit: index_bit != 0,
-                        curr_col_prefix_sum_bit: last_col_bit != 0,
-                        next_col_prefix_sum_bit: curr_col_bit != 0,
+                        curr_col_prefix_sum_bit: curr_col_bit != 0,
+                        next_col_prefix_sum_bit: next_col_bit != 0,
                     })
                 })
             })
