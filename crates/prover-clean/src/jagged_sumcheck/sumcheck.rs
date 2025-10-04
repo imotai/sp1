@@ -20,9 +20,10 @@ use slop_tensor::Tensor;
 
 use crate::{
     config::{Ext, Felt},
-    hadamard_sumcheck::{fix_last_variable, fix_last_variable_and_sum_as_poly},
     DenseData, JaggedMle,
 };
+
+use super::hadamard::{fix_last_variable, fix_last_variable_and_sum_as_poly};
 
 pub type JaggedFirstRoundPolyMle<B> = JaggedMle<JaggedFirstRoundPoly<B>, B>;
 

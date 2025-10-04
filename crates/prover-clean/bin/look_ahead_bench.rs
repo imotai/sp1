@@ -3,7 +3,7 @@ use std::{ffi::c_void, time::Duration};
 use csl_cuda::{CudaError, TaskScope};
 use csl_prover_clean::{
     config::{Ext, Felt, GC},
-    look_ahead::{Hadamard, RoundParams},
+    experimental::look_ahead::{Hadamard, RoundParams},
 };
 use slop_algebra::{
     interpolate_univariate_polynomial, AbstractExtensionField, AbstractField, Field,
