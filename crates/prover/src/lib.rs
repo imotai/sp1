@@ -142,7 +142,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
             base_wrap_provers,
         );
 
-        let mut builder = Self {
+        Self {
             core_prover_builder,
             compress_prover_builder,
             shrink_prover_builder,
@@ -153,14 +153,11 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
             vk_verification: true,
             compute_recursion_vks_at_initialization: true,
             vk_map_path: None,
-        };
-
-        let _ = builder.num_core_workers_per_kind(nums_core_workers);
-        let _ = builder.num_compress_workers_per_kind(nums_compress_workers);
-        let _ = builder.num_shrink_workers_per_kind(nums_shrink_workers);
-        let _ = builder.num_wrap_workers_per_kind(nums_wrap_workers);
-
-        builder
+        }
+        .num_core_workers_per_kind(nums_core_workers)
+        .num_compress_workers_per_kind(nums_compress_workers)
+        .num_shrink_workers_per_kind(nums_shrink_workers)
+        .num_wrap_workers_per_kind(nums_wrap_workers)
     }
 
     pub fn new_single_permit(
@@ -197,86 +194,82 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         )
     }
 
-    pub fn set_max_compose_arity(&mut self, max_compose_arity: usize) -> &mut Self {
+    pub fn set_max_compose_arity(mut self, max_compose_arity: usize) -> Self {
         self.maximum_compose_arity = max_compose_arity;
         self
     }
 
     /// Set the number of workers for a given base kind.
-    pub fn num_core_workers_for_base_kind(
-        &mut self,
-        base_kind: usize,
-        num_workers: usize,
-    ) -> &mut Self {
+    pub fn num_core_workers_for_base_kind(mut self, base_kind: usize, num_workers: usize) -> Self {
         self.core_prover_builder.num_workers_for_base_kind(base_kind, num_workers);
         self
     }
 
     /// Set the number of workers for each base kind.
-    pub fn num_core_workers_per_kind(&mut self, num_workers_per_kind: Vec<usize>) -> &mut Self {
+    pub fn num_core_workers_per_kind(mut self, num_workers_per_kind: Vec<usize>) -> Self {
         self.core_prover_builder.num_workers_per_kind(num_workers_per_kind);
         self
     }
 
     /// Set the number of workers for all base kinds.
-    pub fn num_core_workers(&mut self, num_workers: usize) -> &mut Self {
+    pub fn num_core_workers(mut self, num_workers: usize) -> Self {
         self.core_prover_builder.num_workers(num_workers);
         self
     }
 
     pub fn num_compress_workers_for_base_kind(
-        &mut self,
+        mut self,
         base_kind: usize,
         num_workers: usize,
-    ) -> &mut Self {
+    ) -> Self {
         self.compress_prover_builder.num_workers_for_base_kind(base_kind, num_workers);
         self
     }
 
-    pub fn num_compress_workers_per_kind(&mut self, num_workers_per_kind: Vec<usize>) -> &mut Self {
+    pub fn num_compress_workers_per_kind(mut self, num_workers_per_kind: Vec<usize>) -> Self {
         self.compress_prover_builder.num_workers_per_kind(num_workers_per_kind);
         self
     }
 
-    pub fn num_shrink_workers_per_kind(&mut self, num_workers_per_kind: Vec<usize>) -> &mut Self {
+    pub fn num_shrink_workers_per_kind(mut self, num_workers_per_kind: Vec<usize>) -> Self {
         self.shrink_prover_builder.num_workers_per_kind(num_workers_per_kind);
         self
     }
 
-    pub fn num_wrap_workers_per_kind(&mut self, num_workers_per_kind: Vec<usize>) -> &mut Self {
+    pub fn num_wrap_workers_per_kind(mut self, num_workers_per_kind: Vec<usize>) -> Self {
         self.wrap_prover_builder.num_workers_per_kind(num_workers_per_kind);
         self
     }
 
-    pub fn num_compress_workers(&mut self, num_workers: usize) -> &mut Self {
+    pub fn num_compress_workers(mut self, num_workers: usize) -> Self {
         let _ = self.compress_prover_builder.num_workers(num_workers);
         self
     }
 
-    pub fn normalize_cache_size(&mut self, normalize_programs_cache_size: usize) -> &mut Self {
+    pub fn normalize_cache_size(mut self, normalize_programs_cache_size: usize) -> Self {
         self.normalize_programs_cache_size = normalize_programs_cache_size;
         self
     }
 
     pub fn with_normalize_programs(
-        &mut self,
+        mut self,
         normalize_programs: BTreeMap<SP1NormalizeInputShape, Arc<RecursionProgram<SP1Field>>>,
-    ) -> &mut Self {
+    ) -> Self {
         self.normalize_programs = normalize_programs;
         self
     }
 
     pub fn insert_normalize_program(
-        &mut self,
+        mut self,
         shape: SP1NormalizeInputShape,
         program: Arc<RecursionProgram<SP1Field>>,
-    ) -> &mut Self {
+    ) -> Self {
         self.normalize_programs.insert(shape, program);
         self
     }
 
     #[cfg(feature = "unsound")]
-    pub fn without_vk_verification(&mut self) -> &mut Self {
+    pub fn without_vk_verification(mut self) -> Self {
         self.vk_verification = false;
         self
     }
@@ -291,7 +284,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         self
     }
 
-    pub async fn build(&mut self) -> SP1Prover<C> {
+    pub async fn build(mut self) -> SP1Prover<C> {
         let core_prover = self.core_prover_builder.build();
         let core_verifier = core_prover.verifier().shard_verifier().clone();
         let core_prover = SP1CoreProver::new(core_prover);
