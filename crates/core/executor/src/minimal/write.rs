@@ -11,8 +11,11 @@ pub(crate) unsafe fn write(ctx: &mut impl SyscallContext, arg1: u64, arg2: u64) 
     let buf_ptr = arg2;
 
     let nbytes = ctx.rr(a2);
+    // Round down to low word start.
     let start = buf_ptr & !7;
+    // Get the intra-word offset of the start.
     let head = (buf_ptr & 7) as usize;
+    // Include the head bytes so we get the correct number of words.
     let nwords = (head + nbytes as usize).div_ceil(8);
 
     let slice = ctx.mr_slice_no_trace(start, nwords);
@@ -20,7 +23,7 @@ pub(crate) unsafe fn write(ctx: &mut impl SyscallContext, arg1: u64, arg2: u64) 
         .into_iter()
         .copied()
         .flat_map(u64::to_le_bytes)
-        .skip(buf_ptr as usize % 8)
+        .skip(head)
         .take(nbytes as usize)
         .collect::<Vec<u8>>();
 
