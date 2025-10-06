@@ -10,17 +10,19 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use slop_air::BaseAir;
+use slop_algebra::AbstractField;
 use slop_algebra::Field;
 use slop_alloc::{Backend, Buffer, CopyIntoBackend, CpuBackend, HasBackend, Slice, ToHost};
 use slop_multilinear::Mle;
+use slop_tensor::Dimensions;
 
 use sp1_hypercube::{air::MachineAir, Machine};
 
 use sp1_hypercube::{Chip, MachineRecord};
 
 use crate::config::Felt;
-use crate::DenseData;
 use crate::JaggedMle;
+use crate::{DenseData, VirtualTensor};
 
 #[derive(Clone, Debug)]
 pub struct TraceOffset {
@@ -71,11 +73,38 @@ impl<F: Field> JaggedTraceMle<F, TaskScope> {
             .map(|offset| (offset.dense_offset.end - offset.dense_offset.start) / offset.poly_size)
     }
 
+    pub fn main_size(&self) -> usize {
+        self.dense_data.dense.len() - self.dense_data.preprocessed_offset
+    }
+
     pub fn preprocessed_num_polys(&self, name: &str) -> Option<usize> {
         self.dense_data
             .preprocessed_table_index
             .get(name)
             .map(|offset| (offset.dense_offset.end - offset.dense_offset.start) / offset.poly_size)
+    }
+
+    pub fn main_virtual_tensor(&self, log_stacking_height: u32) -> VirtualTensor<F, TaskScope> {
+        let ptr = unsafe { self.dense().dense.as_ptr().add(self.dense_data.preprocessed_offset) };
+        let sizes = Dimensions::try_from([
+            self.main_size() / (1 << log_stacking_height),
+            1 << log_stacking_height,
+        ])
+        .unwrap();
+        VirtualTensor::new(ptr, sizes, self.backend().clone())
+    }
+
+    pub fn preprocessed_virtual_tensor(
+        &self,
+        log_stacking_height: u32,
+    ) -> VirtualTensor<F, TaskScope> {
+        let ptr = self.dense().dense.as_ptr();
+        let sizes = Dimensions::try_from([
+            self.dense_data.preprocessed_offset / (1 << log_stacking_height),
+            1 << log_stacking_height,
+        ])
+        .unwrap();
+        VirtualTensor::new(ptr, sizes, self.backend().clone())
     }
 }
 
@@ -192,9 +221,10 @@ impl Trace<TaskScope> {
     }
 }
 
-/// Sets up the jagged traces.
+/// Sets up the jagged traces. TODO: can use less arguments by packing the mutable stuff into TraceDenseData.
 ///
 /// Returns the final offset and the final number of columns.
+#[allow(clippy::too_many_arguments)]
 async fn setup_jagged_traces(
     dense_data: &mut Buffer<Felt, TaskScope>,
     col_index: &mut Buffer<u32, TaskScope>,
@@ -203,6 +233,7 @@ async fn setup_jagged_traces(
     traces: BTreeMap<String, Trace>,
     initial_offset: usize,
     initial_cols: usize,
+    log_stacking_height: u32,
 ) -> (usize, usize, BTreeMap<String, TraceOffset>) {
     let mut offset = initial_offset;
     let mut cols_so_far = initial_cols;
@@ -312,7 +343,20 @@ async fn setup_jagged_traces(
             }
         }
     }
-    (offset, cols_so_far, table_index)
+
+    // Now, pad the dense data with 0's to the next multiple of 2^log_stacking_height.
+    let next_multiple = offset.next_multiple_of(1 << log_stacking_height);
+    let dst_slice: &mut Slice<_, _> = &mut dense_data[offset..next_multiple];
+    let zeros = Buffer::from(vec![Felt::zero(); next_multiple - offset])
+        .copy_into_backend(&backend)
+        .await
+        .unwrap();
+
+    unsafe {
+        dst_slice.copy_from_slice(&zeros, &backend).unwrap();
+    }
+
+    (next_multiple, cols_so_far, table_index)
 }
 
 fn host_preprocessed_tracegen<A: CudaTracegenAir<Felt>>(
@@ -385,6 +429,7 @@ pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
     machine: &Machine<Felt, A>,
     program: Arc<<A as MachineAir<Felt>>::Program>,
     max_trace_size: usize,
+    log_stacking_height: u32,
     backend: &TaskScope,
 ) -> JaggedTraceMle<Felt, TaskScope> {
     // Generate traces on host.
@@ -422,6 +467,7 @@ pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
         preprocessed_traces,
         0,
         0,
+        log_stacking_height,
     )
     .await;
 
@@ -547,6 +593,7 @@ pub async fn main_tracegen<A: CudaTracegenAir<Felt>>(
     machine: &Machine<Felt, A>,
     record: Arc<<A as MachineAir<Felt>>::Record>,
     jagged_traces: &mut JaggedTraceMle<Felt, TaskScope>,
+    log_stacking_height: u32,
     backend: &TaskScope,
 ) -> (Vec<Felt>, BTreeSet<Chip<Felt, A>>) {
     // Start generating traces on host.
@@ -581,6 +628,7 @@ pub async fn main_tracegen<A: CudaTracegenAir<Felt>>(
         traces,
         *preprocessed_offset,
         *preprocessed_cols,
+        log_stacking_height,
     )
     .await;
 
@@ -600,11 +648,14 @@ pub async fn full_tracegen<A: CudaTracegenAir<Felt>>(
     program: Arc<<A as MachineAir<Felt>>::Program>,
     record: Arc<<A as MachineAir<Felt>>::Record>,
     max_trace_size: usize,
+    log_stacking_height: u32,
     backend: &TaskScope,
 ) -> (Vec<Felt>, JaggedTraceMle<Felt, TaskScope>, BTreeSet<Chip<Felt, A>>) {
     // TODO: do host preprocessed, host main, device preprocessed, device main.
-    let mut jagged_mle = setup_tracegen(machine, program, max_trace_size, backend).await;
-    let (public_values, chip_set) = main_tracegen(machine, record, &mut jagged_mle, backend).await;
+    let mut jagged_mle =
+        setup_tracegen(machine, program, max_trace_size, log_stacking_height, backend).await;
+    let (public_values, chip_set) =
+        main_tracegen(machine, record, &mut jagged_mle, log_stacking_height, backend).await;
     (public_values, jagged_mle, chip_set)
 }
 
@@ -622,6 +673,9 @@ mod tests {
     use crate::{
         config::Ext,
         test_utils::tracegen_setup,
+        test_utils::tracegen_setup::{
+            CORE_MAX_LOG_ROW_COUNT, CORE_MAX_TRACE_SIZE, LOG_STACKING_HEIGHT,
+        },
         tracegen::full_tracegen,
         zerocheck::{data::DenseBuffer, primitives::evaluate_jagged_mle_chunked},
         JaggedMle,
@@ -639,9 +693,6 @@ mod tests {
 
         let mut rng = StdRng::seed_from_u64(4);
         run_in_place(|scope| async move {
-            const CORE_MAX_LOG_ROW_COUNT: u32 = 22;
-            // TODO: this belongs somewhere else.
-            const CORE_MAX_TRACE_SIZE: u32 = 1 << 29;
             let z_row: Point<Ext, _> = Point::rand(&mut rng, CORE_MAX_LOG_ROW_COUNT);
 
             let semaphore = ProverSemaphore::new(1);
@@ -718,6 +769,7 @@ mod tests {
                 program.clone(),
                 record,
                 CORE_MAX_TRACE_SIZE as usize,
+                LOG_STACKING_HEIGHT,
                 &scope,
             )
             .await;

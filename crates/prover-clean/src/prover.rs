@@ -91,7 +91,6 @@ impl<GC: IopCtx> CudaShardProver<GC> {
         _use_preprocessed_data: bool,
     ) -> Result<(GC::Digest, CudaJaggedProverData<GC>), JaggedProverError<CudaShardProverError>>
     {
-        // TODO: re
         todo!()
     }
 

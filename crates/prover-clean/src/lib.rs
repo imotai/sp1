@@ -1,5 +1,6 @@
 pub mod commit;
 pub mod config;
+pub mod encoder;
 pub mod experimental;
 pub mod jagged;
 pub mod jagged_sumcheck;

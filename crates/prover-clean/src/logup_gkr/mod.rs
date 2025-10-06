@@ -537,6 +537,9 @@ mod tests {
         logup_gkr::utils::{
             generate_test_data, get_polys_from_layer, random_first_layer, GkrTestData,
         },
+        test_utils::tracegen_setup::{
+            CORE_MAX_LOG_ROW_COUNT, CORE_MAX_TRACE_SIZE, LOG_STACKING_HEIGHT,
+        },
     };
     use csl_cuda::run_in_place;
     use itertools::Itertools;
@@ -787,15 +790,13 @@ mod tests {
         let (machine, record, program) = tracegen_setup::setup().await;
 
         run_in_place(|scope| async move {
-            const CORE_MAX_LOG_ROW_COUNT: u32 = 22;
-            const CORE_MAX_TRACE_SIZE: u32 = 1 << 29;
-
             // *********** Generate traces using the host tracegen. ***********
             let (public_values, jagged_trace_data, shard_chips) = full_tracegen(
                 &machine,
                 program.clone(),
                 Arc::new(record),
                 CORE_MAX_TRACE_SIZE as usize,
+                LOG_STACKING_HEIGHT,
                 &scope,
             )
             .await;

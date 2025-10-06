@@ -2,11 +2,12 @@ use std::iter::once;
 
 use csl_cuda::TaskScope;
 use slop_alloc::{Backend, Buffer, HasBackend};
+use slop_tensor::{Dimensions, Tensor};
 
 #[derive(Clone, Debug)]
 #[repr(C)]
 pub struct JaggedMle<D: DenseData<A>, A: Backend> {
-    /// col_index[i] is the column that the i'th element of the dense data belongs to.
+    /// col_index[i / 2] is the column that the i'th element of the dense data belongs to.
     pub col_index: Buffer<u32, A>,
     /// start_indices[i] is the index of the first element of the i'th column.
     pub start_indices: Buffer<u32, A>,
@@ -14,6 +15,62 @@ pub struct JaggedMle<D: DenseData<A>, A: Backend> {
     pub column_heights: Vec<u32>,
     pub dense_data: D,
 }
+
+pub struct VirtualTensor<T, B: Backend> {
+    pub data: *const T,
+    pub sizes: Dimensions,
+    pub backend: B,
+}
+
+impl<T, B: Backend> VirtualTensor<T, B> {
+    pub fn new(data: *const T, sizes: Dimensions, backend: B) -> Self {
+        Self { data, sizes, backend }
+    }
+
+    pub fn sizes(&self) -> &[usize] {
+        self.sizes.sizes()
+    }
+
+    pub fn backend(&self) -> &B {
+        &self.backend
+    }
+
+    pub fn as_ptr(&self) -> *const T {
+        self.data
+    }
+
+    pub fn from_tensor(tensor: &Tensor<T, B>) -> Self {
+        Self {
+            data: tensor.as_ptr(),
+            sizes: tensor.shape().clone(),
+            backend: tensor.backend().clone(),
+        }
+    }
+}
+
+// pub struct VirtualTensorMut<T, B: Backend> {
+//     pub data: *mut T,
+//     pub sizes: Dimensions,
+//     pub backend: B,
+// }
+
+// impl<T, B: Backend> VirtualTensorMut<T, B> {
+//     pub fn new(data: *mut T, sizes: Dimensions, backend: B) -> Self {
+//         Self { data, sizes, backend }
+//     }
+
+//     pub fn sizes(&self) -> &Dimensions {
+//         &self.sizes
+//     }
+
+//     pub fn backend(&self) -> &B {
+//         &self.backend
+//     }
+
+//     pub fn as_mut_ptr(&self) -> *mut T {
+//         self.data
+//     }
+// }
 
 pub trait DenseData<A: Backend> {
     type DenseDataRaw;
