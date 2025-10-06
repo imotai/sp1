@@ -63,7 +63,7 @@ pub enum MemoryPermitError {
     #[error("Split request with insufficient memory permit")]
     NotEnoughMemoryToSplit,
     /// The requested memory is negative.
-    #[error("The semaphore has been explcity closed, this is a bug.")]
+    #[error("The semaphore has been explicitly closed, this is a bug")]
     Closed(#[from] AcquireError),
 }
 

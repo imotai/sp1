@@ -81,7 +81,7 @@ where
 pub enum WhirProofError {
     #[error("invalid number of OOD samples: expected {0}, got {1}")]
     InvalidNumberOfOODSamples(usize, usize),
-    #[error("sumcheck error")]
+    #[error("sumcheck error: {}, {}", .0.0, .0.1)]
     SumcheckError((SumcheckError, usize)),
     #[error("invalid proof of work")]
     PowError,

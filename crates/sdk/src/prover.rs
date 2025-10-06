@@ -110,7 +110,7 @@ pub enum SP1VerificationError {
     #[error("Invalid public values")]
     InvalidPublicValues,
     /// An error that occurs when the SP1 version does not match the version of the circuit.
-    #[error("Version mismatch")]
+    #[error("Version mismatch: {0}")]
     VersionMismatch(String),
     /// An error that occurs when the core machine verification fails.
     #[error("Core machine verification error: {0}")]

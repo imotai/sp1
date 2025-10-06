@@ -102,9 +102,9 @@ pub struct JaggedProverData<GC: IopCtx, C: JaggedProverComponents<GC>> {
 
 #[derive(Debug, Error)]
 pub enum JaggedProverError<Error> {
-    #[error("batch pcs prover error")]
+    #[error("batch pcs prover error: {0}")]
     BatchPcsProverError(Error),
-    #[error("copy error")]
+    #[error("copy error: {0}")]
     CopyError(#[from] CopyError),
 }
 

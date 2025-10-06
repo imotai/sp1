@@ -40,7 +40,7 @@ pub enum JaggedPcsVerifierError<EF, PcsError> {
     SumcheckError(SumcheckError),
     #[error("jagged evaluation proof verification failed")]
     JaggedEvalProofVerificationFailed,
-    #[error("dense pcs verification failed")]
+    #[error("dense pcs verification failed: {0}")]
     DensePcsVerificationFailed(#[from] PcsError),
     #[error("booleanity check failed")]
     BooleanityCheckFailed,

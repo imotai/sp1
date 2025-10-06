@@ -19,7 +19,7 @@ pub enum SP1ProverError {
 
 #[derive(Debug, Error)]
 pub enum RecursionProgramError {
-    #[error("Compilation error")]
+    #[error("Compilation error: {0}")]
     CompilationError(#[from] oneshot::error::RecvError),
     // Recursion witness error.
     #[error("Invalid record shape for shard chips")]

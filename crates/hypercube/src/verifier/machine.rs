@@ -40,7 +40,7 @@ pub enum MachineVerifierError<EF, PcsError> {
     #[error("invalid shard proof: {0}")]
     InvalidShardProof(#[from] ShardVerifierError<EF, PcsError>),
     /// The public values are invalid
-    #[error("invalid public values")]
+    #[error("invalid public values: {0}")]
     InvalidPublicValues(&'static str),
     /// There are too many shards.
     #[error("too many shards")]

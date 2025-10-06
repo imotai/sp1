@@ -79,7 +79,7 @@ pub enum ShardVerifierError<EF, PcsError> {
     #[error("invalid shape of proof")]
     InvalidShape,
     /// The provided chip opened values has incorrect order.
-    #[error("invalid chip opening order")]
+    #[error("invalid chip opening order: ({0}, {1})")]
     InvalidChipOrder(String, String),
     /// The height of the chip is not sent over correctly as bitwise decomposition.
     #[error("invalid height bit decomposition")]
