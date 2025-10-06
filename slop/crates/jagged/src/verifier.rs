@@ -1,6 +1,11 @@
+use crate::{
+    JaggedConfig, JaggedError, JaggedEvalSumcheckConfig, JaggedLittlePolynomialVerifierParams,
+    JaggedSumcheckEvalProof,
+};
 use itertools::{izip, Itertools};
 use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
+use slop_algebra::PrimeField32;
 use slop_challenger::{FieldChallenger, IopCtx};
 use slop_commit::Rounds;
 use slop_multilinear::{full_geq, Mle, MleEval, MultilinearPcsVerifier, Point};
@@ -9,11 +14,6 @@ use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 use slop_utils::log2_ceil_usize;
 use std::{fmt::Debug, iter::once};
 use thiserror::Error;
-
-use crate::{
-    JaggedConfig, JaggedError, JaggedEvalSumcheckConfig, JaggedLittlePolynomialVerifierParams,
-    JaggedSumcheckEvalProof,
-};
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(serialize = "", deserialize = ""))]
@@ -54,6 +54,8 @@ pub enum JaggedPcsVerifierError<EF, PcsError> {
     IncorrectTableSizes,
     #[error("total area out of bounds")]
     AreaOutOfBounds,
+    #[error("base field overflow")]
+    BaseFieldOverflow,
 }
 
 impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
@@ -132,6 +134,17 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
             original_commitments.iter()
         ) {
             let (hasher, compressor) = GC::default_hasher_and_compressor();
+
+            if round_column_counts.len() >= GC::F::ORDER_U32 as usize {
+                return Err(JaggedPcsVerifierError::BaseFieldOverflow);
+            }
+            if round_row_counts
+                .iter()
+                .chain(round_column_counts.iter())
+                .any(|&count| count >= GC::F::ORDER_U32 as usize)
+            {
+                return Err(JaggedPcsVerifierError::BaseFieldOverflow);
+            }
 
             let hash = hasher.hash_iter(
                 once(GC::F::from_canonical_usize(round_column_counts.len())).chain(

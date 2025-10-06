@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
+use slop_algebra::PrimeField32;
 use slop_challenger::IopCtx;
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 use slop_tensor::Tensor;
@@ -36,6 +37,8 @@ pub enum MerkleTreeTcsError {
     IncorrectShape,
     #[error("incorrect width or height")]
     InconsistentCommitmentShape,
+    #[error("base field overflow")]
+    BaseFieldOverflow,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +112,12 @@ impl<GC: IopCtx> MerkleTreeTcs<GC> {
             if index != 0 {
                 return Err(MerkleTreeTcsError::IncorrectShape);
             }
+        }
+
+        if proof.log_tensor_height >= GC::F::ORDER_U32 as usize
+            || proof.width >= GC::F::ORDER_U32 as usize
+        {
+            return Err(MerkleTreeTcsError::BaseFieldOverflow);
         }
 
         // Hash the proof metadata in with the Merkle root to get the expected commitment.

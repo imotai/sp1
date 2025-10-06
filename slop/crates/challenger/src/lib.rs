@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use futures::prelude::*;
 pub use p3_challenger::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use slop_algebra::{ExtensionField, Field};
+use slop_algebra::{ExtensionField, PrimeField32};
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 pub use synchronize::*;
 
@@ -29,7 +29,7 @@ impl<Challenger: Clone + Send + Sync, A: Send + Sync> FromChallenger<Challenger,
 pub trait IopCtx:
     Clone + 'static + Send + Sync + Serialize + for<'de> Deserialize<'de> + Debug + Default
 {
-    type F: Field + Ord;
+    type F: PrimeField32 + Ord;
     type EF: ExtensionField<Self::F>;
     type Digest: 'static
         + Copy
