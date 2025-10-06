@@ -37,6 +37,8 @@ pub trait SyscallContext {
     fn bump_memory_clk(&mut self);
     /// Set the exit code of the program.
     fn set_exit_code(&mut self, exit_code: u32);
+    /// Returns if were in unconstrained mode.
+    fn is_unconstrained(&self) -> bool;
 }
 
 impl SyscallContext for JitContext {
@@ -155,6 +157,10 @@ impl SyscallContext for JitContext {
 
     fn set_exit_code(&mut self, exit_code: u32) {
         self.exit_code = exit_code;
+    }
+
+    fn is_unconstrained(&self) -> bool {
+        self.is_unconstrained == 1
     }
 }
 

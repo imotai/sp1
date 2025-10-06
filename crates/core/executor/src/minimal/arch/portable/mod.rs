@@ -180,6 +180,10 @@ impl SyscallContext for MinimalExecutor {
     fn set_exit_code(&mut self, exit_code: u32) {
         self.exit_code = exit_code;
     }
+
+    fn is_unconstrained(&self) -> bool {
+        self.maybe_unconstrained.is_some()
+    }
 }
 
 impl MinimalExecutor {
@@ -684,23 +688,27 @@ impl MinimalExecutor {
 
         let code = SyscallCode::from_u32(self.registers[Register::X5 as usize] as u32);
 
-        // Handle syscalls with special cases.
-        *next_clk = match code {
-            SyscallCode::ENTER_UNCONSTRAINED => self.clk,
-            SyscallCode::EXIT_UNCONSTRAINED if self.maybe_unconstrained.is_some() => {
-                self.maybe_unconstrained.as_ref().unwrap().clk.wrapping_add(CLK_BUMP + 256)
-            }
-            _ => self.clk.wrapping_add(CLK_BUMP + 256),
-        };
-        *next_pc = match code {
-            SyscallCode::HALT => 1,
-            SyscallCode::EXIT_UNCONSTRAINED if self.maybe_unconstrained.is_some() => {
-                self.maybe_unconstrained.as_ref().unwrap().pc.wrapping_add(PC_BUMP)
-            }
-            _ => self.pc.wrapping_add(PC_BUMP),
-        };
+        self.registers[Register::X5 as usize] = ecall_handler(self, code);
 
-        self.registers[Register::X5 as usize] = ecall_handler(self);
+        // Handle special cases for syscalls.
+        match code {
+            // The pc and clk should have been updated by the ecall handler.
+            SyscallCode::EXIT_UNCONSTRAINED => {
+                // The `exit_unconstrained` resets the pc and clk to the values they were at when
+                // the unconstrained block was entered.
+                *next_pc = self.pc.wrapping_add(PC_BUMP);
+                *next_clk = self.clk.wrapping_add(CLK_BUMP + 256);
+            }
+            SyscallCode::HALT => {
+                // Explicity set the PC to one, to indicate that the program has halted.
+                *next_pc = HALT_PC;
+                *next_clk = next_clk.wrapping_add(256);
+            }
+            _ => {
+                // In the normal case, we just want to advance to the next instruction, which has already been done by the ecall handler.
+                *next_clk = next_clk.wrapping_add(256);
+            }
+        }
     }
 
     fn mem_read_untracked(&self, addr: u64) -> u64 {

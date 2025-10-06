@@ -60,7 +60,7 @@ impl ComputeInstructions for TranspilerBackend {
             jz   >div_by_zero;
 
             // Check for signed overflow (i64::MIN / -1)
-            mov  rcx, -9223372036854775808i64;  // i64::MIN
+            mov  rcx, -9223372036854775808;  // i64::MIN
             cmp  rax, rcx;
             jne  >no_overflow;
             cmp  Rq(TEMP_B), -1;
@@ -69,7 +69,7 @@ impl ComputeInstructions for TranspilerBackend {
             // ------------------------------------
             // 2. Handle overflow: i64::MIN / -1 = i64::MIN (wrapping)
             // ------------------------------------
-            mov  rax, -9223372036854775808i64; // Result is i64::MIN
+            mov  rax, -9223372036854775808; // Result is i64::MIN
             jmp >done;
 
             no_overflow:;
@@ -232,7 +232,7 @@ impl ComputeInstructions for TranspilerBackend {
                 // ──────────────────────────────────────────────────────────────
                 // 1. Check for signed overflow (i64::MIN % -1)
                 // ──────────────────────────────────────────────────────────────
-                mov  rcx, -9223372036854775808i64; // Load i64::MIN into RCX
+                mov  rcx, -9223372036854775808; // Load i64::MIN into RCX
                 cmp  Rq(TEMP_A), rcx;             // Check if dividend == i64::MIN
                 jne  >no_overflow;
                 cmp  Rq(TEMP_B), -1;              // Check if divisor == -1
@@ -616,25 +616,25 @@ impl ComputeInstructions for TranspilerBackend {
             jz >div_by_zero;
 
             // Handle 32-bit overflow case on x86-64: INT_MIN / -1 traps (#DE)
-            cmp eax, 0x80000000u32 as i32;   // dividend == INT_MIN?
+            cmp eax, i32::MIN;               // dividend == INT_MIN?
             jne >do_div;
             cmp Rd(TEMP_B), -1;              // divisor == -1?
             jne >do_div;
-            mov eax, 0x80000000u32 as i32;   // result = INT_MIN
+            mov eax, i32::MIN;               // result = INT_MIN
             movsxd rax, eax;                 // sign-extend to 64-bit
             jmp >done;
 
             do_div:;
             // Perform signed 32-bit divide
             // dividend already in EAX (loaded directly into RAX)
-            cdq;                        // sign-extend EAX into EDX
+            cdq;                           // sign-extend EAX into EDX
             idiv Rd(TEMP_B);               // quotient → EAX
             movsxd rax, eax;               // sign-extend result to 64 bits
             jmp >done;
 
             // Handle overflow: i32::MIN / -1 = i32::MIN (wrapping)
             overflow:;
-            mov rax, -2147483648;          // i32::MIN sign-extended to 64 bits
+            mov rax, i32::MIN;
             jmp >done;
 
             div_by_zero:;
@@ -687,11 +687,11 @@ impl ComputeInstructions for TranspilerBackend {
             jz >rem_by_zero;
 
             // Handle 32-bit overflow case on x86-64: INT_MIN / -1 traps (#DE)
-            cmp eax, 0x80000000u32 as i32;   // dividend == INT_MIN?
+            cmp eax, i32::MIN;   // dividend == INT_MIN?
             jne >do_div;
             cmp Rd(TEMP_B), -1;              // divisor == -1?
             jne >do_div;
-            mov eax, 0x80000000u32 as i32;   // result = INT_MIN
+            mov eax, i32::MIN;   // result = INT_MIN
             movsxd rax, eax;                 // sign-extend to 64-bit
             jmp >done;
 

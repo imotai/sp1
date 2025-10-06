@@ -38,30 +38,21 @@ pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut sp1_jit::JitContext) -> u64
     // Store the clock from when we enter.
     let (pc, clk) = (ctx.pc, ctx.clk);
 
-    // Unconstrained mode is not allowed for any syscall other than WRITE and HALT.
-    if ctx.is_unconstrained == 1
-        && (code != SyscallCode::WRITE && code != SyscallCode::EXIT_UNCONSTRAINED)
-    {
-        panic!("Unconstrained mode is not allowed for this syscall: {code:?}");
-    }
-
-    let result = ecall_handler(ctx);
+    let result = ecall_handler(ctx, code);
 
     match code {
-        SyscallCode::ENTER_UNCONSTRAINED => {
-            ctx.pc = pc.wrapping_add(4);
-            ctx.clk = clk.wrapping_sub(8);
-        }
         SyscallCode::EXIT_UNCONSTRAINED => {
-            // The `exit_unconstrained` sets the new clock and pc into the context.
+            // The `exit_unconstrained` resets the pc and clk to the values they were at when
+            // the unconstrained block was entered.
             ctx.pc = ctx.pc.wrapping_add(4);
             ctx.clk = ctx.clk.wrapping_add(256);
         }
         SyscallCode::HALT => {
-            // The `halt` sets the new clock and pc into the context.
+            // Explicity set the PC to one, to indicate that the program has halted.
             ctx.pc = 1;
             ctx.clk = clk.wrapping_add(256);
         }
+        // In the normal case, we just want to advance to the next instruction.
         _ => {
             ctx.pc = pc.wrapping_add(4);
             ctx.clk = clk.wrapping_add(256);
@@ -71,10 +62,16 @@ pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut sp1_jit::JitContext) -> u64
     result
 }
 
-pub fn ecall_handler(ctx: &mut impl SyscallContext) -> u64 {
+pub fn ecall_handler(ctx: &mut impl SyscallContext, code: SyscallCode) -> u64 {
     let arg1 = ctx.rr(RiscRegister::X10);
     let arg2 = ctx.rr(RiscRegister::X11);
-    let code = SyscallCode::from_u32(ctx.rr(RiscRegister::X5) as u32);
+
+    // Unconstrained mode is not allowed for any syscall other than WRITE and HALT.
+    if ctx.is_unconstrained()
+        && (code != SyscallCode::WRITE && code != SyscallCode::EXIT_UNCONSTRAINED)
+    {
+        panic!("Unconstrained mode is not allowed for this syscall: {code:?}");
+    }
 
     match code {
         SyscallCode::SHA_EXTEND => unsafe { sha256_extend(ctx, arg1, arg2) },
