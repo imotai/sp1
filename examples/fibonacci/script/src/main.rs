@@ -26,6 +26,8 @@ async fn main() {
     let (_, report) = client.execute(ELF, stdin.clone()).await.unwrap();
     println!("executed program with {} cycles", report.total_instruction_count());
 
+    println!("Report {:?}", report);
+
     // Generate the proof for the given program and input.
     let pk = client.setup(ELF).await.unwrap();
     let mut proof = client.prove(&pk, stdin.clone()).core().await.unwrap();
@@ -53,7 +55,7 @@ async fn main() {
 
     // // Verify the deserialized proof.
     // client.verify(&deserialized_proof, pk.verifying_key()).expect("verification failed");
-
+ 
     println!("successfully generated and verified proof for the program!")
 }
 

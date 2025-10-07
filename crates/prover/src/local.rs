@@ -7,8 +7,8 @@ use slop_algebra::{AbstractField, PrimeField, PrimeField32};
 use slop_bn254::Bn254Fr;
 use slop_futures::queue::WorkerQueue;
 use sp1_core_executor::{
-    subproof::SubproofVerifier, ExecutionError, ExecutionRecord, ExecutionReport, Executor,
-    Program, SP1Context, SP1CoreOpts, SP1RecursionProof,
+    subproof::SubproofVerifier, ExecutionError, ExecutionRecord, ExecutionReport, Program,
+    SP1Context, SP1CoreOpts, SP1RecursionProof,
 };
 use sp1_core_machine::{executor::MachineExecutor, io::SP1Stdin};
 use sp1_hypercube::{
@@ -124,35 +124,16 @@ impl<C: SP1ProverComponents> LocalProver<C> {
         self: Arc<Self>,
         elf: &[u8],
         stdin: &SP1Stdin,
-        mut context: SP1Context,
+        // TODO: Fix
+        _context: SP1Context,
     ) -> Result<(SP1PublicValues, [u8; 32], ExecutionReport), ExecutionError> {
-        context.subproof_verifier = Some(self.clone());
-        let opts = self.executor.opts().clone();
+        let new_context = SP1Context::default();
         let program = Arc::new(Program::from(elf).unwrap());
-
-        let mut runtime = Executor::with_context(program, opts, context);
-        runtime.maybe_setup_profiler(elf);
-
-        runtime.write_vecs(&stdin.buffer);
-        for (proof, vkey) in stdin.proofs.iter() {
-            runtime.write_proof(proof.clone(), vkey.clone());
-        }
-        runtime.run_fast()?;
-
-        let mut committed_value_digest = [0u8; 32];
-
-        runtime.record.public_values.committed_value_digest.iter().enumerate().for_each(
-            |(i, word)| {
-                let bytes = word.to_le_bytes();
-                committed_value_digest[i * 4..(i + 1) * 4].copy_from_slice(&bytes[0..4]);
-            },
-        );
-
-        Ok((
-            SP1PublicValues::from(&runtime.state.public_values_stream),
-            committed_value_digest,
-            runtime.report,
-        ))
+        let (public_values, filler, report) = self
+            .executor
+            .execute_sync(program, stdin.clone(), new_context)
+            .map_err(|e| ExecutionError::Other(e.to_string()))?;
+        Ok((public_values, filler, report))
     }
 
     /// Get a reference to the underlying [SP1Prover]

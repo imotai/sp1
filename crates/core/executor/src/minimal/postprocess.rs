@@ -68,6 +68,19 @@ impl MinimalExecutor {
             ));
         }
     }
+
+    /// Get set of addresses that were hinted.
+    #[must_use]
+    pub fn get_hint_event_addrs(&self) -> HashSet<u64> {
+        let events = self
+            .hints()
+            .iter()
+            .flat_map(|(addr, value)| chunked_memory_init_events(*addr, value))
+            .collect::<Vec<_>>();
+        let hint_event_addrs = events.iter().map(|event| event.addr).collect::<HashSet<_>>();
+
+        hint_event_addrs
+    }
 }
 
 /// Given some contiguous memory, create a series of initialize and finalize events.

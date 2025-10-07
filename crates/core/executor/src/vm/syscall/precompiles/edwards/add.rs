@@ -8,11 +8,7 @@ use crate::{
 };
 use typenum::Unsigned;
 
-pub(crate) fn core_edwards_add<
-    'a,
-    RT: SyscallRuntime<'a, true>,
-    E: EllipticCurve + EdwardsParameters,
->(
+pub(crate) fn core_edwards_add<'a, RT: SyscallRuntime<'a>, E: EllipticCurve + EdwardsParameters>(
     rt: &mut RT,
     _: SyscallCode,
     arg1: u64,

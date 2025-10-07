@@ -5,7 +5,7 @@ use crate::{
     TracingVM,
 };
 
-pub(crate) fn core_sha256_extend<'a, RT: SyscallRuntime<'a, true>>(
+pub(crate) fn core_sha256_extend<'a, RT: SyscallRuntime<'a>>(
     rt: &mut RT,
     _: SyscallCode,
     arg1: u64,

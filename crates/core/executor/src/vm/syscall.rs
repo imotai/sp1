@@ -1,4 +1,9 @@
-use crate::{syscalls::SyscallCode, tracing::LocalMemoryAccess, TracingVM};
+use crate::{
+    events::{MemoryReadRecord, MemoryWriteRecord},
+    syscalls::SyscallCode,
+    tracing::LocalMemoryAccess,
+    TracingVM,
+};
 use sp1_curves::{
     edwards::ed25519::Ed25519,
     weierstrass::{
@@ -21,17 +26,34 @@ mod u256x2048_mul;
 mod uint256;
 mod uint256_ops;
 
-pub trait SyscallRuntime<'a, const TRACING: bool> {
-    fn core(&self) -> &CoreVM<'a, TRACING>;
-    fn core_mut(&mut self) -> &mut CoreVM<'a, TRACING>;
+pub trait SyscallRuntime<'a> {
+    fn core(&self) -> &CoreVM<'a>;
+
+    fn core_mut(&mut self) -> &mut CoreVM<'a>;
+
+    fn mr_slice(&mut self, addr: u64, len: usize) -> Vec<MemoryReadRecord> {
+        self.core_mut().mr_slice(addr, len)
+    }
+
+    fn mw_slice(&mut self, addr: u64, len: usize) -> Vec<MemoryWriteRecord> {
+        self.core_mut().mw_slice(addr, len)
+    }
+
+    fn mr_slice_unsafe(&mut self, addr: u64, len: usize) -> Vec<MemoryReadRecord> {
+        self.core_mut().mr_slice_unsafe(addr, len)
+    }
+
+    fn rr_precompile(&mut self, register: usize) -> MemoryReadRecord {
+        self.core_mut().rr_precompile(register)
+    }
 }
 
-impl<'a, const TRACING: bool> SyscallRuntime<'a, TRACING> for CoreVM<'a, TRACING> {
-    fn core(&self) -> &CoreVM<'a, TRACING> {
+impl<'a> SyscallRuntime<'a> for CoreVM<'a> {
+    fn core(&self) -> &CoreVM<'a> {
         self
     }
 
-    fn core_mut(&mut self) -> &mut CoreVM<'a, TRACING> {
+    fn core_mut(&mut self) -> &mut CoreVM<'a> {
         self
     }
 }
@@ -39,7 +61,7 @@ impl<'a, const TRACING: bool> SyscallRuntime<'a, TRACING> for CoreVM<'a, TRACING
 /// The default syscall handler for the core VM.
 ///
 /// Note that mostly syscalls actually do nothing in the core VM.
-pub(crate) fn core_syscall_handler<'a, RT: SyscallRuntime<'a, true>>(
+pub(crate) fn core_syscall_handler<'a, RT: SyscallRuntime<'a>>(
     rt: &mut RT,
     code: SyscallCode,
     args1: u64,

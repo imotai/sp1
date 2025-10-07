@@ -38,6 +38,8 @@ pub use vm::{memory::CompressedMemory, results::CycleResult, CoreVM};
 mod hooks;
 mod splicing;
 pub use splicing::{SplicedMinimalTrace, SplicingVM};
+mod estimating;
+pub use estimating::GasEstimatingVM;
 
 mod minimal;
 pub use minimal::*;

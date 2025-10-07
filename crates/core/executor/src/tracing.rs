@@ -28,7 +28,7 @@ use crate::{
 /// A RISC-V VM that uses a [`MinimalTrace`] to create a [`ExecutionRecord`].
 pub struct TracingVM<'a> {
     /// The core VM.
-    pub core: CoreVM<'a, false>,
+    pub core: CoreVM<'a>,
     /// The local memory access for the CPU.
     pub local_memory_access: LocalMemoryAccess,
     /// The local memory access for any deferred precompiles.
@@ -412,7 +412,7 @@ impl<'a> TracingVM<'a> {
     /// Execute an ecall instruction and emit the events.
     fn execute_ecall(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
         let EcallResult { a: _, a_record, b, b_record, c, c_record, code } =
-            CoreVM::<'a, false>::execute_ecall(self, instruction, tracing_syscall_handler)?;
+            CoreVM::<'a>::execute_ecall(self, instruction, tracing_syscall_handler)?;
 
         self.local_memory_access.insert_record(Register::X11 as u64, c_record);
         self.local_memory_access.insert_record(Register::X10 as u64, b_record);
@@ -779,12 +779,12 @@ impl TracingVM<'_> {
     }
 }
 
-impl<'a> SyscallRuntime<'a, false> for TracingVM<'a> {
-    fn core(&self) -> &CoreVM<'a, false> {
+impl<'a> SyscallRuntime<'a> for TracingVM<'a> {
+    fn core(&self) -> &CoreVM<'a> {
         &self.core
     }
 
-    fn core_mut(&mut self) -> &mut CoreVM<'a, false> {
+    fn core_mut(&mut self) -> &mut CoreVM<'a> {
         &mut self.core
     }
 }

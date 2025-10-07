@@ -4837,6 +4837,7 @@ version = "6.0.0"
 dependencies = [
  "bincode",
  "cfg-if",
+ "enum-map",
  "futures",
  "generic-array 1.1.0",
  "hashbrown 0.14.5",

@@ -1,6 +1,6 @@
 use crate::{syscalls::SyscallCode, vm::syscall::SyscallRuntime, HALT_PC};
 
-pub(crate) fn halt_syscall<'a, const TRACING: bool, RT: SyscallRuntime<'a, TRACING>>(
+pub(crate) fn halt_syscall<'a, RT: SyscallRuntime<'a>>(
     rt: &mut RT,
     _: SyscallCode,
     exit_code: u64,

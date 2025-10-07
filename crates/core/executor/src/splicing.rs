@@ -4,20 +4,24 @@ use serde::Serialize;
 use sp1_jit::{MemReads, MinimalTrace, TraceChunk};
 
 use crate::{
+    events::{MemoryReadRecord, MemoryWriteRecord},
     syscalls::SyscallCode,
     vm::{
         memory::CompressedMemory,
         results::{CycleResult, EcallResult, LoadResult, StoreResult},
+        shapes::ShapeChecker,
         syscall::{core_syscall_handler, SyscallRuntime},
         CoreVM,
     },
-    ExecutionError, Instruction, Opcode, Program,
+    ExecutionError, Instruction, Opcode, Program, Register,
 };
 
 /// A RISC-V VM that uses a [`MinimalTrace`] to create a [`ExecutionRecord`].
 pub struct SplicingVM<'a> {
     /// The core VM.
-    pub core: CoreVM<'a, true>,
+    pub core: CoreVM<'a>,
+    /// The shape checker, responsible for cutting the execution when a shard limit is reached.
+    pub shape_checker: ShapeChecker,
     /// The addresses that have been touched.
     pub touched_addresses: &'a mut CompressedMemory,
     /// The index of the hint lens the next shard will use.
@@ -32,7 +36,14 @@ impl SplicingVM<'_> {
         }
 
         loop {
-            match self.execute_instruction()? {
+            let mut result = self.execute_instruction()?;
+
+            // If were not already done, ensure that we dont have a shard boundary.
+            if !result.is_done() && self.shape_checker.check_shard_limit() {
+                result = CycleResult::ShardBoundry;
+            }
+
+            match result {
                 CycleResult::Done(false) => {}
                 CycleResult::ShardBoundry | CycleResult::TraceEnd => {
                     self.start_new_shard();
@@ -136,7 +147,6 @@ impl SplicingVM<'_> {
 
     // Indicate that a new shard is starting.
     fn start_new_shard(&mut self) {
-        self.core.shape_checker.reset(self.core.clk());
         self.core.register_refresh();
     }
 }
@@ -149,7 +159,12 @@ impl<'a> SplicingVM<'a> {
         program: Arc<Program>,
         touched_addresses: &'a mut CompressedMemory,
     ) -> Self {
-        Self { core: CoreVM::new(trace, program), touched_addresses, hint_lens_idx: 0 }
+        Self {
+            core: CoreVM::new(trace, program),
+            touched_addresses,
+            hint_lens_idx: 0,
+            shape_checker: ShapeChecker::new(trace.clk_start()),
+        }
     }
 
     /// Execute a load instruction.
@@ -159,10 +174,19 @@ impl<'a> SplicingVM<'a> {
     ///
     /// It will also emit the memory instruction event and the events for the load instruction.
     pub fn execute_load(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
-        let LoadResult { addr, .. } = self.core.execute_load(instruction)?;
+        let LoadResult { addr, rd, mr_record, .. } = self.core.execute_load(instruction)?;
 
         // Ensure the address is aligned to 8 bytes.
         self.touched_addresses.insert(addr & !0b111, true);
+
+        self.shape_checker.handle_instruction(
+            instruction,
+            self.core.needs_bump_clk_high(),
+            rd == Register::X0,
+            self.core.needs_state_bump(instruction),
+        );
+
+        self.shape_checker.handle_mem_event(addr, mr_record.prev_timestamp);
 
         Ok(())
     }
@@ -174,10 +198,19 @@ impl<'a> SplicingVM<'a> {
     ///
     /// It will also emit the memory instruction event and the events for the store instruction.
     pub fn execute_store(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
-        let StoreResult { addr, .. } = self.core.execute_store(instruction)?;
+        let StoreResult { addr, mw_record, .. } = self.core.execute_store(instruction)?;
 
         // Ensure the address is aligned to 8 bytes.
         self.touched_addresses.insert(addr & !0b111, true);
+
+        self.shape_checker.handle_instruction(
+            instruction,
+            self.core.needs_bump_clk_high(),
+            false, // store instruction, no load of x0
+            self.core.needs_state_bump(instruction),
+        );
+
+        self.shape_checker.handle_mem_event(addr, mw_record.prev_timestamp);
 
         Ok(())
     }
@@ -186,24 +219,52 @@ impl<'a> SplicingVM<'a> {
     #[inline]
     pub fn execute_alu(&mut self, instruction: &Instruction) {
         let _ = self.core.execute_alu(instruction);
+
+        self.shape_checker.handle_instruction(
+            instruction,
+            self.core.needs_bump_clk_high(),
+            false, // alu instruction, no load of x0
+            self.core.needs_state_bump(instruction),
+        );
     }
 
     /// Execute a jump instruction and emit the events.
     #[inline]
     pub fn execute_jump(&mut self, instruction: &Instruction) {
         let _ = self.core.execute_jump(instruction);
+
+        self.shape_checker.handle_instruction(
+            instruction,
+            self.core.needs_bump_clk_high(),
+            false, // jump instruction, no load of x0
+            self.core.needs_state_bump(instruction),
+        );
     }
 
     /// Execute a branch instruction and emit the events.
     #[inline]
     pub fn execute_branch(&mut self, instruction: &Instruction) {
         let _ = self.core.execute_branch(instruction);
+
+        self.shape_checker.handle_instruction(
+            instruction,
+            self.core.needs_bump_clk_high(),
+            false, // branch instruction, no load of x0
+            self.core.needs_state_bump(instruction),
+        );
     }
 
     /// Execute a U-type instruction and emit the events.   
     #[inline]
     pub fn execute_utype(&mut self, instruction: &Instruction) {
         let _ = self.core.execute_utype(instruction);
+
+        self.shape_checker.handle_instruction(
+            instruction,
+            self.core.needs_bump_clk_high(),
+            false, // u-type instruction, no load of x0
+            self.core.needs_state_bump(instruction),
+        );
     }
 
     /// Execute an ecall instruction and emit the events.
@@ -216,17 +277,52 @@ impl<'a> SplicingVM<'a> {
             self.hint_lens_idx += 1;
         }
 
+        if code.should_send() == 1 {
+            if self.core.is_retained_syscall(code) {
+                self.shape_checker.handle_retained_syscall(code);
+            } else {
+                self.shape_checker.syscall_sent();
+            }
+        }
+
+        self.shape_checker.handle_instruction(
+            instruction,
+            self.core.needs_bump_clk_high(),
+            false, // ecall instruction, no load of x0
+            self.core.needs_state_bump(instruction),
+        );
+
         Ok(())
     }
 }
 
-impl<'a> SyscallRuntime<'a, true> for SplicingVM<'a> {
-    fn core(&self) -> &CoreVM<'a, true> {
+impl<'a> SyscallRuntime<'a> for SplicingVM<'a> {
+    fn core(&self) -> &CoreVM<'a> {
         &self.core
     }
 
-    fn core_mut(&mut self) -> &mut CoreVM<'a, true> {
+    fn core_mut(&mut self) -> &mut CoreVM<'a> {
         &mut self.core
+    }
+
+    fn mr_slice(&mut self, addr: u64, len: usize) -> Vec<MemoryReadRecord> {
+        let records = self.core_mut().mr_slice(addr, len);
+
+        for (i, record) in records.iter().enumerate() {
+            self.shape_checker.handle_mem_event(addr + i as u64 * 8, record.prev_timestamp);
+        }
+
+        records
+    }
+
+    fn mw_slice(&mut self, addr: u64, len: usize) -> Vec<MemoryWriteRecord> {
+        let records = self.core_mut().mw_slice(addr, len);
+
+        for (i, record) in records.iter().enumerate() {
+            self.shape_checker.handle_mem_event(addr + i as u64 * 8, record.prev_timestamp);
+        }
+
+        records
     }
 }
 

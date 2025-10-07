@@ -78,6 +78,21 @@ impl AddAssign for ExecutionReport {
         counts_add_assign(&mut self.opcode_counts, *rhs.opcode_counts);
         counts_add_assign(&mut self.syscall_counts, *rhs.syscall_counts);
         self.touched_memory_addresses += rhs.touched_memory_addresses;
+
+        // Merge cycle_tracker and invocation_tracker
+        for (label, count) in rhs.cycle_tracker {
+            *self.cycle_tracker.entry(label).or_insert(0) += count;
+        }
+        for (label, count) in rhs.invocation_tracker {
+            *self.invocation_tracker.entry(label).or_insert(0) += count;
+        }
+
+        // Sum gas costs if both have gas
+        self.gas = match (self.gas, rhs.gas) {
+            (Some(c1), Some(c2)) => Some(c1 + c2),
+            (Some(g), None) | (None, Some(g)) => Some(g),
+            (None, None) => None,
+        };
     }
 }
 
@@ -93,7 +108,7 @@ impl Add for ExecutionReport {
 impl Display for ExecutionReport {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         if let Some(gas) = self.gas {
-            writeln!(f, "gas: {gas}")?;
+            writeln!(f, "gas: {gas:?}")?;
         }
         writeln!(f, "opcode counts ({} total instructions):", self.total_instruction_count())?;
         for line in generate_execution_report(self.opcode_counts.as_ref()) {

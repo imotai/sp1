@@ -368,6 +368,14 @@ pub enum ExecutionError {
     /// Page protect is off, and the instruction is not found.
     #[error("Instruction not found, page protect/ untrusted program set to off")]
     InstructionNotFound(),
+
+    /// The sharding state is invalid.
+    #[error("Running executor in non-sharding state, but got a shard boundary or trace end")]
+    InvalidShardingState(),
+
+    /// Other error.
+    #[error("Unexpected error: {0}")]
+    Other(String),
 }
 
 impl<'a> Executor<'a> {

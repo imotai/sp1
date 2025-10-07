@@ -8,7 +8,7 @@ use crate::{
     TracingVM,
 };
 
-pub(crate) fn core_uint256_mul<'a, const TRACING: bool, RT: SyscallRuntime<'a, TRACING>>(
+pub(crate) fn core_uint256_mul<'a, RT: SyscallRuntime<'a>>(
     rt: &mut RT,
     _: SyscallCode,
     arg1: u64,

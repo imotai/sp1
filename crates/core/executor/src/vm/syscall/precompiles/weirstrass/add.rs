@@ -8,7 +8,7 @@ use crate::{
 };
 use typenum::Unsigned;
 
-pub(crate) fn core_weirstrass_add<'a, RT: SyscallRuntime<'a, true>, E: EllipticCurve>(
+pub(crate) fn core_weirstrass_add<'a, RT: SyscallRuntime<'a>, E: EllipticCurve>(
     rt: &mut RT,
     _: SyscallCode,
     arg1: u64,

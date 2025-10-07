@@ -11,13 +11,13 @@ use crate::{
     ExecutionError, Instruction, Opcode, Program, Register, RetainedEventsPreset, SP1CoreOpts,
     HALT_PC, M64,
 };
-use shapes::ShapeChecker;
 use sp1_jit::{MemReads, MinimalTrace};
 use std::{mem::MaybeUninit, num::Wrapping, ptr::addr_of_mut, sync::Arc};
 
+pub(crate) mod gas;
 pub(crate) mod memory;
 pub(crate) mod results;
-mod shapes;
+pub(crate) mod shapes;
 pub(crate) mod syscall;
 
 /// The number of cycles that a single instruction takes.
@@ -26,7 +26,7 @@ const CLK_BUMP: u64 = 8;
 const PC_BUMP: u64 = 4;
 
 /// A RISC-V VM that uses a [`MinimalTrace`] to oracle memory access.
-pub struct CoreVM<'a, const SHAPE_CHECKING: bool> {
+pub struct CoreVM<'a> {
     registers: [MemoryRecord; 32],
     /// The current clock of the VM.
     clk: u64,
@@ -46,8 +46,6 @@ pub struct CoreVM<'a, const SHAPE_CHECKING: bool> {
     hint_lens: std::slice::Iter<'a, usize>,
     /// The program that is being executed.
     pub program: Arc<Program>,
-    /// The shape checker for the VM.
-    pub(crate) shape_checker: ShapeChecker,
     /// The syscalls that are not marked as external, ie. they stay in the same shard.
     pub(crate) retained_syscall_codes: Vec<SyscallCode>,
     /// The options to configure the VM, mostly for syscall / shard handling.
@@ -56,7 +54,7 @@ pub struct CoreVM<'a, const SHAPE_CHECKING: bool> {
     pub clk_end: u64,
 }
 
-impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
+impl<'a> CoreVM<'a> {
     /// Create a [`CoreVM`] from a [`MinimalTrace`] and a [`Program`].
     pub fn new<T: MinimalTrace>(trace: &'a T, program: Arc<Program>) -> Self {
         let start_clk = trace.clk_start();
@@ -103,7 +101,6 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
             next_clk: start_clk.wrapping_add(CLK_BUMP),
             hint_lens: trace.hint_lens().iter(),
             exit_code: 0,
-            shape_checker: ShapeChecker::new(start_clk),
             retained_syscall_codes,
             opts,
             clk_end: trace.clk_end(),
@@ -135,9 +132,7 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
         }
 
         // Check if the shard limit has been reached.
-        if SHAPE_CHECKING && self.shape_checker.check_shard_limit() {
-            return CycleResult::ShardBoundry;
-        } else if self.is_trace_end() {
+        if self.is_trace_end() {
             return CycleResult::TraceEnd;
         }
 
@@ -205,15 +200,6 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
 
         let rw_record = self.rw(rd, a);
 
-        if SHAPE_CHECKING {
-            self.shape_checker.handle_instruction(
-                instruction,
-                self.needs_bump_clk_high(),
-                rd == Register::X0,
-                self.needs_state_bump(instruction),
-            );
-        }
-
         Ok(LoadResult { a, b, c: imm, addr, rs1, rd, rr_record, rw_record, mr_record })
     }
 
@@ -265,15 +251,6 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
         };
 
         let mw_record = self.mw(mr_record, memory_store_value);
-
-        if SHAPE_CHECKING {
-            self.shape_checker.handle_instruction(
-                instruction,
-                self.needs_bump_clk_high(),
-                false, // store instruction, no load of x0
-                self.needs_state_bump(instruction),
-            );
-        }
 
         Ok(StoreResult { a, b, c, addr, rs1, rs1_record, rs2, rs2_record, mw_record })
     }
@@ -417,15 +394,6 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
 
         let rw_record = self.rw(rd, a);
 
-        if SHAPE_CHECKING {
-            self.shape_checker.handle_instruction(
-                instruction,
-                self.needs_bump_clk_high(),
-                false, // alu instruction, no load of x0
-                self.needs_state_bump(instruction),
-            );
-        }
-
         // SAFETY: We're writing to a valid pointer as we just created the pointer from the
         // `result`.
         unsafe { addr_of_mut!((*result_ptr).a).write(a) };
@@ -453,15 +421,6 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
 
                 self.next_pc = next_pc;
 
-                if SHAPE_CHECKING {
-                    self.shape_checker.handle_instruction(
-                        instruction,
-                        self.needs_bump_clk_high(),
-                        false, // jalr instruction, no load of x0
-                        self.needs_state_bump(instruction),
-                    );
-                }
-
                 JumpResult { a, b, c, rd, rd_record, rs1: MaybeImmediate::Immediate(b) }
             }
             Opcode::JALR => {
@@ -475,15 +434,6 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
                 let rd_record = self.rw(rd, a);
 
                 self.next_pc = next_pc;
-
-                if SHAPE_CHECKING {
-                    self.shape_checker.handle_instruction(
-                        instruction,
-                        self.needs_bump_clk_high(),
-                        false, // jalr instruction, no load of x0
-                        self.needs_state_bump(instruction),
-                    );
-                }
 
                 JumpResult {
                     a,
@@ -525,15 +475,6 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
             self.next_pc = self.pc.wrapping_add(c);
         }
 
-        if SHAPE_CHECKING {
-            self.shape_checker.handle_instruction(
-                instruction,
-                self.needs_bump_clk_high(),
-                false, // branch instruction, no load of x0
-                self.needs_state_bump(instruction),
-            );
-        }
-
         BranchResult { a, rs1, a_record, b, rs2, b_record, c }
     }
 
@@ -544,15 +485,6 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
         let (b, c) = (imm, imm);
         let a = if instruction.opcode == Opcode::AUIPC { self.pc.wrapping_add(imm) } else { imm };
         let a_record = self.rw(rd, a);
-
-        if SHAPE_CHECKING {
-            self.shape_checker.handle_instruction(
-                instruction,
-                self.needs_bump_clk_high(),
-                false, // branch instruction, no load of x0
-                self.needs_state_bump(instruction),
-            );
-        }
 
         UTypeResult { a, b, c, rd, rw_record: a_record }
     }
@@ -569,7 +501,7 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
         f: F,
     ) -> Result<EcallResult, ExecutionError>
     where
-        RT: SyscallRuntime<'a, SHAPE_CHECKING>,
+        RT: SyscallRuntime<'a>,
         F: Fn(&mut RT, SyscallCode, u64, u64) -> Option<u64>,
     {
         if !instruction.is_ecall_instruction() {
@@ -585,18 +517,6 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
         // Peek at the register, we dont care about the read here.
         let syscall_id = core.registers[t0 as usize].value;
         let code = SyscallCode::from_u32(syscall_id as u32);
-
-        // Mark the runtime as having sent a syscall.
-        #[allow(clippy::collapsible_if)]
-        if SHAPE_CHECKING {
-            if code.should_send() == 1 {
-                if core.is_retained_syscall(code) {
-                    core.shape_checker.handle_retained_syscall(code);
-                } else {
-                    core.shape_checker.syscall_sent();
-                }
-            }
-        }
 
         let c_record = core.rr(Register::X11, MemoryAccessPosition::C);
         let b_record = core.rr(Register::X10, MemoryAccessPosition::B);
@@ -621,20 +541,11 @@ impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
         // Add 256 to the next clock to account for the ecall.
         core.set_next_clk(core.next_clk() + 256);
 
-        if SHAPE_CHECKING {
-            core.shape_checker.handle_instruction(
-                instruction,
-                core.needs_bump_clk_high(),
-                false, // ecall instruction, no load of x0
-                core.needs_state_bump(instruction),
-            );
-        }
-
         Ok(EcallResult { a, a_record, b, b_record, c, c_record, code })
     }
 }
 
-impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
+impl CoreVM<'_> {
     /// Read the next required memory read from the trace.
     #[inline]
     fn mr(&mut self, addr: u64) -> MemoryReadRecord {
@@ -645,10 +556,6 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
                 unreachable!("memory reads unexpectdely exhausted at {addr}, clk {}", self.clk);
             }
         };
-
-        if SHAPE_CHECKING {
-            self.shape_checker.handle_mem_event(addr, record.clk);
-        }
 
         MemoryReadRecord {
             value: record.value,
@@ -677,7 +584,7 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
     }
 
     #[inline]
-    pub(crate) fn mr_slice(&mut self, addr: u64, len: usize) -> Vec<MemoryReadRecord> {
+    pub(crate) fn mr_slice(&mut self, _addr: u64, len: usize) -> Vec<MemoryReadRecord> {
         let current_clk = self.clk();
         let mem_reads = self.mem_reads();
 
@@ -691,17 +598,11 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
             })
             .collect();
 
-        if SHAPE_CHECKING {
-            for (i, record) in records.iter().enumerate() {
-                self.shape_checker.handle_mem_event(addr + i as u64 * 8, record.prev_timestamp);
-            }
-        }
-
         records
     }
 
     #[inline]
-    pub(crate) fn mw_slice(&mut self, addr: u64, len: usize) -> Vec<MemoryWriteRecord> {
+    pub(crate) fn mw_slice(&mut self, _addr: u64, len: usize) -> Vec<MemoryWriteRecord> {
         let mem_writes = self.mem_reads();
 
         let raw_records: Vec<_> = mem_writes.take(len * 2).collect();
@@ -723,12 +624,6 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
                 }
             })
             .collect();
-
-        if SHAPE_CHECKING {
-            for (i, record) in records.iter().enumerate() {
-                self.shape_checker.handle_mem_event(addr + i as u64 * 8, record.prev_timestamp);
-            }
-        }
 
         records
     }
@@ -757,6 +652,10 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
         //     self.shape_checker.handle_mem_event(register as u64, prev_record.timestamp);
         // }
 
+        // if REPORT_GENERATING {
+        //     self.gas_calculator.handle_mem_event(register as u64, prev_record.timestamp);
+        // }
+
         MemoryReadRecord {
             value: new_record.value,
             timestamp: new_record.timestamp,
@@ -779,6 +678,10 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
         //     self.shape_checker.handle_mem_event(register as u64, prev_record.timestamp);
         // }
 
+        // if REPORT_GENERATING {
+        //     self.gas_calculator.handle_mem_event(register as u64, prev_record.timestamp);
+        // }
+
         MemoryReadRecord {
             value: new_record.value,
             timestamp: new_record.timestamp,
@@ -789,10 +692,7 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
 
     /// Touch all the registers in the VM, bumping thier clock to `self.clk - 1`.
     pub fn register_refresh(&mut self) -> [MemoryReadRecord; 32] {
-        fn bump_register<const SHAPE_CHECKING: bool>(
-            vm: &mut CoreVM<SHAPE_CHECKING>,
-            register: usize,
-        ) -> MemoryReadRecord {
+        fn bump_register(vm: &mut CoreVM, register: usize) -> MemoryReadRecord {
             let prev_record = vm.registers[register];
             let new_record = MemoryRecord { timestamp: vm.clk - 1, value: prev_record.value };
 
@@ -834,6 +734,10 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
         //     self.shape_checker.handle_mem_event(register as u64, prev_record.timestamp);
         // }
 
+        // if REPORT_GENERATING {
+        //     self.gas_calculator.handle_mem_event(register as u64, prev_record.timestamp);
+        // }
+
         MemoryWriteRecord {
             value: new_record.value,
             timestamp: new_record.timestamp,
@@ -844,7 +748,7 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
     }
 }
 
-impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
+impl CoreVM<'_> {
     /// Get the current timestamp for a given memory access position.
     #[inline]
     #[must_use]
@@ -854,7 +758,8 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
 
     /// Check if the top 24 bits have changed, which imply a `state bump` event needs to be emitted.
     #[inline]
-    const fn needs_bump_clk_high(&self) -> bool {
+    #[must_use]
+    pub const fn needs_bump_clk_high(&self) -> bool {
         (self.next_clk() >> 24) ^ (self.clk() >> 24) > 0
     }
 
@@ -875,7 +780,7 @@ impl<const SHAPE_CHECKING: bool> CoreVM<'_, SHAPE_CHECKING> {
     }
 }
 
-impl<'a, const SHAPE_CHECKING: bool> CoreVM<'a, SHAPE_CHECKING> {
+impl<'a> CoreVM<'a> {
     #[inline]
     #[must_use]
     /// Get the current clock, this clock is incremented by [`CLK_BUMP`] each cycle.

@@ -26,7 +26,7 @@ pub struct ShapeChecker {
 }
 
 impl ShapeChecker {
-    pub(super) fn new(shard_start_clk: u64) -> Self {
+    pub fn new(shard_start_clk: u64) -> Self {
         // todo from args
         let opts = SP1CoreOpts::default();
 
@@ -127,48 +127,11 @@ impl ShapeChecker {
         let touched_addresses: u64 = std::mem::take(&mut self.local_mem_counts);
         let syscall_sent = std::mem::take(&mut self.syscall_sent);
 
-        let riscv_air_id = match instruction.opcode {
-            Opcode::ADD => RiscvAirId::Add,
-            Opcode::ADDI => RiscvAirId::Addi,
-            Opcode::ADDW => RiscvAirId::Addw,
-            Opcode::SUB => RiscvAirId::Sub,
-            Opcode::SUBW => RiscvAirId::Subw,
-            Opcode::XOR | Opcode::OR | Opcode::AND => RiscvAirId::Bitwise,
-            Opcode::SLT | Opcode::SLTU => RiscvAirId::Lt,
-            Opcode::MUL | Opcode::MULH | Opcode::MULHU | Opcode::MULHSU | Opcode::MULW => {
-                RiscvAirId::Mul
-            }
-            Opcode::DIV
-            | Opcode::DIVU
-            | Opcode::REM
-            | Opcode::REMU
-            | Opcode::DIVW
-            | Opcode::DIVUW
-            | Opcode::REMW
-            | Opcode::REMUW => RiscvAirId::DivRem,
-            Opcode::SLL | Opcode::SLLW => RiscvAirId::ShiftLeft,
-            Opcode::SRLW | Opcode::SRAW | Opcode::SRL | Opcode::SRA => RiscvAirId::ShiftRight,
-            Opcode::LB | Opcode::LBU => RiscvAirId::LoadByte,
-            Opcode::LH | Opcode::LHU => RiscvAirId::LoadHalf,
-            Opcode::LW | Opcode::LWU => RiscvAirId::LoadWord,
-            Opcode::LD => RiscvAirId::LoadDouble,
-            Opcode::SB => RiscvAirId::StoreByte,
-            Opcode::SH => RiscvAirId::StoreHalf,
-            Opcode::SW => RiscvAirId::StoreWord,
-            Opcode::SD => RiscvAirId::StoreDouble,
-            Opcode::BEQ | Opcode::BNE | Opcode::BLT | Opcode::BGE | Opcode::BLTU | Opcode::BGEU => {
-                RiscvAirId::Branch
-            }
-            Opcode::AUIPC | Opcode::LUI => RiscvAirId::UType,
-            Opcode::JAL => RiscvAirId::Jal,
-            Opcode::JALR => RiscvAirId::Jalr,
-            Opcode::ECALL => RiscvAirId::SyscallInstrs,
-            _ => {
-                eprintln!("Unknown opcode: {:?}", instruction.opcode);
-                unreachable!()
-            }
+        let riscv_air_id = if is_load_x0 {
+            RiscvAirId::LoadX0
+        } else {
+            riscv_air_id_from_opcode(instruction.opcode)
         };
-        let riscv_air_id = if is_load_x0 { RiscvAirId::LoadX0 } else { riscv_air_id };
 
         // Increment the height and trace area for the riscv air id
         self.heights[riscv_air_id] += 1;
@@ -201,5 +164,49 @@ impl ShapeChecker {
         self.trace_area += self.costs[RiscvAirId::SyscallCore] * syscall_sent as u64;
         self.heights[RiscvAirId::SyscallCore] += syscall_sent as u64;
         self.max_height = self.max_height.max(self.heights[RiscvAirId::SyscallCore]);
+    }
+}
+
+pub fn riscv_air_id_from_opcode(opcode: Opcode) -> RiscvAirId {
+    match opcode {
+        Opcode::ADD => RiscvAirId::Add,
+        Opcode::ADDI => RiscvAirId::Addi,
+        Opcode::ADDW => RiscvAirId::Addw,
+        Opcode::SUB => RiscvAirId::Sub,
+        Opcode::SUBW => RiscvAirId::Subw,
+        Opcode::XOR | Opcode::OR | Opcode::AND => RiscvAirId::Bitwise,
+        Opcode::SLT | Opcode::SLTU => RiscvAirId::Lt,
+        Opcode::MUL | Opcode::MULH | Opcode::MULHU | Opcode::MULHSU | Opcode::MULW => {
+            RiscvAirId::Mul
+        }
+        Opcode::DIV
+        | Opcode::DIVU
+        | Opcode::REM
+        | Opcode::REMU
+        | Opcode::DIVW
+        | Opcode::DIVUW
+        | Opcode::REMW
+        | Opcode::REMUW => RiscvAirId::DivRem,
+        Opcode::SLL | Opcode::SLLW => RiscvAirId::ShiftLeft,
+        Opcode::SRLW | Opcode::SRAW | Opcode::SRL | Opcode::SRA => RiscvAirId::ShiftRight,
+        Opcode::LB | Opcode::LBU => RiscvAirId::LoadByte,
+        Opcode::LH | Opcode::LHU => RiscvAirId::LoadHalf,
+        Opcode::LW | Opcode::LWU => RiscvAirId::LoadWord,
+        Opcode::LD => RiscvAirId::LoadDouble,
+        Opcode::SB => RiscvAirId::StoreByte,
+        Opcode::SH => RiscvAirId::StoreHalf,
+        Opcode::SW => RiscvAirId::StoreWord,
+        Opcode::SD => RiscvAirId::StoreDouble,
+        Opcode::BEQ | Opcode::BNE | Opcode::BLT | Opcode::BGE | Opcode::BLTU | Opcode::BGEU => {
+            RiscvAirId::Branch
+        }
+        Opcode::AUIPC | Opcode::LUI => RiscvAirId::UType,
+        Opcode::JAL => RiscvAirId::Jal,
+        Opcode::JALR => RiscvAirId::Jalr,
+        Opcode::ECALL => RiscvAirId::SyscallInstrs,
+        _ => {
+            eprintln!("Unknown opcode: {opcode:?}");
+            unreachable!()
+        }
     }
 }
