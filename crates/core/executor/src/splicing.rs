@@ -147,6 +147,7 @@ impl SplicingVM<'_> {
 
     // Indicate that a new shard is starting.
     fn start_new_shard(&mut self) {
+        self.shape_checker.reset(self.core.clk());
         self.core.register_refresh();
     }
 }
