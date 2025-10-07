@@ -79,6 +79,14 @@ func (p *Chip) KoalaBearRangeCheck(value frontend.Variable) {
 	lowLimb := new_result[0]
 	highLimb := new_result[1]
 
+	// Check that the hint is correct.
+	p.api.AssertIsEqual(
+		p.api.Add(
+			p.api.Mul(highLimb, frontend.Variable(uint64(math.Pow(2, 24)))),
+			lowLimb,
+		),
+		value,
+	)
 	if os.Getenv("GROTH16") != "1" {
 		p.RangeChecker.Check(highLimb, 7)
 		p.RangeChecker.Check(lowLimb, 24)
