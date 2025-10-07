@@ -2,7 +2,7 @@ use crate::{
     utils::{is_recursion_public_values_valid, is_root_public_values_valid},
     HashableKey, OuterSC,
 };
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use num_bigint::BigUint;
 use slop_algebra::{AbstractField, PrimeField, PrimeField64};
 use sp1_core_executor::{subproof::SubproofVerifier, SP1RecursionProof};
@@ -15,7 +15,7 @@ use sp1_primitives::{
     io::{blake3_hash, SP1PublicValues},
     SP1Field, SP1GlobalContext, SP1OuterGlobalContext,
 };
-use sp1_recursion_circuit::machine::RootPublicValues;
+use sp1_recursion_circuit::{machine::RootPublicValues, utils::koalabears_to_bn254};
 use sp1_recursion_executor::RecursionPublicValues;
 use sp1_recursion_gnark_ffi::{
     Groth16Bn254Proof, Groth16Bn254Prover, PlonkBn254Proof, PlonkBn254Prover,
@@ -567,6 +567,11 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             ));
         }
 
+        // The `vk_root` is the expected `vk_root`.
+        if *public_values.vk_root() != self.recursion_prover.recursion_vk_root {
+            return Err(MachineVerifierError::InvalidPublicValues("vk_root mismatch"));
+        }
+
         // Verify that the proof is for the sp1 vkey we are expecting.
         let vkey_hash = vk.hash_koalabear();
         if *public_values.sp1_vk_digest() != vkey_hash {
@@ -591,6 +596,11 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let exit_code = BigUint::from_str(&proof.public_inputs[2])?;
         let vk_root = BigUint::from_str(&proof.public_inputs[3])?;
         let proof_nonce = BigUint::from_str(&proof.public_inputs[4])?;
+        let expected_vk_root = koalabears_to_bn254(&self.recursion_prover.recursion_vk_root);
+
+        if vk_root != expected_vk_root.as_canonical_biguint() {
+            return Err(anyhow!("vk_root mismatch"));
+        }
 
         // Verify the proof with the corresponding public inputs.
         prover.verify(
@@ -623,6 +633,11 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let exit_code = BigUint::from_str(&proof.public_inputs[2])?;
         let vk_root = BigUint::from_str(&proof.public_inputs[3])?;
         let proof_nonce = BigUint::from_str(&proof.public_inputs[4])?;
+        let expected_vk_root = koalabears_to_bn254(&self.recursion_prover.recursion_vk_root);
+
+        if vk_root != expected_vk_root.as_canonical_biguint() {
+            return Err(anyhow!("vk_root mismatch"));
+        }
 
         // Verify the proof with the corresponding public inputs.
         prover.verify(
