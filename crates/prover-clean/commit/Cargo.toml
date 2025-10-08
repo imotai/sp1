@@ -1,0 +1,48 @@
+[package]
+name = "cslpc-commit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+# cuslop
+csl-cuda = { workspace = true }
+csl-jagged = { workspace = true }
+csl-tracegen = { workspace = true }
+
+# prover-clean subcrates
+cslpc-utils = { workspace = true }
+cslpc-tracegen = { workspace = true }
+cslpc-merkle-tree = { workspace = true }
+cslpc-prover = { workspace = true }
+slop-algebra = { workspace = true }
+slop-alloc = { workspace = true }
+slop-tensor = { workspace = true }
+slop-challenger = { workspace = true }
+slop-koala-bear = { workspace = true }
+slop-jagged = { workspace = true }
+slop-symmetric = { workspace = true }
+slop-dft = { workspace = true }
+
+# sp1
+sp1-hypercube = { workspace = true }
+
+# misc
+itertools = { workspace = true }
+rand = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+serial_test = "3.1"
+zstd = "0.13.3"
+sp1-sdk = { workspace = true, features = ["unsound"] }
+sp1-recursion-circuit = { workspace = true }
+csl-prover = { workspace = true }
+sp1-recursion-compiler = { workspace = true }
+slop-stacked = { workspace = true }
+
+[lints]
+workspace = true

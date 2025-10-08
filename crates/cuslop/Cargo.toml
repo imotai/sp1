@@ -11,7 +11,6 @@ categories.workspace = true
 tokio = { workspace = true }
 sp1-cuda = { workspace = true }
 sp1-core-machine = { workspace = true }
-sp1-hypercube = { workspace = true }
 sp1-core-executor = { workspace = true }
 sp1-prover = { workspace = true, features = ["unsound"] }
 sp1-primitives = { workspace = true }

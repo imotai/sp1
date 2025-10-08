@@ -1043,7 +1043,6 @@ dependencies = [
  "slop-air",
  "slop-algebra",
  "slop-alloc",
- "slop-basefold",
  "slop-challenger",
  "slop-futures",
  "slop-koala-bear",
@@ -1113,67 +1112,12 @@ dependencies = [
  "slop-challenger",
  "slop-jagged",
  "slop-koala-bear",
- "sp1-core-executor",
  "sp1-core-machine",
  "sp1-hypercube",
  "sp1-primitives",
  "sp1-prover",
  "sysinfo 0.31.4",
  "tracing",
-]
-
-[[package]]
-name = "csl-prover-clean"
-version = "1.2.0"
-dependencies = [
- "bincode",
- "csl-air",
- "csl-basefold",
- "csl-cuda",
- "csl-dft",
- "csl-jagged",
- "csl-merkle-tree",
- "csl-prover",
- "csl-tracegen",
- "futures",
- "itertools 0.14.0",
- "num-bigint 0.4.6",
- "rand 0.8.5",
- "rayon",
- "serde",
- "serde_json",
- "serial_test",
- "slop-air",
- "slop-algebra",
- "slop-alloc",
- "slop-basefold",
- "slop-basefold-prover",
- "slop-bn254",
- "slop-challenger",
- "slop-commit",
- "slop-dft",
- "slop-futures",
- "slop-jagged",
- "slop-koala-bear",
- "slop-matrix",
- "slop-merkle-tree",
- "slop-multilinear",
- "slop-stacked",
- "slop-sumcheck",
- "slop-symmetric",
- "slop-tensor",
- "sp1-core-executor",
- "sp1-core-machine",
- "sp1-derive",
- "sp1-hypercube",
- "sp1-prover",
- "sp1-recursion-circuit",
- "sp1-recursion-compiler",
- "sp1-sdk",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "zstd",
 ]
 
 [[package]]
@@ -1245,6 +1189,259 @@ dependencies = [
 ]
 
 [[package]]
+name = "cslpc-commit"
+version = "1.2.0"
+dependencies = [
+ "csl-cuda",
+ "csl-jagged",
+ "csl-prover",
+ "csl-tracegen",
+ "cslpc-merkle-tree",
+ "cslpc-prover",
+ "cslpc-tracegen",
+ "cslpc-utils",
+ "itertools 0.14.0",
+ "rand 0.8.5",
+ "serial_test",
+ "slop-algebra",
+ "slop-alloc",
+ "slop-challenger",
+ "slop-dft",
+ "slop-jagged",
+ "slop-koala-bear",
+ "slop-stacked",
+ "slop-symmetric",
+ "slop-tensor",
+ "sp1-hypercube",
+ "sp1-recursion-circuit",
+ "sp1-recursion-compiler",
+ "sp1-sdk",
+ "tokio",
+ "zstd",
+]
+
+[[package]]
+name = "cslpc-experimental"
+version = "1.2.0"
+dependencies = [
+ "csl-cuda",
+ "csl-prover",
+ "cslpc-jagged-sumcheck",
+ "cslpc-utils",
+ "itertools 0.14.0",
+ "num-bigint 0.4.6",
+ "rand 0.8.5",
+ "serial_test",
+ "slop-algebra",
+ "slop-alloc",
+ "slop-challenger",
+ "slop-multilinear",
+ "slop-stacked",
+ "slop-sumcheck",
+ "slop-tensor",
+ "sp1-recursion-circuit",
+ "sp1-recursion-compiler",
+ "sp1-sdk",
+ "tokio",
+ "zstd",
+]
+
+[[package]]
+name = "cslpc-jagged-sumcheck"
+version = "1.2.0"
+dependencies = [
+ "csl-cuda",
+ "csl-prover",
+ "cslpc-utils",
+ "futures",
+ "itertools 0.14.0",
+ "num-bigint 0.4.6",
+ "rand 0.8.5",
+ "rayon",
+ "serial_test",
+ "slop-algebra",
+ "slop-alloc",
+ "slop-challenger",
+ "slop-jagged",
+ "slop-koala-bear",
+ "slop-multilinear",
+ "slop-stacked",
+ "slop-sumcheck",
+ "slop-tensor",
+ "sp1-recursion-circuit",
+ "sp1-recursion-compiler",
+ "sp1-sdk",
+ "tokio",
+ "zstd",
+]
+
+[[package]]
+name = "cslpc-logup-gkr"
+version = "1.2.0"
+dependencies = [
+ "csl-cuda",
+ "cslpc-tracegen",
+ "cslpc-utils",
+ "cslpc-zerocheck",
+ "futures",
+ "itertools 0.14.0",
+ "rand 0.8.5",
+ "rayon",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "slop-air",
+ "slop-algebra",
+ "slop-alloc",
+ "slop-basefold-prover",
+ "slop-bn254",
+ "slop-challenger",
+ "slop-dft",
+ "slop-futures",
+ "slop-koala-bear",
+ "slop-merkle-tree",
+ "slop-multilinear",
+ "slop-sumcheck",
+ "slop-symmetric",
+ "slop-tensor",
+ "sp1-hypercube",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "cslpc-merkle-tree"
+version = "1.2.0"
+dependencies = [
+ "csl-cuda",
+ "csl-merkle-tree",
+ "csl-prover",
+ "csl-tracegen",
+ "cslpc-tracegen",
+ "cslpc-utils",
+ "serial_test",
+ "slop-algebra",
+ "slop-alloc",
+ "slop-bn254",
+ "slop-challenger",
+ "slop-commit",
+ "slop-futures",
+ "slop-koala-bear",
+ "slop-merkle-tree",
+ "slop-multilinear",
+ "slop-stacked",
+ "slop-symmetric",
+ "slop-tensor",
+ "sp1-hypercube",
+ "sp1-recursion-circuit",
+ "sp1-recursion-compiler",
+ "thiserror 1.0.69",
+ "tokio",
+ "zstd",
+]
+
+[[package]]
+name = "cslpc-prover"
+version = "1.2.0"
+dependencies = [
+ "csl-cuda",
+ "csl-prover",
+ "cslpc-merkle-tree",
+ "cslpc-utils",
+ "serial_test",
+ "slop-alloc",
+ "slop-challenger",
+ "slop-commit",
+ "slop-jagged",
+ "slop-multilinear",
+ "slop-stacked",
+ "sp1-hypercube",
+ "sp1-recursion-circuit",
+ "sp1-recursion-compiler",
+ "thiserror 1.0.69",
+ "zstd",
+]
+
+[[package]]
+name = "cslpc-tracegen"
+version = "1.2.0"
+dependencies = [
+ "csl-cuda",
+ "csl-prover",
+ "csl-tracegen",
+ "cslpc-utils",
+ "cslpc-zerocheck",
+ "futures",
+ "rand 0.8.5",
+ "rayon",
+ "serial_test",
+ "slop-air",
+ "slop-algebra",
+ "slop-alloc",
+ "slop-futures",
+ "slop-multilinear",
+ "slop-stacked",
+ "sp1-core-executor",
+ "sp1-core-machine",
+ "sp1-hypercube",
+ "sp1-recursion-circuit",
+ "sp1-recursion-compiler",
+ "sp1-sdk",
+ "tokio",
+ "zstd",
+]
+
+[[package]]
+name = "cslpc-utils"
+version = "1.2.0"
+dependencies = [
+ "csl-cuda",
+ "csl-prover",
+ "serial_test",
+ "slop-algebra",
+ "slop-alloc",
+ "slop-koala-bear",
+ "slop-stacked",
+ "slop-tensor",
+ "sp1-recursion-circuit",
+ "sp1-recursion-compiler",
+ "sp1-sdk",
+ "zstd",
+]
+
+[[package]]
+name = "cslpc-zerocheck"
+version = "1.2.0"
+dependencies = [
+ "csl-air",
+ "csl-cuda",
+ "csl-prover",
+ "cslpc-utils",
+ "itertools 0.14.0",
+ "rand 0.8.5",
+ "serial_test",
+ "slop-air",
+ "slop-algebra",
+ "slop-alloc",
+ "slop-challenger",
+ "slop-koala-bear",
+ "slop-matrix",
+ "slop-multilinear",
+ "slop-stacked",
+ "slop-sumcheck",
+ "slop-tensor",
+ "sp1-core-executor",
+ "sp1-derive",
+ "sp1-hypercube",
+ "sp1-recursion-circuit",
+ "sp1-recursion-compiler",
+ "sp1-sdk",
+ "thiserror 1.0.69",
+ "tokio",
+ "zstd",
+]
+
+[[package]]
 name = "csv"
 version = "1.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1277,7 +1474,6 @@ dependencies = [
  "sp1-core-executor",
  "sp1-core-machine",
  "sp1-cuda",
- "sp1-hypercube",
  "sp1-primitives",
  "sp1-prover",
  "tikv-jemallocator",

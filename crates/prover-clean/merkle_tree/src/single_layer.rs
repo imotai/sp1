@@ -1,0 +1,470 @@
+use std::{marker::PhantomData, os::raw::c_void};
+
+use csl_cuda::{
+    args,
+    sys::{
+        merkle_tree::{
+            compress_merkle_tree_bn254_kernel, compress_merkle_tree_koala_bear_16_kernel,
+            compute_openings_merkle_tree_bn254_kernel,
+            compute_openings_merkle_tree_koala_bear_16_kernel,
+            compute_paths_merkle_tree_bn254_kernel, compute_paths_merkle_tree_koala_bear_16_kernel,
+            leaf_hash_merkle_tree_bn254_kernel, leaf_hash_merkle_tree_koala_bear_16_kernel,
+        },
+        runtime::{Dim3, KernelPtr},
+    },
+    CudaError, TaskScope,
+};
+use slop_algebra::extension::BinomialExtensionField;
+use slop_algebra::{AbstractField, Field};
+use slop_alloc::CpuBackend;
+use slop_alloc::{mem::CopyError, Buffer, HasBackend, IntoHost};
+use slop_bn254::{bn254_poseidon2_rc3, Bn254Fr, BNGC};
+use slop_challenger::IopCtx;
+use slop_commit::Message;
+use slop_futures::OwnedBorrow;
+use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
+use slop_merkle_tree::MerkleTreeTcsProof;
+use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
+use slop_tensor::Tensor;
+use thiserror::Error;
+
+use crate::{MerkleTree, MerkleTreeHasher};
+use cslpc_utils::VirtualTensor;
+
+/// # Safety
+///
+/// The implementor must make sure that the kernel signatures are the same as the ones expected
+/// by [`MerkleTreeSingleLayerProver`].
+pub unsafe trait MerkleTreeSingleLayerKernels<GC: IopCtx>: 'static + Send + Sync {
+    fn leaf_hash_kernel() -> KernelPtr;
+
+    fn compress_layer_kernel() -> KernelPtr;
+
+    fn compute_paths_kernel() -> KernelPtr;
+
+    fn compute_openings_kernel() -> KernelPtr;
+}
+
+pub trait Hasher<F: Field, const WIDTH: usize>: 'static + Send + Sync {
+    fn hasher() -> MerkleTreeHasher<F, CpuBackend, WIDTH>;
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct MerkleTreeSingleLayerProver<GC, W, K, H, const WIDTH: usize>(PhantomData<(GC, W, K, H)>);
+
+#[derive(Debug, Clone, Copy, Error)]
+pub enum SingleLayerMerkleTreeProverError {
+    #[error("cuda error: {0}")]
+    Cuda(#[from] CudaError),
+    #[error("copy error: {0}")]
+    Copy(#[from] CopyError),
+}
+
+type ProverError = SingleLayerMerkleTreeProverError;
+type ProverData<Digest> = (MerkleTree<Digest, TaskScope>, Digest, usize, usize);
+
+impl<GC: IopCtx, W, K, H, const WIDTH: usize> MerkleTreeSingleLayerProver<GC, W, K, H, WIDTH>
+where
+    W: Field,
+    K: MerkleTreeSingleLayerKernels<GC>,
+    H: Hasher<W, WIDTH>,
+{
+    pub async fn commit_tensors(
+        &self,
+        virtual_tensor: VirtualTensor<GC::F, TaskScope>,
+    ) -> Result<(GC::Digest, ProverData<GC::Digest>), ProverError>
+where {
+        let scope = virtual_tensor.backend();
+        let hasher = H::hasher();
+        let hasher_device = scope.to_device(&hasher).await.unwrap();
+
+        let (tensor_ptrs_host, widths_host): (Vec<_>, Vec<usize>) =
+            (vec![virtual_tensor.as_ptr()], vec![virtual_tensor.sizes()[0]]);
+        let mut tensor_ptrs = Buffer::with_capacity_in(tensor_ptrs_host.len(), scope.clone());
+        tensor_ptrs.extend_from_host_slice(&tensor_ptrs_host)?;
+        let mut widths = Buffer::with_capacity_in(widths_host.len(), scope.clone());
+        widths.extend_from_host_slice(&widths_host)?;
+
+        let height = virtual_tensor.sizes()[1].ilog2() as usize;
+
+        assert_eq!(1 << height, virtual_tensor.sizes()[1], "Height must be a power of two");
+        assert_eq!(virtual_tensor.sizes().len(), 2, "Tensor must be 2D");
+
+        let mut tree = MerkleTree::<GC::Digest, _>::uninit(height, scope.clone());
+        unsafe {
+            tree.assume_init();
+            // Compute the leaf hashes.
+            let block_dim = 256;
+            let grid_dim = (1usize << height).div_ceil(block_dim);
+            let args = args!(
+                hasher_device.as_raw(),
+                tensor_ptrs.as_ptr(),
+                tree.digests.as_mut_ptr(),
+                widths.as_ptr(),
+                1usize,
+                height
+            );
+            scope.launch_kernel(K::leaf_hash_kernel(), grid_dim, block_dim, &args, 0)?;
+        }
+
+        // Iterate over the layers and compute the compressions.
+        for k in (0..height).rev() {
+            let block_dim: Dim3 = (128u32, 4, 1).into();
+            let grid_dim: Dim3 = ((1u32 << k).div_ceil(block_dim.x), 1, 1).into();
+            let args = args!(hasher_device.as_raw(), tree.digests.as_mut_ptr(), k);
+            unsafe {
+                scope.launch_kernel(K::compress_layer_kernel(), grid_dim, block_dim, &args, 0)?;
+            }
+        }
+
+        let (hasher, compressor) = GC::default_hasher_and_compressor();
+
+        let root = tree.digests[0].copy_into_host(scope);
+
+        let total_width = virtual_tensor.sizes()[0];
+
+        let hash = hasher.hash_iter([
+            GC::F::from_canonical_usize(height),
+            GC::F::from_canonical_usize(total_width),
+        ]);
+        let compressed_root = compressor.compress([root, hash]);
+        Ok((compressed_root, (tree, root, height, total_width)))
+    }
+
+    pub async fn prove_openings_at_indices(
+        &self,
+        data: ProverData<GC::Digest>,
+        indices: &[usize],
+    ) -> Result<MerkleTreeTcsProof<GC::Digest>, ProverError> {
+        let paths = {
+            let scope = data.0.backend();
+            let mut paths = Tensor::<GC::Digest, _>::with_sizes_in(
+                [indices.len(), data.0.height],
+                scope.clone(),
+            );
+            let mut indices_buffer =
+                Buffer::<usize, _>::with_capacity_in(indices.len(), scope.clone());
+            indices_buffer.extend_from_host_slice(indices)?;
+            let indices = indices_buffer;
+            unsafe {
+                paths.assume_init();
+
+                let block_dim = 256;
+                let grid_dim = indices.len().div_ceil(block_dim);
+                let args = [
+                    &(paths.as_mut_ptr()) as *const _ as *mut c_void,
+                    &(indices.as_ptr()) as *const _ as *mut c_void,
+                    &indices.len() as *const usize as _,
+                    &(data.0.digests.as_ptr()) as *const _ as *mut c_void,
+                    (&data.0.height) as *const usize as _,
+                ];
+                scope.launch_kernel(K::compute_paths_kernel(), grid_dim, block_dim, &args, 0)?;
+            }
+            paths
+        };
+        let paths = paths.into_host().await.unwrap();
+
+        Ok(MerkleTreeTcsProof {
+            paths,
+            log_tensor_height: data.2,
+            width: data.3,
+            merkle_root: data.1,
+        })
+    }
+
+    pub async fn compute_openings_at_indices<T>(
+        &self,
+        tensors: Message<T>,
+        indices: &[usize],
+    ) -> Tensor<GC::F>
+    where
+        T: OwnedBorrow<Tensor<GC::F, TaskScope>>,
+    {
+        // let mut openings
+        let openings = {
+            let num_opening_values =
+                tensors.iter().map(|t| t.as_ref().borrow().sizes()[0]).sum::<usize>();
+            let height = tensors[0].as_ref().borrow().sizes()[1].ilog2() as usize;
+            let (tensor_ptrs_host, widths_host): (Vec<_>, Vec<usize>) = tensors
+                .iter()
+                .map(|t| {
+                    let tensor = t.as_ref().borrow();
+                    assert_eq!(tensor.sizes().len(), 2, "Tensor must be 2D");
+                    assert_eq!(tensor.sizes()[1], 1 << height, "Height must be a power of two");
+                    (tensor.as_ptr(), tensor.sizes()[0])
+                })
+                .unzip();
+            let scope = tensors[0].as_ref().borrow().backend();
+            let num_inputs = tensors.len();
+            let mut tensor_ptrs = Buffer::with_capacity_in(tensor_ptrs_host.len(), scope.clone());
+            tensor_ptrs.extend_from_host_slice(&tensor_ptrs_host).unwrap();
+            let mut widths = Buffer::with_capacity_in(widths_host.len(), scope.clone());
+            widths.extend_from_host_slice(&widths_host).unwrap();
+            let tensor_height = tensors[0].as_ref().borrow().sizes()[1];
+
+            // Allocate tensors for the openings.
+            let mut openings = Tensor::<GC::F, _>::with_sizes_in(
+                [indices.len(), num_opening_values],
+                scope.clone(),
+            );
+            let mut indices_buffer =
+                Buffer::<usize, _>::with_capacity_in(indices.len(), scope.clone());
+            indices_buffer.extend_from_host_slice(indices).unwrap();
+            let indices = indices_buffer;
+
+            let offsets = widths_host
+                .iter()
+                .scan(0, |offset, &width| {
+                    let old_offset = *offset;
+                    *offset += width;
+                    Some(old_offset)
+                })
+                .collect::<Vec<_>>();
+
+            let mut offsets_buffer =
+                Buffer::<usize, _>::with_capacity_in(offsets.len(), scope.clone());
+            offsets_buffer.extend_from_host_slice(&offsets).unwrap();
+            let offsets = offsets_buffer;
+            unsafe {
+                openings.assume_init();
+
+                let block_dim = 256;
+                let grid_dim = indices.len().div_ceil(block_dim);
+                let args = args!(
+                    tensor_ptrs.as_ptr(),
+                    openings.as_mut_ptr(),
+                    indices.as_ptr(),
+                    indices.len(),
+                    num_inputs,
+                    widths.as_ptr(),
+                    offsets.as_ptr(),
+                    tensor_height,
+                    num_opening_values
+                );
+                scope
+                    .launch_kernel(K::compute_openings_kernel(), grid_dim, block_dim, &args, 0)
+                    .unwrap();
+            }
+            openings
+        };
+        openings.into_host().await.unwrap()
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Poseidon2KoalaBear16Kernels;
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Poseidon2Bn254Kernels;
+
+pub type Poseidon2KoalaBear16CudaProver = MerkleTreeSingleLayerProver<
+    KoalaBearDegree4Duplex,
+    KoalaBear,
+    Poseidon2KoalaBear16Kernels,
+    Poseidon2KoalaBear16Hasher,
+    16,
+>;
+
+pub type Poseidon2Bn254CudaProver = MerkleTreeSingleLayerProver<
+    BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>,
+    Bn254Fr,
+    Poseidon2Bn254Kernels,
+    Poseidon2Bn254Hasher,
+    3,
+>;
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Poseidon2KoalaBear16Hasher;
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Poseidon2Bn254Hasher;
+
+impl Hasher<KoalaBear, 16> for Poseidon2KoalaBear16Hasher {
+    fn hasher() -> MerkleTreeHasher<KoalaBear, CpuBackend, 16> {
+        MerkleTreeHasher::default()
+    }
+}
+
+impl Hasher<Bn254Fr, 3> for Poseidon2Bn254Hasher {
+    fn hasher() -> MerkleTreeHasher<Bn254Fr, CpuBackend, 3> {
+        let (internal_round_constants, external_round_constants, diffusion_matrix_m1) =
+            poseidon2_bn254_3_constants();
+        MerkleTreeHasher::new(
+            internal_round_constants.into(),
+            external_round_constants.into(),
+            diffusion_matrix_m1.into(),
+            Bn254Fr::one(),
+        )
+    }
+}
+
+pub fn poseidon2_bn254_3_constants() -> (Vec<Bn254Fr>, Vec<[Bn254Fr; 3]>, Vec<Bn254Fr>) {
+    const ROUNDS_F: usize = 8;
+    const ROUNDS_P: usize = 56;
+    let mut round_constants = bn254_poseidon2_rc3();
+    let internal_start = ROUNDS_F / 2;
+    let internal_end = (ROUNDS_F / 2) + ROUNDS_P;
+    let internal_round_constants =
+        round_constants.drain(internal_start..internal_end).map(|vec| vec[0]).collect::<Vec<_>>();
+    let external_round_constants = round_constants;
+    let diffusion_matrix_m1 = [Bn254Fr::one(), Bn254Fr::one(), Bn254Fr::two()].to_vec();
+    (internal_round_constants, external_round_constants, diffusion_matrix_m1)
+}
+
+unsafe impl MerkleTreeSingleLayerKernels<KoalaBearDegree4Duplex> for Poseidon2KoalaBear16Kernels {
+    #[inline]
+    fn leaf_hash_kernel() -> KernelPtr {
+        unsafe { leaf_hash_merkle_tree_koala_bear_16_kernel() }
+    }
+
+    #[inline]
+    fn compress_layer_kernel() -> KernelPtr {
+        unsafe { compress_merkle_tree_koala_bear_16_kernel() }
+    }
+
+    #[inline]
+    fn compute_paths_kernel() -> KernelPtr {
+        unsafe { compute_paths_merkle_tree_koala_bear_16_kernel() }
+    }
+
+    #[inline]
+    fn compute_openings_kernel() -> KernelPtr {
+        unsafe { compute_openings_merkle_tree_koala_bear_16_kernel() }
+    }
+}
+
+unsafe impl MerkleTreeSingleLayerKernels<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>>
+    for Poseidon2Bn254Kernels
+{
+    #[inline]
+    fn leaf_hash_kernel() -> KernelPtr {
+        unsafe { leaf_hash_merkle_tree_bn254_kernel() }
+    }
+
+    #[inline]
+    fn compress_layer_kernel() -> KernelPtr {
+        unsafe { compress_merkle_tree_bn254_kernel() }
+    }
+
+    #[inline]
+    fn compute_paths_kernel() -> KernelPtr {
+        unsafe { compute_paths_merkle_tree_bn254_kernel() }
+    }
+
+    #[inline]
+    fn compute_openings_kernel() -> KernelPtr {
+        unsafe { compute_openings_merkle_tree_bn254_kernel() }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use csl_cuda::run_in_place;
+    use csl_tracegen::CudaTraceGenerator;
+    use slop_multilinear::Mle;
+    use slop_stacked::{FixedRateInterleave, InterleaveMultilinears};
+    use sp1_hypercube::prover::{ProverSemaphore, TraceGenerator};
+
+    use cslpc_tracegen::full_tracegen;
+    use cslpc_tracegen::test_utils::tracegen_setup::{
+        self, CORE_MAX_LOG_ROW_COUNT, CORE_MAX_TRACE_SIZE, LOG_STACKING_HEIGHT,
+    };
+    use cslpc_utils::Felt;
+
+    use super::*;
+    use slop_merkle_tree::TensorCsProver;
+
+    #[tokio::test]
+    async fn test_poseidon2_koala_bear_16() {
+        let (machine, record, program) = tracegen_setup::setup().await;
+
+        run_in_place(|scope| async move {
+            let old_prover = csl_merkle_tree::Poseidon2KoalaBear16CudaProver::default();
+
+            // Generate traces using the host tracegen.
+            let semaphore = ProverSemaphore::new(1);
+            let trace_generator = CudaTraceGenerator::new_in(machine.clone(), scope.clone());
+            let old_traces = trace_generator
+                .generate_traces(
+                    program.clone(),
+                    record.clone(),
+                    CORE_MAX_LOG_ROW_COUNT as usize,
+                    semaphore.clone(),
+                )
+                .await;
+
+            let preprocessed_traces = old_traces.preprocessed_traces.clone();
+
+            let message = preprocessed_traces
+                .into_iter()
+                .filter_map(|mle| mle.1.into_inner())
+                .map(|x| Clone::clone(x.as_ref()))
+                .collect::<Message<Mle<_, _>>>();
+
+            let interleaver = FixedRateInterleave::<Felt, TaskScope>::new(32);
+
+            let interleaved_message =
+                interleaver.interleave_multilinears(message, LOG_STACKING_HEIGHT).await;
+
+            let interleaved_message = interleaved_message
+                .into_iter()
+                .map(|x| x.as_ref().guts().clone())
+                .collect::<Message<_>>();
+
+            let (old_preprocessed_commitment, _) =
+                old_prover.commit_tensors(interleaved_message).await.unwrap();
+
+            let (_, new_traces, _) = full_tracegen(
+                &machine,
+                program,
+                Arc::new(record),
+                CORE_MAX_TRACE_SIZE as usize,
+                LOG_STACKING_HEIGHT,
+                &scope,
+            )
+            .await;
+            let new_traces = Arc::new(new_traces);
+
+            let tensor_prover = Poseidon2KoalaBear16CudaProver::default();
+
+            let new_preprocessed_commit = tensor_prover
+                .commit_tensors(new_traces.dense().preprocessed_virtual_tensor(LOG_STACKING_HEIGHT))
+                .await
+                .unwrap()
+                .0;
+
+            assert_eq!(new_preprocessed_commit, old_preprocessed_commitment);
+
+            let new_main_commit = tensor_prover
+                .commit_tensors(new_traces.dense().main_virtual_tensor(LOG_STACKING_HEIGHT))
+                .await
+                .unwrap()
+                .0;
+            let message = old_traces
+                .main_trace_data
+                .traces
+                .into_iter()
+                .filter_map(|mle| mle.1.into_inner())
+                .map(|x| Clone::clone(x.as_ref()))
+                .collect::<Message<Mle<_, _>>>();
+
+            let interleaved_message =
+                interleaver.interleave_multilinears(message, LOG_STACKING_HEIGHT).await;
+
+            let interleaved_message = interleaved_message
+                .into_iter()
+                .map(|x| x.as_ref().guts().clone())
+                .collect::<Message<_>>();
+
+            let (old_main_commitment, _) =
+                old_prover.commit_tensors(interleaved_message).await.unwrap();
+
+            assert_eq!(new_main_commit, old_main_commitment);
+        })
+        .await
+        .await
+        .unwrap();
+    }
+}

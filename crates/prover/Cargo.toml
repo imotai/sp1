@@ -21,7 +21,6 @@ slop-jagged = { workspace = true }
 
 sp1-hypercube = { workspace = true }
 sp1-core-machine = { workspace = true }
-sp1-core-executor = { workspace = true }
 sp1-prover = { workspace = true, features = ["unsound"] }
 sp1-primitives = { workspace = true }
 
@@ -35,7 +34,7 @@ slop-jagged = { workspace = true }
 
 [features]
 default = []
-bigint-rug = ["sp1-core-executor/bigint-rug", "sp1-core-machine/bigint-rug"]
+bigint-rug = ["sp1-core-machine/bigint-rug"]
 
 [lints]
 workspace = true

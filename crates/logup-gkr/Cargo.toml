@@ -18,7 +18,6 @@ slop-tensor = { workspace = true }
 slop-sumcheck = { workspace = true }
 slop-multilinear = { workspace = true }
 slop-challenger = { workspace = true }
-slop-basefold = { workspace = true }
 slop-futures = { workspace = true }
 
 sp1-hypercube = { workspace = true }
