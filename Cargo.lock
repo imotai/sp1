@@ -4273,10 +4273,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 
 [[package]]
-name = "slop"
-version = "6.0.0"
-
-[[package]]
 name = "slop-air"
 version = "6.0.0"
 dependencies = [
@@ -4541,10 +4537,6 @@ dependencies = [
  "slop-tensor",
  "tokio",
 ]
-
-[[package]]
-name = "slop-pcs-bench"
-version = "6.0.0"
 
 [[package]]
 name = "slop-pgspcs"
