@@ -79,8 +79,6 @@ sp1-primitives = { workspace = true }
 debug = []
 bigint-rug = ["sp1-curves/bigint-rug"]
 
-debug-constraints = ["sp1-hypercube/debug-constraints"]
-
 [lib]
 path = "src/lib.rs"
 bench = false

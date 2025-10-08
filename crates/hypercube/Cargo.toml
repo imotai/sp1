@@ -65,7 +65,7 @@ tokio = { workspace = true, features = ["macros", "rt"] }
 
 [features]
 test-proof = []
-debug-constraints = []
 
-[lints]
-workspace = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(sp1_debug_constraints)'] }

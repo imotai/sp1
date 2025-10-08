@@ -702,7 +702,7 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
         // Get the challenge for batching the evaluations from the GKR proof.
         let gkr_opening_batch_challenge = challenger.sample_ext_element::<GC::EF>();
 
-        #[cfg(feature = "debug-constraints")]
+        #[cfg(sp1_debug_constraints)]
         {
             crate::debug::debug_constraints_all_chips::<GC, _, _>(
                 &shard_chips.iter().cloned().collect::<Vec<_>>(),

@@ -181,7 +181,7 @@ impl<GC: IopCtx, GkrComponents: LogUpGkrProverComponents<GC>> LogUpGkrProver<GC>
             chips.iter().map(|chip| chip.sends().len() + chip.receives().len()).sum::<usize>();
         let num_interaction_variables = num_interactions.next_power_of_two().ilog2();
 
-        #[cfg(feature = "debug-constraints")]
+        #[cfg(sp1_debug_constraints)]
         {
             use crate::{
                 air::InteractionScope, debug_interactions_with_all_chips, InteractionKind,
