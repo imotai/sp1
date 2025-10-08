@@ -75,9 +75,6 @@ impl<GC: IopCtx> MerkleTreeTcs<GC> {
         if indices.len() != opening.dimensions.sizes()[0] {
             return Err(MerkleTreeTcsError::IncorrectShape);
         }
-        if indices.is_empty() {
-            return Ok(());
-        }
 
         for (i, (index, path)) in indices.iter().zip_eq(proof.paths.split()).enumerate() {
             // Collect the lead slices of the claimed values.
