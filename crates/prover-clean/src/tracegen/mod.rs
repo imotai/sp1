@@ -37,6 +37,7 @@ pub struct TraceOffset {
 pub type JaggedTraceMle<F, B> = JaggedMle<TraceDenseData<F, B>, B>;
 
 /// Jagged representation of the traces.
+#[derive(Clone, Debug)]
 pub struct TraceDenseData<F: Field, B: Backend> {
     /// The dense representation of the traces.
     pub dense: Buffer<F, B>,
@@ -44,10 +45,60 @@ pub struct TraceDenseData<F: Field, B: Backend> {
     pub preprocessed_offset: usize,
     /// The total number of columns in the preprocessed traces.
     pub preprocessed_cols: usize,
+    /// The amount of preprocessed padding, to the next multiple of 2^log_stacking_height.
+    pub preprocessed_padding: usize,
+    /// The amount of main padding, to the next multiple of 2^log_stacking_height.
+    pub main_padding: usize,
     /// A mapping from chip name to the range of dense data it occupies for preprocessed traces.
     pub preprocessed_table_index: BTreeMap<String, TraceOffset>,
     /// A mapping from chip name to the range of dense data it occupies for main traces.
     pub main_table_index: BTreeMap<String, TraceOffset>,
+}
+
+impl<F: Field, B: Backend> TraceDenseData<F, B> {
+    pub fn main_virtual_tensor(&self, log_stacking_height: u32) -> VirtualTensor<F, B> {
+        let ptr = unsafe { self.dense.as_ptr().add(self.preprocessed_offset) };
+        let sizes = Dimensions::try_from([
+            self.main_size() / (1 << log_stacking_height),
+            1 << log_stacking_height,
+        ])
+        .unwrap();
+        VirtualTensor::new(ptr, sizes, self.backend().clone())
+    }
+
+    pub fn preprocessed_virtual_tensor(&self, log_stacking_height: u32) -> VirtualTensor<F, B> {
+        let ptr = self.dense.as_ptr();
+        let sizes = Dimensions::try_from([
+            self.preprocessed_offset / (1 << log_stacking_height),
+            1 << log_stacking_height,
+        ])
+        .unwrap();
+        VirtualTensor::new(ptr, sizes, self.dense.backend().clone())
+    }
+
+    pub fn main_poly_height(&self, name: &str) -> Option<usize> {
+        self.main_table_index.get(name).map(|offset| offset.poly_size)
+    }
+
+    pub fn preprocessed_poly_height(&self, name: &str) -> Option<usize> {
+        self.preprocessed_table_index.get(name).map(|offset| offset.poly_size)
+    }
+
+    pub fn main_num_polys(&self, name: &str) -> Option<usize> {
+        self.main_table_index
+            .get(name)
+            .map(|offset| (offset.dense_offset.end - offset.dense_offset.start) / offset.poly_size)
+    }
+
+    pub fn main_size(&self) -> usize {
+        self.dense.len() - self.preprocessed_offset
+    }
+
+    pub fn preprocessed_num_polys(&self, name: &str) -> Option<usize> {
+        self.preprocessed_table_index
+            .get(name)
+            .map(|offset| (offset.dense_offset.end - offset.dense_offset.start) / offset.poly_size)
+    }
 }
 
 impl<F: Field, B: Backend> HasBackend for TraceDenseData<F, B> {
@@ -58,53 +109,35 @@ impl<F: Field, B: Backend> HasBackend for TraceDenseData<F, B> {
 }
 
 impl<F: Field> JaggedTraceMle<F, TaskScope> {
-    pub fn main_poly_height(&self, name: &str) -> Option<usize> {
-        self.dense_data.main_table_index.get(name).map(|offset| offset.poly_size)
-    }
-
-    pub fn preprocessed_poly_height(&self, name: &str) -> Option<usize> {
-        self.dense_data.preprocessed_table_index.get(name).map(|offset| offset.poly_size)
-    }
-
-    pub fn main_num_polys(&self, name: &str) -> Option<usize> {
-        self.dense_data
-            .main_table_index
-            .get(name)
-            .map(|offset| (offset.dense_offset.end - offset.dense_offset.start) / offset.poly_size)
-    }
-
-    pub fn main_size(&self) -> usize {
-        self.dense_data.dense.len() - self.dense_data.preprocessed_offset
-    }
-
-    pub fn preprocessed_num_polys(&self, name: &str) -> Option<usize> {
-        self.dense_data
-            .preprocessed_table_index
-            .get(name)
-            .map(|offset| (offset.dense_offset.end - offset.dense_offset.start) / offset.poly_size)
-    }
-
-    pub fn main_virtual_tensor(&self, log_stacking_height: u32) -> VirtualTensor<F, TaskScope> {
-        let ptr = unsafe { self.dense().dense.as_ptr().add(self.dense_data.preprocessed_offset) };
-        let sizes = Dimensions::try_from([
-            self.main_size() / (1 << log_stacking_height),
-            1 << log_stacking_height,
-        ])
-        .unwrap();
-        VirtualTensor::new(ptr, sizes, self.backend().clone())
-    }
-
     pub fn preprocessed_virtual_tensor(
         &self,
         log_stacking_height: u32,
     ) -> VirtualTensor<F, TaskScope> {
-        let ptr = self.dense().dense.as_ptr();
-        let sizes = Dimensions::try_from([
-            self.dense_data.preprocessed_offset / (1 << log_stacking_height),
-            1 << log_stacking_height,
-        ])
-        .unwrap();
-        VirtualTensor::new(ptr, sizes, self.backend().clone())
+        self.dense_data.preprocessed_virtual_tensor(log_stacking_height)
+    }
+
+    pub fn main_virtual_tensor(&self, log_stacking_height: u32) -> VirtualTensor<F, TaskScope> {
+        self.dense_data.main_virtual_tensor(log_stacking_height)
+    }
+
+    pub fn main_poly_height(&self, name: &str) -> Option<usize> {
+        self.dense_data.main_poly_height(name)
+    }
+
+    pub fn preprocessed_poly_height(&self, name: &str) -> Option<usize> {
+        self.dense_data.preprocessed_poly_height(name)
+    }
+
+    pub fn main_num_polys(&self, name: &str) -> Option<usize> {
+        self.dense_data.main_num_polys(name)
+    }
+
+    pub fn main_size(&self) -> usize {
+        self.dense_data.main_size()
+    }
+
+    pub fn preprocessed_num_polys(&self, name: &str) -> Option<usize> {
+        self.dense_data.preprocessed_num_polys(name)
     }
 }
 
@@ -155,6 +188,8 @@ impl<F: Field> TraceDenseData<F, CpuBackend> {
             preprocessed_cols: self.preprocessed_cols,
             preprocessed_table_index: self.preprocessed_table_index,
             main_table_index: self.main_table_index,
+            preprocessed_padding: self.preprocessed_padding,
+            main_padding: self.main_padding,
         }
     }
 }
@@ -180,6 +215,8 @@ impl<F: Field> TraceDenseData<F, TaskScope> {
             preprocessed_cols: self.preprocessed_cols,
             preprocessed_table_index: self.preprocessed_table_index,
             main_table_index: self.main_table_index,
+            preprocessed_padding: self.preprocessed_padding,
+            main_padding: self.main_padding,
         }
     }
 }
@@ -223,7 +260,7 @@ impl Trace<TaskScope> {
 
 /// Sets up the jagged traces. TODO: can use less arguments by packing the mutable stuff into TraceDenseData.
 ///
-/// Returns the final offset and the final number of columns.
+/// Returns the final offset, the final number of columns, the amount of padding, and the table index.
 #[allow(clippy::too_many_arguments)]
 async fn setup_jagged_traces(
     dense_data: &mut Buffer<Felt, TaskScope>,
@@ -234,7 +271,7 @@ async fn setup_jagged_traces(
     initial_offset: usize,
     initial_cols: usize,
     log_stacking_height: u32,
-) -> (usize, usize, BTreeMap<String, TraceOffset>) {
+) -> (usize, usize, usize, BTreeMap<String, TraceOffset>) {
     let mut offset = initial_offset;
     let mut cols_so_far = initial_cols;
     let mut table_index = BTreeMap::new();
@@ -356,7 +393,7 @@ async fn setup_jagged_traces(
         dst_slice.copy_from_slice(&zeros, &backend).unwrap();
     }
 
-    (next_multiple, cols_so_far, table_index)
+    (next_multiple, cols_so_far, next_multiple - offset, table_index)
 }
 
 fn host_preprocessed_tracegen<A: CudaTracegenAir<Felt>>(
@@ -459,17 +496,18 @@ pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
     }
 
     // Put them in right places. Todo: parallelize.
-    let (preprocessed_offset, preprocessed_cols, preprocessed_table_index) = setup_jagged_traces(
-        &mut dense_data,
-        &mut col_index,
-        &mut start_indices,
-        &mut column_heights,
-        preprocessed_traces,
-        0,
-        0,
-        log_stacking_height,
-    )
-    .await;
+    let (preprocessed_offset, preprocessed_cols, preprocessed_padding, preprocessed_table_index) =
+        setup_jagged_traces(
+            &mut dense_data,
+            &mut col_index,
+            &mut start_indices,
+            &mut column_heights,
+            preprocessed_traces,
+            0,
+            0,
+            log_stacking_height,
+        )
+        .await;
 
     let trace_dense_data: TraceDenseData<Felt, TaskScope> = TraceDenseData {
         dense: dense_data,
@@ -477,6 +515,8 @@ pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
         preprocessed_cols,
         preprocessed_table_index,
         main_table_index: BTreeMap::new(),
+        preprocessed_padding,
+        main_padding: 0,
     };
 
     JaggedMle { dense_data: trace_dense_data, col_index, start_indices, column_heights }
@@ -616,11 +656,12 @@ pub async fn main_tracegen<A: CudaTracegenAir<Felt>>(
         preprocessed_offset,
         preprocessed_cols,
         main_table_index,
+        main_padding,
         ..
     } = trace_dense_data;
 
     // Put them in right places. Todo: parallelize.
-    let (final_offset, final_cols, new_main_table_index) = setup_jagged_traces(
+    let (final_offset, final_cols, final_main_padding, new_main_table_index) = setup_jagged_traces(
         dense_data,
         col_index,
         start_indices,
@@ -633,6 +674,7 @@ pub async fn main_tracegen<A: CudaTracegenAir<Felt>>(
     .await;
 
     *main_table_index = new_main_table_index;
+    *main_padding = final_main_padding;
 
     // Shrink the len of the dense data to match the actual size.
     unsafe {
@@ -677,8 +719,7 @@ mod tests {
             CORE_MAX_LOG_ROW_COUNT, CORE_MAX_TRACE_SIZE, LOG_STACKING_HEIGHT,
         },
         tracegen::full_tracegen,
-        zerocheck::{data::DenseBuffer, primitives::evaluate_jagged_mle_chunked},
-        JaggedMle,
+        zerocheck::primitives::evaluate_jagged_mle_chunked,
     };
 
     use rand::rngs::StdRng;
@@ -734,14 +775,14 @@ mod tests {
             let mut all_evals_host = vec![];
 
             // Evaluate all of the real traces at z_row. Concatenate evaluations into `all_evals_host`.
-            for (_name, trace) in old_traces
+            for (name, trace) in old_traces
                 .preprocessed_traces
                 .into_iter()
                 .chain(old_traces.main_trace_data.traces.into_iter())
             {
                 assert_eq!(trace.num_variables(), CORE_MAX_LOG_ROW_COUNT);
                 if trace.num_real_entries() == 0 {
-                    println!("fake trace: {}", _name);
+                    println!("fake trace: {}", name);
                 }
 
                 let trace = trace.eval_at(&z_row).await;
@@ -775,29 +816,30 @@ mod tests {
             .await;
 
             scope.synchronize().await.unwrap();
+            println!(
+                "main padding: {:?}\n preprocessed padding: {:?}\n preprocessed offset: {:?}\n preprocessed cols: {:?}\n main size: {:?}",
+                jagged_trace_data.dense().main_padding,
+                jagged_trace_data.dense().preprocessed_padding,
+                jagged_trace_data.dense().preprocessed_offset,
+                jagged_trace_data.dense().preprocessed_cols,
+                jagged_trace_data.main_size(),
+            );
             println!("new traces generated in {:?}", now.elapsed());
 
-            let zerocheck_dense = DenseBuffer::new(jagged_trace_data.dense_data.dense);
-
-            let zerocheck_jagged_mle = JaggedMle::new(
-                zerocheck_dense,
-                jagged_trace_data.col_index,
-                jagged_trace_data.start_indices,
-                jagged_trace_data.column_heights,
-            );
-
-            let num_dense_cols = zerocheck_jagged_mle.start_indices.len() - 1;
+            let num_dense_cols = jagged_trace_data.start_indices.len() - 1;
 
             let z_row_device = z_row.to_device_in(&scope).await.unwrap();
             let z_col_device = z_col.to_device_in(&scope).await.unwrap();
 
-            let total_len = zerocheck_jagged_mle.dense_data.data.len() / 2;
+            println!("evaluating");
+
+            let total_len = jagged_trace_data.dense_data.dense.len() / 2;
             let zerocheck_eval = evaluate_jagged_mle_chunked(
-                zerocheck_jagged_mle,
+                jagged_trace_data,
                 z_row_device,
                 z_col_device,
-                num_dense_cols,
                 total_len,
+                num_dense_cols,
                 jagged_eval_kernel_chunked_felt,
             )
             .await;

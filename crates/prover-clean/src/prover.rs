@@ -1,9 +1,10 @@
 use std::{marker::PhantomData, sync::Arc};
 
 use csl_cuda::TaskScope;
+use slop_alloc::Buffer;
 use slop_challenger::IopCtx;
 use slop_commit::Rounds;
-use slop_jagged::{JaggedConfig, JaggedPcsProof, JaggedProverError};
+use slop_jagged::{JaggedConfig, JaggedPcsProof, JaggedProverData, JaggedProverError};
 use slop_multilinear::{Evaluations, Point};
 use sp1_hypercube::{
     air::MachineAir,
@@ -12,19 +13,30 @@ use sp1_hypercube::{
 };
 use thiserror::Error;
 
+use crate::merkle_tree::MerkleTree;
 use crate::tracegen::JaggedTraceMle;
 
 /// A prover for the hypercube STARK, given a configuration.
 pub struct CudaShardProver<GC: IopCtx> {
+    pub max_log_row_count: usize,
     _marker: PhantomData<GC>,
+}
+
+#[derive(Clone)]
+pub struct ProverCleanStackedPcsProverData<GC: IopCtx> {
+    /// The usizes are the height of the Merkle tree and the number of elements in a leaf.
+    pub merkle_tree_tcs_data: (MerkleTree<GC::Digest, TaskScope>, GC::Digest, usize, usize),
+    /// TODO: document
+    pub interleaved_mles: Arc<JaggedTraceMle<GC::F, TaskScope>>,
+    /// TODO: document
+    pub codeword_mle: Arc<Buffer<GC::F, TaskScope>>,
 }
 
 pub struct CudaShardProverData<GC: IopCtx> {
     /// The preprocessed traces.
     pub preprocessed_traces: Arc<JaggedTraceMle<GC::F, TaskScope>>,
     /// The pcs data for the preprocessed traces.
-    /// TODO: fill this out.
-    pub preprocessed_data: (),
+    pub preprocessed_data: JaggedProverData<GC, ProverCleanStackedPcsProverData<GC>>,
 }
 
 impl<GC: IopCtx, Config: MachineConfig<GC>, Air: MachineAir<GC::F>> AirProver<GC, Config, Air>
@@ -75,10 +87,6 @@ impl<GC: IopCtx, Config: MachineConfig<GC>, Air: MachineAir<GC::F>> AirProver<GC
 #[derive(Debug, Error)]
 pub enum CudaShardProverError {}
 
-pub struct CudaJaggedProverData<GC: IopCtx> {
-    _marker: PhantomData<GC>,
-}
-
 impl<GC: IopCtx> CudaShardProver<GC> {
     /// Commit to a batch of padded multilinears.
     ///
@@ -89,8 +97,10 @@ impl<GC: IopCtx> CudaShardProver<GC> {
         &self,
         _multilinears: JaggedTraceMle<GC::F, TaskScope>,
         _use_preprocessed_data: bool,
-    ) -> Result<(GC::Digest, CudaJaggedProverData<GC>), JaggedProverError<CudaShardProverError>>
-    {
+    ) -> Result<
+        (GC::Digest, ProverCleanStackedPcsProverData<GC>),
+        JaggedProverError<CudaShardProverError>,
+    > {
         todo!()
     }
 
@@ -99,7 +109,7 @@ impl<GC: IopCtx> CudaShardProver<GC> {
         &self,
         _eval_point: Point<GC::EF>,
         _evaluation_claims: Rounds<Evaluations<GC::EF, TaskScope>>,
-        _prover_data: (),
+        _prover_data: Rounds<JaggedProverData<GC, ProverCleanStackedPcsProverData<GC>>>,
         _challenger: &mut GC::Challenger,
     ) -> Result<JaggedPcsProof<GC, C>, JaggedProverError<CudaShardProverError>> {
         todo!()

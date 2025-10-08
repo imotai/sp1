@@ -1,6 +1,6 @@
 use crate::config::{Ext, Felt};
 use crate::tracegen::{JaggedTraceMle, TraceDenseData, TraceOffset};
-use crate::zerocheck::data::{InfoBuffer, JaggedDenseInfo, JaggedDenseMle};
+use crate::zerocheck::data::{InfoBuffer, JaggedDenseInfo};
 use crate::JaggedMle;
 use csl_cuda::sys::prover_clean::{
     fix_last_variable_jagged_ext, fix_last_variable_jagged_felt, fix_last_variable_jagged_info,
@@ -78,12 +78,15 @@ where
     let new_cols =
         Buffer::<u32, TaskScope>::with_capacity_in(new_total_length as usize / 2, backend.clone());
 
+    // For the next trace data, we remove all of the padding.
     let next_trace_data = TraceDenseData {
         dense: new_data,
         preprocessed_offset: next_preprocessed_offset,
         preprocessed_cols: jagged_mle.dense_data.preprocessed_cols,
         preprocessed_table_index: next_preprocessed_table_index,
         main_table_index: next_main_table_index,
+        main_padding: 0,
+        preprocessed_padding: 0,
     };
 
     let mut next_jagged_mle =
@@ -200,7 +203,6 @@ pub async fn evaluate_jagged_info_fix_last_variable(
     let new_total_length = *new_start_idx.last().unwrap() * 2;
     let buffer_start_idx = Buffer::from(new_start_idx);
     let output_start_idx = buffer_start_idx.to_device_in(backend).await.unwrap();
-
     let new_data =
         Buffer::<u32, TaskScope>::with_capacity_in(new_total_length as usize, backend.clone());
     let new_cols = Buffer::<u32, TaskScope>::with_capacity_in(
@@ -234,7 +236,7 @@ pub async fn evaluate_jagged_info_fix_last_variable(
 }
 
 pub async fn evaluate_jagged_mle_chunked<F: Field>(
-    jagged_mle: JaggedDenseMle<F, TaskScope>,
+    jagged_mle: JaggedTraceMle<F, TaskScope>,
     z_row: Point<Ext, TaskScope>,
     z_col: Point<Ext, TaskScope>,
     num_cols: usize,
@@ -258,7 +260,7 @@ pub async fn evaluate_jagged_mle_chunked<F: Field>(
     let shared_zcol = MAX_COLS_SH * std::mem::size_of::<Ext>();
     let shared_mem = shared_reduce + shared_starts + shared_zcol;
 
-    // output one partial per block
+    // Output one partial per block.
     let mut output_evals =
         Tensor::<Ext, TaskScope>::with_sizes_in([1, grid_size.0], backend.clone());
 
@@ -270,6 +272,8 @@ pub async fn evaluate_jagged_mle_chunked<F: Field>(
         z_row_lagrange.guts().as_ptr(),
         z_col_lagrange.guts().as_ptr(),
         (total_length as u32),
+        (jagged_mle.dense_data.preprocessed_padding as u32),
+        (jagged_mle.dense_data.preprocessed_offset as u32),
         (num_cols as u32),
         output_evals.as_mut_ptr()
     );
@@ -299,8 +303,6 @@ mod tests {
 
     use crate::config::{Ext, Felt};
     use crate::tracegen::{JaggedTraceMle, TraceDenseData, TraceOffset};
-    use crate::zerocheck::data::DenseBuffer;
-    use crate::zerocheck::data::JaggedDenseMle;
     use crate::zerocheck::primitives::evaluate_jagged_columns;
     use crate::zerocheck::primitives::evaluate_jagged_mle_chunked;
 
@@ -438,15 +440,22 @@ mod tests {
             // Warmup iteration.
             let z_row_device = t.into_device(z_row.clone()).await.unwrap();
             let z_col_device = t.into_device(z_col.clone()).await.unwrap();
-            let jagged_mle = JaggedDenseMle::new(
-                DenseBuffer { data: data.clone() },
+            let jagged_mle = JaggedTraceMle::new(
+                TraceDenseData {
+                    dense: data.clone(),
+                    preprocessed_offset: 0,
+                    preprocessed_cols: 0,
+                    preprocessed_table_index: BTreeMap::new(),
+                    main_table_index: BTreeMap::new(),
+                    main_padding: 0,
+                    preprocessed_padding: 0,
+                },
                 cols.clone(),
                 start_idx.clone(),
                 input_heights.clone(),
             )
             .into_device(&t)
-            .await
-            .unwrap();
+            .await;
 
             t.synchronize().await.unwrap();
             let evaluation = evaluate_jagged_mle_chunked(
@@ -467,15 +476,22 @@ mod tests {
             // Real iteration for benchmarking.
             let z_row_device = t.into_device(z_row.clone()).await.unwrap();
             let z_col_device = t.into_device(z_col.clone()).await.unwrap();
-            let jagged_mle = JaggedDenseMle::new(
-                DenseBuffer { data: data.clone() },
+            let jagged_mle = JaggedTraceMle::new(
+                TraceDenseData {
+                    dense: data.clone(),
+                    preprocessed_offset: 0,
+                    preprocessed_cols: 0,
+                    preprocessed_table_index: BTreeMap::new(),
+                    main_table_index: BTreeMap::new(),
+                    main_padding: 0,
+                    preprocessed_padding: 0,
+                },
                 cols.clone(),
                 start_idx.clone(),
                 input_heights.clone(),
             )
             .into_device(&t)
-            .await
-            .unwrap();
+            .await;
 
             t.synchronize().await.unwrap();
             let now = std::time::Instant::now();
@@ -561,6 +577,8 @@ mod tests {
                     preprocessed_cols: preprocessed_cols as usize,
                     preprocessed_table_index,
                     main_table_index,
+                    main_padding: 0,
+                    preprocessed_padding: 0,
                 },
                 cols.clone(),
                 start_idx.clone(),

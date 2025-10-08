@@ -150,6 +150,8 @@ impl<D: DenseData<A>, A: Backend> JaggedMle<D, A> {
 
 impl<D: DenseData<TaskScope>> JaggedMle<D, TaskScope> {
     /// Computes the next start indices and column heights for use in jagged fix last variable.
+    ///
+    /// TODO: ignore all of the padding stuff.
     pub fn next_start_indices_and_column_heights(&self) -> (Buffer<u32>, Vec<u32>) {
         let output_heights =
             self.column_heights.iter().map(|height| height.div_ceil(4) * 2).collect::<Vec<u32>>();

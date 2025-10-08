@@ -15,7 +15,7 @@ pub mod tracegen_setup {
 
     pub const CORE_MAX_LOG_ROW_COUNT: u32 = 22;
     pub const CORE_MAX_TRACE_SIZE: u32 = 1 << 29;
-    pub const LOG_STACKING_HEIGHT: u32 = 22;
+    pub const LOG_STACKING_HEIGHT: u32 = 21;
 
     /// Setup core execution test data by executing fibonacci program.
     ///
@@ -34,7 +34,7 @@ pub mod tracegen_setup {
 
         // 2. Create stdin with fibonacci input
         let mut stdin = SP1Stdin::new();
-        stdin.write(&1000u32);
+        stdin.write(&800_000u32);
 
         // 3. Create executor and channel
         let opts = SP1CoreOpts::default();

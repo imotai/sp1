@@ -62,41 +62,41 @@ csl-server = { path = "crates/cuslop" }
 csl-perf = { path = "crates/perf" }
 
 # slop 
-slop-air = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-koala-bear = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-bn254 = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-basefold = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-basefold-prover = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-dft = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-matrix = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-algebra = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-symmetric = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-merkle-tree = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-poseidon2 = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-commit = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-challenger = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-multilinear = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-tensor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-sumcheck = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-alloc = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-futures = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-stacked = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-slop-jagged = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+slop-air = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-koala-bear = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-bn254 = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-basefold = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-basefold-prover = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-dft = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-matrix = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-algebra = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-symmetric = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-merkle-tree = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-poseidon2 = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-commit = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-challenger = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-multilinear = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-tensor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-sumcheck = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-alloc = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-futures = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-stacked = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+slop-jagged = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
 
 # SP1
-sp1-core-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-core-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-hypercube = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-prover = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-recursion-circuit = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-recursion-compiler = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-recursion-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-recursion-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-cuda = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-derive = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-sdk = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-core-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+sp1-core-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+sp1-hypercube = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+sp1-prover = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+sp1-recursion-circuit = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+sp1-recursion-compiler = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+sp1-recursion-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+sp1-recursion-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+sp1-cuda = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+sp1-derive = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
+sp1-sdk = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }
 
 # # slop local copy
 # slop-air = { path = "../sp1-wip/slop/crates/air" }

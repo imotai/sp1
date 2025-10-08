@@ -1648,6 +1648,7 @@ pub mod tests {
         }
         assert_eq!(col_idx, num_cols);
 
+        // Main padding and preprocessed padding are only needed in commit. Set them to zero for this unit test.
         JaggedMle::new(
             TraceDenseData {
                 dense: Buffer::from(data),
@@ -1655,6 +1656,8 @@ pub mod tests {
                 preprocessed_cols: total_preprocessed_cols as usize,
                 preprocessed_table_index,
                 main_table_index,
+                main_padding: 0,
+                preprocessed_padding: 0,
             },
             Buffer::from(cols),
             Buffer::from(start_idx),

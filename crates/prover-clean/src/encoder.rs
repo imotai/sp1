@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use crate::{config::Felt, tracegen::JaggedTraceMle, VirtualTensor};
+use crate::{config::Felt, VirtualTensor};
 use csl_cuda::TaskScope;
-use slop_basefold::RsCodeWord;
-use slop_commit::Message;
 use slop_dft::DftOrdering;
 
 use csl_cuda::{
@@ -14,29 +12,13 @@ use slop_algebra::Field;
 use slop_koala_bear::KoalaBear;
 use slop_tensor::Tensor;
 
-pub async fn encode_batch(
+pub fn encode_batch(
     dft: SpparkDftKoalaBear,
     log_blowup: u32,
-    log_stacking_height: u32,
-    data: Arc<JaggedTraceMle<Felt, TaskScope>>,
-    use_preprocessed: bool,
-) -> Result<Message<RsCodeWord<Felt, TaskScope>>, CudaError> {
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    slop_futures::rayon::spawn(move || {
-        let mut results = Vec::with_capacity(1);
-        let data = if use_preprocessed {
-            data.main_virtual_tensor(log_stacking_height)
-        } else {
-            data.preprocessed_virtual_tensor(log_stacking_height)
-        };
-        assert_eq!(data.sizes().len(), 2, "Expected a 2D tensor");
-        // Perform a DFT along the first axis of the tensor (assumed to be the long dimension).
-        let dft = dft.dft(&data, log_blowup as usize, DftOrdering::BitReversed, 0).unwrap();
-        results.push(Arc::new(RsCodeWord { data: dft }));
-
-        tx.send(Message::from(results)).unwrap();
-    });
-    Ok(rx.await.unwrap())
+    data: VirtualTensor<Felt, TaskScope>,
+) -> Result<Arc<Tensor<Felt, TaskScope>>, CudaError> {
+    let dft = dft.dft(&data, log_blowup as usize, DftOrdering::BitReversed, 1).unwrap();
+    Ok(Arc::new(dft))
 }
 
 pub trait SpparkCudaDftSys<T: DeviceCopy>: 'static + Send + Sync {
@@ -124,17 +106,6 @@ impl<T: Field, F: SpparkCudaDftSys<T>> SpparkDft<F, T> {
         self.coset_dft_into(src, &mut dst, shift, log_blowup, ordering, dim)?;
         Ok(dst)
     }
-
-    // fn dft_into(
-    //     &self,
-    //     src: &VirtualTensor<T, TaskScope>,
-    //     dst: &mut Tensor<T, TaskScope>,
-    //     log_blowup: usize,
-    //     ordering: DftOrdering,
-    //     dim: usize,
-    // ) -> Result<(), CudaError> {
-    //     self.coset_dft_into(src, dst, T::one(), log_blowup, ordering, dim)
-    // }
 
     fn dft(
         &self,

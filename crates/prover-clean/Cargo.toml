@@ -14,8 +14,9 @@ csl-air = { workspace = true }
 csl-jagged = { workspace = true }
 sp1-derive = { workspace = true }
 csl-tracegen = { workspace = true }
-csl-basefold = { workspace = true }
 csl-merkle-tree = { workspace = true }
+csl-basefold = { workspace = true }
+csl-dft = { workspace = true }
 
 # slop
 slop-air = { workspace = true }
@@ -31,6 +32,9 @@ slop-basefold = { workspace = true }
 slop-jagged = { workspace = true }
 slop-commit = { workspace = true }
 slop-futures = { workspace = true }
+slop-basefold-prover = { workspace = true }
+slop-merkle-tree = { workspace = true }
+slop-bn254 = { workspace = true }
 slop-symmetric = { workspace = true }
 slop-dft = { workspace = true }
 
@@ -59,7 +63,9 @@ serial_test = "3.1"
 zstd = "0.13.3"
 sp1-sdk = { workspace = true, features = ["unsound"] }
 sp1-recursion-circuit = { workspace = true }
+csl-prover = { workspace = true }
 sp1-recursion-compiler = { workspace = true }
+slop-stacked = { workspace = true }
 
 [[bin]]
 name = "hadamard_sumcheck_bench"
