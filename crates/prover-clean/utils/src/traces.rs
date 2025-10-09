@@ -4,9 +4,9 @@ use std::ops::{Deref, DerefMut, Range};
 use csl_cuda::{IntoDevice, TaskScope};
 use slop_algebra::Field;
 use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend, ToHost};
-use slop_tensor::Dimensions;
+use slop_tensor::{Dimensions, TensorView};
 
-use crate::jagged::{JaggedMle, VirtualTensor};
+use crate::jagged::JaggedMle;
 use crate::DenseData;
 
 #[derive(Clone, Debug)]
@@ -19,6 +19,7 @@ pub struct TraceOffset {
     pub num_polys: usize,
 }
 
+#[derive(Clone)]
 pub struct JaggedTraceMle<F: Field, B: Backend>(pub JaggedMle<TraceDenseData<F, B>, B>);
 
 impl<F: Field, B: Backend> Deref for JaggedTraceMle<F, B> {
@@ -55,24 +56,25 @@ pub struct TraceDenseData<F: Field, B: Backend> {
 }
 
 impl<F: Field, B: Backend> TraceDenseData<F, B> {
-    pub fn main_virtual_tensor(&self, log_stacking_height: u32) -> VirtualTensor<F, B> {
+    pub fn main_virtual_tensor(&'_ self, log_stacking_height: u32) -> TensorView<'_, F, B> {
         let ptr = unsafe { self.dense.as_ptr().add(self.preprocessed_offset) };
         let sizes = Dimensions::try_from([
             self.main_size() / (1 << log_stacking_height),
             1 << log_stacking_height,
         ])
         .unwrap();
-        VirtualTensor::new(ptr, sizes, self.backend().clone())
+        // This is safe because we inherit the lifetime of self and the offset should be valid.
+        unsafe { TensorView::from_raw_parts(ptr, sizes, self.backend().clone()) }
     }
 
-    pub fn preprocessed_virtual_tensor(&self, log_stacking_height: u32) -> VirtualTensor<F, B> {
+    pub fn preprocessed_virtual_tensor(&'_ self, log_stacking_height: u32) -> TensorView<'_, F, B> {
         let ptr = self.dense.as_ptr();
         let sizes = Dimensions::try_from([
             self.preprocessed_offset / (1 << log_stacking_height),
             1 << log_stacking_height,
         ])
         .unwrap();
-        VirtualTensor::new(ptr, sizes, self.dense.backend().clone())
+        unsafe { TensorView::from_raw_parts(ptr, sizes, self.backend().clone()) }
     }
 
     pub fn main_poly_height(&self, name: &str) -> Option<usize> {
@@ -120,13 +122,13 @@ impl<F: Field, B: Backend> JaggedTraceMle<F, B> {
 
 impl<F: Field> JaggedTraceMle<F, TaskScope> {
     pub fn preprocessed_virtual_tensor(
-        &self,
+        &'_ self,
         log_stacking_height: u32,
-    ) -> VirtualTensor<F, TaskScope> {
+    ) -> TensorView<'_, F, TaskScope> {
         self.dense_data.preprocessed_virtual_tensor(log_stacking_height)
     }
 
-    pub fn main_virtual_tensor(&self, log_stacking_height: u32) -> VirtualTensor<F, TaskScope> {
+    pub fn main_virtual_tensor(&'_ self, log_stacking_height: u32) -> TensorView<'_, F, TaskScope> {
         self.dense_data.main_virtual_tensor(log_stacking_height)
     }
 

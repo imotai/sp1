@@ -35,6 +35,7 @@ members = [
     "crates/prover-clean/logup_gkr",
     "crates/prover-clean/zerocheck",
     "crates/prover-clean/experimental",
+    "crates/prover-clean/basefold",
 ]
 resolver = "2"
 
@@ -79,6 +80,7 @@ cslpc-tracegen = { path = "crates/prover-clean/tracegen" }
 cslpc-logup-gkr = { path = "crates/prover-clean/logup_gkr" }
 cslpc-zerocheck = { path = "crates/prover-clean/zerocheck" }
 cslpc-experimental = { path = "crates/prover-clean/experimental" }
+cslpc-basefold = { path = "crates/prover-clean/basefold" }
 
 # slop 
 slop-air = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "erabinov/change_jagged_prover_data" }

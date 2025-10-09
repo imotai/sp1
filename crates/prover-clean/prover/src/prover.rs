@@ -1,11 +1,11 @@
 use std::{marker::PhantomData, sync::Arc};
 
 use csl_cuda::TaskScope;
-use slop_alloc::Buffer;
 use slop_challenger::IopCtx;
 use slop_commit::Rounds;
 use slop_jagged::{JaggedConfig, JaggedPcsProof, JaggedProverData, JaggedProverError};
 use slop_multilinear::{Evaluations, Point};
+use slop_tensor::Tensor;
 use sp1_hypercube::{
     air::MachineAir,
     prover::{AirProver, PreprocessedData, ProverPermit, ProverSemaphore, ProvingKey},
@@ -29,7 +29,7 @@ pub struct ProverCleanStackedPcsProverData<GC: IopCtx> {
     /// TODO: document
     pub interleaved_mles: Arc<JaggedTraceMle<GC::F, TaskScope>>,
     /// TODO: document
-    pub codeword_mle: Arc<Buffer<GC::F, TaskScope>>,
+    pub codeword_mle: Arc<Tensor<GC::F, TaskScope>>,
 }
 
 pub struct CudaShardProverData<GC: IopCtx> {

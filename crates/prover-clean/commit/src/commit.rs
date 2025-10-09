@@ -1,25 +1,24 @@
 use std::{iter::once, sync::Arc};
 
-use crate::encoder::{encode_batch, SpparkDftKoalaBear};
 use csl_cuda::TaskScope;
-use cslpc_merkle_tree::Poseidon2KoalaBear16CudaProver;
+use cslpc_basefold::ProverCleanFriCudaProver;
+use cslpc_merkle_tree::TcsProverClean;
 use cslpc_prover::ProverCleanStackedPcsProverData;
-use cslpc_utils::{traces::JaggedTraceMle, Felt, VirtualTensor, GC};
+use cslpc_utils::{traces::JaggedTraceMle, Felt, GC};
 use slop_algebra::AbstractField;
 use slop_challenger::IopCtx;
 use slop_jagged::JaggedProverData;
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction as _};
 
 pub type Digest = <GC as IopCtx>::Digest;
-// TODO: this needs to be generic. for shrink and wrap this is 4. see crates/prover/src/recursion/components.rs for constant values.
-const LOG_BLOWUP: usize = 1;
 
 /// TODO: document
-pub async fn commit_multilinears(
+pub async fn commit_multilinears<P: TcsProverClean<GC>>(
     jagged_trace_mle: Arc<JaggedTraceMle<Felt, TaskScope>>,
     max_log_row_count: u32,
     log_stacking_height: u32,
     use_preprocessed: bool,
+    basefold_prover: &ProverCleanFriCudaProver<GC, P, Felt>,
 ) -> (Digest, JaggedProverData<GC, ProverCleanStackedPcsProverData<GC>>) {
     let (index, padding, virtual_tensor) = if use_preprocessed {
         (
@@ -39,22 +38,8 @@ pub async fn commit_multilinears(
         index.values().map(|x| x.num_polys).collect::<Vec<_>>(),
     );
 
-    let encoder = SpparkDftKoalaBear::default();
-
-    let encoded_messages = encode_batch(encoder, LOG_BLOWUP as u32, virtual_tensor).unwrap();
-
-    let virtual_tensor = VirtualTensor::from_tensor(encoded_messages.as_ref());
-
-    // Commit to the tensors.
-    let tensor_prover = Poseidon2KoalaBear16CudaProver::default();
-
-    let (commitment, tcs_data) = tensor_prover.commit_tensors(virtual_tensor).await.unwrap();
-
-    let data = ProverCleanStackedPcsProverData {
-        merkle_tree_tcs_data: tcs_data,
-        interleaved_mles: jagged_trace_mle.clone(),
-        codeword_mle: Arc::new(encoded_messages.as_buffer().clone()),
-    };
+    let (commitment, data) =
+        basefold_prover.encode_and_commit(virtual_tensor, jagged_trace_mle.clone()).await;
 
     let num_added_cols = padding.div_ceil(1 << max_log_row_count).max(1);
 
@@ -92,13 +77,16 @@ mod tests {
     use csl_cuda::run_in_place;
     use csl_jagged::Poseidon2KoalaBearJaggedCudaProverComponents;
     use csl_tracegen::CudaTraceGenerator;
+    use cslpc_basefold::ProverCleanFriCudaProver;
+    use cslpc_merkle_tree::Poseidon2KoalaBear16CudaProver;
+    use cslpc_utils::{Felt, GC};
     use serial_test::serial;
     use slop_jagged::{JaggedPcsVerifier, JaggedProver, KoalaBearPoseidon2};
 
     use slop_koala_bear::KoalaBearDegree4Duplex;
     use sp1_hypercube::prover::{ProverSemaphore, TraceGenerator};
 
-    use crate::commit::{commit_multilinears, LOG_BLOWUP};
+    use crate::commit::commit_multilinears;
     use cslpc_tracegen::full_tracegen;
     use cslpc_tracegen::test_utils::tracegen_setup::{
         self, CORE_MAX_LOG_ROW_COUNT, CORE_MAX_TRACE_SIZE, LOG_STACKING_HEIGHT,
@@ -131,7 +119,7 @@ mod tests {
             let num_rounds = 2;
 
             let jagged_verifier = JaggedPcsVerifier::<_, JC>::new(
-                LOG_BLOWUP,
+                1,
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT as usize,
                 num_rounds,
@@ -163,11 +151,20 @@ mod tests {
 
             let jagged_trace_data = Arc::new(jagged_trace_data);
 
+            let tcs_prover = Poseidon2KoalaBear16CudaProver::default();
+
+            let basefold_prover = ProverCleanFriCudaProver::<GC, _, Felt>::new(
+                tcs_prover,
+                jagged_verifier.pcs_verifier.pcs_verifier.fri_config,
+                CORE_MAX_LOG_ROW_COUNT as usize,
+            );
+
             let (new_preprocessed_commitment, new_preprocessed_data) = commit_multilinears(
                 jagged_trace_data.clone(),
                 CORE_MAX_LOG_ROW_COUNT,
                 LOG_STACKING_HEIGHT,
                 true,
+                &basefold_prover,
             )
             .await;
 
@@ -176,6 +173,7 @@ mod tests {
                 CORE_MAX_LOG_ROW_COUNT,
                 LOG_STACKING_HEIGHT,
                 false,
+                &basefold_prover,
             )
             .await;
 

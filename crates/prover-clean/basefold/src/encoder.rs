@@ -1,7 +1,5 @@
-use std::sync::Arc;
-
 use csl_cuda::TaskScope;
-use cslpc_utils::{Felt, VirtualTensor};
+use cslpc_utils::Felt;
 use slop_dft::DftOrdering;
 
 use csl_cuda::{
@@ -10,16 +8,15 @@ use csl_cuda::{
 };
 use slop_algebra::Field;
 use slop_koala_bear::KoalaBear;
-use slop_tensor::Tensor;
+use slop_tensor::{Tensor, TensorView};
 
-/// TODO: document
-pub fn encode_batch(
+pub fn encode_batch<'a>(
     dft: SpparkDftKoalaBear,
     log_blowup: u32,
-    data: VirtualTensor<Felt, TaskScope>,
-) -> Result<Arc<Tensor<Felt, TaskScope>>, CudaError> {
-    let dft = dft.dft(&data, log_blowup as usize, DftOrdering::BitReversed, 1).unwrap();
-    Ok(Arc::new(dft))
+    data: TensorView<'a, Felt, TaskScope>,
+) -> Result<Tensor<Felt, TaskScope>, CudaError> {
+    let dft = dft.dft(data, log_blowup as usize, DftOrdering::BitReversed, 1).unwrap();
+    Ok(dft)
 }
 
 pub trait SpparkCudaDftSys<T: DeviceCopy>: 'static + Send + Sync {
@@ -45,9 +42,9 @@ pub struct SpparkDft<F, T>(pub F, std::marker::PhantomData<T>);
 
 impl<T: Field, F: SpparkCudaDftSys<T>> SpparkDft<F, T> {
     /// Performs a discrete Fourier transform along the last dimension of the input tensor.
-    fn coset_dft_into(
+    fn coset_dft_into<'a>(
         &self,
-        src: &VirtualTensor<T, TaskScope>,
+        src: TensorView<'a, T, TaskScope>,
         dst: &mut Tensor<T, TaskScope>,
         shift: T,
         log_blowup: usize,
@@ -93,9 +90,9 @@ impl<T: Field, F: SpparkCudaDftSys<T>> SpparkDft<F, T> {
         }
     }
 
-    fn coset_dft(
+    fn coset_dft<'a>(
         &self,
-        src: &VirtualTensor<T, TaskScope>,
+        src: TensorView<'a, T, TaskScope>,
         shift: T,
         log_blowup: usize,
         ordering: DftOrdering,
@@ -108,9 +105,9 @@ impl<T: Field, F: SpparkCudaDftSys<T>> SpparkDft<F, T> {
         Ok(dst)
     }
 
-    fn dft(
+    fn dft<'a>(
         &self,
-        src: &VirtualTensor<T, TaskScope>,
+        src: TensorView<'a, T, TaskScope>,
         log_blowup: usize,
         ordering: DftOrdering,
         dim: usize,
@@ -187,13 +184,7 @@ mod tests {
                 let tensor = t.into_device(tensor_h_sent).await.unwrap().transpose();
                 let dft = SpparkDftKoalaBear::default();
                 let result = dft
-                    .coset_dft(
-                        &VirtualTensor::from_tensor(&tensor),
-                        shift,
-                        log_blowup,
-                        DftOrdering::BitReversed,
-                        1,
-                    )
+                    .coset_dft(tensor.as_view(), shift, log_blowup, DftOrdering::BitReversed, 1)
                     .unwrap();
 
                 let result = result.transpose();

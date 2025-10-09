@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, os::raw::c_void};
+use std::{future::Future, marker::PhantomData, os::raw::c_void};
 
 use csl_cuda::{
     args,
@@ -20,16 +20,13 @@ use slop_alloc::CpuBackend;
 use slop_alloc::{mem::CopyError, Buffer, HasBackend, IntoHost};
 use slop_bn254::{bn254_poseidon2_rc3, Bn254Fr, BNGC};
 use slop_challenger::IopCtx;
-use slop_commit::Message;
-use slop_futures::OwnedBorrow;
 use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 use slop_merkle_tree::MerkleTreeTcsProof;
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
-use slop_tensor::Tensor;
+use slop_tensor::{Tensor, TensorView};
 use thiserror::Error;
 
 use crate::{MerkleTree, MerkleTreeHasher};
-use cslpc_utils::VirtualTensor;
 
 /// # Safety
 ///
@@ -61,19 +58,41 @@ pub enum SingleLayerMerkleTreeProverError {
 }
 
 type ProverError = SingleLayerMerkleTreeProverError;
-type ProverData<Digest> = (MerkleTree<Digest, TaskScope>, Digest, usize, usize);
+pub type MerkleTreeProverData<Digest> = (MerkleTree<Digest, TaskScope>, Digest, usize, usize);
 
-impl<GC: IopCtx, W, K, H, const WIDTH: usize> MerkleTreeSingleLayerProver<GC, W, K, H, WIDTH>
+/// Because the single implementation of this trait is generic over many parameters that don't need
+/// to be propagated up the stack, this trait defines the minimal API necessary to interact with the
+/// Merkle tree prover and is generic only in the IopCtx.
+pub trait TcsProverClean<GC: IopCtx> {
+    fn commit_tensors<'a>(
+        &self,
+        virtual_tensor: TensorView<'a, GC::F, TaskScope>,
+    ) -> impl Future<Output = Result<(GC::Digest, MerkleTreeProverData<GC::Digest>), ProverError>>;
+
+    fn prove_openings_at_indices(
+        &self,
+        data: MerkleTreeProverData<GC::Digest>,
+        indices: &[usize],
+    ) -> impl Future<Output = Result<MerkleTreeTcsProof<GC::Digest>, ProverError>>;
+
+    fn compute_openings_at_indices<'a>(
+        &self,
+        tensors: TensorView<'a, GC::F, TaskScope>,
+        indices: &[usize],
+    ) -> impl Future<Output = Tensor<GC::F>>;
+}
+
+impl<GC: IopCtx, W, K, H, const WIDTH: usize> TcsProverClean<GC>
+    for MerkleTreeSingleLayerProver<GC, W, K, H, WIDTH>
 where
     W: Field,
     K: MerkleTreeSingleLayerKernels<GC>,
     H: Hasher<W, WIDTH>,
 {
-    pub async fn commit_tensors(
+    async fn commit_tensors<'a>(
         &self,
-        virtual_tensor: VirtualTensor<GC::F, TaskScope>,
-    ) -> Result<(GC::Digest, ProverData<GC::Digest>), ProverError>
-where {
+        virtual_tensor: TensorView<'a, GC::F, TaskScope>,
+    ) -> Result<(GC::Digest, MerkleTreeProverData<GC::Digest>), ProverError> {
         let scope = virtual_tensor.backend();
         let hasher = H::hasher();
         let hasher_device = scope.to_device(&hasher).await.unwrap();
@@ -131,9 +150,9 @@ where {
         Ok((compressed_root, (tree, root, height, total_width)))
     }
 
-    pub async fn prove_openings_at_indices(
+    async fn prove_openings_at_indices(
         &self,
-        data: ProverData<GC::Digest>,
+        data: MerkleTreeProverData<GC::Digest>,
         indices: &[usize],
     ) -> Result<MerkleTreeTcsProof<GC::Digest>, ProverError> {
         let paths = {
@@ -172,35 +191,22 @@ where {
         })
     }
 
-    pub async fn compute_openings_at_indices<T>(
+    async fn compute_openings_at_indices<'a>(
         &self,
-        tensors: Message<T>,
+        tensors: TensorView<'a, GC::F, TaskScope>,
         indices: &[usize],
-    ) -> Tensor<GC::F>
-    where
-        T: OwnedBorrow<Tensor<GC::F, TaskScope>>,
-    {
-        // let mut openings
+    ) -> Tensor<GC::F> {
         let openings = {
-            let num_opening_values =
-                tensors.iter().map(|t| t.as_ref().borrow().sizes()[0]).sum::<usize>();
-            let height = tensors[0].as_ref().borrow().sizes()[1].ilog2() as usize;
-            let (tensor_ptrs_host, widths_host): (Vec<_>, Vec<usize>) = tensors
-                .iter()
-                .map(|t| {
-                    let tensor = t.as_ref().borrow();
-                    assert_eq!(tensor.sizes().len(), 2, "Tensor must be 2D");
-                    assert_eq!(tensor.sizes()[1], 1 << height, "Height must be a power of two");
-                    (tensor.as_ptr(), tensor.sizes()[0])
-                })
-                .unzip();
-            let scope = tensors[0].as_ref().borrow().backend();
-            let num_inputs = tensors.len();
+            let num_opening_values = tensors.sizes()[0];
+            let (tensor_ptrs_host, widths_host): (Vec<_>, Vec<usize>) =
+                (vec![tensors.as_ptr()], vec![num_opening_values]);
+            let scope = tensors.backend();
+            let num_inputs = 1usize;
             let mut tensor_ptrs = Buffer::with_capacity_in(tensor_ptrs_host.len(), scope.clone());
             tensor_ptrs.extend_from_host_slice(&tensor_ptrs_host).unwrap();
             let mut widths = Buffer::with_capacity_in(widths_host.len(), scope.clone());
             widths.extend_from_host_slice(&widths_host).unwrap();
-            let tensor_height = tensors[0].as_ref().borrow().sizes()[1];
+            let tensor_height = tensors.sizes()[1];
 
             // Allocate tensors for the openings.
             let mut openings = Tensor::<GC::F, _>::with_sizes_in(
@@ -363,6 +369,7 @@ mod tests {
 
     use csl_cuda::run_in_place;
     use csl_tracegen::CudaTraceGenerator;
+    use slop_commit::Message;
     use slop_multilinear::Mle;
     use slop_stacked::{FixedRateInterleave, InterleaveMultilinears};
     use sp1_hypercube::prover::{ProverSemaphore, TraceGenerator};
@@ -374,7 +381,7 @@ mod tests {
     use cslpc_utils::Felt;
 
     use super::*;
-    use slop_merkle_tree::TensorCsProver;
+    use slop_merkle_tree::{ComputeTcsOpenings, TensorCsProver};
 
     #[tokio::test]
     async fn test_poseidon2_koala_bear_16() {
@@ -413,8 +420,8 @@ mod tests {
                 .map(|x| x.as_ref().guts().clone())
                 .collect::<Message<_>>();
 
-            let (old_preprocessed_commitment, _) =
-                old_prover.commit_tensors(interleaved_message).await.unwrap();
+            let (old_preprocessed_commitment, old_prover_data) =
+                old_prover.commit_tensors(interleaved_message.clone()).await.unwrap();
 
             let (_, new_traces, _) = full_tracegen(
                 &machine,
@@ -429,19 +436,43 @@ mod tests {
 
             let tensor_prover = Poseidon2KoalaBear16CudaProver::default();
 
-            let new_preprocessed_commit = tensor_prover
+            let (new_preprocessed_commit, new_prover_data) = tensor_prover
                 .commit_tensors(new_traces.dense().preprocessed_virtual_tensor(LOG_STACKING_HEIGHT))
                 .await
-                .unwrap()
-                .0;
+                .unwrap();
 
             assert_eq!(new_preprocessed_commit, old_preprocessed_commitment);
 
-            let new_main_commit = tensor_prover
+            let indices = vec![42, 7];
+
+            let old_proof = old_prover
+                .prove_openings_at_indices(old_prover_data.clone(), &indices)
+                .await
+                .unwrap();
+
+            let old_openings =
+                old_prover.compute_openings_at_indices(interleaved_message, &indices).await;
+
+            let new_openings = tensor_prover
+                .compute_openings_at_indices(
+                    new_traces.dense().preprocessed_virtual_tensor(LOG_STACKING_HEIGHT),
+                    &indices,
+                )
+                .await;
+
+            let new_proof =
+                tensor_prover.prove_openings_at_indices(new_prover_data, &indices).await.unwrap();
+
+            assert_eq!(new_proof.merkle_root, old_proof.merkle_root);
+            assert_eq!(new_proof.log_tensor_height, old_proof.log_tensor_height);
+            assert_eq!(new_proof.width, old_proof.width);
+            assert_eq!(new_proof.paths, old_proof.paths);
+            assert_eq!(new_openings, old_openings);
+
+            let (new_main_commit, new_prover_data) = tensor_prover
                 .commit_tensors(new_traces.dense().main_virtual_tensor(LOG_STACKING_HEIGHT))
                 .await
-                .unwrap()
-                .0;
+                .unwrap();
             let message = old_traces
                 .main_trace_data
                 .traces
@@ -458,10 +489,34 @@ mod tests {
                 .map(|x| x.as_ref().guts().clone())
                 .collect::<Message<_>>();
 
-            let (old_main_commitment, _) =
-                old_prover.commit_tensors(interleaved_message).await.unwrap();
+            let (old_main_commitment, old_prover_data) =
+                old_prover.commit_tensors(interleaved_message.clone()).await.unwrap();
 
             assert_eq!(new_main_commit, old_main_commitment);
+
+            let old_proof = old_prover
+                .prove_openings_at_indices(old_prover_data.clone(), &indices)
+                .await
+                .unwrap();
+
+            let old_openings =
+                old_prover.compute_openings_at_indices(interleaved_message, &indices).await;
+
+            let new_openings = tensor_prover
+                .compute_openings_at_indices(
+                    new_traces.dense().main_virtual_tensor(LOG_STACKING_HEIGHT),
+                    &indices,
+                )
+                .await;
+
+            let new_proof =
+                tensor_prover.prove_openings_at_indices(new_prover_data, &indices).await.unwrap();
+
+            assert_eq!(new_proof.merkle_root, old_proof.merkle_root);
+            assert_eq!(new_proof.log_tensor_height, old_proof.log_tensor_height);
+            assert_eq!(new_proof.width, old_proof.width);
+            assert_eq!(new_proof.paths, old_proof.paths);
+            assert_eq!(new_openings, old_openings);
         })
         .await
         .await
