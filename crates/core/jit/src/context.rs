@@ -226,7 +226,7 @@ impl JitContext {
         let tail_ptr = tail_ptr.add(num_reads as usize);
 
         for (i, read) in reads.iter().enumerate() {
-            std::ptr::write_unaligned(tail_ptr.add(i), *read);
+            std::ptr::write(tail_ptr.add(i), *read);
         }
     }
 

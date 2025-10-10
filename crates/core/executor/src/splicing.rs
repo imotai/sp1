@@ -8,15 +8,22 @@ use crate::{
     syscalls::SyscallCode,
     vm::{
         memory::CompressedMemory,
-        results::{CycleResult, EcallResult, LoadResult, StoreResult},
+        results::{
+            AluResult, BranchResult, CycleResult, EcallResult, JumpResult, LoadResult, StoreResult,
+            UTypeResult,
+        },
         shapes::ShapeChecker,
-        syscall::{core_syscall_handler, SyscallRuntime},
+        syscall::SyscallRuntime,
         CoreVM,
     },
     ExecutionError, Instruction, Opcode, Program, Register,
 };
 
-/// A RISC-V VM that uses a [`MinimalTrace`] to create a [`ExecutionRecord`].
+/// A RISC-V VM that uses a [`MinimalTrace`] to create multiple [`SplicedMinimalTrace`]s.
+///
+/// These new [`SplicedMinimalTrace`]s correspond to exactly 1 execuction shard to be proved.
+///
+/// Note that this is the only time we account for trace area throught the execution pipeline.
 pub struct SplicingVM<'a> {
     /// The core VM.
     pub core: CoreVM<'a>,
@@ -126,7 +133,7 @@ impl SplicingVM<'_> {
         Ok(self.core.advance())
     }
 
-    /// Splice a minimal trace, outputting a minimal trace for the NEXT shard.
+    /// Splice a min imal trace, outputting a minimal trace for the NEXT shard.
     pub fn splice<T: MinimalTrace>(&self, trace: T) -> Option<SplicedMinimalTrace<T>> {
         // If the trace has been exhausted, then the last splice is all thats needed.
         if self.core.is_trace_end() || self.core.is_done() {
@@ -174,6 +181,7 @@ impl<'a> SplicingVM<'a> {
     /// and the register write.
     ///
     /// It will also emit the memory instruction event and the events for the load instruction.
+    #[inline]
     pub fn execute_load(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
         let LoadResult { addr, rd, mr_record, .. } = self.core.execute_load(instruction)?;
 
@@ -198,6 +206,7 @@ impl<'a> SplicingVM<'a> {
     /// and the register write.
     ///
     /// It will also emit the memory instruction event and the events for the store instruction.
+    #[inline]
     pub fn execute_store(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
         let StoreResult { addr, mw_record, .. } = self.core.execute_store(instruction)?;
 
@@ -219,7 +228,7 @@ impl<'a> SplicingVM<'a> {
     /// Execute an ALU instruction and emit the events.
     #[inline]
     pub fn execute_alu(&mut self, instruction: &Instruction) {
-        let _ = self.core.execute_alu(instruction);
+        let AluResult { .. } = self.core.execute_alu(instruction);
 
         self.shape_checker.handle_instruction(
             instruction,
@@ -232,7 +241,7 @@ impl<'a> SplicingVM<'a> {
     /// Execute a jump instruction and emit the events.
     #[inline]
     pub fn execute_jump(&mut self, instruction: &Instruction) {
-        let _ = self.core.execute_jump(instruction);
+        let JumpResult { .. } = self.core.execute_jump(instruction);
 
         self.shape_checker.handle_instruction(
             instruction,
@@ -245,7 +254,7 @@ impl<'a> SplicingVM<'a> {
     /// Execute a branch instruction and emit the events.
     #[inline]
     pub fn execute_branch(&mut self, instruction: &Instruction) {
-        let _ = self.core.execute_branch(instruction);
+        let BranchResult { .. } = self.core.execute_branch(instruction);
 
         self.shape_checker.handle_instruction(
             instruction,
@@ -258,7 +267,7 @@ impl<'a> SplicingVM<'a> {
     /// Execute a U-type instruction and emit the events.   
     #[inline]
     pub fn execute_utype(&mut self, instruction: &Instruction) {
-        let _ = self.core.execute_utype(instruction);
+        let UTypeResult { .. } = self.core.execute_utype(instruction);
 
         self.shape_checker.handle_instruction(
             instruction,
@@ -271,8 +280,9 @@ impl<'a> SplicingVM<'a> {
     /// Execute an ecall instruction and emit the events.
     #[inline]
     pub fn execute_ecall(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
-        let EcallResult { code, .. } =
-            CoreVM::execute_ecall(self, instruction, core_syscall_handler)?;
+        let code = self.core.read_code();
+
+        let EcallResult { .. } = CoreVM::execute_ecall(self, instruction, code)?;
 
         if code == SyscallCode::HINT_LEN {
             self.hint_lens_idx += 1;
@@ -298,6 +308,8 @@ impl<'a> SplicingVM<'a> {
 }
 
 impl<'a> SyscallRuntime<'a> for SplicingVM<'a> {
+    const TRACING: bool = false;
+
     fn core(&self) -> &CoreVM<'a> {
         &self.core
     }
@@ -306,8 +318,30 @@ impl<'a> SyscallRuntime<'a> for SplicingVM<'a> {
         &mut self.core
     }
 
+    fn rr(&mut self, register: usize) -> MemoryReadRecord {
+        let record = SyscallRuntime::rr(self.core_mut(), register);
+
+        record
+    }
+
+    fn mw(&mut self, addr: u64) -> MemoryWriteRecord {
+        let record = SyscallRuntime::mw(self.core_mut(), addr);
+
+        self.shape_checker.handle_mem_event(addr, record.prev_timestamp);
+
+        record
+    }
+
+    fn mr(&mut self, addr: u64) -> MemoryReadRecord {
+        let record = SyscallRuntime::mr(self.core_mut(), addr);
+
+        self.shape_checker.handle_mem_event(addr, record.prev_timestamp);
+
+        record
+    }
+
     fn mr_slice(&mut self, addr: u64, len: usize) -> Vec<MemoryReadRecord> {
-        let records = self.core_mut().mr_slice(addr, len);
+        let records = SyscallRuntime::mr_slice(self.core_mut(), addr, len);
 
         for (i, record) in records.iter().enumerate() {
             self.shape_checker.handle_mem_event(addr + i as u64 * 8, record.prev_timestamp);
@@ -317,7 +351,7 @@ impl<'a> SyscallRuntime<'a> for SplicingVM<'a> {
     }
 
     fn mw_slice(&mut self, addr: u64, len: usize) -> Vec<MemoryWriteRecord> {
-        let records = self.core_mut().mw_slice(addr, len);
+        let records = SyscallRuntime::mw_slice(self.core_mut(), addr, len);
 
         for (i, record) in records.iter().enumerate() {
             self.shape_checker.handle_mem_event(addr + i as u64 * 8, record.prev_timestamp);

@@ -18,7 +18,7 @@ use crate::{
             AluResult, BranchResult, CycleResult, EcallResult, JumpResult, LoadResult,
             MaybeImmediate, StoreResult, UTypeResult,
         },
-        syscall::{tracing_syscall_handler, SyscallRuntime},
+        syscall::SyscallRuntime,
         CoreVM,
     },
     ALUTypeRecord, ExecutionError, ExecutionRecord, ITypeRecord, Instruction, JTypeRecord,
@@ -37,7 +37,7 @@ pub struct TracingVM<'a> {
     pub record: ExecutionRecord,
 }
 
-impl<'a> TracingVM<'a> {
+impl TracingVM<'_> {
     /// Execute the program until it halts.
     pub fn execute(&mut self) -> Result<CycleResult, ExecutionError> {
         if self.core.is_done() {
@@ -165,12 +165,6 @@ impl<'a> TracingVM<'a> {
         }
     }
 
-    /// This object is used to read and write memory in a precompile.
-    #[must_use]
-    pub(crate) fn precompile_memory(&mut self) -> PrecompileMemory<'a, '_> {
-        PrecompileMemory::new(self)
-    }
-
     /// Get the current registers (immutable).
     #[must_use]
     pub fn registers(&self) -> &[MemoryRecord; 32] {
@@ -181,17 +175,6 @@ impl<'a> TracingVM<'a> {
     #[must_use]
     pub fn registers_mut(&mut self) -> &mut [MemoryRecord; 32] {
         self.core.registers_mut()
-    }
-
-    #[inline]
-    /// Add a precompile event to the execution record.
-    pub(crate) fn add_precompile_event(
-        &mut self,
-        syscall_code: SyscallCode,
-        syscall_event: SyscallEvent,
-        event: PrecompileEvent,
-    ) {
-        self.record.precompile_events.add_event(syscall_code, syscall_event, event);
     }
 }
 
@@ -411,8 +394,18 @@ impl<'a> TracingVM<'a> {
 
     /// Execute an ecall instruction and emit the events.
     fn execute_ecall(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
-        let EcallResult { a: _, a_record, b, b_record, c, c_record, code } =
-            CoreVM::<'a>::execute_ecall(self, instruction, tracing_syscall_handler)?;
+        let code = self.core.read_code();
+
+        // If the syscall is not retained, we need to track the local memory access separately.
+        //
+        // Note that the `precompile_local_memory_access` is set to `None` in the `postprocess_precompile` method.
+        if !self.core().is_retained_syscall(code) {
+            self.precompile_local_memory_access = Some(LocalMemoryAccess::default());
+        }
+
+        // Actually execute the ecall.
+        let EcallResult { a: _, a_record, b, b_record, c, c_record } =
+            CoreVM::<'a>::execute_ecall(self, instruction, code)?;
 
         self.local_memory_access.insert_record(Register::X11 as u64, c_record);
         self.local_memory_access.insert_record(Register::X10 as u64, b_record);
@@ -726,10 +719,42 @@ impl TracingVM<'_> {
         self.record.utype_events.push((event, record));
     }
 
-    /// Create a syscall event.
+    /// Emit a syscall event.
     #[allow(clippy::too_many_arguments)]
+    fn emit_syscall_event(
+        &mut self,
+        clk: u64,
+        syscall_code: SyscallCode,
+        arg1: u64,
+        arg2: u64,
+        record: &MemoryAccessRecord,
+        op_a_0: bool,
+        next_pc: u64,
+        exit_code: u32,
+        instruction: &Instruction,
+    ) {
+        let syscall_event =
+            self.syscall_event(clk, syscall_code, arg1, arg2, op_a_0, next_pc, exit_code);
+
+        let record = RTypeRecord::new(record, instruction);
+        self.record.syscall_events.push((syscall_event, record));
+    }
+}
+
+impl<'a> SyscallRuntime<'a> for TracingVM<'a> {
+    const TRACING: bool = true;
+
+    fn core(&self) -> &CoreVM<'a> {
+        &self.core
+    }
+
+    fn core_mut(&mut self) -> &mut CoreVM<'a> {
+        &mut self.core
+    }
+
+    /// Create a syscall event.
     #[inline]
-    pub(crate) fn syscall_event(
+    fn syscall_event(
         &self,
         clk: u64,
         syscall_code: SyscallCode,
@@ -757,35 +782,99 @@ impl TracingVM<'_> {
         }
     }
 
-    /// Emit a syscall event.
-    #[allow(clippy::too_many_arguments)]
-    fn emit_syscall_event(
+    fn add_precompile_event(
         &mut self,
-        clk: u64,
         syscall_code: SyscallCode,
-        arg1: u64,
-        arg2: u64,
-        record: &MemoryAccessRecord,
-        op_a_0: bool,
-        next_pc: u64,
-        exit_code: u32,
-        instruction: &Instruction,
+        syscall_event: SyscallEvent,
+        event: PrecompileEvent,
     ) {
-        let syscall_event =
-            self.syscall_event(clk, syscall_code, arg1, arg2, op_a_0, next_pc, exit_code);
-
-        let record = RTypeRecord::new(record, instruction);
-        self.record.syscall_events.push((syscall_event, record));
-    }
-}
-
-impl<'a> SyscallRuntime<'a> for TracingVM<'a> {
-    fn core(&self) -> &CoreVM<'a> {
-        &self.core
+        self.record.precompile_events.add_event(syscall_code, syscall_event, event);
     }
 
-    fn core_mut(&mut self) -> &mut CoreVM<'a> {
-        &mut self.core
+    fn record_mut(&mut self) -> &mut ExecutionRecord {
+        &mut self.record
+    }
+
+    fn rr(&mut self, register: usize) -> MemoryReadRecord {
+        let record = SyscallRuntime::rr(self.core_mut(), register);
+
+        if let Some(local_memory_access) = &mut self.precompile_local_memory_access {
+            local_memory_access.insert_record(register as u64, record);
+        } else {
+            self.local_memory_access.insert_record(register as u64, record);
+        }
+
+        record
+    }
+
+    fn mr(&mut self, addr: u64) -> MemoryReadRecord {
+        let record = SyscallRuntime::mr(self.core_mut(), addr);
+
+        if let Some(local_memory_access) = &mut self.precompile_local_memory_access {
+            local_memory_access.insert_record(addr, record);
+        } else {
+            self.local_memory_access.insert_record(addr, record);
+        }
+
+        record
+    }
+
+    fn mr_slice(&mut self, addr: u64, len: usize) -> Vec<MemoryReadRecord> {
+        let records = SyscallRuntime::mr_slice(self.core_mut(), addr, len);
+
+        for (i, record) in records.iter().enumerate() {
+            if let Some(local_memory_access) = &mut self.precompile_local_memory_access {
+                local_memory_access.insert_record(addr + i as u64 * 8, *record);
+            } else {
+                self.local_memory_access.insert_record(addr + i as u64 * 8, *record);
+            }
+        }
+
+        records
+    }
+
+    fn mw(&mut self, addr: u64) -> MemoryWriteRecord {
+        let record = SyscallRuntime::mw(self.core_mut(), addr);
+
+        if let Some(local_memory_access) = &mut self.precompile_local_memory_access {
+            local_memory_access.insert_record(addr, record);
+        } else {
+            self.local_memory_access.insert_record(addr, record);
+        }
+
+        record
+    }
+
+    fn mw_slice(&mut self, addr: u64, len: usize) -> Vec<MemoryWriteRecord> {
+        let records = SyscallRuntime::mw_slice(self.core_mut(), addr, len);
+
+        for (i, record) in records.iter().enumerate() {
+            if let Some(local_memory_access) = &mut self.precompile_local_memory_access {
+                local_memory_access.insert_record(addr + i as u64 * 8, *record);
+            } else {
+                self.local_memory_access.insert_record(addr + i as u64 * 8, *record);
+            }
+        }
+
+        records
+    }
+
+    fn postprocess_precompile(&mut self) -> Vec<MemoryLocalEvent> {
+        let mut precompile_local_memory_access = Vec::new();
+
+        if let Some(mut local_memory_access) =
+            std::mem::take(&mut self.precompile_local_memory_access)
+        {
+            for (addr, event) in local_memory_access.drain() {
+                if let Some(cpu_mem_access) = self.local_memory_access.remove(&addr) {
+                    self.record.cpu_local_memory_access.push(cpu_mem_access);
+                }
+
+                precompile_local_memory_access.push(event);
+            }
+        }
+
+        precompile_local_memory_access
     }
 }
 
@@ -832,170 +921,5 @@ impl Deref for LocalMemoryAccess {
 impl DerefMut for LocalMemoryAccess {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
-    }
-}
-
-pub(crate) struct PrecompileMemory<'a, 'b> {
-    inner: &'b mut TracingVM<'a>,
-}
-
-impl<'a, 'b> PrecompileMemory<'a, 'b> {
-    pub(crate) fn new(inner: &'b mut TracingVM<'a>) -> Self {
-        Self { inner }
-    }
-
-    pub(crate) fn rr(&mut self, reg_no: u64) -> MemoryReadRecord {
-        debug_assert!(reg_no < 32, "out of bounds register: {reg_no}");
-
-        let current_clk = self.inner.core.clk();
-        let registers = self.inner.core.registers_mut();
-        let old_record = registers[reg_no as usize];
-        let new_record = MemoryRecord { timestamp: current_clk, value: old_record.value };
-        registers[reg_no as usize] = new_record;
-
-        let record = MemoryReadRecord {
-            value: old_record.value,
-            timestamp: self.inner.core.clk(),
-            prev_timestamp: old_record.timestamp,
-            prev_page_prot_record: None,
-        };
-
-        if let Some(local_memory_access) = &mut self.inner.precompile_local_memory_access {
-            local_memory_access.insert_record(reg_no, record);
-        } else {
-            self.inner.local_memory_access.insert_record(reg_no, record);
-        }
-
-        record
-    }
-
-    #[allow(unused)]
-    pub(crate) fn mr(&mut self, addr: u64) -> MemoryReadRecord {
-        let mem_reads = self.inner.core.mem_reads();
-
-        let record = match mem_reads.next() {
-            Some(value) => MemoryReadRecord {
-                value: value.value,
-                timestamp: self.inner.core().clk(),
-                prev_timestamp: value.clk,
-                prev_page_prot_record: None,
-            },
-            None => unreachable!("Precompile memory read out of bounds"),
-        };
-
-        if let Some(local_memory_access) = &mut self.inner.precompile_local_memory_access {
-            local_memory_access.insert_record(addr, record);
-        } else {
-            self.inner.local_memory_access.insert_record(addr, record);
-        }
-
-        record
-    }
-
-    pub(crate) fn mw(&mut self, addr: u64) -> MemoryWriteRecord {
-        let mem_writes = self.inner.core.mem_reads();
-
-        let old = mem_writes.next().expect("Precompile memory read out of bounds");
-        let new = mem_writes.next().expect("Precompile memory read out of bounds");
-
-        let record = MemoryWriteRecord {
-            prev_timestamp: old.clk,
-            prev_value: old.value,
-            timestamp: self.inner.core().clk(),
-            value: new.value,
-            prev_page_prot_record: None,
-        };
-
-        if let Some(local_memory_access) = &mut self.inner.precompile_local_memory_access {
-            local_memory_access.insert_record(addr, record);
-        } else {
-            self.inner.local_memory_access.insert_record(addr, record);
-        }
-
-        record
-    }
-
-    pub(crate) fn mr_slice_unsafe(&mut self, len: usize) -> Vec<u64> {
-        let mem_reads = self.inner.core.mem_reads();
-
-        mem_reads.take(len).map(|value| value.value).collect()
-    }
-
-    pub(crate) fn mr_slice(&mut self, addr: u64, len: usize) -> Vec<MemoryReadRecord> {
-        let current_clk = self.inner.core.clk();
-        let mem_reads = self.inner.core.mem_reads();
-
-        let records: Vec<MemoryReadRecord> = mem_reads
-            .take(len)
-            .map(|value| MemoryReadRecord {
-                value: value.value,
-                timestamp: current_clk,
-                prev_timestamp: value.clk,
-                prev_page_prot_record: None,
-            })
-            .collect();
-
-        for (i, record) in records.iter().enumerate() {
-            if let Some(local_memory_access) = &mut self.inner.precompile_local_memory_access {
-                local_memory_access.insert_record(addr + i as u64 * 8, *record);
-            } else {
-                self.inner.local_memory_access.insert_record(addr + i as u64 * 8, *record);
-            }
-        }
-
-        records
-    }
-
-    pub(crate) fn mw_slice(&mut self, addr: u64, len: usize) -> Vec<MemoryWriteRecord> {
-        let mem_writes = self.inner.core.mem_reads();
-        let raw_records: Vec<_> = mem_writes.take(len * 2).collect();
-        let records: Vec<MemoryWriteRecord> = raw_records
-            .chunks(2)
-            .map(|chunk| {
-                #[allow(clippy::manual_let_else)]
-                let (old, new) = match (chunk.first(), chunk.last()) {
-                    (Some(old), Some(new)) => (old, new),
-                    _ => unreachable!("Precompile memory write out of bounds"),
-                };
-
-                MemoryWriteRecord {
-                    prev_timestamp: old.clk,
-                    prev_value: old.value,
-                    timestamp: new.clk,
-                    value: new.value,
-                    prev_page_prot_record: None,
-                }
-            })
-            .collect();
-
-        for (i, record) in records.iter().enumerate() {
-            if let Some(local_memory_access) = &mut self.inner.precompile_local_memory_access {
-                local_memory_access.insert_record(addr + i as u64 * 8, *record);
-            } else {
-                self.inner.local_memory_access.insert_record(addr + i as u64 * 8, *record);
-            }
-        }
-
-        records
-    }
-
-    pub(crate) fn postprocess(&mut self) -> Vec<MemoryLocalEvent> {
-        let mut precompile_local_memory_access = Vec::new();
-
-        if let Some(local_memory_access) = &mut self.inner.precompile_local_memory_access {
-            for (addr, event) in local_memory_access.drain() {
-                if let Some(cpu_mem_access) = self.inner.local_memory_access.remove(&addr) {
-                    self.inner.record.cpu_local_memory_access.push(cpu_mem_access);
-                }
-
-                precompile_local_memory_access.push(event);
-            }
-        }
-
-        precompile_local_memory_access
-    }
-
-    pub(crate) fn increment_clk(&mut self, amount: u64) {
-        self.inner.core.set_clk(self.inner.core.clk() + amount);
     }
 }

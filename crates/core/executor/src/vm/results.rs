@@ -1,6 +1,5 @@
 use crate::{
     events::{MemoryReadRecord, MemoryWriteRecord},
-    syscalls::SyscallCode,
     Register,
 };
 
@@ -86,7 +85,6 @@ pub struct EcallResult {
     pub b_record: MemoryReadRecord,
     pub c: u64,
     pub c_record: MemoryReadRecord,
-    pub code: SyscallCode,
 }
 
 /// The result of a cycle.

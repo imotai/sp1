@@ -196,7 +196,7 @@ impl MinimalTrace for TraceChunkRaw {
 
 pub struct MemReads<'a> {
     inner: *const MemValue,
-    len: usize,
+    end: *const MemValue,
     /// Capture the lifetime of the buffer for saftey reasons.
     _phantom: PhantomData<&'a ()>,
 }
@@ -207,7 +207,9 @@ impl<'a> MemReads<'a> {
     /// - The underlying memory is valid and contains valid `MemValue`s.
     /// - The length is the number of `MemValue`s in the underlying memory.
     pub(crate) unsafe fn new(inner: *const MemValue, len: usize) -> Self {
-        Self { inner, len, _phantom: PhantomData }
+        debug_assert!(inner.is_aligned(), "MemReads ptr is not aligned");
+
+        Self { inner, end: inner.add(len), _phantom: PhantomData }
     }
 
     /// Advance the pointer by `n` elements.
@@ -216,24 +218,27 @@ impl<'a> MemReads<'a> {
     ///
     /// Panics if `n` is greater than the purported length of the underlying buffer.
     pub fn advance(&mut self, n: usize) {
-        if n > self.len {
-            panic!("Cannot advance by more than the length of the slice");
-        }
+        unsafe {
+            let advanced = self.inner.add(n);
 
-        self.inner = unsafe { self.inner.add(n) };
-        self.len -= n;
+            if advanced > self.end {
+                panic!("Cannot advance by more than the length of the slice");
+            }
+
+            self.inner = advanced;
+        }
     }
 
     /// The remaining length of the slice from our current position.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.len
+        unsafe { self.end.offset_from_unsigned(self.inner) }
     }
 
     /// Check if the iterator is empty.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.len == 0
+        self.inner == self.end
     }
 }
 
@@ -241,11 +246,10 @@ impl<'a> Iterator for MemReads<'a> {
     type Item = MemValue;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.len == 0 {
+        if self.inner == self.end {
             None
         } else {
-            self.len -= 1;
-            let value = unsafe { std::ptr::read_unaligned(self.inner) };
+            let value = unsafe { std::ptr::read(self.inner) };
             self.inner = unsafe { self.inner.add(1) };
 
             Some(value)

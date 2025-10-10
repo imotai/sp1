@@ -1,8 +1,9 @@
 use crate::{
-    events::{MemoryReadRecord, MemoryWriteRecord},
+    events::{
+        MemoryLocalEvent, MemoryReadRecord, MemoryWriteRecord, PrecompileEvent, SyscallEvent,
+    },
     syscalls::SyscallCode,
-    tracing::LocalMemoryAccess,
-    TracingVM,
+    ExecutionRecord,
 };
 use sp1_curves::{
     edwards::ed25519::Ed25519,
@@ -27,9 +28,92 @@ mod uint256;
 mod uint256_ops;
 
 pub trait SyscallRuntime<'a> {
+    const TRACING: bool;
+
     fn core(&self) -> &CoreVM<'a>;
 
     fn core_mut(&mut self) -> &mut CoreVM<'a>;
+
+    #[allow(clippy::too_many_arguments)]
+    fn syscall_event(
+        &self,
+        _clk: u64,
+        _syscall_code: SyscallCode,
+        _arg1: u64,
+        _arg2: u64,
+        _op_a_0: bool,
+        _next_pc: u64,
+        _exit_code: u32,
+    ) -> SyscallEvent {
+        unreachable!("SyscallRuntime::syscall_event is not intended to be called by default.");
+    }
+
+    fn add_precompile_event(
+        &mut self,
+        _syscall_code: SyscallCode,
+        _syscall_event: SyscallEvent,
+        _event: PrecompileEvent,
+    ) {
+        unreachable!(
+            "SyscallRuntime::add_precompile_event is not intended to be called by default."
+        );
+    }
+
+    /// Increment the clock by 1, used for precompiles that access memory,
+    /// that potentially overlap.
+    fn increment_clk(&mut self) {
+        let clk = self.core_mut().clk();
+
+        self.core_mut().set_clk(clk + 1);
+    }
+
+    fn record_mut(&mut self) -> &mut ExecutionRecord {
+        unreachable!("SyscallRuntime::record_mut is not intended to be called by default.");
+    }
+
+    /// Postprocess the precompile memory access.
+    fn postprocess_precompile(&mut self) -> Vec<MemoryLocalEvent> {
+        unreachable!(
+            "SyscallRuntime::postprocess_precompile is not intended to be called by default."
+        );
+    }
+
+    fn mr(&mut self, addr: u64) -> MemoryReadRecord {
+        let core = self.core_mut();
+        let clk = core.clk();
+
+        #[allow(clippy::manual_let_else)]
+        let record = match core.mem_reads.next() {
+            Some(next) => next,
+            None => {
+                unreachable!("memory reads unexpectdely exhausted at {addr}, clk {}", clk);
+            }
+        };
+
+        MemoryReadRecord {
+            value: record.value,
+            timestamp: clk,
+            prev_timestamp: record.clk,
+            prev_page_prot_record: None,
+        }
+    }
+
+    fn mw(&mut self, _addr: u64) -> MemoryWriteRecord {
+        let mem_writes = self.core_mut().mem_reads();
+
+        let old = mem_writes.next().expect("Precompile memory read out of bounds");
+        let new = mem_writes.next().expect("Precompile memory read out of bounds");
+
+        let record = MemoryWriteRecord {
+            prev_timestamp: old.clk,
+            prev_value: old.value,
+            timestamp: self.core().clk(),
+            value: new.value,
+            prev_page_prot_record: None,
+        };
+
+        record
+    }
 
     fn mr_slice(&mut self, addr: u64, len: usize) -> Vec<MemoryReadRecord> {
         self.core_mut().mr_slice(addr, len)
@@ -39,16 +123,18 @@ pub trait SyscallRuntime<'a> {
         self.core_mut().mw_slice(addr, len)
     }
 
-    fn mr_slice_unsafe(&mut self, addr: u64, len: usize) -> Vec<MemoryReadRecord> {
-        self.core_mut().mr_slice_unsafe(addr, len)
+    fn mr_slice_unsafe(&mut self, len: usize) -> Vec<u64> {
+        self.core_mut().mr_slice_unsafe(len)
     }
 
-    fn rr_precompile(&mut self, register: usize) -> MemoryReadRecord {
+    fn rr(&mut self, register: usize) -> MemoryReadRecord {
         self.core_mut().rr_precompile(register)
     }
 }
 
 impl<'a> SyscallRuntime<'a> for CoreVM<'a> {
+    const TRACING: bool = false;
+
     fn core(&self) -> &CoreVM<'a> {
         self
     }
@@ -58,114 +144,15 @@ impl<'a> SyscallRuntime<'a> for CoreVM<'a> {
     }
 }
 
-/// The default syscall handler for the core VM.
-///
-/// Note that mostly syscalls actually do nothing in the core VM.
-pub(crate) fn core_syscall_handler<'a, RT: SyscallRuntime<'a>>(
+pub(crate) fn sp1_ecall_handler<'a, RT: SyscallRuntime<'a>>(
     rt: &mut RT,
     code: SyscallCode,
     args1: u64,
     args2: u64,
 ) -> Option<u64> {
-    match code {
-        SyscallCode::HINT_LEN => hint::hint_len_syscall(rt, code, args1, args2),
-        SyscallCode::HALT => halt::halt_syscall(rt, code, args1, args2),
-        SyscallCode::SECP256K1_ADD => {
-            precompiles::weirstrass::core_weirstrass_add::<RT, Secp256k1>(rt, code, args1, args2)
-        }
-        SyscallCode::SECP256K1_DOUBLE => {
-            precompiles::weirstrass::core_weirstrass_double::<RT, Secp256k1>(rt, code, args1, args2)
-        }
-        SyscallCode::BLS12381_ADD => {
-            precompiles::weirstrass::core_weirstrass_add::<RT, Bls12381>(rt, code, args1, args2)
-        }
-        SyscallCode::BLS12381_DOUBLE => {
-            precompiles::weirstrass::core_weirstrass_double::<RT, Bls12381>(rt, code, args1, args2)
-        }
-        SyscallCode::BN254_ADD => {
-            precompiles::weirstrass::core_weirstrass_add::<RT, Bn254>(rt, code, args1, args2)
-        }
-        SyscallCode::BN254_DOUBLE => {
-            precompiles::weirstrass::core_weirstrass_double::<RT, Bn254>(rt, code, args1, args2)
-        }
-        SyscallCode::SECP256R1_ADD => {
-            precompiles::weirstrass::core_weirstrass_add::<RT, Secp256r1>(rt, code, args1, args2)
-        }
-        SyscallCode::SECP256R1_DOUBLE => {
-            precompiles::weirstrass::core_weirstrass_double::<RT, Secp256r1>(rt, code, args1, args2)
-        }
-        // Edwards curve operations
-        SyscallCode::ED_ADD => {
-            precompiles::edwards::core_edwards_add::<RT, Ed25519>(rt, code, args1, args2)
-        }
-        SyscallCode::ED_DECOMPRESS => {
-            precompiles::edwards::core_edwards_decompress::<RT>(rt, code, args1, args2)
-        }
-        SyscallCode::UINT256_MUL => uint256::core_uint256_mul(rt, code, args1, args2),
-        SyscallCode::UINT256_MUL_CARRY | SyscallCode::UINT256_ADD_CARRY => {
-            uint256_ops::core_uint256_ops(rt, code, args1, args2)
-        }
-        SyscallCode::U256XU2048_MUL => u256x2048_mul::core_u256xu2048_mul(rt, code, args1, args2),
-        SyscallCode::SHA_COMPRESS => {
-            precompiles::sha256::core_sha256_compress(rt, code, args1, args2)
-        }
-        SyscallCode::SHA_EXTEND => precompiles::sha256::core_sha256_extend(rt, code, args1, args2),
-        SyscallCode::KECCAK_PERMUTE => {
-            precompiles::keccak256::core_keccak256_permute(rt, code, args1, args2)
-        }
-        SyscallCode::BLS12381_FP2_ADD | SyscallCode::BLS12381_FP2_SUB => {
-            precompiles::fptower::core_fp2_add::<RT, Bls12381BaseField>(rt, code, args1, args2)
-        }
-        SyscallCode::BN254_FP2_ADD | SyscallCode::BN254_FP2_SUB => {
-            precompiles::fptower::core_fp2_add::<RT, Bn254BaseField>(rt, code, args1, args2)
-        }
-        SyscallCode::BLS12381_FP2_MUL => {
-            precompiles::fptower::core_fp2_mul::<RT, Bls12381BaseField>(rt, code, args1, args2)
-        }
-        SyscallCode::BN254_FP2_MUL => {
-            precompiles::fptower::core_fp2_mul::<RT, Bn254BaseField>(rt, code, args1, args2)
-        }
-        SyscallCode::BLS12381_FP_ADD
-        | SyscallCode::BLS12381_FP_SUB
-        | SyscallCode::BLS12381_FP_MUL => {
-            precompiles::fptower::core_fp_op::<RT, Bls12381BaseField>(rt, code, args1, args2)
-        }
-        SyscallCode::BN254_FP_ADD | SyscallCode::BN254_FP_SUB | SyscallCode::BN254_FP_MUL => {
-            precompiles::fptower::core_fp_op::<RT, Bn254BaseField>(rt, code, args1, args2)
-        }
-        SyscallCode::POSEIDON2 => poseidon2::core_poseidon2(rt, code, args1, args2),
-        SyscallCode::WRITE
-        | SyscallCode::VERIFY_SP1_PROOF
-        | SyscallCode::COMMIT
-        | SyscallCode::COMMIT_DEFERRED_PROOFS
-        | SyscallCode::HINT_READ
-        | SyscallCode::ENTER_UNCONSTRAINED
-        | SyscallCode::EXIT_UNCONSTRAINED => None,
-        code @ (SyscallCode::MPROTECT
-        | SyscallCode::SECP256K1_DECOMPRESS
-        | SyscallCode::BLS12381_DECOMPRESS
-        | SyscallCode::SECP256R1_DECOMPRESS) => {
-            unreachable!("{code} is not yet supported by the native executor.")
-        }
-    }
-}
-
-pub(crate) fn tracing_syscall_handler(
-    rt: &mut TracingVM<'_>,
-    code: SyscallCode,
-    args1: u64,
-    args2: u64,
-) -> Option<u64> {
-    // If the syscall is not retained, we need to track the local memory access separately.
-    if rt.core().is_retained_syscall(code) {
-        rt.precompile_local_memory_access = None;
-    } else {
-        rt.precompile_local_memory_access = Some(LocalMemoryAccess::default());
-    }
-
     // Precompiles may directly modify the clock, so we need to save the current clock
     // and reset it after the syscall.
-    let clk = rt.core.clk();
+    let clk = rt.core().clk();
 
     #[allow(clippy::match_same_arms)]
     let ret = match code {
@@ -179,73 +166,67 @@ pub(crate) fn tracing_syscall_handler(
         }
         // Weierstrass curve operations
         SyscallCode::SECP256K1_ADD => {
-            precompiles::weirstrass::tracing_weirstrass_add::<Secp256k1>(rt, code, args1, args2)
+            precompiles::weirstrass::weirstrass_add::<_, Secp256k1>(rt, code, args1, args2)
         }
         SyscallCode::SECP256K1_DOUBLE => {
-            precompiles::weirstrass::tracing_weirstrass_double::<Secp256k1>(rt, code, args1, args2)
+            precompiles::weirstrass::weirstrass_double::<_, Secp256k1>(rt, code, args1, args2)
         }
         SyscallCode::BLS12381_ADD => {
-            precompiles::weirstrass::tracing_weirstrass_add::<Bls12381>(rt, code, args1, args2)
+            precompiles::weirstrass::weirstrass_add::<_, Bls12381>(rt, code, args1, args2)
         }
         SyscallCode::BLS12381_DOUBLE => {
-            precompiles::weirstrass::tracing_weirstrass_double::<Bls12381>(rt, code, args1, args2)
+            precompiles::weirstrass::weirstrass_double::<_, Bls12381>(rt, code, args1, args2)
         }
         SyscallCode::BN254_ADD => {
-            precompiles::weirstrass::tracing_weirstrass_add::<Bn254>(rt, code, args1, args2)
+            precompiles::weirstrass::weirstrass_add::<_, Bn254>(rt, code, args1, args2)
         }
         SyscallCode::BN254_DOUBLE => {
-            precompiles::weirstrass::tracing_weirstrass_double::<Bn254>(rt, code, args1, args2)
+            precompiles::weirstrass::weirstrass_double::<_, Bn254>(rt, code, args1, args2)
         }
         SyscallCode::SECP256R1_ADD => {
-            precompiles::weirstrass::tracing_weirstrass_add::<Secp256r1>(rt, code, args1, args2)
+            precompiles::weirstrass::weirstrass_add::<_, Secp256r1>(rt, code, args1, args2)
         }
         SyscallCode::SECP256R1_DOUBLE => {
-            precompiles::weirstrass::tracing_weirstrass_double::<Secp256r1>(rt, code, args1, args2)
+            precompiles::weirstrass::weirstrass_double::<_, Secp256r1>(rt, code, args1, args2)
         }
         // Edwards curve operations
         SyscallCode::ED_ADD => {
-            precompiles::edwards::tracing_edwards_add::<Ed25519>(rt, code, args1, args2)
+            precompiles::edwards::edwards_add::<RT, Ed25519>(rt, code, args1, args2)
         }
         SyscallCode::ED_DECOMPRESS => {
-            precompiles::edwards::tracing_edwards_decompress(rt, code, args1, args2)
+            precompiles::edwards::edwards_decompress(rt, code, args1, args2)
         }
-        SyscallCode::UINT256_MUL => uint256::tracing_uint256_mul(rt, code, args1, args2),
+        SyscallCode::UINT256_MUL => uint256::uint256_mul(rt, code, args1, args2),
         SyscallCode::UINT256_MUL_CARRY | SyscallCode::UINT256_ADD_CARRY => {
-            uint256_ops::tracing_uint256_ops(rt, code, args1, args2)
+            uint256_ops::uint256_ops(rt, code, args1, args2)
         }
-        SyscallCode::U256XU2048_MUL => {
-            u256x2048_mul::tracing_u256xu2048_mul(rt, code, args1, args2)
-        }
-        SyscallCode::SHA_COMPRESS => {
-            precompiles::sha256::tracing_sha256_compress(rt, code, args1, args2)
-        }
-        SyscallCode::SHA_EXTEND => {
-            precompiles::sha256::tracing_sha256_extend(rt, code, args1, args2)
-        }
+        SyscallCode::U256XU2048_MUL => u256x2048_mul::u256xu2048_mul(rt, code, args1, args2),
+        SyscallCode::SHA_COMPRESS => precompiles::sha256::sha256_compress(rt, code, args1, args2),
+        SyscallCode::SHA_EXTEND => precompiles::sha256::sha256_extend(rt, code, args1, args2),
         SyscallCode::KECCAK_PERMUTE => {
-            precompiles::keccak256::tracing_keccak256_permute(rt, code, args1, args2)
+            precompiles::keccak256::keccak256_permute(rt, code, args1, args2)
         }
         SyscallCode::BLS12381_FP2_ADD | SyscallCode::BLS12381_FP2_SUB => {
-            precompiles::fptower::tracing_fp2_add::<Bls12381BaseField>(rt, code, args1, args2)
+            precompiles::fptower::fp2_add::<_, Bls12381BaseField>(rt, code, args1, args2)
         }
         SyscallCode::BN254_FP2_ADD | SyscallCode::BN254_FP2_SUB => {
-            precompiles::fptower::tracing_fp2_add::<Bn254BaseField>(rt, code, args1, args2)
+            precompiles::fptower::fp2_add::<_, Bn254BaseField>(rt, code, args1, args2)
         }
         SyscallCode::BLS12381_FP2_MUL => {
-            precompiles::fptower::tracing_fp2_mul::<Bls12381BaseField>(rt, code, args1, args2)
+            precompiles::fptower::fp2_mul::<_, Bls12381BaseField>(rt, code, args1, args2)
         }
         SyscallCode::BN254_FP2_MUL => {
-            precompiles::fptower::tracing_fp2_mul::<Bn254BaseField>(rt, code, args1, args2)
+            precompiles::fptower::fp2_mul::<_, Bn254BaseField>(rt, code, args1, args2)
         }
         SyscallCode::BLS12381_FP_ADD
         | SyscallCode::BLS12381_FP_SUB
         | SyscallCode::BLS12381_FP_MUL => {
-            precompiles::fptower::tracing_fp_op::<Bls12381BaseField>(rt, code, args1, args2)
+            precompiles::fptower::fp_op::<_, Bls12381BaseField>(rt, code, args1, args2)
         }
         SyscallCode::BN254_FP_ADD | SyscallCode::BN254_FP_SUB | SyscallCode::BN254_FP_MUL => {
-            precompiles::fptower::tracing_fp_op::<Bn254BaseField>(rt, code, args1, args2)
+            precompiles::fptower::fp_op::<_, Bn254BaseField>(rt, code, args1, args2)
         }
-        SyscallCode::POSEIDON2 => poseidon2::tracing_poseidon2(rt, code, args1, args2),
+        SyscallCode::POSEIDON2 => poseidon2::poseidon2(rt, code, args1, args2),
         SyscallCode::VERIFY_SP1_PROOF
         | SyscallCode::MPROTECT
         | SyscallCode::WRITE
@@ -259,7 +240,7 @@ pub(crate) fn tracing_syscall_handler(
         }
     };
 
-    rt.core.set_clk(clk);
+    rt.core_mut().set_clk(clk);
 
     ret
 }

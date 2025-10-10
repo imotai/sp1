@@ -43,7 +43,8 @@ impl ShapeChecker {
             heights: EnumMap::default(),
             sharding_threshold: opts.sharding_threshold,
             costs,
-            local_mem_counts: 0,
+            // Assume that all registers will be touched in each shard.
+            local_mem_counts: 32,
             is_last_read_external: CompressedMemory::new(),
         }
     }
@@ -51,7 +52,7 @@ impl ShapeChecker {
     #[inline]
     pub fn handle_mem_event(&mut self, addr: u64, clk: u64) {
         // Round down to the nearest 8-byte aligned address.
-        let addr = if addr > 31 { addr & !0b111 } else { addr };
+        let addr = addr & !0b111;
 
         let is_external = self.syscall_sent;
         let is_first_read_this_shard = self.shard_start_clk > clk;
@@ -115,7 +116,6 @@ impl ShapeChecker {
     /// # Returns
     ///
     /// Whether the shard limit has been reached.
-    #[inline]
     #[allow(clippy::fn_params_excessive_bools)]
     pub fn handle_instruction(
         &mut self,
@@ -138,21 +138,10 @@ impl ShapeChecker {
         self.max_height = self.max_height.max(self.heights[riscv_air_id]);
         self.trace_area += self.costs[riscv_air_id];
 
-        // Increment by if bump_clk_high is needed
-        let bump_clk_high_num_events = 32 * bump_clk_high as u64;
-        self.trace_area += bump_clk_high_num_events * self.costs[RiscvAirId::MemoryBump];
-        self.heights[RiscvAirId::MemoryBump] += bump_clk_high_num_events;
-        self.max_height = self.max_height.max(self.heights[RiscvAirId::MemoryBump]);
-
         // Increment for each touched address in memory local
         self.trace_area += touched_addresses * self.costs[RiscvAirId::MemoryLocal];
         self.heights[RiscvAirId::MemoryLocal] += touched_addresses;
         self.max_height = self.max_height.max(self.heights[RiscvAirId::MemoryLocal]);
-
-        // Increment if this cycle induced a state bump.
-        self.trace_area += self.costs[RiscvAirId::StateBump] * needs_state_bump as u64;
-        self.heights[RiscvAirId::StateBump] += needs_state_bump as u64;
-        self.max_height = self.max_height.max(self.heights[RiscvAirId::StateBump]);
 
         // Incrmenet for all the global interactions
         self.trace_area +=
@@ -160,13 +149,31 @@ impl ShapeChecker {
         self.heights[RiscvAirId::Global] += 2 * touched_addresses + syscall_sent as u64;
         self.max_height = self.max_height.max(self.heights[RiscvAirId::Global]);
 
-        // Increment if the syscall is retained
-        self.trace_area += self.costs[RiscvAirId::SyscallCore] * syscall_sent as u64;
-        self.heights[RiscvAirId::SyscallCore] += syscall_sent as u64;
-        self.max_height = self.max_height.max(self.heights[RiscvAirId::SyscallCore]);
+        // Increment by if bump_clk_high is needed
+        if bump_clk_high {
+            let bump_clk_high_num_events = 32;
+            self.trace_area += bump_clk_high_num_events * self.costs[RiscvAirId::MemoryBump];
+            self.heights[RiscvAirId::MemoryBump] += bump_clk_high_num_events;
+            self.max_height = self.max_height.max(self.heights[RiscvAirId::MemoryBump]);
+        }
+
+        // Increment if this cycle induced a state bump.
+        if needs_state_bump {
+            self.trace_area += self.costs[RiscvAirId::StateBump];
+            self.heights[RiscvAirId::StateBump] += 1;
+            self.max_height = self.max_height.max(self.heights[RiscvAirId::StateBump]);
+        }
+
+        if syscall_sent {
+            // Increment if the syscall is retained
+            self.trace_area += self.costs[RiscvAirId::SyscallCore];
+            self.heights[RiscvAirId::SyscallCore] += 1;
+            self.max_height = self.max_height.max(self.heights[RiscvAirId::SyscallCore]);
+        }
     }
 }
 
+#[inline]
 pub fn riscv_air_id_from_opcode(opcode: Opcode) -> RiscvAirId {
     match opcode {
         Opcode::ADD => RiscvAirId::Add,

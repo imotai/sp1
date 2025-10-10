@@ -320,9 +320,14 @@ impl JitFunction {
 
         let as_fn = std::mem::transmute::<*const u8, fn(*mut JitContext)>(self.code.as_ptr());
 
+        // Ensure the pointer is aligned to the alignment of the MemValue.
         let mut trace_buf =
-            MmapMut::map_anon(self.trace_buf_size).expect("Failed to create trace buf mmap");
+            MmapMut::map_anon(self.trace_buf_size + std::mem::align_of::<MemValue>())
+                .expect("Failed to create trace buf mmap");
+        let trace_buf_offset = trace_buf.as_ptr().align_offset(std::mem::align_of::<MemValue>());
+        let trace_buf_ptr = trace_buf.as_mut_ptr().add(trace_buf_offset);
 
+        // Ensure the memory pointer is aligned to the alignment of the u64.
         let align_offset = self.memory.as_ptr().align_offset(std::mem::align_of::<u64>());
         let mem_ptr = self.memory.as_mut_ptr().add(align_offset);
         let tracing = self.trace_buf_size > 0;
@@ -338,7 +343,7 @@ impl JitFunction {
         let mut ctx = JitContext {
             jump_table: NonNull::new_unchecked(self.jump_table.as_mut_ptr()),
             memory: NonNull::new_unchecked(mem_ptr),
-            trace_buf: NonNull::new_unchecked(trace_buf.as_mut_ptr()),
+            trace_buf: NonNull::new_unchecked(trace_buf_ptr),
             input_buffer: NonNull::new_unchecked(&mut self.input_buffer),
             hints: NonNull::new_unchecked(&mut self.hints),
             maybe_unconstrained: None,

@@ -58,11 +58,11 @@ impl MinimalExecutor {
         touched_addresses.extend(hint_addrs);
 
         // Finalize the memory addresses that were touched during execution.
-        for addr in touched_addresses {
-            let entry = self.get_memory_value(addr);
+        for addr in &touched_addresses {
+            let entry = self.get_memory_value(*addr);
 
             record.global_memory_finalize_events.push(MemoryInitializeFinalizeEvent::finalize(
-                addr,
+                *addr,
                 entry.value,
                 entry.clk,
             ));

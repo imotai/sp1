@@ -6,7 +6,7 @@ use crate::{
             AluResult, BranchResult, CycleResult, EcallResult, JumpResult, LoadResult,
             MaybeImmediate, StoreResult, UTypeResult,
         },
-        syscall::SyscallRuntime,
+        syscall::{sp1_ecall_handler, SyscallRuntime},
     },
     ExecutionError, Instruction, Opcode, Program, Register, RetainedEventsPreset, SP1CoreOpts,
     HALT_PC, M64,
@@ -495,28 +495,19 @@ impl<'a> CoreVM<'a> {
     /// # WARNING:
     ///
     /// Its up to the syscall handler to update the shape checker abouut sent/internal ecalls.
-    pub fn execute_ecall<RT, F>(
+    pub fn execute_ecall<RT>(
         rt: &mut RT,
         instruction: &Instruction,
-        f: F,
+        code: SyscallCode,
     ) -> Result<EcallResult, ExecutionError>
     where
         RT: SyscallRuntime<'a>,
-        F: Fn(&mut RT, SyscallCode, u64, u64) -> Option<u64>,
     {
         if !instruction.is_ecall_instruction() {
             unreachable!("Invalid opcode for `execute_ecall`: {:?}", instruction.opcode);
         }
 
         let core = rt.core_mut();
-
-        // We peek at register x5 to get the syscall id. The reason we don't `self.rr` this
-        // register is that we write to it later.
-        let t0 = Register::X5;
-
-        // Peek at the register, we dont care about the read here.
-        let syscall_id = core.registers[t0 as usize].value;
-        let code = SyscallCode::from_u32(syscall_id as u32);
 
         let c_record = core.rr(Register::X11, MemoryAccessPosition::C);
         let b_record = core.rr(Register::X10, MemoryAccessPosition::B);
@@ -530,18 +521,33 @@ impl<'a> CoreVM<'a> {
         let a = if code == SyscallCode::ENTER_UNCONSTRAINED {
             0
         } else {
-            f(rt, code, b, c).unwrap_or(syscall_id)
+            sp1_ecall_handler(rt, code, b, c).unwrap_or(code as u64)
         };
 
         // Bad borrow checker!
         let core = rt.core_mut();
 
-        let a_record = core.rw(t0, a);
+        // Read the code from the x5 register.
+        let a_record = core.rw(Register::X5, a);
 
         // Add 256 to the next clock to account for the ecall.
         core.set_next_clk(core.next_clk() + 256);
 
-        Ok(EcallResult { a, a_record, b, b_record, c, c_record, code })
+        Ok(EcallResult { a, a_record, b, b_record, c, c_record })
+    }
+
+    /// Peek to get the code from the x5 register.
+    #[must_use]
+    pub fn read_code(&self) -> SyscallCode {
+        // We peek at register x5 to get the syscall id. The reason we don't `self.rr` this
+        // register is that we write to it later.
+        let t0 = Register::X5;
+
+        // Peek at the register, we dont care about the read here.
+        let syscall_id = self.registers[t0 as usize].value;
+
+        // Convert the raw value to a SyscallCode.
+        SyscallCode::from_u32(syscall_id as u32)
     }
 }
 
@@ -566,21 +572,10 @@ impl CoreVM<'_> {
     }
 
     #[inline]
-    pub(crate) fn mr_slice_unsafe(&mut self, _addr: u64, len: usize) -> Vec<MemoryReadRecord> {
-        let current_clk = self.clk();
+    pub(crate) fn mr_slice_unsafe(&mut self, len: usize) -> Vec<u64> {
         let mem_reads = self.mem_reads();
 
-        let records: Vec<MemoryReadRecord> = mem_reads
-            .take(len)
-            .map(|value| MemoryReadRecord {
-                value: value.value,
-                timestamp: current_clk,
-                prev_timestamp: value.clk,
-                prev_page_prot_record: None,
-            })
-            .collect();
-
-        records
+        mem_reads.take(len).map(|value| value.value).collect()
     }
 
     #[inline]
@@ -648,14 +643,6 @@ impl CoreVM<'_> {
 
         self.registers[register as usize] = new_record;
 
-        // if SHAPE_CHECKING {
-        //     self.shape_checker.handle_mem_event(register as u64, prev_record.timestamp);
-        // }
-
-        // if REPORT_GENERATING {
-        //     self.gas_calculator.handle_mem_event(register as u64, prev_record.timestamp);
-        // }
-
         MemoryReadRecord {
             value: new_record.value,
             timestamp: new_record.timestamp,
@@ -673,14 +660,6 @@ impl CoreVM<'_> {
         let new_record = MemoryRecord { timestamp: self.clk(), value: prev_record.value };
 
         self.registers[register] = new_record;
-
-        // if SHAPE_CHECKING {
-        //     self.shape_checker.handle_mem_event(register as u64, prev_record.timestamp);
-        // }
-
-        // if REPORT_GENERATING {
-        //     self.gas_calculator.handle_mem_event(register as u64, prev_record.timestamp);
-        // }
 
         MemoryReadRecord {
             value: new_record.value,
