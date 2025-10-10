@@ -61,23 +61,26 @@ pub struct InfoBuffer<B: Backend = TaskScope> {
     pub data: Buffer<u32, B>,
 }
 
-/// We allow dead code here because this is just a wrapper for a c struct.
-#[allow(dead_code)]
+/// The raw pointer equivalent of [`DenseBuffer`] for use in cuda kernels.
+#[repr(C)]
 pub struct DenseBufferRaw<F> {
     data: *const F,
 }
 
-#[allow(dead_code)]
+/// The raw pointer equivalent of [`InfoBuffer`] for use in cuda kernels.
+#[repr(C)]
 pub struct InfoBufferRaw {
     data: *const u32,
 }
 
-#[allow(dead_code)]
+/// The mutable raw pointer equivalent of [`DenseBuffer`] for use in cuda kernels.
+#[repr(C)]
 pub struct DenseBufferMutRaw<F> {
     data: *mut F,
 }
 
-#[allow(dead_code)]
+/// The mutable raw pointer equivalent of [`InfoBuffer`] for use in cuda kernels.
+#[repr(C)]
 pub struct InfoBufferMutRaw {
     data: *mut u32,
 }

@@ -9,6 +9,7 @@ pub struct MerkleTreeHasher<F: Field, A: Backend, const WIDTH: usize> {
     pub monty_inverse: F,
 }
 
+/// The raw pointer equivalent of [`MerkleTreeHasher`] for use in cuda kernels.
 #[repr(C)]
 pub struct MerkleTreeHasherRaw<F: Field> {
     pub internal_constants: *const F,

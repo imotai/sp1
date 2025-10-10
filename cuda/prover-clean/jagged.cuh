@@ -125,28 +125,17 @@ struct JaggedMle {
         const ext_t* __restrict__ row_coefficient,
         const ext_t* __restrict__ col_coefficient,
         uint32_t L,
-        uint32_t preprocessed_padding,
-        uint32_t preprocessed_offset,
         uint32_t num_cols,
         ext_t* __restrict__ output_evals) const {
         const uint32_t CHUNK_ELEMS = 1 << 15;
         const uint32_t MAX_COLS_SH = 16;
 
-        const uint32_t preprocessed_padding_start = preprocessed_offset - preprocessed_padding;
-
         const uint32_t chunk_id = blockIdx.x;
         // [g0, g1) is the range of the chunk this block handles
-        const uint32_t raw_g0 = chunk_id * uint32_t(CHUNK_ELEMS);
-        const uint32_t g0 =
-            raw_g0 > preprocessed_padding_start ? raw_g0 + preprocessed_padding : raw_g0;
-
-        if (g0 >= L + preprocessed_padding)
+        const uint32_t g0 = chunk_id * uint32_t(CHUNK_ELEMS);
+        if (g0 >= L)
             return;
-
-
-        const uint32_t g1 = (g0 > preprocessed_offset)
-                                ? min(L + preprocessed_padding, g0 + uint32_t(CHUNK_ELEMS))
-                                : min(preprocessed_padding_start, g0 + uint32_t(CHUNK_ELEMS));
+        const uint32_t g1 = min(L, g0 + uint32_t(CHUNK_ELEMS));
 
         // Find which columns this chunk touches by binary search: [c0, c1] is the range.
         const uint32_t c0 = upper_bound_u32(this->startIndices, num_cols + 1, g0) - 1;

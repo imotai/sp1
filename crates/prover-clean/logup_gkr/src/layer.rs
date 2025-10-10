@@ -15,14 +15,15 @@ pub struct JaggedGkrLayer<A: Backend = TaskScope> {
     pub height: usize,
 }
 
-/// We allow dead code here because this is just a wrapper for a c struct. Rust never needs to read these fields.
-#[allow(dead_code)]
+/// The raw pointer equivalent of [`JaggedGkrLayer`] for use in cuda kernels.
+#[repr(C)]
 pub struct JaggedGkrLayerRaw {
     layer: *const Ext,
     height: usize,
 }
 
-#[allow(dead_code)]
+/// The mutable raw pointer equivalent of [`JaggedGkrLayer`] for use in cuda kernels.
+#[repr(C)]
 pub struct JaggedGkrLayerMutRaw {
     layer: *mut Ext,
     height: usize,
@@ -74,14 +75,16 @@ pub struct JaggedFirstGkrLayer<A: Backend> {
     pub height: usize,
 }
 
-#[allow(dead_code)]
+/// The raw pointer equivalent of [`JaggedFirstGkrLayer`] for use in cuda kernels.
+#[repr(C)]
 pub struct JaggedFirstGkrLayerRaw {
     numerator: *const Felt,
     denominator: *const Ext,
     height: usize,
 }
 
-#[allow(dead_code)]
+/// The mutable raw pointer equivalent of [`JaggedFirstGkrLayer`] for use in cuda kernels.
+#[repr(C)]
 pub struct JaggedFirstGkrLayerMutRaw {
     numerator: *mut Felt,
     denominator: *mut Ext,

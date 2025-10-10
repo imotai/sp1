@@ -58,7 +58,7 @@ impl Trace<TaskScope> {
     }
 }
 
-/// Sets up the jagged traces. TODO: can use less arguments by packing the mutable stuff into TraceDenseData.
+/// Sets up the jagged traces. TODO: can use fewer arguments by packing the mutable stuff into TraceDenseData.
 ///
 /// Returns the final offset, the final number of columns, the amount of padding, and the table index.
 #[allow(clippy::too_many_arguments)]
@@ -76,7 +76,7 @@ async fn setup_jagged_traces(
     let mut cols_so_far = initial_cols;
     let mut table_index = BTreeMap::new();
     let backend = dense_data.backend().clone();
-    for (i, (name, trace)) in traces.iter().enumerate() {
+    for (name, trace) in traces.iter() {
         match trace {
             Trace::Real(trace) => {
                 let trace_buf = trace.guts().as_buffer();
@@ -106,14 +106,9 @@ async fn setup_jagged_traces(
 
                 // Materialize the start indices on host, then copy to device.
                 // If this is the last one, then also put the total number of columns onto the start indices.
-                let mut current_start_indices = (0..trace_num_cols)
+                let current_start_indices = (0..trace_num_cols)
                     .map(|col| (offset + col * trace_num_rows) as u32 >> 1)
                     .collect::<Buffer<_>>();
-
-                if i == traces.len() - 1 {
-                    current_start_indices.push((offset + trace_size) as u32 >> 1);
-                }
-
                 let current_column_heights = vec![(trace_num_rows >> 1) as u32; trace_num_cols];
                 column_heights.extend_from_slice(&current_column_heights);
 
@@ -121,11 +116,9 @@ async fn setup_jagged_traces(
                     current_start_indices.copy_into_backend(&backend).await.unwrap();
                 let start_indices_slice: &Slice<u32, _> = &current_start_indices_device[..];
 
-                let start_indices_dst_slice = if i == traces.len() - 1 {
-                    &mut start_indices[cols_so_far..cols_so_far + trace_num_cols + 1]
-                } else {
-                    &mut start_indices[cols_so_far..cols_so_far + trace_num_cols]
-                };
+                let start_indices_dst_slice =
+                    &mut start_indices[cols_so_far..cols_so_far + trace_num_cols];
+
                 unsafe {
                     start_indices_dst_slice.copy_from_slice(start_indices_slice, &backend).unwrap();
                 }
@@ -145,11 +138,7 @@ async fn setup_jagged_traces(
                 // Don't touch the dense data. This trace isn't real.
                 // We just need to add some dummy values to start_indices.
 
-                let current_start_indices_vec = if i == traces.len() - 1 {
-                    vec![offset as u32 >> 1; *padding_cols + 1]
-                } else {
-                    vec![offset as u32 >> 1; *padding_cols]
-                };
+                let current_start_indices_vec = vec![offset as u32 >> 1; *padding_cols];
                 let current_start_indices =
                     current_start_indices_vec.into_iter().collect::<Buffer<_>>();
 
@@ -157,11 +146,8 @@ async fn setup_jagged_traces(
                     current_start_indices.copy_into_backend(&backend).await.unwrap();
                 let start_indices_slice: &Slice<u32, _> = &current_start_indices_device[..];
 
-                let start_indices_dst_slice = if i == traces.len() - 1 {
-                    &mut start_indices[cols_so_far..cols_so_far + *padding_cols + 1]
-                } else {
-                    &mut start_indices[cols_so_far..cols_so_far + *padding_cols]
-                };
+                let start_indices_dst_slice =
+                    &mut start_indices[cols_so_far..cols_so_far + *padding_cols];
 
                 column_heights.extend_from_slice(&vec![0; *padding_cols]);
                 unsafe {
@@ -183,15 +169,37 @@ async fn setup_jagged_traces(
 
     // Now, pad the dense data with 0's to the next multiple of 2^log_stacking_height.
     let next_multiple = offset.next_multiple_of(1 << log_stacking_height);
-    let dst_slice: &mut Slice<_, _> = &mut dense_data[offset..next_multiple];
+    if next_multiple == offset {
+        // TOOD: this is buggy right now, add another elt to start indices.
+        return (next_multiple, cols_so_far, 0, table_index);
+    }
+    let dst_dense_slice = &mut dense_data[offset..next_multiple];
+    let dst_col_idx_slice = &mut col_index[offset >> 1..(next_multiple >> 1)];
+    let dst_start_idx_slice = &mut start_indices[cols_so_far..cols_so_far + 2];
+
     let zeros = Buffer::from(vec![Felt::zero(); next_multiple - offset])
         .copy_into_backend(&backend)
         .await
         .unwrap();
 
+    let max_vals = Buffer::from(vec![cols_so_far as u32; (next_multiple - offset) >> 1])
+        .copy_into_backend(&backend)
+        .await
+        .unwrap();
+
+    let start_idx = Buffer::from(vec![(offset >> 1) as u32, (next_multiple >> 1) as u32])
+        .copy_into_backend(&backend)
+        .await
+        .unwrap();
+
+    column_heights.push(((next_multiple - offset) >> 1) as u32);
+
     unsafe {
-        dst_slice.copy_from_slice(&zeros, &backend).unwrap();
+        dst_dense_slice.copy_from_slice(&zeros, &backend).unwrap();
+        dst_col_idx_slice.copy_from_slice(&max_vals, &backend).unwrap();
+        dst_start_idx_slice.copy_from_slice(&start_idx, &backend).unwrap();
     }
+    cols_so_far += 1;
 
     (next_multiple, cols_so_far, next_multiple - offset, table_index)
 }
@@ -234,6 +242,7 @@ async fn device_preprocessed_tracegen<A: CudaTracegenAir<Felt>>(
     let copied_host_traces = pin!(host_traces.then(|(name, trace)| async move {
         (name, trace.copy_into_backend(backend).await.unwrap())
     }));
+
     // Stream that, when polled, copies events to the device and generates traces.
     let device_traces = device_airs
         .into_iter()
@@ -487,6 +496,7 @@ pub async fn main_tracegen<A: CudaTracegenAir<Felt>>(
         col_index.set_len(final_offset >> 1);
         start_indices.set_len(final_cols + 1);
     }
+
     (public_values, chip_set)
 }
 
@@ -515,6 +525,7 @@ mod tests {
     use cslpc_utils::Ext;
     use cslpc_zerocheck::primitives::evaluate_jagged_mle_chunked;
     use serial_test::serial;
+    use slop_algebra::AbstractField;
     use slop_alloc::IntoHost;
     use slop_multilinear::{Mle, Point};
     use sp1_hypercube::prover::{ProverSemaphore, TraceGenerator};
@@ -554,10 +565,7 @@ mod tests {
                 )
                 .await;
 
-            println!(
-                "warmup traces generated: {:?}",
-                warmup_traces.main_trace_data.shard_chips.len()
-            );
+            println!("warmup traces generated");
 
             drop(warmup_traces);
 
@@ -580,15 +588,8 @@ mod tests {
             let mut all_evals_host = vec![];
 
             // Evaluate all of the real traces at z_row. Concatenate evaluations into `all_evals_host`.
-            for (name, trace) in old_traces
-                .preprocessed_traces
-                .into_iter()
-                .chain(old_traces.main_trace_data.traces.into_iter())
-            {
+            for trace in old_traces.preprocessed_traces.values() {
                 assert_eq!(trace.num_variables(), CORE_MAX_LOG_ROW_COUNT);
-                if trace.num_real_entries() == 0 {
-                    println!("fake trace: {}", name);
-                }
 
                 let trace = trace.eval_at(&z_row).await;
 
@@ -598,6 +599,25 @@ mod tests {
                 let evals_host = tensor.into_host().await.unwrap();
                 all_evals_host.extend_from_slice(evals_host.as_buffer());
             }
+
+            // Add zero evaluation for preprocessed padding to next multiple of 2^log stacking height.
+            num_cols += 1;
+            all_evals_host.extend_from_slice(&[Ext::zero()]);
+
+            for trace in old_traces.main_trace_data.traces.values() {
+                assert_eq!(trace.num_variables(), CORE_MAX_LOG_ROW_COUNT);
+
+                let trace = trace.eval_at(&z_row).await;
+
+                num_cols += trace.num_polynomials();
+                let tensor = trace.into_evaluations();
+
+                let evals_host = tensor.into_host().await.unwrap();
+                all_evals_host.extend_from_slice(evals_host.as_buffer());
+            }
+
+            num_cols += 1;
+            all_evals_host.extend_from_slice(&[Ext::zero()]);
 
             // Evaluate `all_evals_host` as an MLE at z_col.
             let all_evals_mle = Mle::from_buffer(all_evals_host.into());
@@ -621,14 +641,6 @@ mod tests {
             .await;
 
             scope.synchronize().await.unwrap();
-            println!(
-                "main padding: {:?}\n preprocessed padding: {:?}\n preprocessed offset: {:?}\n preprocessed cols: {:?}\n main size: {:?}",
-                jagged_trace_data.dense().main_padding,
-                jagged_trace_data.dense().preprocessed_padding,
-                jagged_trace_data.dense().preprocessed_offset,
-                jagged_trace_data.dense().preprocessed_cols,
-                jagged_trace_data.main_size(),
-            );
             println!("new traces generated in {:?}", now.elapsed());
 
             let num_dense_cols = jagged_trace_data.start_indices.len() - 1;
@@ -636,21 +648,18 @@ mod tests {
             let z_row_device = z_row.to_device_in(&scope).await.unwrap();
             let z_col_device = z_col.to_device_in(&scope).await.unwrap();
 
-            println!("evaluating");
-
             let total_len = jagged_trace_data.dense_data.dense.len() / 2;
             let zerocheck_eval = evaluate_jagged_mle_chunked(
                 jagged_trace_data,
                 z_row_device,
                 z_col_device,
-                total_len,
                 num_dense_cols,
+                total_len,
                 jagged_eval_kernel_chunked_felt,
             )
             .await;
 
             let zerocheck_eval_host = zerocheck_eval.into_host().await.unwrap().as_slice()[0];
-
             assert_eq!(old_tracegen_eval, zerocheck_eval_host);
         })
         .await;

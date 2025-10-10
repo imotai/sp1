@@ -48,30 +48,6 @@ impl<T, B: Backend> VirtualTensor<T, B> {
     }
 }
 
-// pub struct VirtualTensorMut<T, B: Backend> {
-//     pub data: *mut T,
-//     pub sizes: Dimensions,
-//     pub backend: B,
-// }
-
-// impl<T, B: Backend> VirtualTensorMut<T, B> {
-//     pub fn new(data: *mut T, sizes: Dimensions, backend: B) -> Self {
-//         Self { data, sizes, backend }
-//     }
-
-//     pub fn sizes(&self) -> &Dimensions {
-//         &self.sizes
-//     }
-
-//     pub fn backend(&self) -> &B {
-//         &self.backend
-//     }
-
-//     pub fn as_mut_ptr(&self) -> *mut T {
-//         self.data
-//     }
-// }
-
 pub trait DenseData<A: Backend> {
     type DenseDataRaw;
     type DenseDataMutRaw;
@@ -79,6 +55,7 @@ pub trait DenseData<A: Backend> {
     fn as_mut_ptr(&mut self) -> Self::DenseDataMutRaw;
 }
 
+/// The raw pointer equivalent of [`JaggedMle`] for use in cuda kernels.
 #[repr(C)]
 pub struct JaggedMleRaw<D: DenseData<A>, A: Backend> {
     col_index: *const u32,
@@ -86,6 +63,7 @@ pub struct JaggedMleRaw<D: DenseData<A>, A: Backend> {
     dense_data: D::DenseDataRaw,
 }
 
+/// The mutable raw pointer equivalent of [`JaggedMle`] for use in cuda kernels.
 #[repr(C)]
 pub struct JaggedMleMutRaw<D: DenseData<A>, A: Backend> {
     col_index: *mut u32,

@@ -77,24 +77,34 @@ impl<F: Field, B: Backend> TraceDenseData<F, B> {
         unsafe { TensorView::from_raw_parts(ptr, sizes, self.backend().clone()) }
     }
 
+    /// The size of the main polynomial.
+    #[inline]
     pub fn main_poly_height(&self, name: &str) -> Option<usize> {
         self.main_table_index.get(name).map(|offset| offset.poly_size)
     }
 
+    /// The size of the preprocessed polynomial.
+    #[inline]
     pub fn preprocessed_poly_height(&self, name: &str) -> Option<usize> {
         self.preprocessed_table_index.get(name).map(|offset| offset.poly_size)
     }
 
+    /// The number of polynomials in the main trace.
+    #[inline]
     pub fn main_num_polys(&self, name: &str) -> Option<usize> {
         self.main_table_index
             .get(name)
             .map(|offset| (offset.dense_offset.end - offset.dense_offset.start) / offset.poly_size)
     }
 
+    /// The size of the main trace dense data, including padding.
+    #[inline]
     pub fn main_size(&self) -> usize {
         self.dense.len() - self.preprocessed_offset
     }
 
+    /// The number of polynomials in the preprocessed trace.
+    #[inline]
     pub fn preprocessed_num_polys(&self, name: &str) -> Option<usize> {
         self.preprocessed_table_index
             .get(name)
@@ -154,14 +164,12 @@ impl<F: Field> JaggedTraceMle<F, TaskScope> {
 }
 
 /// The raw pointer to the dense data, for use in CUDA FFI calls.
-#[allow(dead_code)]
 #[repr(C)]
 pub struct TraceDenseDataRaw<F> {
     dense: *const F,
 }
 
 /// The raw pointer to the dense data, for use in CUDA FFI calls.
-#[allow(dead_code)]
 #[repr(C)]
 pub struct TraceDenseDataMutRaw<F> {
     dense: *mut F,

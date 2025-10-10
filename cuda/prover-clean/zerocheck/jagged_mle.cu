@@ -8,6 +8,7 @@ __global__ void fixLastVariableJagged(
     JaggedMle<DenseBuffer<ext_t>> outputJaggedMle,
     uint32_t length,
     ext_t alpha) {
+
     for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < length;
          i += blockDim.x * gridDim.x) {
         inputJaggedMle.fixLastVariableTwoPadding(outputJaggedMle, i, alpha);
@@ -44,18 +45,10 @@ __global__ void jaggedEvalChunked(
     const ext_t* __restrict__ row_coefficient,
     const ext_t* __restrict__ col_coefficient,
     uint32_t L,
-    uint32_t preprocessed_padding,
-    uint32_t preprocessed_offset,
     uint32_t num_cols,
     ext_t* __restrict__ output_evals) {
-    inputJaggedMle.evaluate(
-        row_coefficient,
-        col_coefficient,
-        L,
-        preprocessed_padding,
-        preprocessed_offset,
-        num_cols,
-        output_evals);
+
+    inputJaggedMle.evaluate(row_coefficient, col_coefficient, L, num_cols, output_evals);
 }
 
 extern "C" void* initialize_jagged_info() { return (void*)initializeJaggedInfo; }

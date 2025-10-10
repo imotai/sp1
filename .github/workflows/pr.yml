@@ -66,6 +66,7 @@ jobs:
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
+          CUDA_ARCHS: 89
 
   lint:
     name: Formatting & Clippy

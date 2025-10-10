@@ -39,6 +39,7 @@ where
 {
     let backend = jagged_mle.dense().backend();
 
+    // Adjusts offsets for each chip.
     fn update_offset(
         old_map: &BTreeMap<String, TraceOffset>,
         starting_offset: usize,
@@ -61,12 +62,15 @@ where
     let (next_preprocessed_table_index, next_preprocessed_offset) =
         update_offset(&jagged_mle.dense_data.preprocessed_table_index, 0);
 
+    // For any round after the first, there's no padding.
     let (next_main_table_index, _next_main_offset) =
         update_offset(&jagged_mle.dense_data.main_table_index, next_preprocessed_offset);
 
     let length = jagged_mle.column_heights.iter().sum::<u32>();
 
+    // Adjusts offsets for each column, without tracking chip information.
     let (buffer_start_idx, output_heights) = jagged_mle.next_start_indices_and_column_heights();
+
     let new_total_length = buffer_start_idx.last().unwrap() * 2;
 
     let output_start_idx = buffer_start_idx.to_device_in(backend).await.unwrap();
@@ -248,6 +252,7 @@ pub async fn evaluate_jagged_mle_chunked<F: Field>(
     const MAX_COLS_SH: usize = 16;
 
     let n_chunks = total_length.div_ceil(CHUNK_ELEMS);
+
     let grid_size_x = n_chunks;
     let grid_size = (grid_size_x, 1, 1);
 
@@ -270,8 +275,6 @@ pub async fn evaluate_jagged_mle_chunked<F: Field>(
         z_row_lagrange.guts().as_ptr(),
         z_col_lagrange.guts().as_ptr(),
         (total_length as u32),
-        (jagged_mle.dense_data.preprocessed_padding as u32),
-        (jagged_mle.dense_data.preprocessed_offset as u32),
         (num_cols as u32),
         output_evals.as_mut_ptr()
     );
@@ -291,7 +294,8 @@ mod tests {
 
     use csl_cuda::run_in_place;
     use csl_cuda::sys::prover_clean::jagged_eval_kernel_chunked_felt;
-    use rand::RngCore;
+    use rand::rngs::StdRng;
+    use rand::{RngCore, SeedableRng};
     use serial_test::serial;
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_alloc::Buffer;
@@ -380,7 +384,7 @@ mod tests {
     fn get_input(
         sizes: &[(u32, u32)],
     ) -> (Vec<Mle<KoalaBear>>, Vec<KoalaBear>, Vec<u32>, Vec<u32>) {
-        let mut rng = rand::thread_rng();
+        let mut rng = StdRng::seed_from_u64(8);
         let sum_length = sizes.iter().map(|(a, b)| a * b).sum::<u32>();
         let mut cols = vec![0; (sum_length / 2) as usize];
         let num_cols = sizes.iter().map(|(_, b)| b).sum::<u32>();
@@ -415,7 +419,7 @@ mod tests {
             input_heights.push(start_idx[i] - start_idx[i - 1]);
         }
 
-        let mut rng = rand::thread_rng();
+        let mut rng = StdRng::seed_from_u64(4);
 
         let row_variable: usize = 22;
         let col_variable = log2_ceil_usize(mles.len());
@@ -517,7 +521,7 @@ mod tests {
     // Instead of encoding all of the column evaluations as an MLE, this test directly
     // compares all column evaluations to the expected value from host.
     async fn mle_individual_evaluation_test(table_sizes: Vec<(u32, u32)>) {
-        let mut rng = rand::thread_rng();
+        let mut rng = StdRng::seed_from_u64(6);
         // Make (# of tables) chip names.
         let chip_names =
             (0..table_sizes.len()).map(|i| format!("chip_{i}")).collect::<BTreeSet<_>>();
