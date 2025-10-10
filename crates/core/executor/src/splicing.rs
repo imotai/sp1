@@ -8,15 +8,12 @@ use crate::{
     syscalls::SyscallCode,
     vm::{
         memory::CompressedMemory,
-        results::{
-            AluResult, BranchResult, CycleResult, EcallResult, JumpResult, LoadResult, StoreResult,
-            UTypeResult,
-        },
+        results::{CycleResult, LoadResult, StoreResult},
         shapes::ShapeChecker,
         syscall::SyscallRuntime,
         CoreVM,
     },
-    ExecutionError, Instruction, Opcode, Program, Register,
+    ExecutionError, Instruction, Opcode, Program,
 };
 
 /// A RISC-V VM that uses a [`MinimalTrace`] to create multiple [`SplicedMinimalTrace`]s.
@@ -130,6 +127,13 @@ impl SplicingVM<'_> {
             }
         }
 
+        self.shape_checker.handle_instruction(
+            &instruction,
+            self.core.needs_bump_clk_high(),
+            instruction.is_memory_load_instruction() && instruction.op_a == 0,
+            self.core.needs_state_bump(&instruction),
+        );
+
         Ok(self.core.advance())
     }
 
@@ -183,17 +187,10 @@ impl<'a> SplicingVM<'a> {
     /// It will also emit the memory instruction event and the events for the load instruction.
     #[inline]
     pub fn execute_load(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
-        let LoadResult { addr, rd, mr_record, .. } = self.core.execute_load(instruction)?;
+        let LoadResult { addr, mr_record, .. } = self.core.execute_load(instruction)?;
 
         // Ensure the address is aligned to 8 bytes.
         self.touched_addresses.insert(addr & !0b111, true);
-
-        self.shape_checker.handle_instruction(
-            instruction,
-            self.core.needs_bump_clk_high(),
-            rd == Register::X0,
-            self.core.needs_state_bump(instruction),
-        );
 
         self.shape_checker.handle_mem_event(addr, mr_record.prev_timestamp);
 
@@ -213,13 +210,6 @@ impl<'a> SplicingVM<'a> {
         // Ensure the address is aligned to 8 bytes.
         self.touched_addresses.insert(addr & !0b111, true);
 
-        self.shape_checker.handle_instruction(
-            instruction,
-            self.core.needs_bump_clk_high(),
-            false, // store instruction, no load of x0
-            self.core.needs_state_bump(instruction),
-        );
-
         self.shape_checker.handle_mem_event(addr, mw_record.prev_timestamp);
 
         Ok(())
@@ -228,65 +218,31 @@ impl<'a> SplicingVM<'a> {
     /// Execute an ALU instruction and emit the events.
     #[inline]
     pub fn execute_alu(&mut self, instruction: &Instruction) {
-        let AluResult { .. } = self.core.execute_alu(instruction);
-
-        self.shape_checker.handle_instruction(
-            instruction,
-            self.core.needs_bump_clk_high(),
-            false, // alu instruction, no load of x0
-            self.core.needs_state_bump(instruction),
-        );
+        let _ = self.core.execute_alu(instruction);
     }
 
     /// Execute a jump instruction and emit the events.
     #[inline]
     pub fn execute_jump(&mut self, instruction: &Instruction) {
-        let JumpResult { .. } = self.core.execute_jump(instruction);
-
-        self.shape_checker.handle_instruction(
-            instruction,
-            self.core.needs_bump_clk_high(),
-            false, // jump instruction, no load of x0
-            self.core.needs_state_bump(instruction),
-        );
+        let _ = self.core.execute_jump(instruction);
     }
 
     /// Execute a branch instruction and emit the events.
     #[inline]
     pub fn execute_branch(&mut self, instruction: &Instruction) {
-        let BranchResult { .. } = self.core.execute_branch(instruction);
-
-        self.shape_checker.handle_instruction(
-            instruction,
-            self.core.needs_bump_clk_high(),
-            false, // branch instruction, no load of x0
-            self.core.needs_state_bump(instruction),
-        );
+        let _ = self.core.execute_branch(instruction);
     }
 
     /// Execute a U-type instruction and emit the events.   
     #[inline]
     pub fn execute_utype(&mut self, instruction: &Instruction) {
-        let UTypeResult { .. } = self.core.execute_utype(instruction);
-
-        self.shape_checker.handle_instruction(
-            instruction,
-            self.core.needs_bump_clk_high(),
-            false, // u-type instruction, no load of x0
-            self.core.needs_state_bump(instruction),
-        );
+        let _ = self.core.execute_utype(instruction);
     }
 
     /// Execute an ecall instruction and emit the events.
     #[inline]
     pub fn execute_ecall(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
         let code = self.core.read_code();
-
-        let EcallResult { .. } = CoreVM::execute_ecall(self, instruction, code)?;
-
-        if code == SyscallCode::HINT_LEN {
-            self.hint_lens_idx += 1;
-        }
 
         if code.should_send() == 1 {
             if self.core.is_retained_syscall(code) {
@@ -296,12 +252,11 @@ impl<'a> SplicingVM<'a> {
             }
         }
 
-        self.shape_checker.handle_instruction(
-            instruction,
-            self.core.needs_bump_clk_high(),
-            false, // ecall instruction, no load of x0
-            self.core.needs_state_bump(instruction),
-        );
+        let _ = CoreVM::execute_ecall(self, instruction, code)?;
+
+        if code == SyscallCode::HINT_LEN {
+            self.hint_lens_idx += 1;
+        }
 
         Ok(())
     }
