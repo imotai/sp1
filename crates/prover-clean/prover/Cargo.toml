@@ -10,20 +10,38 @@ categories.workspace = true
 [dependencies]
 # cuslop
 csl-cuda = { workspace = true }
+csl-jagged = { workspace = true }
+csl-basefold = { workspace = true }
+csl-challenger = { workspace = true }
 
 # prover-clean subcrates
 cslpc-merkle-tree = { workspace = true }
 cslpc-utils = { workspace = true }
+cslpc-commit = { workspace = true }
+cslpc-basefold = { workspace = true }
+cslpc-jagged-sumcheck = { workspace = true }
+cslpc-zerocheck = { workspace = true }
+cslpc-tracegen = { workspace = true }
+
+# slop
 slop-alloc = { workspace = true }
+slop-algebra = { workspace = true }
 slop-multilinear = { workspace = true }
 slop-challenger = { workspace = true }
 slop-jagged = { workspace = true }
 slop-commit = { workspace = true }
 slop-tensor = { workspace = true }
+slop-basefold = { workspace = true }
+slop-stacked = { workspace = true }
 
 # sp1
 sp1-hypercube = { workspace = true }
+
+# utils
+futures-util = "0.3.31"
 thiserror = "1.0"
+tracing = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 serial_test = "3.1"

@@ -1,5 +1,9 @@
+use std::sync::Arc;
+
 use csl_cuda::TaskScope;
-use cslpc_utils::Felt;
+use cslpc_merkle_tree::MerkleTree;
+use cslpc_utils::{Felt, JaggedTraceMle};
+use slop_challenger::IopCtx;
 use slop_dft::DftOrdering;
 
 use csl_cuda::{
@@ -39,6 +43,16 @@ pub trait SpparkCudaDftSys<T: DeviceCopy>: 'static + Send + Sync {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SpparkDft<F, T>(pub F, std::marker::PhantomData<T>);
+
+#[derive(Clone)]
+pub struct ProverCleanStackedPcsProverData<GC: IopCtx> {
+    /// The usizes are the height of the Merkle tree and the number of elements in a leaf.
+    pub merkle_tree_tcs_data: (MerkleTree<GC::Digest, TaskScope>, GC::Digest, usize, usize),
+    /// TODO: document
+    pub interleaved_mles: Arc<JaggedTraceMle<GC::F, TaskScope>>,
+    /// TODO: document
+    pub codeword_mle: Arc<Tensor<GC::F, TaskScope>>,
+}
 
 impl<T: Field, F: SpparkCudaDftSys<T>> SpparkDft<F, T> {
     /// Performs a discrete Fourier transform along the last dimension of the input tensor.

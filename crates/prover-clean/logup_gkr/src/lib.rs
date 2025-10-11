@@ -27,7 +27,7 @@ use sp1_hypercube::{
 use crate::tracegen::generate_gkr_circuit;
 use cslpc_utils::traces::JaggedTraceMle;
 use cslpc_utils::{Ext, Felt};
-use cslpc_zerocheck::primitives::evaluate_jagged_fix_last_variable;
+use cslpc_zerocheck::primitives::evaluate_traces;
 mod execution;
 mod interactions;
 mod layer;
@@ -240,17 +240,7 @@ pub async fn prove_logup_gkr<A: MachineAir<Felt>, C: MultilinearPcsChallenger<Fe
     let eval_point = eval_point.last_k(num_row_variables as usize);
     let mut chip_evaluations = BTreeMap::new();
 
-    let mut next_input_jagged_trace_mle =
-        evaluate_jagged_fix_last_variable(&jagged_trace_data, *eval_point.last().unwrap()).await;
-    for alpha in eval_point.iter().rev().skip(1) {
-        next_input_jagged_trace_mle =
-            evaluate_jagged_fix_last_variable(&next_input_jagged_trace_mle, *alpha).await;
-    }
-
-    let host_dense = next_input_jagged_trace_mle.dense_data.dense.to_host().await.unwrap().to_vec();
-
-    // Take every fourth element of host_dense, since the intermediate evaluations are padding.
-    let host_dense = host_dense.into_iter().step_by(4).collect::<Vec<_>>();
+    let host_dense = evaluate_traces(&jagged_trace_data, &eval_point).await;
 
     let mut preprocessed_so_far = 0;
     let mut main_so_far = jagged_trace_data.dense().preprocessed_cols;

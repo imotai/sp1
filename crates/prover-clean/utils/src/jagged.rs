@@ -9,7 +9,7 @@ use slop_tensor::{Dimensions, Tensor};
 pub struct JaggedMle<D: DenseData<A>, A: Backend> {
     /// col_index[i / 2] is the column that the i'th element of the dense data belongs to.
     pub col_index: Buffer<u32, A>,
-    /// start_indices[i] is the index of the first element of the i'th column.
+    /// start_indices[i] is the half the dense index of the first element of the i'th column.
     pub start_indices: Buffer<u32, A>,
     /// column_heights[i] is half of the height of the i'th column.
     pub column_heights: Vec<u32>,
@@ -50,8 +50,11 @@ impl<T, B: Backend> VirtualTensor<T, B> {
 
 pub trait DenseData<A: Backend> {
     type DenseDataRaw;
-    type DenseDataMutRaw;
     fn as_ptr(&self) -> Self::DenseDataRaw;
+}
+
+pub trait DenseDataMut<A: Backend>: DenseData<A> {
+    type DenseDataMutRaw;
     fn as_mut_ptr(&mut self) -> Self::DenseDataMutRaw;
 }
 
@@ -65,7 +68,7 @@ pub struct JaggedMleRaw<D: DenseData<A>, A: Backend> {
 
 /// The mutable raw pointer equivalent of [`JaggedMle`] for use in cuda kernels.
 #[repr(C)]
-pub struct JaggedMleMutRaw<D: DenseData<A>, A: Backend> {
+pub struct JaggedMleMutRaw<D: DenseDataMut<A>, A: Backend> {
     col_index: *mut u32,
     start_indices: *mut u32,
     dense_data: D::DenseDataMutRaw,
@@ -80,7 +83,10 @@ impl<D: DenseData<A>, A: Backend> JaggedMle<D, A> {
         }
     }
 
-    pub fn as_mut_raw(&mut self) -> JaggedMleMutRaw<D, A> {
+    pub fn as_mut_raw(&mut self) -> JaggedMleMutRaw<D, A>
+    where
+        D: DenseDataMut<A>,
+    {
         JaggedMleMutRaw {
             col_index: self.col_index.as_mut_ptr(),
             start_indices: self.start_indices.as_mut_ptr(),

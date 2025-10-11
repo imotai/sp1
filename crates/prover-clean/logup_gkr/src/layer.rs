@@ -2,7 +2,7 @@ use csl_cuda::TaskScope;
 use slop_alloc::{Backend, HasBackend};
 use slop_tensor::Tensor;
 
-use cslpc_utils::{DenseData, Ext, Felt};
+use cslpc_utils::{DenseData, DenseDataMut, Ext, Felt};
 
 /// A layer of the GKR circuit.
 ///
@@ -56,10 +56,13 @@ impl<A: Backend> HasBackend for JaggedGkrLayer<A> {
 
 impl<A: Backend> DenseData<A> for JaggedGkrLayer<A> {
     type DenseDataRaw = JaggedGkrLayerRaw;
-    type DenseDataMutRaw = JaggedGkrLayerMutRaw;
     fn as_ptr(&self) -> Self::DenseDataRaw {
         JaggedGkrLayerRaw { layer: self.layer.as_ptr(), height: self.height }
     }
+}
+
+impl<A: Backend> DenseDataMut<A> for JaggedGkrLayer<A> {
+    type DenseDataMutRaw = JaggedGkrLayerMutRaw;
     fn as_mut_ptr(&mut self) -> Self::DenseDataMutRaw {
         JaggedGkrLayerMutRaw { layer: self.layer.as_mut_ptr(), height: self.height }
     }
@@ -119,7 +122,6 @@ impl<A: Backend> HasBackend for JaggedFirstGkrLayer<A> {
 
 impl<A: Backend> DenseData<A> for JaggedFirstGkrLayer<A> {
     type DenseDataRaw = JaggedFirstGkrLayerRaw;
-    type DenseDataMutRaw = JaggedFirstGkrLayerMutRaw;
     fn as_ptr(&self) -> Self::DenseDataRaw {
         JaggedFirstGkrLayerRaw {
             numerator: self.numerator.as_ptr(),
@@ -127,6 +129,10 @@ impl<A: Backend> DenseData<A> for JaggedFirstGkrLayer<A> {
             height: self.height,
         }
     }
+}
+
+impl<A: Backend> DenseDataMut<A> for JaggedFirstGkrLayer<A> {
+    type DenseDataMutRaw = JaggedFirstGkrLayerMutRaw;
     fn as_mut_ptr(&mut self) -> Self::DenseDataMutRaw {
         JaggedFirstGkrLayerMutRaw {
             numerator: self.numerator.as_mut_ptr(),

@@ -18,7 +18,6 @@ cslpc-utils = { workspace = true }
 cslpc-tracegen = { workspace = true }
 cslpc-basefold = { workspace = true }
 cslpc-merkle-tree = { workspace = true }
-cslpc-prover = { workspace = true }
 slop-algebra = { workspace = true }
 slop-alloc = { workspace = true }
 slop-tensor = { workspace = true }

@@ -7,7 +7,7 @@ use csl_cuda::sys::runtime::KernelPtr;
 use csl_cuda::{args, TaskScope, ToDevice};
 use cslpc_utils::{Ext, Felt, JaggedMle, JaggedTraceMle, TraceDenseData, TraceOffset};
 use slop_algebra::{AbstractField, ExtensionField, Field};
-use slop_alloc::{Buffer, HasBackend};
+use slop_alloc::{Buffer, HasBackend, ToHost};
 use slop_multilinear::{Mle, Point};
 use slop_tensor::Tensor;
 use std::collections::BTreeMap;
@@ -29,6 +29,7 @@ impl JaggedFixLastVariableKernel<Ext> for TaskScope {
     }
 }
 
+#[inline(always)]
 pub async fn evaluate_jagged_fix_last_variable<F: Field>(
     jagged_mle: &JaggedTraceMle<F, TaskScope>,
     value: Ext,
@@ -116,6 +117,24 @@ where
     }
 
     next_jagged_mle
+}
+
+#[inline(always)]
+pub async fn evaluate_traces(
+    traces: &JaggedTraceMle<Felt, TaskScope>,
+    point: &Point<Ext>,
+) -> Vec<Ext> {
+    let mut next_input_jagged_trace_mle =
+        evaluate_jagged_fix_last_variable(traces, *point.last().unwrap()).await;
+    for alpha in point.iter().rev().skip(1) {
+        next_input_jagged_trace_mle =
+            evaluate_jagged_fix_last_variable(&next_input_jagged_trace_mle, *alpha).await;
+    }
+
+    let host_dense = next_input_jagged_trace_mle.dense_data.dense.to_host().await.unwrap().to_vec();
+
+    // Only every four elements is not padding.
+    host_dense.into_iter().step_by(4).collect::<Vec<_>>()
 }
 
 pub async fn evaluate_jagged_columns(

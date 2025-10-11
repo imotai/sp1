@@ -1,9 +1,8 @@
 use std::{iter::once, sync::Arc};
 
 use csl_cuda::TaskScope;
-use cslpc_basefold::ProverCleanFriCudaProver;
-use cslpc_merkle_tree::TcsProverClean;
-use cslpc_prover::ProverCleanStackedPcsProverData;
+use cslpc_basefold::{ProverCleanFriCudaProver, ProverCleanStackedPcsProverData};
+use cslpc_merkle_tree::{SingleLayerMerkleTreeProverError, TcsProverClean};
 use cslpc_utils::{traces::JaggedTraceMle, Felt, GC};
 use slop_algebra::AbstractField;
 use slop_challenger::IopCtx;
@@ -19,7 +18,10 @@ pub async fn commit_multilinears<P: TcsProverClean<GC>>(
     log_stacking_height: u32,
     use_preprocessed: bool,
     basefold_prover: &ProverCleanFriCudaProver<GC, P, Felt>,
-) -> (Digest, JaggedProverData<GC, ProverCleanStackedPcsProverData<GC>>) {
+) -> Result<
+    (Digest, JaggedProverData<GC, ProverCleanStackedPcsProverData<GC>>),
+    SingleLayerMerkleTreeProverError,
+> {
     let (index, padding, virtual_tensor) = if use_preprocessed {
         (
             &jagged_trace_mle.dense().preprocessed_table_index,
@@ -39,7 +41,7 @@ pub async fn commit_multilinears<P: TcsProverClean<GC>>(
     );
 
     let (commitment, data) =
-        basefold_prover.encode_and_commit(virtual_tensor, jagged_trace_mle.clone()).await;
+        basefold_prover.encode_and_commit(virtual_tensor, jagged_trace_mle.clone()).await?;
 
     let num_added_cols = padding.div_ceil(1 << max_log_row_count).max(1);
 
@@ -66,7 +68,7 @@ pub async fn commit_multilinears<P: TcsProverClean<GC>>(
         original_commitment: commitment,
     };
 
-    (final_commitment, jagged_prover_data)
+    Ok((final_commitment, jagged_prover_data))
 }
 
 #[cfg(test)]
@@ -166,7 +168,8 @@ mod tests {
                 true,
                 &basefold_prover,
             )
-            .await;
+            .await
+            .unwrap();
 
             let (new_main_commitment, new_main_data) = commit_multilinears(
                 jagged_trace_data.clone(),
@@ -175,7 +178,8 @@ mod tests {
                 false,
                 &basefold_prover,
             )
-            .await;
+            .await
+            .unwrap();
 
             assert_eq!(old_preprocessed_commitment, new_preprocessed_commitment);
             assert_eq!(old_main_commitment, new_main_commitment);

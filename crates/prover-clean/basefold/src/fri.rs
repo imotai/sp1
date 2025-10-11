@@ -29,10 +29,12 @@ use csl_cuda::{
     IntoDevice, TaskScope,
 };
 use cslpc_merkle_tree::{MerkleTreeProverData, SingleLayerMerkleTreeProverError, TcsProverClean};
-use cslpc_prover::ProverCleanStackedPcsProverData;
 use cslpc_utils::{Ext, Felt, JaggedTraceMle, TraceDenseData};
 
-use crate::{encode_batch, DeviceGrindingChallenger, GrindingPowCudaProver, SpparkDftKoalaBear};
+use crate::{
+    encode_batch, DeviceGrindingChallenger, GrindingPowCudaProver, ProverCleanStackedPcsProverData,
+    SpparkDftKoalaBear,
+};
 
 /// # Safety
 ///
@@ -99,7 +101,10 @@ where
         &self,
         virtual_tensor: TensorView<'a, Felt, TaskScope>,
         jagged_trace_mle: Arc<JaggedTraceMle<Felt, TaskScope>>,
-    ) -> (<GC as IopCtx>::Digest, ProverCleanStackedPcsProverData<GC>) {
+    ) -> Result<
+        (<GC as IopCtx>::Digest, ProverCleanStackedPcsProverData<GC>),
+        SingleLayerMerkleTreeProverError,
+    > {
         let encoder = SpparkDftKoalaBear::default();
 
         let encoded_messages =
@@ -108,16 +113,16 @@ where
         // Commit to the tensors.
 
         let (commitment, tcs_data) =
-            self.tcs_prover.commit_tensors(encoded_messages.as_view()).await.unwrap();
+            self.tcs_prover.commit_tensors(encoded_messages.as_view()).await?;
 
-        (
+        Ok((
             commitment,
             ProverCleanStackedPcsProverData {
                 merkle_tree_tcs_data: tcs_data,
                 interleaved_mles: jagged_trace_mle,
                 codeword_mle: Arc::new(encoded_messages),
             },
-        )
+        ))
     }
     pub async fn batch(
         &self,
@@ -556,7 +561,8 @@ mod tests {
                     new_traces.dense().preprocessed_virtual_tensor(LOG_STACKING_HEIGHT),
                     new_traces.clone(),
                 )
-                .await;
+                .await
+                .unwrap();
 
             assert_eq!(new_preprocessed_commit, old_preprocessed_commitment);
 
@@ -565,7 +571,8 @@ mod tests {
                     new_traces.dense().main_virtual_tensor(LOG_STACKING_HEIGHT),
                     new_traces.clone(),
                 )
-                .await;
+                .await
+                .unwrap();
             let message = old_traces
                 .main_trace_data
                 .traces

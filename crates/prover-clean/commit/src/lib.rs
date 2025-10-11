@@ -1,4 +1,4 @@
-//! Commitment to traces. Includes DFT logic too.
+//! Commitment to traces.
 
 mod commit;
 

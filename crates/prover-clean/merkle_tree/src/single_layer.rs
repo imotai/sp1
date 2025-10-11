@@ -63,7 +63,7 @@ pub type MerkleTreeProverData<Digest> = (MerkleTree<Digest, TaskScope>, Digest, 
 /// Because the single implementation of this trait is generic over many parameters that don't need
 /// to be propagated up the stack, this trait defines the minimal API necessary to interact with the
 /// Merkle tree prover and is generic only in the IopCtx.
-pub trait TcsProverClean<GC: IopCtx> {
+pub trait TcsProverClean<GC: IopCtx>: Send + Sync + 'static {
     fn commit_tensors<'a>(
         &self,
         virtual_tensor: TensorView<'a, GC::F, TaskScope>,

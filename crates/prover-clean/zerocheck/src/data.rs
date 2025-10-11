@@ -2,6 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use csl_cuda::IntoDevice;
 use csl_cuda::TaskScope;
+use cslpc_utils::DenseDataMut;
 use cslpc_utils::{DenseData, Ext, Felt, JaggedMle};
 use slop_algebra::Field;
 use slop_alloc::Buffer;
@@ -139,21 +140,20 @@ impl<A: Backend> HasBackend for InfoBuffer<A> {
 
 impl<F, A: Backend> DenseData<A> for DenseBuffer<F, A> {
     type DenseDataRaw = DenseBufferRaw<F>;
-    type DenseDataMutRaw = DenseBufferMutRaw<F>;
     fn as_ptr(&self) -> Self::DenseDataRaw {
         DenseBufferRaw { data: self.data.as_ptr() }
-    }
-    fn as_mut_ptr(&mut self) -> Self::DenseDataMutRaw {
-        DenseBufferMutRaw { data: self.data.as_mut_ptr() }
     }
 }
 
 impl<A: Backend> DenseData<A> for InfoBuffer<A> {
     type DenseDataRaw = InfoBufferRaw;
-    type DenseDataMutRaw = InfoBufferMutRaw;
     fn as_ptr(&self) -> Self::DenseDataRaw {
         InfoBufferRaw { data: self.data.as_ptr() }
     }
+}
+
+impl<A: Backend> DenseDataMut<A> for InfoBuffer<A> {
+    type DenseDataMutRaw = InfoBufferMutRaw;
     fn as_mut_ptr(&mut self) -> Self::DenseDataMutRaw {
         InfoBufferMutRaw { data: self.data.as_mut_ptr() }
     }

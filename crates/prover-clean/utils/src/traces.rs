@@ -7,7 +7,7 @@ use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend, ToHost};
 use slop_tensor::{Dimensions, TensorView};
 
 use crate::jagged::JaggedMle;
-use crate::DenseData;
+use crate::{DenseData, DenseDataMut};
 
 #[derive(Clone, Debug)]
 pub struct TraceOffset {
@@ -92,9 +92,7 @@ impl<F: Field, B: Backend> TraceDenseData<F, B> {
     /// The number of polynomials in the main trace.
     #[inline]
     pub fn main_num_polys(&self, name: &str) -> Option<usize> {
-        self.main_table_index
-            .get(name)
-            .map(|offset| (offset.dense_offset.end - offset.dense_offset.start) / offset.poly_size)
+        self.main_table_index.get(name).map(|offset| offset.num_polys)
     }
 
     /// The size of the main trace dense data, including padding.
@@ -106,9 +104,7 @@ impl<F: Field, B: Backend> TraceDenseData<F, B> {
     /// The number of polynomials in the preprocessed trace.
     #[inline]
     pub fn preprocessed_num_polys(&self, name: &str) -> Option<usize> {
-        self.preprocessed_table_index
-            .get(name)
-            .map(|offset| (offset.dense_offset.end - offset.dense_offset.start) / offset.poly_size)
+        self.preprocessed_table_index.get(name).map(|offset| offset.num_polys)
     }
 }
 
@@ -177,11 +173,14 @@ pub struct TraceDenseDataMutRaw<F> {
 
 impl<F: Field, B: Backend> DenseData<B> for TraceDenseData<F, B> {
     type DenseDataRaw = TraceDenseDataRaw<F>;
-    type DenseDataMutRaw = TraceDenseDataMutRaw<F>;
 
     fn as_ptr(&self) -> TraceDenseDataRaw<F> {
         TraceDenseDataRaw { dense: self.dense.as_ptr() }
     }
+}
+
+impl<F: Field, B: Backend> DenseDataMut<B> for TraceDenseData<F, B> {
+    type DenseDataMutRaw = TraceDenseDataMutRaw<F>;
 
     fn as_mut_ptr(&mut self) -> TraceDenseDataMutRaw<F> {
         TraceDenseDataMutRaw { dense: self.dense.as_mut_ptr() }
