@@ -625,9 +625,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.40"
+version = "1.2.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1d05d92f4b1fd76aad469d46cdd858ca761576082cd37df81416691e50199fb"
+checksum = "ac9fe6cdbb24b6ade63616c0a0688e45bb56732262c158df3c0c4bea4ca47cb7"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -1983,9 +1983,9 @@ dependencies = [
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0399f9d26e5191ce32c498bebd31e7a3ceabc2745f0ac54af3f335126c3f24b3"
+checksum = "52051878f80a721bb68ebfbc930e07b65ba72f2da88968ea5c06fd6ca3d3a127"
 
 [[package]]
 name = "fnv"
@@ -3059,11 +3059,11 @@ dependencies = [
 
 [[package]]
 name = "nu-ansi-term"
-version = "0.50.1"
+version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4a28e057d01f97e61255210fcff094d74ed0466038633e95017f5beb68e4399"
+checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3817,7 +3817,7 @@ version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "219cb19e96be00ab2e37d6e299658a0cfa83e52429179969b0f0121b4ac46983"
 dependencies = [
- "toml_edit 0.23.6",
+ "toml_edit 0.23.7",
 ]
 
 [[package]]
@@ -4677,7 +4677,7 @@ checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 [[package]]
 name = "slop-air"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "p3-air",
 ]
@@ -4685,7 +4685,7 @@ dependencies = [
 [[package]]
 name = "slop-algebra"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "itertools 0.13.0",
  "p3-field",
@@ -4695,7 +4695,7 @@ dependencies = [
 [[package]]
 name = "slop-alloc"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "serde",
  "slop-algebra",
@@ -4705,7 +4705,7 @@ dependencies = [
 [[package]]
 name = "slop-baby-bear"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "lazy_static",
  "p3-baby-bear",
@@ -4719,7 +4719,7 @@ dependencies = [
 [[package]]
 name = "slop-basefold"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "derive-where",
  "itertools 0.13.0",
@@ -4740,7 +4740,7 @@ dependencies = [
 [[package]]
 name = "slop-basefold-prover"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "derive-where",
  "itertools 0.13.0",
@@ -4767,7 +4767,7 @@ dependencies = [
 [[package]]
 name = "slop-bn254"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "ff 0.13.1",
  "p3-bn254-fr",
@@ -4782,7 +4782,7 @@ dependencies = [
 [[package]]
 name = "slop-challenger"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "futures",
  "p3-challenger",
@@ -4794,7 +4794,7 @@ dependencies = [
 [[package]]
 name = "slop-commit"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "p3-commit",
  "serde",
@@ -4804,7 +4804,7 @@ dependencies = [
 [[package]]
 name = "slop-dft"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "p3-dft",
  "serde",
@@ -4817,7 +4817,7 @@ dependencies = [
 [[package]]
 name = "slop-fri"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "p3-fri",
 ]
@@ -4825,7 +4825,7 @@ dependencies = [
 [[package]]
 name = "slop-futures"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "crossbeam",
  "futures",
@@ -4838,7 +4838,7 @@ dependencies = [
 [[package]]
 name = "slop-jagged"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "derive-where",
  "futures",
@@ -4871,7 +4871,7 @@ dependencies = [
 [[package]]
 name = "slop-keccak-air"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "p3-keccak-air",
 ]
@@ -4879,7 +4879,7 @@ dependencies = [
 [[package]]
 name = "slop-koala-bear"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "lazy_static",
  "p3-koala-bear",
@@ -4893,7 +4893,7 @@ dependencies = [
 [[package]]
 name = "slop-matrix"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "p3-matrix",
 ]
@@ -4901,7 +4901,7 @@ dependencies = [
 [[package]]
 name = "slop-maybe-rayon"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "p3-maybe-rayon",
 ]
@@ -4909,7 +4909,7 @@ dependencies = [
 [[package]]
 name = "slop-merkle-tree"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "derive-where",
  "ff 0.13.1",
@@ -4936,7 +4936,7 @@ dependencies = [
 [[package]]
 name = "slop-multilinear"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "derive-where",
  "futures",
@@ -4957,7 +4957,7 @@ dependencies = [
 [[package]]
 name = "slop-poseidon2"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "p3-poseidon2",
 ]
@@ -4965,7 +4965,7 @@ dependencies = [
 [[package]]
 name = "slop-stacked"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "derive-where",
  "futures",
@@ -4984,7 +4984,7 @@ dependencies = [
 [[package]]
 name = "slop-sumcheck"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "futures",
  "itertools 0.13.0",
@@ -5001,7 +5001,7 @@ dependencies = [
 [[package]]
 name = "slop-symmetric"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "p3-symmetric",
 ]
@@ -5009,7 +5009,7 @@ dependencies = [
 [[package]]
 name = "slop-tensor"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "arrayvec",
  "derive-where",
@@ -5029,7 +5029,7 @@ dependencies = [
 [[package]]
 name = "slop-uni-stark"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "p3-uni-stark",
 ]
@@ -5037,7 +5037,7 @@ dependencies = [
 [[package]]
 name = "slop-utils"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "p3-util",
  "tracing-forest",
@@ -5047,7 +5047,7 @@ dependencies = [
 [[package]]
 name = "slop-whir"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "derive-where",
  "futures",
@@ -5114,7 +5114,7 @@ dependencies = [
 [[package]]
 name = "sp1-build"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -5127,7 +5127,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-executor"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -5166,7 +5166,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-machine"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "bincode",
  "cfg-if",
@@ -5212,7 +5212,7 @@ dependencies = [
 [[package]]
 name = "sp1-cuda"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "bincode",
  "bytes",
@@ -5231,7 +5231,7 @@ dependencies = [
 [[package]]
 name = "sp1-curves"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "cfg-if",
  "dashu",
@@ -5252,7 +5252,7 @@ dependencies = [
 [[package]]
 name = "sp1-derive"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5262,7 +5262,7 @@ dependencies = [
 [[package]]
 name = "sp1-hypercube"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "arrayref",
  "deepsize2",
@@ -5306,7 +5306,7 @@ dependencies = [
 [[package]]
 name = "sp1-jit"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "dynasmrt",
  "hashbrown 0.14.5",
@@ -5320,7 +5320,7 @@ dependencies = [
 [[package]]
 name = "sp1-primitives"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "bincode",
  "blake3",
@@ -5342,7 +5342,7 @@ dependencies = [
 [[package]]
 name = "sp1-prover"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "anyhow",
  "bincode",
@@ -5392,7 +5392,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-circuit"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "itertools 0.13.0",
  "rand 0.8.5",
@@ -5430,7 +5430,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-compiler"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "backtrace",
  "cfg-if",
@@ -5450,7 +5450,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-executor"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "backtrace",
  "cfg-if",
@@ -5473,7 +5473,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-gnark-ffi"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "anyhow",
  "bincode",
@@ -5496,7 +5496,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-machine"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "itertools 0.13.0",
  "rand 0.8.5",
@@ -5517,7 +5517,7 @@ dependencies = [
 [[package]]
 name = "sp1-sdk"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#16e35cfd7b5c2e278d24a9e7f5049f4669938900"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=erabinov%2Fchange_jagged_prover_data#da1de69ce8ad6281b0e6e7ee686d2723ae655dfa"
 dependencies = [
  "alloy-primitives",
  "anyhow",
@@ -5971,9 +5971,9 @@ dependencies = [
 
 [[package]]
 name = "toml_datetime"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32f1085dec27c2b6632b04c80b3bb1b4300d6495d1e129693bdda7d91e72eec1"
+checksum = "f2cdb639ebbc97961c51720f858597f7f24c4fc295327923af55b74c3c724533"
 dependencies = [
  "serde_core",
 ]
@@ -6005,21 +6005,21 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.23.6"
+version = "0.23.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3effe7c0e86fdff4f69cdd2ccc1b96f933e24811c5441d44904e8683e27184b"
+checksum = "6485ef6d0d9b5d0ec17244ff7eb05310113c3f316f2d14200d4de56b3cb98f8d"
 dependencies = [
  "indexmap 2.11.4",
- "toml_datetime 0.7.2",
+ "toml_datetime 0.7.3",
  "toml_parser",
  "winnow 0.7.13",
 ]
 
 [[package]]
 name = "toml_parser"
-version = "1.0.3"
+version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4cf893c33be71572e0e9aa6dd15e6677937abd686b066eac3f8cd3531688a627"
+checksum = "c0cbe268d35bdb4bb5a56a2de88d0ad0eb70af5384a99d648cd4b3d04039800e"
 dependencies = [
  "winnow 0.7.13",
 ]
