@@ -1,9 +1,9 @@
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_challenger::IopCtx;
 use slop_commit::Rounds;
 use slop_multilinear::{Mle, MleEval, MultilinearPcsBatchVerifier, MultilinearPcsVerifier, Point};
 use thiserror::Error;
-
 #[derive(Debug, Clone)]
 pub struct StackedPcsVerifier<GC, P> {
     pub pcs_verifier: P,
@@ -40,6 +40,7 @@ impl<GC: IopCtx, P: MultilinearPcsBatchVerifier<GC>> StackedPcsVerifier<GC, P> {
     pub fn verify_trusted_evaluation(
         &self,
         commitments: &[GC::Digest],
+        round_areas: &[usize],
         point: &Point<GC::EF>,
         proof: &StackedPcsProof<P::Proof, GC::EF>,
         evaluation_claim: GC::EF,
@@ -53,9 +54,27 @@ impl<GC: IopCtx, P: MultilinearPcsBatchVerifier<GC>> StackedPcsVerifier<GC, P> {
         let (batch_point, stack_point) =
             point.split_at(point.dimension() - self.log_stacking_height as usize);
 
+        if proof.batch_evaluations.len() != round_areas.len()
+            || commitments.len() != round_areas.len()
+        {
+            return Err(StackedVerifierError::IncorrectShape);
+        }
+
+        for (round_area, proof_evaluation_len) in
+            round_areas.iter().zip_eq(proof.batch_evaluations.iter())
+        {
+            if !round_area.is_multiple_of(1 << self.log_stacking_height)
+                || round_area >> self.log_stacking_height as usize
+                    != proof_evaluation_len.num_polynomials()
+            {
+                return Err(StackedVerifierError::IncorrectShape);
+            }
+        }
+
         // Interpolate the batch evaluations as a multilinear polynomial.
         let batch_evaluations =
             proof.batch_evaluations.iter().flatten().cloned().collect::<Mle<_>>();
+
         // Verify that the climed evaluations matched the interpolated evaluations.
         let expected_evaluation = batch_evaluations.blocking_eval_at(&batch_point)[0];
         if evaluation_claim != expected_evaluation {
@@ -95,11 +114,19 @@ impl<GC: IopCtx, P: MultilinearPcsBatchVerifier<GC>> MultilinearPcsVerifier<GC>
     fn verify_trusted_evaluation(
         &self,
         commitments: &[<GC as IopCtx>::Digest],
+        round_polynomial_sizes: &[usize],
         point: Point<<GC as IopCtx>::EF>,
         evaluation_claim: <GC as IopCtx>::EF,
         proof: &Self::Proof,
         challenger: &mut <GC as IopCtx>::Challenger,
     ) -> Result<(), Self::VerifierError> {
-        self.verify_trusted_evaluation(commitments, &point, proof, evaluation_claim, challenger)
+        self.verify_trusted_evaluation(
+            commitments,
+            round_polynomial_sizes,
+            &point,
+            proof,
+            evaluation_claim,
+            challenger,
+        )
     }
 }

@@ -1292,7 +1292,7 @@ mod tests {
     {
         setup_logger();
 
-        let num_variables = rounds
+        let round_areas = rounds
             .iter()
             .map(|message| {
                 message
@@ -1301,9 +1301,8 @@ mod tests {
                     .sum::<usize>()
                     .next_multiple_of(1 << config.starting_interleaved_log_height)
             })
-            .sum::<usize>()
-            .next_power_of_two()
-            .ilog2() as usize;
+            .collect::<Vec<_>>();
+        let num_variables = round_areas.iter().sum::<usize>().next_power_of_two().ilog2() as usize;
 
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
@@ -1360,6 +1359,7 @@ mod tests {
         verifier
             .verify_trusted_evaluation(
                 &commitments,
+                &round_areas,
                 point,
                 eval_claim,
                 &proof,

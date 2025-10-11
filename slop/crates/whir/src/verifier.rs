@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::iter::once;
 
 use serde::{Deserialize, Serialize};
@@ -97,6 +98,8 @@ pub enum WhirProofError {
     FinalEvalError,
     #[error("invalid number of commitments: expected {0}, got {1}")]
     InvalidNumberOfCommitments(usize, usize),
+    #[error("proof has incorrect shape")]
+    IncorrectShape,
 }
 
 impl From<(SumcheckError, usize)> for WhirProofError {
@@ -155,6 +158,7 @@ where
     pub fn verify(
         &self,
         commitments: &[GC::Digest],
+        round_areas: &[usize],
         num_variables: usize,
         claim: GC::EF,
         proof: &WhirProof<GC>,
@@ -162,11 +166,29 @@ where
     ) -> Result<(Point<GC::EF>, GC::EF), WhirProofError> {
         let config = &proof.config;
         let n_rounds = config.round_parameters.len();
-        if commitments.len() != self.num_expected_commitments {
+        if commitments.len() != self.num_expected_commitments
+            || round_areas.len() != self.num_expected_commitments
+            || proof.merkle_proofs[0].len() != self.num_expected_commitments
+        {
             return Err(WhirProofError::InvalidNumberOfCommitments(
                 self.num_expected_commitments,
                 commitments.len(),
             ));
+        }
+
+        println!("Round areas: {:?}", round_areas);
+
+        for (merkle_proof, area) in proof.merkle_proofs[0].iter().zip_eq(round_areas.iter()) {
+            if merkle_proof.proof.width << self.config.starting_interleaved_log_height != *area {
+                println!(
+                    "proof width: {}, proof log height: {}, expected area {}, area: {}",
+                    merkle_proof.proof.width,
+                    merkle_proof.proof.log_tensor_height,
+                    area,
+                    merkle_proof.proof.width << merkle_proof.proof.log_tensor_height
+                );
+                return Err(WhirProofError::IncorrectShape);
+            }
         }
 
         let ood_points: Vec<Point<GC::EF>> = (0..config.starting_ood_samples)
@@ -544,13 +566,20 @@ where
     fn verify_trusted_evaluation(
         &self,
         commitments: &[<GC as IopCtx>::Digest],
+        round_polynomial_sizes: &[usize],
         point: Point<<GC as IopCtx>::EF>,
         evaluation_claims: <GC as IopCtx>::EF,
         proof: &Self::Proof,
         challenger: &mut <GC as IopCtx>::Challenger,
     ) -> Result<(), Self::VerifierError> {
-        let (randomness, claimed_value) =
-            self.verify(commitments, point.dimension(), evaluation_claims, proof, challenger)?;
+        let (randomness, claimed_value) = self.verify(
+            commitments,
+            round_polynomial_sizes,
+            point.dimension(),
+            evaluation_claims,
+            proof,
+            challenger,
+        )?;
         let (folding_point, stacking_point) =
             point.split_at(point.dimension() - self.config.starting_interleaved_log_height);
         let point = stacking_point

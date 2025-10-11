@@ -330,11 +330,19 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
         // Compute the expected evaluation of the dense trace polynomial.
         let expected_eval = sumcheck_proof.point_and_eval.1 / jagged_eval;
 
+        let mut total_areas = round_areas.clone();
+        for (prev_area, (num_added_evals, _)) in
+            total_areas.iter_mut().zip_eq(expected_added_vals_and_cols.iter())
+        {
+            *prev_area += *num_added_evals;
+        }
+
         // Verify the evaluation proof using the (dense) stacked PCS verifier.
         let evaluation_point = sumcheck_proof.point_and_eval.0.clone();
         self.pcs_verifier
             .verify_trusted_evaluation(
                 proof.merkle_tree_commitments.as_slice(),
+                &total_areas,
                 evaluation_point,
                 expected_eval,
                 pcs_proof,

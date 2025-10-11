@@ -708,7 +708,14 @@ mod tests {
         verifier.observe_commitment(&[commitment], &mut challenger_verifier).unwrap();
 
         let (point, value) = verifier
-            .verify(&[commitment], num_variables as usize, claim, &proof, &mut challenger_verifier)
+            .verify(
+                &[commitment],
+                &[],
+                num_variables as usize,
+                claim,
+                &proof,
+                &mut challenger_verifier,
+            )
             .unwrap();
 
         let mut builder = AsmBuilder::default();

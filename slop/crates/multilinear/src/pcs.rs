@@ -132,6 +132,7 @@ pub trait MultilinearPcsVerifier<GC: IopCtx>: 'static + Send + Sync + Clone {
     fn verify_trusted_evaluation(
         &self,
         commitments: &[GC::Digest],
+        round_polynomial_sizes: &[usize],
         point: Point<GC::EF>,
         evaluation_claim: GC::EF,
         proof: &Self::Proof,
@@ -146,6 +147,7 @@ pub trait MultilinearPcsVerifier<GC: IopCtx>: 'static + Send + Sync + Clone {
     fn verify_untrusted_evaluation(
         &self,
         commitments: &[GC::Digest],
+        round_polynomial_sizes: &[usize],
         point: Point<GC::EF>,
         evaluation_claim: GC::EF,
         proof: &Self::Proof,
@@ -154,7 +156,14 @@ pub trait MultilinearPcsVerifier<GC: IopCtx>: 'static + Send + Sync + Clone {
         // Observe the evaluation claim.
         challenger.observe_ext_element(evaluation_claim);
 
-        self.verify_trusted_evaluation(commitments, point, evaluation_claim, proof, challenger)
+        self.verify_trusted_evaluation(
+            commitments,
+            round_polynomial_sizes,
+            point,
+            evaluation_claim,
+            proof,
+            challenger,
+        )
     }
 }
 

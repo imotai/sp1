@@ -30,6 +30,7 @@ serde = { workspace = true, features = ["derive"] }
 derive-where = { workspace = true }
 rayon = { workspace = true }
 futures = { workspace = true }
+itertools = { workspace = true }
 
 [dev-dependencies]
 slop-baby-bear = { workspace = true }

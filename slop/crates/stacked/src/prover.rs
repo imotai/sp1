@@ -218,6 +218,15 @@ mod tests {
             .sum::<usize>();
         let total_number_of_variables = total_data_length.next_power_of_two().ilog2();
         assert_eq!(1 << total_number_of_variables, total_data_length);
+        let round_areas = round_widths_and_log_heights
+            .iter()
+            .map(|dims| {
+                dims.iter()
+                    .map(|&(w, log_h)| w << log_h)
+                    .sum::<usize>()
+                    .next_multiple_of(1 << log_stacking_height)
+            })
+            .collect::<Vec<_>>();
 
         let log_blowup = 1;
 
@@ -285,7 +294,14 @@ mod tests {
             challenger.observe(*commitment);
         }
         verifier
-            .verify_trusted_evaluation(&commitments, &point, &proof, eval_claim, &mut challenger)
+            .verify_trusted_evaluation(
+                &commitments,
+                &round_areas,
+                &point,
+                &proof,
+                eval_claim,
+                &mut challenger,
+            )
             .unwrap();
     }
 }
