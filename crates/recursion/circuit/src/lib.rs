@@ -87,14 +87,6 @@ pub trait CircuitConfig: Config {
         power_bits: Vec<Self::Bit>,
     ) -> Felt<SP1Field>;
 
-    /// Exponentiates a felt x to a list of bits in little endian. Uses precomputed powers
-    /// of x.
-    fn exp_f_bits_precomputed(
-        builder: &mut Builder<Self>,
-        power_bits: &[Self::Bit],
-        two_adic_powers_of_x: &[Felt<SP1Field>],
-    ) -> Felt<SP1Field>;
-
     #[allow(clippy::type_complexity)]
     fn prefix_sum_checks(
         builder: &mut Builder<Self>,
@@ -273,18 +265,6 @@ impl CircuitConfig for InnerConfig {
             .collect()
     }
 
-    fn exp_f_bits_precomputed(
-        builder: &mut Builder<Self>,
-        power_bits: &[Self::Bit],
-        two_adic_powers_of_x: &[Felt<SP1Field>],
-    ) -> Felt<SP1Field> {
-        Self::exp_reverse_bits(
-            builder,
-            two_adic_powers_of_x[0],
-            power_bits.iter().rev().copied().collect(),
-        )
-    }
-
     fn poseidon2_permute_v2(
         builder: &mut Builder<Self>,
         input: [Felt<SP1Field>; PERMUTATION_WIDTH],
@@ -460,18 +440,6 @@ impl CircuitConfig for WrapConfig {
         zip(zip(id_branch, swap_branch), zip(repeat(shouldnt_swap), repeat(should_swap)))
             .map(|((id_v, sw_v), (id_c, sw_c))| builder.eval(id_v * id_c + sw_v * sw_c))
             .collect()
-    }
-
-    fn exp_f_bits_precomputed(
-        builder: &mut Builder<Self>,
-        power_bits: &[Self::Bit],
-        two_adic_powers_of_x: &[Felt<SP1Field>],
-    ) -> Felt<SP1Field> {
-        Self::exp_reverse_bits(
-            builder,
-            two_adic_powers_of_x[0],
-            power_bits.iter().rev().copied().collect(),
-        )
     }
 
     fn poseidon2_permute_v2(
@@ -741,20 +709,6 @@ impl CircuitConfig for OuterConfig {
                 result
             })
             .collect()
-    }
-
-    fn exp_f_bits_precomputed(
-        builder: &mut Builder<Self>,
-        power_bits: &[Self::Bit],
-        two_adic_powers_of_x: &[Felt<SP1Field>],
-    ) -> Felt<SP1Field> {
-        let mut result: Felt<_> = builder.eval(SP1Field::one());
-        let one = builder.constant(SP1Field::one());
-        for (&bit, &power) in power_bits.iter().zip(two_adic_powers_of_x) {
-            let multiplier = builder.select_f(bit, power, one);
-            result = builder.eval(multiplier * result);
-        }
-        result
     }
 
     fn poseidon2_permute_v2(
