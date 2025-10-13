@@ -65,6 +65,11 @@ where
             return Err(JaggedEvalSumcheckError::IncorrectEvaluation);
         }
 
+        // Check that the `col_prefix_sums` is non-empty.
+        if params.col_prefix_sums.is_empty() {
+            return Err(JaggedEvalSumcheckError::IncorrectShape);
+        }
+
         // Verify the jagged eval proof.
         let result = partially_verify_sumcheck_proof(
             partial_sumcheck_proof,
