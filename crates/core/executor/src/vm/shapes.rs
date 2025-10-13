@@ -3,11 +3,20 @@ use hashbrown::HashMap;
 
 use crate::{
     syscalls::SyscallCode, vm::memory::CompressedMemory, Instruction, Opcode, RiscvAirId,
-    SP1CoreOpts, ShardingThreshold,
+    SP1CoreOpts, ShardingThreshold, BYTE_NUM_ROWS, RANGE_NUM_ROWS,
 };
 use std::str::FromStr;
 
+/// The maximum trace area from padding with next multiple of 32.
+/// The correctness of this value is checked in the test `test_maximum_padding`.
+pub const MAXIMUM_PADDING_AREA: u64 = 1 << 18;
+
+/// The maximum trace area from a single cycle.
+/// The correctness of this value is checked in the test `test_maximum_cycle`.
+pub const MAXIMUM_CYCLE_AREA: u64 = 1 << 18;
+
 pub struct ShapeChecker {
+    program_len: u64,
     trace_area: u64,
     max_height: u64,
     pub(crate) syscall_sent: bool,
@@ -26,7 +35,7 @@ pub struct ShapeChecker {
 }
 
 impl ShapeChecker {
-    pub fn new(shard_start_clk: u64) -> Self {
+    pub fn new(program_len: u64, shard_start_clk: u64) -> Self {
         // todo from args
         let opts = SP1CoreOpts::default();
 
@@ -35,8 +44,13 @@ impl ShapeChecker {
         let costs: EnumMap<RiscvAirId, u64> =
             costs.into_iter().map(|(k, v)| (RiscvAirId::from_str(&k).unwrap(), v as u64)).collect();
 
+        let preprocessed_trace_area = program_len.next_multiple_of(32) * costs[RiscvAirId::Program]
+            + BYTE_NUM_ROWS * costs[RiscvAirId::Byte]
+            + RANGE_NUM_ROWS * costs[RiscvAirId::Range];
+
         Self {
-            trace_area: 0,
+            program_len,
+            trace_area: preprocessed_trace_area + MAXIMUM_PADDING_AREA + MAXIMUM_CYCLE_AREA,
             max_height: 0,
             syscall_sent: false,
             shard_start_clk,
@@ -90,7 +104,7 @@ impl ShapeChecker {
     /// Set the start clock of the shard.
     #[inline]
     pub fn reset(&mut self, clk: u64) {
-        *self = Self::new(clk);
+        *self = Self::new(self.program_len, clk);
     }
 
     /// Check if the shard limit has been reached.

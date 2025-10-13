@@ -1027,13 +1027,17 @@ pub mod tests {
     use std::sync::Arc;
 
     use slop_air::BaseAir;
-
-    use sp1_core_executor::{Instruction, Opcode, Program};
+    use sp1_core_executor::{
+        cost_and_height_per_syscall, rv64im_costs, syscalls::SyscallCode, Instruction, Opcode,
+        Program, RiscvAirId, MAXIMUM_CYCLE_AREA, MAXIMUM_PADDING_AREA,
+    };
+    use sp1_hypercube::air::MachineAir;
     use sp1_primitives::SP1Field;
 
     use crate::{programs::tests::*, riscv::RiscvAir, utils::setup_logger};
     use sp1_core_executor::add_halt;
     use sp1_hypercube::InteractionKind;
+    use strum::IntoEnumIterator;
     //     use sp1_primitives::SP1Field;
     //     use sp1_core_executor::{Instruction, Opcode, Program, SP1Context};
     //     use sp1_hypercube::{
@@ -1073,6 +1077,35 @@ pub mod tests {
         }
         let file = std::fs::File::create(dir.join("rv64im_costs.json")).unwrap();
         serde_json::to_writer_pretty(file, &costs).unwrap();
+    }
+
+    #[test]
+    fn test_maximum_padding() {
+        let machine = RiscvAir::<SP1Field>::machine();
+        let chip_clusters = &machine.shape().chip_clusters;
+
+        for cluster in chip_clusters {
+            let mut total_columns = 0;
+            for chip in cluster {
+                total_columns += chip.preprocessed_width();
+                total_columns += chip.width();
+            }
+            assert!((32 * total_columns) as u64 <= MAXIMUM_PADDING_AREA);
+        }
+    }
+
+    #[test]
+    fn test_maximum_cycle() {
+        // Assumes that the maximum possible single shard trace area comes from precompiles.
+        let costs = rv64im_costs();
+        for syscall_code in SyscallCode::iter() {
+            if syscall_code.should_send() == 0 {
+                continue;
+            }
+            let (mut cost_per_syscall, _) = cost_and_height_per_syscall(syscall_code, &costs, true);
+            cost_per_syscall += costs[&RiscvAirId::SyscallInstrs];
+            assert!(cost_per_syscall as u64 <= MAXIMUM_CYCLE_AREA);
+        }
     }
 
     use crate::{io::SP1Stdin, utils::run_test};

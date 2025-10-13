@@ -171,11 +171,12 @@ impl<'a> SplicingVM<'a> {
         program: Arc<Program>,
         touched_addresses: &'a mut CompressedMemory,
     ) -> Self {
+        let program_len = program.instructions.len() as u64;
         Self {
             core: CoreVM::new(trace, program),
             touched_addresses,
             hint_lens_idx: 0,
-            shape_checker: ShapeChecker::new(trace.clk_start()),
+            shape_checker: ShapeChecker::new(program_len, trace.clk_start()),
         }
     }
 

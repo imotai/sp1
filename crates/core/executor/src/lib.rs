@@ -34,7 +34,12 @@ mod io;
 mod tracing;
 pub use tracing::TracingVM;
 mod vm;
-pub use vm::{memory::CompressedMemory, results::CycleResult, CoreVM};
+pub use vm::{
+    memory::CompressedMemory,
+    results::CycleResult,
+    shapes::{MAXIMUM_CYCLE_AREA, MAXIMUM_PADDING_AREA},
+    CoreVM,
+};
 mod hooks;
 mod splicing;
 pub use splicing::{SplicedMinimalTrace, SplicingVM};
