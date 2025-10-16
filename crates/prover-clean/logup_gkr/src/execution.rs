@@ -135,7 +135,7 @@ pub async fn first_layer_transition(layer: &FirstGkrLayer) -> GkrLayer {
 }
 
 /// Wrapper for layer_transition and first_layer_transition. Do this for every row_variable.
-pub async fn gkr_transition(layer: &GkrCircuitLayer) -> GkrCircuitLayer {
+pub async fn gkr_transition<'a>(layer: &GkrCircuitLayer<'a>) -> GkrCircuitLayer<'a> {
     match layer {
         GkrCircuitLayer::FirstLayer(layer) => {
             GkrCircuitLayer::Materialized(first_layer_transition(layer).await)

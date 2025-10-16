@@ -1,6 +1,6 @@
 use csl_cuda::run_in_place;
 use cslpc_experimental::zerocheck_mock::simple_zerocheck;
-use cslpc_utils::{Ext, Felt, GC};
+use cslpc_utils::{Ext, Felt, TestGC};
 use itertools::Itertools;
 
 use rand::SeedableRng;
@@ -62,7 +62,7 @@ async fn main() {
                 })
                 .sum::<Ext>();
 
-            let mut challenger = GC::default_challenger();
+            let mut challenger = TestGC::default_challenger();
             let _lambda: Ext = challenger.sample();
 
             let base_device = t.into_device(base.clone()).await.unwrap();
@@ -139,7 +139,7 @@ async fn main() {
             .map(|(e_i, b_i)| zerocheck_eval(*e_i, *b_i))
             .sum::<Ext>();
 
-        let mut challenger = GC::default_challenger();
+        let mut challenger = TestGC::default_challenger();
         let _lambda: Ext = challenger.sample();
 
         let ext1_device = t.into_device(ext1.clone()).await.unwrap();

@@ -23,7 +23,7 @@ use slop_challenger::IopCtx;
 use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 use slop_merkle_tree::MerkleTreeTcsProof;
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
-use slop_tensor::{Tensor, TensorView};
+use slop_tensor::Tensor;
 use thiserror::Error;
 
 use crate::{MerkleTree, MerkleTreeHasher};
@@ -64,22 +64,22 @@ pub type MerkleTreeProverData<Digest> = (MerkleTree<Digest, TaskScope>, Digest, 
 /// to be propagated up the stack, this trait defines the minimal API necessary to interact with the
 /// Merkle tree prover and is generic only in the IopCtx.
 pub trait TcsProverClean<GC: IopCtx>: Send + Sync + 'static {
-    fn commit_tensors<'a>(
+    fn commit_tensors(
         &self,
-        virtual_tensor: TensorView<'a, GC::F, TaskScope>,
-    ) -> impl Future<Output = Result<(GC::Digest, MerkleTreeProverData<GC::Digest>), ProverError>>;
+        tensor: &Tensor<GC::F, TaskScope>,
+    ) -> impl Future<Output = Result<(GC::Digest, MerkleTreeProverData<GC::Digest>), ProverError>> + Send;
 
     fn prove_openings_at_indices(
         &self,
-        data: MerkleTreeProverData<GC::Digest>,
+        data: &MerkleTreeProverData<GC::Digest>,
         indices: &[usize],
-    ) -> impl Future<Output = Result<MerkleTreeTcsProof<GC::Digest>, ProverError>>;
+    ) -> impl Future<Output = Result<MerkleTreeTcsProof<GC::Digest>, ProverError>> + Send;
 
-    fn compute_openings_at_indices<'a>(
+    fn compute_openings_at_indices(
         &self,
-        tensors: TensorView<'a, GC::F, TaskScope>,
+        tensors: &Tensor<GC::F, TaskScope>,
         indices: &[usize],
-    ) -> impl Future<Output = Tensor<GC::F>>;
+    ) -> impl Future<Output = Tensor<GC::F>> + Send;
 }
 
 impl<GC: IopCtx, W, K, H, const WIDTH: usize> TcsProverClean<GC>
@@ -89,25 +89,25 @@ where
     K: MerkleTreeSingleLayerKernels<GC>,
     H: Hasher<W, WIDTH>,
 {
-    async fn commit_tensors<'a>(
+    async fn commit_tensors(
         &self,
-        virtual_tensor: TensorView<'a, GC::F, TaskScope>,
+        tensor: &Tensor<GC::F, TaskScope>,
     ) -> Result<(GC::Digest, MerkleTreeProverData<GC::Digest>), ProverError> {
-        let scope = virtual_tensor.backend();
+        let scope = tensor.backend();
         let hasher = H::hasher();
         let hasher_device = scope.to_device(&hasher).await.unwrap();
 
         let (tensor_ptrs_host, widths_host): (Vec<_>, Vec<usize>) =
-            (vec![virtual_tensor.as_ptr()], vec![virtual_tensor.sizes()[0]]);
+            (vec![tensor.as_ptr()], vec![tensor.sizes()[0]]);
         let mut tensor_ptrs = Buffer::with_capacity_in(tensor_ptrs_host.len(), scope.clone());
         tensor_ptrs.extend_from_host_slice(&tensor_ptrs_host)?;
         let mut widths = Buffer::with_capacity_in(widths_host.len(), scope.clone());
         widths.extend_from_host_slice(&widths_host)?;
 
-        let height = virtual_tensor.sizes()[1].ilog2() as usize;
+        let height = tensor.sizes()[1].ilog2() as usize;
 
-        assert_eq!(1 << height, virtual_tensor.sizes()[1], "Height must be a power of two");
-        assert_eq!(virtual_tensor.sizes().len(), 2, "Tensor must be 2D");
+        assert_eq!(1 << height, tensor.sizes()[1], "Height must be a power of two");
+        assert_eq!(tensor.sizes().len(), 2, "Tensor must be 2D");
 
         let mut tree = MerkleTree::<GC::Digest, _>::uninit(height, scope.clone());
         unsafe {
@@ -140,7 +140,7 @@ where
 
         let root = tree.digests[0].copy_into_host(scope);
 
-        let total_width = virtual_tensor.sizes()[0];
+        let total_width = tensor.sizes()[0];
 
         let hash = hasher.hash_iter([
             GC::F::from_canonical_usize(height),
@@ -152,7 +152,7 @@ where
 
     async fn prove_openings_at_indices(
         &self,
-        data: MerkleTreeProverData<GC::Digest>,
+        data: &MerkleTreeProverData<GC::Digest>,
         indices: &[usize],
     ) -> Result<MerkleTreeTcsProof<GC::Digest>, ProverError> {
         let paths = {
@@ -191,9 +191,9 @@ where
         })
     }
 
-    async fn compute_openings_at_indices<'a>(
+    async fn compute_openings_at_indices(
         &self,
-        tensors: TensorView<'a, GC::F, TaskScope>,
+        tensors: &Tensor<GC::F, TaskScope>,
         indices: &[usize],
     ) -> Tensor<GC::F> {
         let openings = {
@@ -374,10 +374,10 @@ mod tests {
     use slop_stacked::{FixedRateInterleave, InterleaveMultilinears};
     use sp1_hypercube::prover::{ProverSemaphore, TraceGenerator};
 
-    use cslpc_tracegen::full_tracegen;
     use cslpc_tracegen::test_utils::tracegen_setup::{
-        self, CORE_MAX_LOG_ROW_COUNT, CORE_MAX_TRACE_SIZE, LOG_STACKING_HEIGHT,
+        self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT,
     };
+    use cslpc_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
     use cslpc_utils::Felt;
 
     use super::*;
@@ -437,7 +437,7 @@ mod tests {
             let tensor_prover = Poseidon2KoalaBear16CudaProver::default();
 
             let (new_preprocessed_commit, new_prover_data) = tensor_prover
-                .commit_tensors(new_traces.dense().preprocessed_virtual_tensor(LOG_STACKING_HEIGHT))
+                .commit_tensors(&new_traces.dense().preprocessed_tensor(LOG_STACKING_HEIGHT))
                 .await
                 .unwrap();
 
@@ -455,13 +455,13 @@ mod tests {
 
             let new_openings = tensor_prover
                 .compute_openings_at_indices(
-                    new_traces.dense().preprocessed_virtual_tensor(LOG_STACKING_HEIGHT),
+                    &new_traces.dense().preprocessed_tensor(LOG_STACKING_HEIGHT),
                     &indices,
                 )
                 .await;
 
             let new_proof =
-                tensor_prover.prove_openings_at_indices(new_prover_data, &indices).await.unwrap();
+                tensor_prover.prove_openings_at_indices(&new_prover_data, &indices).await.unwrap();
 
             assert_eq!(new_proof.merkle_root, old_proof.merkle_root);
             assert_eq!(new_proof.log_tensor_height, old_proof.log_tensor_height);
@@ -470,7 +470,7 @@ mod tests {
             assert_eq!(new_openings, old_openings);
 
             let (new_main_commit, new_prover_data) = tensor_prover
-                .commit_tensors(new_traces.dense().main_virtual_tensor(LOG_STACKING_HEIGHT))
+                .commit_tensors(&new_traces.dense().main_tensor(LOG_STACKING_HEIGHT))
                 .await
                 .unwrap();
             let message = old_traces
@@ -504,13 +504,13 @@ mod tests {
 
             let new_openings = tensor_prover
                 .compute_openings_at_indices(
-                    new_traces.dense().main_virtual_tensor(LOG_STACKING_HEIGHT),
+                    &new_traces.dense().main_tensor(LOG_STACKING_HEIGHT),
                     &indices,
                 )
                 .await;
 
             let new_proof =
-                tensor_prover.prove_openings_at_indices(new_prover_data, &indices).await.unwrap();
+                tensor_prover.prove_openings_at_indices(&new_prover_data, &indices).await.unwrap();
 
             assert_eq!(new_proof.merkle_root, old_proof.merkle_root);
             assert_eq!(new_proof.log_tensor_height, old_proof.log_tensor_height);

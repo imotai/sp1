@@ -33,7 +33,7 @@ use crate::{
         GkrTestData, LogupRoundPolynomial, PolynomialLayer,
     },
 };
-use cslpc_utils::{DenseData, Ext, Felt, JaggedMle, GC};
+use cslpc_utils::{DenseData, Ext, Felt, JaggedMle};
 use rayon::prelude::*;
 use slop_sumcheck::partially_verify_sumcheck_proof;
 
@@ -682,14 +682,11 @@ where
     )
 }
 
-pub async fn materialized_round_sumcheck<C>(
+pub async fn materialized_round_sumcheck<C: FieldChallenger<Felt>>(
     mut poly: LogupRoundPolynomial,
     challenger: &mut C,
     claim: Ext,
-) -> (PartialSumcheckProof<Ext>, Vec<Ext>)
-where
-    C: FieldChallenger<Felt>,
-{
+) -> (PartialSumcheckProof<Ext>, Vec<Ext>) {
     let num_variables = poly.num_variables();
     assert!(num_variables >= 1_u32);
 
@@ -751,11 +748,13 @@ where
     )
 }
 
-pub async fn bench_materialized_sumcheck<R: rand::Rng>(
+pub async fn bench_materialized_sumcheck<GC: IopCtx>(
     interaction_row_counts: Vec<u32>,
-    rng: &mut R,
+    rng: &mut impl rand::Rng,
     num_row_variables: Option<u32>,
-) {
+) where
+    GC::Challenger: FieldChallenger<Felt>,
+{
     let get_challenger = move || GC::default_challenger();
     let now = std::time::Instant::now();
 
@@ -877,6 +876,7 @@ pub async fn bench_materialized_sumcheck<R: rand::Rng>(
 #[cfg(test)]
 mod tests {
     use crate::utils::{generate_test_data, GkrTestData};
+    use cslpc_utils::TestGC;
     use slop_multilinear::Mle;
     use slop_multilinear::Point;
 
@@ -1006,6 +1006,6 @@ mod tests {
         // ];
         let interaction_row_counts: Vec<u32> = vec![92, 100, 278, 220, 82, 82];
 
-        bench_materialized_sumcheck(interaction_row_counts, &mut rng, None).await;
+        bench_materialized_sumcheck::<TestGC>(interaction_row_counts, &mut rng, None).await;
     }
 }

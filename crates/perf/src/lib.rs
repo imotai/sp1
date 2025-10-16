@@ -2,7 +2,8 @@ use std::{sync::Arc, time::Duration};
 
 use clap::ValueEnum;
 use csl_cuda::TaskScope;
-use csl_prover::{local_gpu_opts, SP1CudaProverBuilder};
+use csl_prover::local_gpu_opts;
+use csl_prover::SP1ProverCleanBuilder;
 use sp1_core_executor::SP1Context;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_prover::utils::generate_nonce;
@@ -14,6 +15,14 @@ pub use report::{write_measurements_to_csv, Measurement};
 
 mod report;
 pub mod telemetry;
+
+#[derive(ValueEnum, Debug, Clone, Copy)]
+pub enum ProverBackend {
+    /// Use the old prover implementation
+    Old,
+    /// Use the new prover-clean implementation
+    ProverClean,
+}
 
 pub const FIBONACCI_ELF: &[u8] =
     include_bytes!("../../prover/programs/fibonacci/riscv64im-succinct-zkvm-elf");
@@ -40,18 +49,35 @@ pub async fn make_measurement(
     elf: &[u8],
     stdin: SP1Stdin,
     stage: Stage,
+    backend: ProverBackend,
     t: TaskScope,
 ) -> Measurement {
     let recursion_cache_size = 5;
-    let sp1_prover = SP1CudaProverBuilder::new(t.clone())
-        .normalize_cache_size(recursion_cache_size)
-        .set_max_compose_arity(DEFAULT_ARITY)
-        .without_vk_verification()
-        .build()
-        .await;
     let opts = local_gpu_opts();
 
-    let prover = Arc::new(LocalProver::new(sp1_prover, opts));
+    // Create the appropriate prover based on the backend selection
+    let prover: Arc<LocalProver<_>> = match backend {
+        // ProverBackend::Old => {
+        //     let sp1_prover = csl_prover::SP1CudaProverBuilder::new(t.clone())
+        //         .normalize_cache_size(recursion_cache_size)
+        //         .set_max_compose_arity(DEFAULT_ARITY)
+        //         .without_vk_verification()
+        //         .build()
+        //         .await;
+        //     Arc::new(LocalProver::new(sp1_prover, opts))
+        // }
+        ProverBackend::ProverClean => {
+            let sp1_prover = SP1ProverCleanBuilder::new(t.clone())
+                .normalize_cache_size(recursion_cache_size)
+                .set_max_compose_arity(DEFAULT_ARITY)
+                .without_vk_verification()
+                .without_recursion_vks()
+                .build()
+                .await;
+            Arc::new(LocalProver::new(sp1_prover, opts))
+        }
+        _ => unimplemented!(),
+    };
 
     let time = Instant::now();
     let (pk, program, vk) = prover

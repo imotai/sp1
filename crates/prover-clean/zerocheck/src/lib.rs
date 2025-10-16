@@ -1,3 +1,7 @@
+use std::borrow::Cow;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::RwLock;
+
 use csl_air::instruction::Instruction16;
 use csl_air::{air_block::BlockAir, codegen_cuda_eval, SymbolicProverFolder};
 use csl_cuda::sys::prover_clean::{
@@ -41,8 +45,6 @@ use sp1_hypercube::{
     AirOpenedValues, Chip, ChipEvaluation, ChipOpenedValues, ConstraintSumcheckFolder,
     LogUpEvaluations, ShardOpenedValues,
 };
-use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Arc, OnceLock};
 
 pub mod data;
 pub mod primitives;
@@ -61,31 +63,32 @@ pub struct EvalProgramInfo<B: Backend = CpuBackend> {
 type CudaEvalResult =
     (Vec<u32>, Vec<Instruction16>, Vec<u32>, Vec<Felt>, Vec<u32>, Vec<Ext>, Vec<u32>, u32, u32);
 
-static CUDA_EVAL_CACHE: OnceLock<BTreeMap<String, CudaEvalResult>> = OnceLock::new();
+static CUDA_EVAL_CACHE: RwLock<BTreeMap<String, CudaEvalResult>> = RwLock::new(BTreeMap::new());
 
 pub fn initialize_cuda_cache<A>(airs: &BTreeSet<Chip<Felt, A>>)
 where
     A: for<'a> BlockAir<SymbolicProverFolder<'a>>,
 {
-    CUDA_EVAL_CACHE.get_or_init(|| {
-        let mut cache = BTreeMap::new();
-        for chip in airs {
-            let result = codegen_cuda_eval(chip.air.as_ref());
-            cache.insert(chip.air.name(), result); // Assuming you have some way to get a key
-        }
-        cache
-    });
+    let mut cache = BTreeMap::new();
+    for chip in airs {
+        let result = codegen_cuda_eval(chip.air.as_ref());
+        cache.insert(chip.air.name(), result);
+    }
+
+    let mut guard = CUDA_EVAL_CACHE.write().unwrap();
+    *guard = cache;
 }
 
-pub fn get_cuda_eval_result(chip_name: &String) -> Option<&'static CudaEvalResult> {
-    CUDA_EVAL_CACHE.get()?.get(chip_name)
+pub fn get_cuda_eval_result(chip_name: &String) -> Option<CudaEvalResult> {
+    let guard = CUDA_EVAL_CACHE.read().unwrap();
+    guard.get(chip_name).cloned()
 }
 
-pub struct ZeroCheckJaggedPoly<K: Field> {
+pub struct ZeroCheckJaggedPoly<'a, K: Field> {
     /// The program for **all chips**.
     pub program: EvalProgramInfo<TaskScope>,
     /// The data in a `JaggedTraceMle` form.
-    pub data: Arc<JaggedTraceMle<K, TaskScope>>,
+    pub data: Cow<'a, JaggedTraceMle<K, TaskScope>>,
     /// The information in a `JaggedDenseInfo` form.
     pub info: JaggedDenseInfo<TaskScope>,
     /// The `VirtualGeq` for each table.
@@ -146,7 +149,9 @@ where
             chip_ef_constants_indices,
             chip_f_ctr,
             chip_ef_ctr,
-        ) = get_cuda_eval_result(&chip.air.name()).unwrap();
+        ) = get_cuda_eval_result(&chip.air.name()).unwrap_or_else(|| {
+            panic!("Chip name {} not found in CUDA eval cache", chip.air.name());
+        });
 
         for constraint_index in chip_constraint_indices {
             constraint_indices
@@ -171,8 +176,8 @@ where
             ef_constants_indices.push(current_ef_constants_len + idx);
         }
 
-        f_ctr = f_ctr.max(*chip_f_ctr);
-        ef_ctr = ef_ctr.max(*chip_ef_ctr);
+        f_ctr = f_ctr.max(chip_f_ctr);
+        ef_ctr = ef_ctr.max(chip_ef_ctr);
     }
     operations_indices.push(operations.len() as u32);
 
@@ -230,7 +235,7 @@ where
 /// The format is `is_first || chip_idx || prep_start || main_start` in little endian.
 /// `is_first` is a bit, `chip_idx` is 7 bits, `prep_start` is 10 bits, and `main_start` is 14 bits.
 pub fn pack_info(is_first: bool, chip_idx: u32, prep_start: u32, main_start: u32) -> u32 {
-    (is_first as u32) + chip_idx * 2 + prep_start * (1 << 8) + main_start * (1 << 18)
+    (is_first as u32) + (chip_idx << 1) + (prep_start << 8) + (main_start << 18)
 }
 
 /// The `packed_info` is `is_first || chip_idx || prep_start || main_start` in little endian.
@@ -290,8 +295,8 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn initialize_zerocheck_poly<A>(
-    data: Arc<JaggedTraceMle<Felt, TaskScope>>,
+pub async fn initialize_zerocheck_poly<'b, A>(
+    data: &'b JaggedTraceMle<Felt, TaskScope>,
     chips: &BTreeSet<Chip<Felt, A>>,
     initial_heights: Vec<u32>,
     public_values: Vec<Felt>,
@@ -301,7 +306,7 @@ pub async fn initialize_zerocheck_poly<A>(
     padded_row_adjustment: Vec<Ext>,
     zeta: Point<Ext>,
     claim: Ext,
-) -> ZeroCheckJaggedPoly<Felt>
+) -> ZeroCheckJaggedPoly<'b, Felt>
 where
     A: for<'a> BlockAir<SymbolicProverFolder<'a>>,
 {
@@ -350,7 +355,7 @@ where
 
     ZeroCheckJaggedPoly {
         program,
-        data,
+        data: Cow::Borrowed(data),
         info,
         virtual_geq,
         eq_adjustment: Ext::one(),
@@ -401,8 +406,8 @@ impl JaggedConstraintPolyEvalKernel<Ext> for TaskScope {
     }
 }
 
-pub async fn evaluate_zerocheck<K: Field>(
-    input: &ZeroCheckJaggedPoly<K>,
+pub async fn evaluate_zerocheck<'b, K: Field>(
+    input: &'b ZeroCheckJaggedPoly<'b, K>,
 ) -> UnivariatePolynomial<Ext>
 where
     TaskScope: JaggedConstraintPolyEvalKernel<K>,
@@ -498,11 +503,11 @@ where
     interpolate_univariate_polynomial(&xs, &ys)
 }
 
-pub async fn zerocheck_fix_last_variable<K: Field>(
-    input: ZeroCheckJaggedPoly<K>,
+pub async fn zerocheck_fix_last_variable<'b, K: Field>(
+    input: ZeroCheckJaggedPoly<'b, K>,
     point: Ext,
     claim: Ext,
-) -> ZeroCheckJaggedPoly<Ext>
+) -> ZeroCheckJaggedPoly<'b, Ext>
 where
     TaskScope: JaggedFixLastVariableKernel<K>,
     Ext: ExtensionField<K>,
@@ -521,7 +526,7 @@ where
 
     ZeroCheckJaggedPoly {
         program: input.program,
-        data: Arc::new(new_data),
+        data: Cow::Owned(new_data),
         info: new_info,
         virtual_geq,
         eq_adjustment,
@@ -558,7 +563,7 @@ where
 #[allow(clippy::too_many_arguments)]
 pub async fn zerocheck<A, C>(
     chips: &BTreeSet<Chip<Felt, A>>,
-    trace_mle: Arc<JaggedTraceMle<Felt, TaskScope>>,
+    trace_mle: &JaggedTraceMle<Felt, TaskScope>,
     batching_challenge: Ext,
     gkr_opening_batch_randomness: Ext,
     logup_evaluations: &LogUpEvaluations<Ext>,
@@ -578,12 +583,13 @@ where
         .map(|trace_offset| trace_offset.poly_size as u32)
         .collect::<Vec<u32>>();
 
+    initialize_cuda_cache(chips);
+
     let max_num_constraints =
         itertools::max(chips.iter().map(|chip| chip.num_constraints)).unwrap();
     let max_columns =
         itertools::max(chips.iter().map(|chip| chip.preprocessed_width() + chip.width())).unwrap();
-    let total_preprocessed_columns =
-        chips.iter().map(|chip| chip.preprocessed_width()).sum::<usize>();
+    let total_preprocessed_columns = trace_mle.dense().preprocessed_cols;
     let mut powers_of_challenge =
         batching_challenge.powers().take(max_num_constraints).collect::<Vec<_>>();
     powers_of_challenge.reverse();
@@ -627,7 +633,7 @@ where
 
         claim *= lambda;
 
-        claim += main_opening
+        let addend = main_opening
             .evaluations()
             .as_slice()
             .iter()
@@ -640,6 +646,8 @@ where
             .zip(gkr_powers.iter())
             .map(|(opening, power)| *opening * *power)
             .sum::<Ext>();
+
+        claim += addend;
     }
 
     let main_poly = initialize_zerocheck_poly(
@@ -671,7 +679,9 @@ where
         next_poly = zerocheck_fix_last_variable(next_poly, point, next_claim).await;
     }
 
-    let final_jagged_data = unsafe { next_poly.data.dense_data.dense.copy_into_host_vec() };
+    let final_jagged_data =
+        unsafe { next_poly.data.as_ref().dense_data.dense.copy_into_host_vec() };
+
     let mut idx = 0;
     let mut individual_column_evals = vec![Ext::zero(); data_input_heights.len()];
     for i in 0..data_input_heights.len() {
@@ -680,6 +690,49 @@ where
             idx += 4;
         }
     }
+
+    // // *************** DEBUG ******************
+
+    // let chip_evaluations = round_batch_evaluations(&jagged_point, trace_mle).await;
+    // let [preprocessed, main] = chip_evaluations.rounds.try_into().unwrap();
+
+    // let mut opened_values = BTreeMap::new();
+
+    // println!("Num chips: {}", chips.len());
+    // println!("Num main evals: {}", main.len());
+    // println!("Num prep evals: {}", preprocessed.len());
+
+    // let mut preprocessed_so_far = 0;
+
+    // for (i, (chip, main_evals)) in chips.iter().zip_eq(main.iter()).enumerate() {
+    //     let openings = ChipOpenedValues {
+    //         main: AirOpenedValues { local: main_evals.to_host().await.unwrap().to_vec() },
+    //         preprocessed: AirOpenedValues {
+    //             local: if chip.preprocessed_width() != 0 {
+    //                 let res = preprocessed[preprocessed_so_far].to_host().await.unwrap().to_vec();
+    //                 preprocessed_so_far += 1;
+    //                 res
+    //             } else {
+    //                 vec![]
+    //             },
+    //         },
+    //         degree: Point::<Ext>::from_usize(initial_heights[i] as usize, max_log_row_count + 1),
+    //         local_cumulative_sum: Ext::zero(),
+    //     };
+
+    //     // Observe the openings
+    //     for eval in openings.preprocessed.local.iter() {
+    //         challenger.observe_ext_element(*eval);
+    //     }
+
+    //     for eval in openings.main.local.iter() {
+    //         challenger.observe_ext_element(*eval);
+    //     }
+
+    //     opened_values.insert(chip.name(), openings);
+    // }
+
+    // println!("debug opened values: {:?}", opened_values);
 
     let mut preprocessed_ptr = 0;
     let mut main_ptr = total_preprocessed_columns;
@@ -696,6 +749,12 @@ where
         preprocessed_ptr += preprocessed_width;
 
         let width = chip.width();
+        // println!(
+        //     "name: {}, preprocessed: {:?}, main: {:?}",
+        //     chip.air.name(),
+        //     &individual_column_evals[preprocessed_ptr - preprocessed_width..preprocessed_ptr],
+        //     &individual_column_evals[main_ptr..main_ptr + width]
+        // );
 
         let main =
             AirOpenedValues { local: individual_column_evals[main_ptr..main_ptr + width].to_vec() };
@@ -747,14 +806,22 @@ pub mod tests {
         Chip, ChipEvaluation, ChipOpenedValues, ConstraintSumcheckFolder, LogUpEvaluations,
         ShardOpenedValues, VerifierConstraintFolder,
     };
+
     use std::collections::{BTreeMap, BTreeSet};
     use std::marker::PhantomData;
+    use std::ops::Deref;
     use std::sync::Arc;
 
-    use cslpc_utils::{Ext, Felt, JaggedTraceMle, TraceDenseData, TraceOffset, GC};
+    use cslpc_tracegen::{
+        full_tracegen,
+        test_utils::tracegen_setup::{self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT},
+        CORE_MAX_TRACE_SIZE,
+    };
+    use cslpc_utils::{Ext, Felt, JaggedTraceMle, TestGC, TraceDenseData, TraceOffset};
 
     use super::initialize_cuda_cache;
     use super::primitives::evaluate_jagged_columns;
+    use super::CUDA_EVAL_CACHE;
     use super::{
         challenger_update, evaluate_zerocheck, initialize_zerocheck_poly, zerocheck,
         zerocheck_fix_last_variable,
@@ -767,6 +834,11 @@ pub mod tests {
     };
     use sp1_core_executor::{ExecutionRecord, Program};
     use sp1_derive::AlignedBorrow;
+
+    pub fn clear_cuda_cache() {
+        let mut guard = CUDA_EVAL_CACHE.write().unwrap();
+        guard.clear();
+    }
 
     pub enum ZerocheckTestChip {
         Chip1(ZerocheckTestChip1),
@@ -1368,7 +1440,6 @@ pub mod tests {
             "expected final evaluation different"
         );
 
-        use std::ops::Deref;
         let zerocheck_sum_modifications_from_gkr = gkr_evaluations
             .chip_openings
             .values()
@@ -1555,25 +1626,23 @@ pub mod tests {
         A: for<'a> BlockAir<SymbolicProverFolder<'a>>,
     {
         let mut rng = rand::thread_rng();
-        let sum_length = sizes
-            .iter()
-            .enumerate()
-            .map(|(a, b)| {
-                b * (chips_vec[a].preprocessed_width() as u32 + chips_vec[a].width() as u32)
-            })
-            .sum::<u32>();
+        let total_main =
+            sizes.iter().enumerate().map(|(a, b)| b * (chips_vec[a].width() as u32)).sum::<u32>();
         let total_preprocessed = sizes
             .iter()
             .enumerate()
             .map(|(a, b)| b * (chips_vec[a].preprocessed_width() as u32))
             .sum::<u32>();
 
+        let padded_preprocessed = total_preprocessed.next_multiple_of(1 << 21);
+        let sum_length = padded_preprocessed + total_main;
+
         let mut preprocessed_table_index: BTreeMap<String, TraceOffset> = BTreeMap::new();
         let mut main_table_index: BTreeMap<String, TraceOffset> = BTreeMap::new();
 
         let mut data = vec![KoalaBear::zero(); sum_length as usize];
         let mut preprocessed_ptr = 0;
-        let mut main_ptr = total_preprocessed;
+        let mut main_ptr = padded_preprocessed;
         for (i, row) in sizes.iter().enumerate() {
             for j in 0..*row {
                 let (prep_row, main_row) = generate_random_row(i, &mut rng, public_values);
@@ -1613,7 +1682,8 @@ pub mod tests {
         let num_cols = chips_vec
             .iter()
             .map(|chip| (chip.preprocessed_width() + chip.width()) as u32)
-            .sum::<u32>();
+            .sum::<u32>()
+            + 1;
         let mut start_idx = vec![0u32; (num_cols + 1) as usize];
         let mut col_idx: u32 = 0;
         let mut cnt: usize = 0;
@@ -1630,7 +1700,13 @@ pub mod tests {
                 heights.push(row / 2);
             }
         }
+        cols[cnt..(padded_preprocessed / 2) as usize].fill(col_idx);
+        start_idx[(col_idx + 1) as usize] = padded_preprocessed / 2;
+        col_idx += 1;
+        heights.push(padded_preprocessed / 2 - cnt as u32);
+        cnt = (padded_preprocessed / 2) as usize;
         let total_preprocessed_cols = col_idx;
+
         for (i, chip) in chips_vec.iter().enumerate() {
             let row = sizes[i];
             let col = chip.width() as u32;
@@ -1649,7 +1725,7 @@ pub mod tests {
         JaggedTraceMle::new(
             TraceDenseData {
                 dense: Buffer::from(data),
-                preprocessed_offset: total_preprocessed as usize,
+                preprocessed_offset: padded_preprocessed as usize,
                 preprocessed_cols: total_preprocessed_cols as usize,
                 preprocessed_table_index,
                 main_table_index,
@@ -1685,7 +1761,9 @@ pub mod tests {
         chips.insert(Chip::new(ZerocheckTestChip::Chip1(ZerocheckTestChip1)));
         chips.insert(Chip::new(ZerocheckTestChip::Chip2(ZerocheckTestChip2)));
         chips.insert(Chip::new(ZerocheckTestChip::Chip3(ZerocheckTestChip3)));
+        clear_cuda_cache();
         initialize_cuda_cache(&chips);
+
         let chips_vec = chips.iter().cloned().collect::<Vec<_>>();
         let num_chips = chips_vec.len();
         let row_variables = 22;
@@ -1698,7 +1776,7 @@ pub mod tests {
             let trace_mle = Arc::new(trace_mle.into_device(&t).await);
             let initial_heights = input_size.clone();
 
-            let mut challenger = GC::default_challenger();
+            let mut challenger = TestGC::default_challenger();
             let _lambda: Ext = challenger.sample();
 
             let alpha = challenger.sample();
@@ -1749,7 +1827,7 @@ pub mod tests {
             let individual_column_evals = evaluate_jagged_columns(&trace_mle, zeta.clone()).await;
             let mut claim = Ext::zero();
             let mut preprocessed_ptr: usize = 0;
-            let mut main_ptr = chips_vec.iter().map(|x| x.preprocessed_width()).sum::<usize>();
+            let mut main_ptr = chips_vec.iter().map(|x| x.preprocessed_width()).sum::<usize>() + 1;
 
             for chip in chips_vec.iter() {
                 let preprocessed_width = chip.preprocessed_width();
@@ -1767,7 +1845,7 @@ pub mod tests {
             }
 
             let main_poly = initialize_zerocheck_poly(
-                trace_mle.clone(),
+                trace_mle.as_ref(),
                 &chips,
                 initial_heights.clone(),
                 public_values.clone(),
@@ -1791,7 +1869,7 @@ pub mod tests {
                 jagged_point.insert(0, point);
                 next_poly = zerocheck_fix_last_variable(next_poly, point, claim).await;
             }
-            let result = unsafe { next_poly.data.dense_data.dense.copy_into_host_vec() };
+            let result = unsafe { next_poly.data.as_ref().dense_data.dense.copy_into_host_vec() };
             let mut idx = 0;
             let data_input_heights = &trace_mle.column_heights;
             let mut individual_column_evals = vec![Ext::zero(); data_input_heights.len()];
@@ -1806,7 +1884,7 @@ pub mod tests {
 
             let mut expected_final_claim = Ext::zero();
             let mut preprocessed_ptr: usize = 0;
-            let mut main_ptr = chips_vec.iter().map(|x| x.preprocessed_width()).sum::<usize>();
+            let mut main_ptr = chips_vec.iter().map(|x| x.preprocessed_width()).sum::<usize>() + 1;
 
             let eq_mul = Mle::full_lagrange_eval(&zeta, &jagged_point);
             jagged_point.add_dimension(Ext::zero());
@@ -1867,6 +1945,7 @@ pub mod tests {
         chips.insert(Chip::new(ZerocheckTestChip::Chip1(ZerocheckTestChip1)));
         chips.insert(Chip::new(ZerocheckTestChip::Chip2(ZerocheckTestChip2)));
         chips.insert(Chip::new(ZerocheckTestChip::Chip3(ZerocheckTestChip3)));
+        clear_cuda_cache();
         initialize_cuda_cache(&chips);
         let chips_vec = chips.iter().cloned().collect::<Vec<_>>();
         let row_variables = 22;
@@ -1878,7 +1957,7 @@ pub mod tests {
             let trace_mle = get_input(&input_size, &chips_vec, &public_values);
             let trace_mle = Arc::new(trace_mle.into_device(&t).await);
 
-            let mut challenger = GC::default_challenger();
+            let mut challenger = TestGC::default_challenger();
             challenger.observe(Felt::from_canonical_u32(0x2013));
             challenger.observe(Felt::from_canonical_u32(0x2015));
             challenger.observe(Felt::from_canonical_u32(0x2016));
@@ -1896,7 +1975,7 @@ pub mod tests {
             let individual_column_evals = evaluate_jagged_columns(&trace_mle, zeta.clone()).await;
 
             let mut preprocessed_ptr: usize = 0;
-            let mut main_ptr = chips_vec.iter().map(|x| x.preprocessed_width()).sum::<usize>();
+            let mut main_ptr = chips_vec.iter().map(|x| x.preprocessed_width()).sum::<usize>() + 1;
 
             let mut chip_openings: BTreeMap<String, ChipEvaluation<Ext>> = BTreeMap::new();
             for chip in chips_vec.iter() {
@@ -1932,7 +2011,7 @@ pub mod tests {
 
             let (opened_values, zerocheck_proof) = zerocheck(
                 &chips,
-                trace_mle.clone(),
+                trace_mle.as_ref(),
                 batching_challenge,
                 gkr_opening_batch_randomness,
                 &logup_evaluations,
@@ -1943,8 +2022,103 @@ pub mod tests {
             .await;
 
             let mut challenger_verifier = challenger.clone();
-            verify_zerocheck(
+            crate::tests::verify_zerocheck(
                 &chips,
+                &opened_values,
+                &logup_evaluations,
+                zerocheck_proof,
+                &public_values,
+                &mut challenger_verifier,
+                max_log_row_count,
+            );
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_zerocheck_real_traces() {
+        let (machine, record, program) = tracegen_setup::setup().await;
+
+        run_in_place(|t| async move {
+            let mut rng = rand::thread_rng();
+
+            let (public_values, trace_mle, chips) = full_tracegen(
+                &machine,
+                program.clone(),
+                Arc::new(record),
+                CORE_MAX_TRACE_SIZE as usize,
+                LOG_STACKING_HEIGHT,
+                &t,
+            )
+            .await;
+            let chips = machine.smallest_cluster(&chips).unwrap();
+            clear_cuda_cache();
+            initialize_cuda_cache(chips);
+
+            let trace_mle = Arc::new(trace_mle);
+
+            let mut challenger = TestGC::default_challenger();
+            challenger.observe(Felt::from_canonical_u32(0x2013));
+            challenger.observe(Felt::from_canonical_u32(0x2015));
+            challenger.observe(Felt::from_canonical_u32(0x2016));
+            challenger.observe(Felt::from_canonical_u32(0x2023));
+            challenger.observe(Felt::from_canonical_u32(0x2024));
+
+            let _lambda: Ext = challenger.sample();
+
+            let mut challenger_prover = challenger.clone();
+            let batching_challenge = challenger_prover.sample_ext_element();
+            let gkr_opening_batch_randomness = challenger_prover.sample_ext_element();
+            let max_log_row_count = CORE_MAX_LOG_ROW_COUNT as usize;
+
+            let zeta = Point::<Ext>::rand(&mut rng, CORE_MAX_LOG_ROW_COUNT);
+            let individual_column_evals = evaluate_jagged_columns(&trace_mle, zeta.clone()).await;
+
+            let mut preprocessed_ptr: usize = 0;
+            let mut main_ptr = chips.iter().map(|x| x.preprocessed_width()).sum::<usize>() + 1;
+
+            let mut chip_openings: BTreeMap<String, ChipEvaluation<Ext>> = BTreeMap::new();
+            for chip in chips.iter() {
+                let preprocessed_width = chip.preprocessed_width();
+                let main_width = chip.width();
+
+                let chip_eval = ChipEvaluation {
+                    preprocessed_trace_evaluations: match preprocessed_width {
+                        0 => None,
+                        _ => Some(MleEval::new(Tensor::from(
+                            individual_column_evals
+                                [preprocessed_ptr..preprocessed_ptr + preprocessed_width]
+                                .to_vec(),
+                        ))),
+                    },
+                    main_trace_evaluations: MleEval::new(Tensor::from(
+                        individual_column_evals[main_ptr..main_ptr + main_width].to_vec(),
+                    )),
+                };
+
+                chip_openings.insert(chip.air.name().clone(), chip_eval);
+                preprocessed_ptr += preprocessed_width;
+                main_ptr += main_width;
+            }
+
+            let logup_evaluations = LogUpEvaluations { point: zeta, chip_openings };
+
+            let (opened_values, zerocheck_proof) = zerocheck(
+                chips,
+                trace_mle.as_ref(),
+                batching_challenge,
+                gkr_opening_batch_randomness,
+                &logup_evaluations,
+                public_values.clone(),
+                &mut challenger_prover,
+                max_log_row_count,
+            )
+            .await;
+
+            let mut challenger_verifier = challenger.clone();
+            crate::tests::verify_zerocheck(
+                chips,
                 &opened_values,
                 &logup_evaluations,
                 zerocheck_proof,

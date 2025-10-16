@@ -1,4 +1,4 @@
-use csl_basefold::BasefoldCudaConfig;
+use csl_basefold::BasefoldCudaProverComponents;
 use csl_basefold::{
     Poseidon2Bn254BasefoldCudaProverComponents, Poseidon2KoalaBear16BasefoldCudaProverComponents,
 };
@@ -13,24 +13,23 @@ use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 use crate::JaggedAssistSumAsPolyGPUImpl;
 use crate::VirtualJaggedSumcheckProver;
 
-pub type Poseidon2KoalaBearJaggedCudaProverComponents =
-    JaggedBasefoldProverComponents<
-        Poseidon2KoalaBear16BasefoldCudaProverComponents,
-        VirtualJaggedSumcheckProver,
-        JaggedEvalSumcheckProver<
+pub type Poseidon2KoalaBearJaggedCudaProverComponents = JaggedBasefoldProverComponents<
+    Poseidon2KoalaBear16BasefoldCudaProverComponents,
+    VirtualJaggedSumcheckProver,
+    JaggedEvalSumcheckProver<
+        KoalaBear,
+        JaggedAssistSumAsPolyGPUImpl<
             KoalaBear,
-            JaggedAssistSumAsPolyGPUImpl<
-                KoalaBear,
-                BinomialExtensionField<KoalaBear, 4>,
-                <Poseidon2KoalaBear16BasefoldConfig as BasefoldCudaConfig<
-                    KoalaBearDegree4Duplex,
-                >>::DeviceChallenger,
-            >,
-            TaskScope,
-            DuplexChallenger<KoalaBear, TaskScope>,
+            BinomialExtensionField<KoalaBear, 4>,
+            <Poseidon2KoalaBear16BasefoldConfig as BasefoldCudaProverComponents<
+                KoalaBearDegree4Duplex,
+            >>::DeviceChallenger,
         >,
-        KoalaBearDegree4Duplex,
-    >;
+        TaskScope,
+        DuplexChallenger<KoalaBear, TaskScope>,
+    >,
+    KoalaBearDegree4Duplex,
+>;
 
 pub type Poseidon2Bn254JaggedCudaProverComponents = JaggedBasefoldProverComponents<
     Poseidon2Bn254BasefoldCudaProverComponents,
@@ -40,7 +39,7 @@ pub type Poseidon2Bn254JaggedCudaProverComponents = JaggedBasefoldProverComponen
         JaggedAssistSumAsPolyGPUImpl<
             KoalaBear,
             BinomialExtensionField<KoalaBear, 4>,
-            <Poseidon2Bn254FrBasefoldConfig<KoalaBear, BinomialExtensionField<KoalaBear, 4>> as BasefoldCudaConfig<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>>>::DeviceChallenger,
+            <Poseidon2Bn254FrBasefoldConfig<KoalaBear, BinomialExtensionField<KoalaBear, 4>> as BasefoldCudaProverComponents<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>>>::DeviceChallenger,
         >,
         TaskScope,
         MultiField32Challenger<KoalaBear, Bn254Fr, TaskScope>,

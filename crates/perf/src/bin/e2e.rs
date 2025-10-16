@@ -1,7 +1,7 @@
 use clap::{arg, Parser, ValueEnum};
 use csl_perf::{
-    make_measurement, telemetry, Stage, FIBONACCI_ELF, KECCAK_ELF, LOOP_ELF, POSEIDON2_ELF,
-    SHA2_ELF,
+    make_measurement, telemetry, ProverBackend, Stage, FIBONACCI_ELF, KECCAK_ELF, LOOP_ELF,
+    POSEIDON2_ELF, SHA2_ELF,
 };
 use csl_tracing::init_tracer;
 use opentelemetry::KeyValue;
@@ -31,6 +31,8 @@ struct Args {
     pub param: u32,
     #[arg(long, default_value = "nvtx")]
     pub trace: Trace,
+    #[arg(long, default_value = "prover-clean")]
+    pub backend: ProverBackend,
 }
 
 #[derive(Clone, Debug, ValueEnum)]
@@ -116,14 +118,14 @@ async fn main() {
 
     let name = args.program.clone();
     let stage = args.stage;
+    let backend = args.backend;
     let (elf, stdin) = get_program_and_input(args.program, args.param);
 
-    let measurement =
-        csl_cuda::spawn(
-            move |t| async move { make_measurement(&name, &elf, stdin, stage, t).await },
-        )
-        .await
-        .unwrap();
+    let measurement = csl_cuda::spawn(move |t| async move {
+        make_measurement(&name, &elf, stdin, stage, backend, t).await
+    })
+    .await
+    .unwrap();
 
     if let Trace::Telemetry = args.trace {
         tokio::task::spawn_blocking(opentelemetry::global::shutdown_tracer_provider).await.unwrap();

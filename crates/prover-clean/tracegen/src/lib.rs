@@ -24,6 +24,7 @@ pub mod test_utils;
 // ------------- The following logic is mostly copied from crates/tracegen/src/lib.rs -------------
 // TODO: is this a reasonable upper bound on number of columns per trace? ~16k
 pub const MAX_COLS_PER_TRACE: usize = 1 << 14;
+pub const CORE_MAX_TRACE_SIZE: u32 = 1 << 29;
 
 /// The output of the host phase of the tracegen.
 pub struct HostPhaseTracegen<A> {
@@ -62,7 +63,7 @@ impl Trace<TaskScope> {
 ///
 /// Returns the final offset, the final number of columns, the amount of padding, and the table index.
 #[allow(clippy::too_many_arguments)]
-async fn setup_jagged_traces(
+async fn generate_jagged_traces(
     dense_data: &mut Buffer<Felt, TaskScope>,
     col_index: &mut Buffer<u32, TaskScope>,
     start_indices: &mut Buffer<u32, TaskScope>,
@@ -76,6 +77,7 @@ async fn setup_jagged_traces(
     let mut cols_so_far = initial_cols;
     let mut table_index = BTreeMap::new();
     let backend = dense_data.backend().clone();
+    column_heights.truncate(initial_cols);
     for (name, trace) in traces.iter() {
         match trace {
             Trace::Real(trace) => {
@@ -281,14 +283,18 @@ pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
     // Generate traces on host.
     let host_phase_tracegen = host_preprocessed_tracegen(machine, Arc::clone(&program));
 
-    // TODO: concurrency control. Acquire a semaphore.
-
     // - Copying host traces to the device.
     // - Generating traces on the device.
     let preprocessed_traces =
         device_preprocessed_tracegen(program, host_phase_tracegen, backend).await;
 
     // Allocate the big buffer for jagged traces.
+    let total_bytes = max_trace_size * std::mem::size_of::<Felt>()
+        + (max_trace_size >> 1) * std::mem::size_of::<u32>()
+        + MAX_COLS_PER_TRACE * std::mem::size_of::<u32>();
+
+    let total_gb = total_bytes as f64 / (1 << 30) as f64;
+    tracing::debug!("Allocating {:?} GB of traces", total_gb);
     let mut dense_data: Buffer<Felt, TaskScope> =
         Buffer::with_capacity_in(max_trace_size, backend.clone());
     let mut col_index: Buffer<u32, TaskScope> =
@@ -296,6 +302,7 @@ pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
 
     let mut start_indices: Buffer<u32, TaskScope> =
         Buffer::with_capacity_in(MAX_COLS_PER_TRACE, backend.clone());
+
     let mut column_heights: Vec<u32> = Vec::with_capacity(MAX_COLS_PER_TRACE);
 
     unsafe {
@@ -306,7 +313,7 @@ pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
 
     // Put them in right places. Todo: parallelize.
     let (preprocessed_offset, preprocessed_cols, preprocessed_padding, preprocessed_table_index) =
-        setup_jagged_traces(
+        generate_jagged_traces(
             &mut dense_data,
             &mut col_index,
             &mut start_indices,
@@ -474,18 +481,25 @@ pub async fn main_tracegen<A: CudaTracegenAir<Felt>>(
         ..
     } = trace_dense_data;
 
+    unsafe {
+        dense_data.set_len(dense_data.capacity());
+        col_index.set_len(col_index.capacity());
+        start_indices.set_len(start_indices.capacity());
+    }
+
     // Put them in right places. Todo: parallelize.
-    let (final_offset, final_cols, final_main_padding, new_main_table_index) = setup_jagged_traces(
-        dense_data,
-        col_index,
-        start_indices,
-        column_heights,
-        traces,
-        *preprocessed_offset,
-        *preprocessed_cols,
-        log_stacking_height,
-    )
-    .await;
+    let (final_offset, final_cols, final_main_padding, new_main_table_index) =
+        generate_jagged_traces(
+            dense_data,
+            col_index,
+            start_indices,
+            column_heights,
+            traces,
+            *preprocessed_offset,
+            *preprocessed_cols,
+            log_stacking_height,
+        )
+        .await;
 
     *main_table_index = new_main_table_index;
     *main_padding = final_main_padding;
@@ -500,6 +514,9 @@ pub async fn main_tracegen<A: CudaTracegenAir<Felt>>(
     (public_values, chip_set)
 }
 
+/// Does tracegen for both preprocessed and main.
+///
+/// TODO: output a `MainTraceData` (from prover-clean/prover/types.rs)
 pub async fn full_tracegen<A: CudaTracegenAir<Felt>>(
     machine: &Machine<Felt, A>,
     program: Arc<<A as MachineAir<Felt>>::Program>,
@@ -532,10 +549,8 @@ mod tests {
 
     use crate::{
         full_tracegen,
-        test_utils::tracegen_setup,
-        test_utils::tracegen_setup::{
-            CORE_MAX_LOG_ROW_COUNT, CORE_MAX_TRACE_SIZE, LOG_STACKING_HEIGHT,
-        },
+        test_utils::tracegen_setup::{self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT},
+        CORE_MAX_TRACE_SIZE,
     };
 
     use rand::rngs::StdRng;

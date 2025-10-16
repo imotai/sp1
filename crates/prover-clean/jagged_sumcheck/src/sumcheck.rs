@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use csl_cuda::{
     args,
     sys::prover_clean::{
@@ -24,7 +22,7 @@ use cslpc_utils::{DenseData, Ext, Felt, JaggedMle, JaggedTraceMle};
 
 use super::hadamard::{fix_last_variable, fix_last_variable_and_sum_as_poly};
 
-pub type JaggedFirstRoundPolyMle<B> = JaggedMle<JaggedFirstRoundPoly<B>, B>;
+pub type JaggedFirstRoundPolyMle<'a, B> = JaggedMle<JaggedFirstRoundPoly<'a, B>, B>;
 
 /// A sumcheck polynomial for the jagged PCS that does not materialize the jagged little polynomial
 /// in the first round.
@@ -33,25 +31,25 @@ pub type JaggedFirstRoundPolyMle<B> = JaggedMle<JaggedFirstRoundPoly<B>, B>;
 /// and with entries in the extension field. As a result, materializing it in full consumes a large
 /// amount of memory. We can avoid paying that cost by only materializing the components
 /// `eq(z_row, _)` and `eq(z_col, _)` in the first round.
-pub struct JaggedFirstRoundSumcheckPoly {
+pub struct JaggedFirstRoundSumcheckPoly<'a> {
     /// Jagged first round polynomial.
-    poly: JaggedFirstRoundPolyMle<TaskScope>,
+    poly: JaggedFirstRoundPolyMle<'a, TaskScope>,
     /// The total number of variables in the sumcheck.
     total_number_of_variables: u32,
 }
 
-pub struct JaggedFirstRoundPoly<A: Backend = TaskScope> {
+pub struct JaggedFirstRoundPoly<'a, A: Backend = TaskScope> {
     // pub base: Arc<Tensor<Felt, A>>,
-    pub base: Arc<JaggedTraceMle<Felt, A>>,
+    pub base: &'a JaggedTraceMle<Felt, A>,
     pub eq_z_col: Mle<Ext, A>,
     pub eq_z_row: Mle<Ext, A>,
     pub height: usize,
 }
 
-impl<A: Backend> JaggedFirstRoundPoly<A> {
+impl<'a, A: Backend> JaggedFirstRoundPoly<'a, A> {
     #[inline]
     pub fn new(
-        base: Arc<JaggedTraceMle<Felt, A>>,
+        base: &'a JaggedTraceMle<Felt, A>,
         eq_z_col: Mle<Ext, A>,
         eq_z_row: Mle<Ext, A>,
         height: usize,
@@ -85,7 +83,7 @@ pub struct JaggedFirstRoundPolyMutRaw {
     height: usize,
 }
 
-impl<A: Backend> DenseData<A> for JaggedFirstRoundPoly<A> {
+impl<'a, A: Backend> DenseData<A> for JaggedFirstRoundPoly<'a, A> {
     type DenseDataRaw = JaggedFirstRoundPolyRaw;
     fn as_ptr(&self) -> Self::DenseDataRaw {
         JaggedFirstRoundPolyRaw {
@@ -99,14 +97,14 @@ impl<A: Backend> DenseData<A> for JaggedFirstRoundPoly<A> {
 
 /// TODO: document
 pub fn generate_jagged_sumcheck_poly(
-    traces: Arc<JaggedTraceMle<Felt, TaskScope>>,
+    traces: &JaggedTraceMle<Felt, TaskScope>,
     eq_z_col: Mle<Ext, TaskScope>,
     eq_z_row: Mle<Ext, TaskScope>,
 ) -> JaggedFirstRoundSumcheckPoly {
     let half_len = traces.dense().dense.len() >> 1;
     JaggedFirstRoundSumcheckPoly {
         poly: JaggedFirstRoundPolyMle::new(
-            JaggedFirstRoundPoly::new(traces.clone(), eq_z_col, eq_z_row, half_len),
+            JaggedFirstRoundPoly::new(traces, eq_z_col, eq_z_row, half_len),
             traces.col_index.clone(),
             traces.start_indices.clone(),
             Vec::new(),
@@ -115,8 +113,8 @@ pub fn generate_jagged_sumcheck_poly(
     }
 }
 
-async fn sum_as_poly_first_round(
-    poly: &JaggedFirstRoundSumcheckPoly,
+async fn sum_as_poly_first_round<'a>(
+    poly: &JaggedFirstRoundSumcheckPoly<'a>,
     claim: Ext,
 ) -> UnivariatePolynomial<Ext> {
     let circuit = &poly.poly;
@@ -164,8 +162,8 @@ async fn sum_as_poly_first_round(
 }
 
 /// Fix the last variable of the first gkr layer.
-async fn fix_and_sum_first_round(
-    poly: JaggedFirstRoundSumcheckPoly,
+async fn fix_and_sum_first_round<'a>(
+    poly: JaggedFirstRoundSumcheckPoly<'a>,
     alpha: Ext,
     claim: Ext,
 ) -> (UnivariatePolynomial<Ext>, Mle<Ext, TaskScope>, Mle<Ext, TaskScope>) {
@@ -251,7 +249,7 @@ where
 }
 
 pub async fn jagged_sumcheck<C>(
-    poly: JaggedFirstRoundSumcheckPoly,
+    poly: JaggedFirstRoundSumcheckPoly<'_>,
     challenger: &mut C,
     claim: Ext,
 ) -> (PartialSumcheckProof<Ext>, Vec<Ext>)
@@ -322,9 +320,10 @@ where
 #[cfg(test)]
 mod tests {
 
-    use std::{collections::BTreeMap, sync::Arc};
+    use std::collections::BTreeMap;
 
     use csl_cuda::{IntoDevice, TaskScope};
+    use cslpc_utils::TestGC;
     use rayon::iter::{IntoParallelIterator, ParallelIterator};
     use slop_algebra::AbstractExtensionField;
     use slop_alloc::{Buffer, ToHost};
@@ -336,7 +335,7 @@ mod tests {
     use slop_tensor::Tensor;
 
     use crate::*;
-    use cslpc_utils::{Ext, Felt, JaggedTraceMle, TraceDenseData, GC};
+    use cslpc_utils::{Ext, Felt, JaggedTraceMle, TraceDenseData};
 
     #[tokio::test]
     async fn test_jagged_sumcheck_poly() {
@@ -447,7 +446,7 @@ mod tests {
         csl_cuda::run_in_place(|t| async move {
             // The data is organized as N consecutive tables of row count row_count[i] and column count column_count[i].
             for (i, (row_counts, column_counts)) in test_cases.iter().enumerate() {
-                let mut challenger = GC::default_challenger();
+                let mut challenger = TestGC::default_challenger();
 
                 let log_max_row_count =
                     row_counts.iter().max().unwrap().next_power_of_two().ilog2();
@@ -515,12 +514,12 @@ mod tests {
                 let dummy_col_index = Buffer::with_capacity_in(0, t.clone());
                 let dummy_start_indices = Buffer::with_capacity_in(0, t.clone());
 
-                let traces = Arc::new(JaggedTraceMle::new(
+                let traces = JaggedTraceMle::new(
                     dense_data,
                     dummy_col_index,
                     dummy_start_indices,
                     Vec::new(),
-                ));
+                );
 
                 let eq_z_row_vec = eq_z_row.guts().as_buffer().to_host().await.unwrap().to_vec();
                 let eq_z_col_vec = eq_z_col.guts().as_buffer().to_host().await.unwrap().to_vec();
@@ -542,7 +541,7 @@ mod tests {
                 let start_indices_device = t.into_device(start_indices).await.unwrap();
 
                 let jagged_first_round_poly: JaggedFirstRoundPoly =
-                    JaggedFirstRoundPoly::new(traces, eq_z_col, eq_z_row, dense_size >> 1);
+                    JaggedFirstRoundPoly::new(&traces, eq_z_col, eq_z_row, dense_size >> 1);
 
                 // There's no fix_last_variable for jagged sumcheck, so we can put a dummy column_heights in this test.
                 let jagged_mle = JaggedFirstRoundPolyMle::new(

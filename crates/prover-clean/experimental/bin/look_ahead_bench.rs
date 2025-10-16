@@ -2,7 +2,7 @@ use std::{ffi::c_void, time::Duration};
 
 use csl_cuda::{CudaError, TaskScope};
 use cslpc_experimental::look_ahead::{Hadamard, RoundParams};
-use cslpc_utils::{Ext, Felt, GC};
+use cslpc_utils::{Ext, Felt, TestGC};
 use slop_algebra::{
     interpolate_univariate_polynomial, AbstractExtensionField, AbstractField, Field,
     UnivariatePolynomial,
@@ -92,7 +92,7 @@ async fn main() {
 
                 let hadamard = Hadamard::new(p, q);
 
-                let mut challenger = GC::default_challenger();
+                let mut challenger = TestGC::default_challenger();
 
                 t.synchronize().await.unwrap();
                 let time = tokio::time::Instant::now();
@@ -190,7 +190,7 @@ async fn main() {
                     times.push(elapsed);
                 }
 
-                let mut challenger = GC::default_challenger();
+                let mut challenger = TestGC::default_challenger();
                 verify_sumcheck_proof(proof, final_evals, &mut challenger, num_variables);
             }
 

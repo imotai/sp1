@@ -13,4 +13,5 @@ pub type Felt = KoalaBear;
 /// The extension field element type.
 pub type Ext = BinomialExtensionField<KoalaBear, 4>;
 
-pub type GC = KoalaBearDegree4Duplex;
+/// The most common GC, used for testing.
+pub type TestGC = KoalaBearDegree4Duplex;

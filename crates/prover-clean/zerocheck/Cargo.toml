@@ -26,6 +26,7 @@ slop-multilinear = { workspace = true }
 slop-sumcheck = { workspace = true }
 slop-challenger = { workspace = true }
 slop-koala-bear = { workspace = true }
+slop-commit = { workspace = true }
 
 # sp1
 sp1-hypercube = { workspace = true }
@@ -43,6 +44,7 @@ zstd = "0.13.3"
 sp1-sdk = { workspace = true, features = ["unsound"] }
 sp1-recursion-circuit = { workspace = true }
 csl-prover = { workspace = true }
+cslpc-tracegen = { workspace = true }
 sp1-recursion-compiler = { workspace = true }
 slop-stacked = { workspace = true }
 

@@ -13,6 +13,8 @@ csl-cuda = { workspace = true }
 csl-jagged = { workspace = true }
 csl-basefold = { workspace = true }
 csl-challenger = { workspace = true }
+csl-tracegen = { workspace = true }
+csl-air = { workspace = true }
 
 # prover-clean subcrates
 cslpc-merkle-tree = { workspace = true }
@@ -22,6 +24,7 @@ cslpc-basefold = { workspace = true }
 cslpc-jagged-sumcheck = { workspace = true }
 cslpc-zerocheck = { workspace = true }
 cslpc-tracegen = { workspace = true }
+cslpc-logup-gkr = { workspace = true }
 
 # slop
 slop-alloc = { workspace = true }
@@ -50,6 +53,9 @@ sp1-recursion-circuit = { workspace = true }
 csl-prover = { workspace = true }
 sp1-recursion-compiler = { workspace = true }
 slop-stacked = { workspace = true }
+
+# sp1
+sp1-core-machine = { workspace = true }
 
 [lints]
 workspace = true

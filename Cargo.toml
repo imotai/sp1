@@ -42,8 +42,12 @@ resolver = "2"
 [profile.dev]
 opt-level = 3
 debug = true
+incremental = false
 
 [profile.dev.package.csl-sys]
+debug = false
+
+[profile.dev.package.csl-prover]
 debug = false
 
 [profile.lto]

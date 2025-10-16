@@ -14,7 +14,6 @@ pub mod tracegen_setup {
         include_bytes!("../../../prover/programs/fibonacci/riscv64im-succinct-zkvm-elf");
 
     pub const CORE_MAX_LOG_ROW_COUNT: u32 = 22;
-    pub const CORE_MAX_TRACE_SIZE: u32 = 1 << 29;
     pub const LOG_STACKING_HEIGHT: u32 = 21;
 
     /// Setup core execution test data by executing fibonacci program.

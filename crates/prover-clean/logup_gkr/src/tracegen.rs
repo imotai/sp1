@@ -26,7 +26,10 @@ use cslpc_utils::{Ext, Felt};
 /// Generates the first layer of the GKR circuit.
 ///
 /// Processes all of the chip interaction information and traces into GKR circuit format.
-pub async fn generate_first_layer(input_data: &GkrInputData, backend: &TaskScope) -> FirstGkrLayer {
+pub async fn generate_first_layer<'a>(
+    input_data: &GkrInputData<'a>,
+    backend: &TaskScope,
+) -> FirstGkrLayer {
     let num_row_variables = input_data.num_row_variables - 1;
 
     // interaction_row_counts iterates through the traces by chip order, and returns column sizes for each interaction.
@@ -157,7 +160,7 @@ pub async fn generate_first_layer(input_data: &GkrInputData, backend: &TaskScope
     FirstGkrLayer { jagged_mle, num_row_variables, num_interaction_variables }
 }
 
-impl LogUpCudaCircuit<TaskScope> {
+impl<'a> LogUpCudaCircuit<'a, TaskScope> {
     pub async fn next(&mut self) -> Option<GkrCircuitLayer> {
         if let Some(layer) = self.materialized_layers.pop() {
             Some(layer)
@@ -175,14 +178,14 @@ impl LogUpCudaCircuit<TaskScope> {
 }
 
 /// Generates a GKR circuit from the given chips and jagged trace data.
-pub async fn generate_gkr_circuit<A: MachineAir<Felt>>(
+pub async fn generate_gkr_circuit<'a, A: MachineAir<Felt>>(
     chips: &BTreeSet<Chip<Felt, A>>,
-    jagged_trace_data: Arc<JaggedTraceMle<Felt, TaskScope>>,
+    jagged_trace_data: &'a JaggedTraceMle<Felt, TaskScope>,
     num_row_variables: u32,
     alpha: Ext,
     beta_seed: Point<Ext>,
     backend: TaskScope,
-) -> (LogUpGkrOutput<Ext, TaskScope>, LogUpCudaCircuit<TaskScope>) {
+) -> (LogUpGkrOutput<Ext, TaskScope>, LogUpCudaCircuit<'a, TaskScope>) {
     let interactions = chips
         .iter()
         .map(|chip| {
@@ -192,7 +195,7 @@ pub async fn generate_gkr_circuit<A: MachineAir<Felt>>(
         .collect::<BTreeMap<_, _>>();
     let input_data = GkrInputData {
         interactions,
-        jagged_trace_data: jagged_trace_data.clone(),
+        jagged_trace_data,
         alpha,
         beta_seed,
         num_row_variables,

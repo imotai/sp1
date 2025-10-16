@@ -4,7 +4,7 @@ use std::ops::{Deref, DerefMut, Range};
 use csl_cuda::{IntoDevice, TaskScope};
 use slop_algebra::Field;
 use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend, ToHost};
-use slop_tensor::{Dimensions, TensorView};
+use slop_tensor::{Dimensions, Tensor, TensorView};
 
 use crate::jagged::JaggedMle;
 use crate::{DenseData, DenseDataMut};
@@ -21,6 +21,13 @@ pub struct TraceOffset {
 
 #[derive(Clone)]
 pub struct JaggedTraceMle<F: Field, B: Backend>(pub JaggedMle<TraceDenseData<F, B>, B>);
+
+impl<F: Field, B: Backend> HasBackend for JaggedTraceMle<F, B> {
+    type Backend = B;
+    fn backend(&self) -> &B {
+        self.0.backend()
+    }
+}
 
 impl<F: Field, B: Backend> Deref for JaggedTraceMle<F, B> {
     type Target = JaggedMle<TraceDenseData<F, B>, B>;
@@ -67,6 +74,23 @@ impl<F: Field, B: Backend> TraceDenseData<F, B> {
         unsafe { TensorView::from_raw_parts(ptr, sizes, self.backend().clone()) }
     }
 
+    /// Copies the correct data from dense to a new tensor for main traces.
+    pub fn main_tensor(&self, log_stacking_height: u32) -> Tensor<F, B> {
+        let mut tensor = Tensor::with_sizes_in(
+            [self.main_size() / (1 << log_stacking_height), 1 << log_stacking_height],
+            self.backend().clone(),
+        );
+        let backend = self.dense.backend();
+        unsafe {
+            tensor.assume_init();
+            tensor
+                .as_mut_buffer()
+                .copy_from_slice(&self.dense[self.preprocessed_offset..], backend)
+                .unwrap();
+        }
+        tensor
+    }
+
     pub fn preprocessed_virtual_tensor(&'_ self, log_stacking_height: u32) -> TensorView<'_, F, B> {
         let ptr = self.dense.as_ptr();
         let sizes = Dimensions::try_from([
@@ -75,6 +99,23 @@ impl<F: Field, B: Backend> TraceDenseData<F, B> {
         ])
         .unwrap();
         unsafe { TensorView::from_raw_parts(ptr, sizes, self.backend().clone()) }
+    }
+
+    /// Copies the correct data from dense to a new tensor for preprocessed traces.
+    pub fn preprocessed_tensor(&self, log_stacking_height: u32) -> Tensor<F, B> {
+        let mut tensor = Tensor::with_sizes_in(
+            [self.preprocessed_offset / (1 << log_stacking_height), 1 << log_stacking_height],
+            self.backend().clone(),
+        );
+        let backend = self.dense.backend();
+        unsafe {
+            tensor.assume_init();
+            tensor
+                .as_mut_buffer()
+                .copy_from_slice(&self.dense[..self.preprocessed_offset], backend)
+                .unwrap();
+        }
+        tensor
     }
 
     /// The size of the main polynomial.

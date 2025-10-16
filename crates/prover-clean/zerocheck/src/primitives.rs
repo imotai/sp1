@@ -8,7 +8,8 @@ use csl_cuda::{args, TaskScope, ToDevice};
 use cslpc_utils::{Ext, Felt, JaggedMle, JaggedTraceMle, TraceDenseData, TraceOffset};
 use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_alloc::{Buffer, HasBackend, ToHost};
-use slop_multilinear::{Mle, Point};
+use slop_commit::Rounds;
+use slop_multilinear::{Evaluations, Mle, MleEval, Point};
 use slop_tensor::Tensor;
 use std::collections::BTreeMap;
 use std::iter::once;
@@ -305,6 +306,62 @@ pub async fn evaluate_jagged_mle_chunked<F: Field>(
 
     let output_eval = output_evals.sum(1).await;
     output_eval
+}
+
+/// Evaluates each chip at `stacked_point` and returns the evaluations in a `Rounds<Evaluations>` form.
+/// Inserts padding for chips included in the smallest cluster, but not the actual trace.
+pub async fn round_batch_evaluations(
+    stacked_point: &Point<Ext>,
+    jagged_trace_mle: &JaggedTraceMle<Felt, TaskScope>,
+) -> Rounds<Evaluations<Ext, TaskScope>> {
+    let backend = jagged_trace_mle.backend();
+    let evaluations = evaluate_traces(jagged_trace_mle, stacked_point).await;
+
+    async fn mle_eval_from_slice(slice: &[Ext], backend: &TaskScope) -> MleEval<Ext, TaskScope> {
+        let buf = Buffer::from(slice.to_vec());
+        let tensor = Tensor::from(buf);
+        let tensor_device = tensor.to_device_in(backend).await.unwrap();
+        MleEval::new(tensor_device)
+    }
+
+    let mut evals_so_far = 0;
+    let mut preprocessed_evaluations = Vec::new();
+
+    for offset in jagged_trace_mle.dense().preprocessed_table_index.values() {
+        if offset.poly_size == 0 {
+            let zeros = vec![Ext::zero(); offset.num_polys];
+            let mle_eval = mle_eval_from_slice(&zeros, backend).await;
+            preprocessed_evaluations.push(mle_eval);
+        } else {
+            // Make an `MleEval` for this table.
+            let slice = &evaluations[evals_so_far..evals_so_far + offset.num_polys];
+            let mle_eval = mle_eval_from_slice(slice, backend).await;
+            preprocessed_evaluations.push(mle_eval);
+            evals_so_far += offset.num_polys;
+        }
+    }
+    let preprocessed_evaluations =
+        preprocessed_evaluations.into_iter().collect::<Evaluations<_, _>>();
+
+    // Skip the padding column, if it exists.
+    evals_so_far = jagged_trace_mle.dense().preprocessed_cols;
+    let mut main_evaluations = Vec::new();
+    for offset in jagged_trace_mle.dense().main_table_index.values() {
+        if offset.poly_size == 0 {
+            let zeros = vec![Ext::zero(); offset.num_polys];
+            let mle_eval = mle_eval_from_slice(&zeros, backend).await;
+            main_evaluations.push(mle_eval);
+        } else {
+            // Make an `MleEval` for this table.
+            let slice = &evaluations[evals_so_far..evals_so_far + offset.num_polys];
+            let mle_eval = mle_eval_from_slice(slice, backend).await;
+            main_evaluations.push(mle_eval);
+            evals_so_far += offset.num_polys;
+        }
+    }
+    let main_evaluations = main_evaluations.into_iter().collect::<Evaluations<_, _>>();
+
+    Rounds::from_iter([preprocessed_evaluations, main_evaluations])
 }
 
 #[cfg(test)]

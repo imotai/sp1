@@ -4,7 +4,7 @@ use cslpc_logup_gkr::{
     prove_round,
 };
 use cslpc_logup_gkr::{random_first_layer, FirstGkrLayer, GkrCircuitLayer};
-use cslpc_utils::config::{Ext, GC};
+use cslpc_utils::config::{Ext, TestGC};
 use rand::{rngs::StdRng, SeedableRng};
 use serde::Deserialize;
 use slop_alloc::ToHost;
@@ -34,7 +34,7 @@ async fn run_benchmark_in_scope(
 ) -> (Duration, Duration) {
     let mut rng = StdRng::seed_from_u64(1);
 
-    let get_challenger = move || GC::default_challenger();
+    let get_challenger = move || TestGC::default_challenger();
 
     let layer = random_first_layer(&mut rng, interaction_row_counts, Some(num_row_variables)).await;
     println!("Generated test data for {name}");
@@ -237,7 +237,8 @@ async fn main() {
             29160, 29160, 29160,
         ];
         for _ in 0..9 {
-            bench_materialized_sumcheck(interaction_row_counts.clone(), &mut rng, None).await;
+            bench_materialized_sumcheck::<TestGC>(interaction_row_counts.clone(), &mut rng, None)
+                .await;
             interaction_row_counts.iter_mut().for_each(|x| {
                 *x /= 2;
                 if *x <= 2 {

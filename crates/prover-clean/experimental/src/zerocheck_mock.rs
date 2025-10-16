@@ -342,14 +342,13 @@ where
 #[cfg(test)]
 mod tests {
     use csl_cuda::run_in_place;
+    use cslpc_utils::TestGC;
     use itertools::Itertools;
 
     use rand::SeedableRng;
     use slop_challenger::{CanSample, IopCtx};
     use slop_multilinear::Mle;
     use slop_sumcheck::partially_verify_sumcheck_proof;
-
-    use cslpc_utils::GC;
 
     use super::*;
     const NUM_SIMPLE_ITERATIONS: usize = 1;
@@ -411,7 +410,7 @@ mod tests {
                     })
                     .sum::<Ext>();
 
-                let mut challenger = GC::default_challenger();
+                let mut challenger = TestGC::default_challenger();
                 let _lambda: Ext = challenger.sample();
 
                 let base_device = t.into_device(base.clone()).await.unwrap();
@@ -488,7 +487,7 @@ mod tests {
                 .map(|(e_i, b_i)| zerocheck_eval(*e_i, *b_i))
                 .sum::<Ext>();
 
-            let mut challenger = GC::default_challenger();
+            let mut challenger = TestGC::default_challenger();
             let _lambda: Ext = challenger.sample();
 
             let ext1_device = t.into_device(ext1.clone()).await.unwrap();

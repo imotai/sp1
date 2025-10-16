@@ -1,6 +1,6 @@
 use csl_cuda::run_in_place;
 use cslpc_jagged_sumcheck::simple_hadamard_sumcheck;
-use cslpc_utils::{Ext, GC};
+use cslpc_utils::{Ext, TestGC};
 use itertools::Itertools;
 
 use rand::SeedableRng;
@@ -24,7 +24,7 @@ async fn main() {
         run_in_place(|t| async move {
             let mut rng = rand::rngs::StdRng::seed_from_u64(0);
 
-            let mut challenger = GC::default_challenger();
+            let mut challenger = TestGC::default_challenger();
 
             let _yuwen_lambda: Ext = challenger.sample();
             let base = Mle::<F>::rand(&mut rng, 1, num_variables);
@@ -38,7 +38,7 @@ async fn main() {
                 .map(|(e_i, b_i)| *e_i * *b_i)
                 .sum::<Ext>();
 
-            let mut challenger = GC::default_challenger();
+            let mut challenger = TestGC::default_challenger();
 
             let _yuwen_lambda: Ext = challenger.sample();
 
@@ -112,7 +112,7 @@ async fn main() {
             }
 
             t.synchronize().await.unwrap();
-            let mut challenger = GC::default_challenger();
+            let mut challenger = TestGC::default_challenger();
 
             // Warm up on the first element of all_ext1 and all_ext2
             let _yuwen_lambda: Ext = challenger.sample();

@@ -154,17 +154,16 @@ where
     let mut univariate_evals =
         Tensor::<Ext, TaskScope>::with_sizes_in([2, grid_size_x], backend.clone());
 
-    let args = args!(
-        base.guts().as_ptr(),
-        ext.guts().as_ptr(),
-        base_output.as_mut_ptr(),
-        ext_output.as_mut_ptr(),
-        alpha,
-        univariate_evals.as_mut_ptr(),
-        input_height
-    );
-
     unsafe {
+        let args = args!(
+            base.guts().as_ptr(),
+            ext.guts().as_ptr(),
+            base_output.as_mut_ptr(),
+            ext_output.as_mut_ptr(),
+            alpha,
+            univariate_evals.as_mut_ptr(),
+            input_height
+        );
         univariate_evals.assume_init();
         base_output.assume_init();
         ext_output.assume_init();
@@ -328,6 +327,7 @@ where
 #[cfg(test)]
 mod tests {
     use csl_cuda::run_in_place;
+    use cslpc_utils::TestGC;
     use futures::stream;
     use futures::StreamExt;
     use itertools::Itertools;
@@ -340,8 +340,6 @@ mod tests {
     use slop_multilinear::Mle;
     use slop_sumcheck::partially_verify_sumcheck_proof;
     use slop_sumcheck::reduce_sumcheck_to_evaluation;
-
-    use cslpc_utils::GC;
 
     use super::*;
     const NUM_SIMPLE_ITERATIONS: usize = 5;
@@ -395,7 +393,7 @@ mod tests {
                     .map(|(e_i, b_i)| *e_i * *b_i)
                     .sum::<Ext>();
 
-                let mut challenger = GC::default_challenger();
+                let mut challenger = TestGC::default_challenger();
                 let _lambda: Ext = challenger.sample();
 
                 let base_device = t.into_device(base.clone()).await.unwrap();
@@ -546,7 +544,7 @@ mod tests {
                 .map(|(e_i, b_i)| *e_i * *b_i)
                 .sum::<Ext>();
 
-            let mut challenger = GC::default_challenger();
+            let mut challenger = TestGC::default_challenger();
             let _lambda: Ext = challenger.sample();
 
             let ext1_device = t.into_device(ext1.clone()).await.unwrap();

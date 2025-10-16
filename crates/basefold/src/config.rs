@@ -16,7 +16,7 @@ use slop_basefold::{
 use crate::DeviceGrindingChallenger;
 
 /// The configuration required for a Reed-Solomon-based Basefold.
-pub trait BasefoldCudaConfig<GC: IopCtx> {
+pub trait BasefoldCudaProverComponents<GC: IopCtx> {
     type DeviceChallenger: FieldChallenger<GC::F>
         + DeviceGrindingChallenger
         + CanObserve<GC::Digest>
@@ -43,7 +43,7 @@ impl<F, EF, Tcs, Challenger> Default for BasefoldConfigCudaImpl<F, EF, Tcs, Chal
     }
 }
 
-impl BasefoldCudaConfig<KoalaBearDegree4Duplex> for Poseidon2KoalaBear16BasefoldConfig {
+impl BasefoldCudaProverComponents<KoalaBearDegree4Duplex> for Poseidon2KoalaBear16BasefoldConfig {
     type DeviceChallenger = DuplexChallenger<KoalaBear, KoalaPerm, 16, 8>;
     fn default_challenger(
         _verifier: &BasefoldVerifier<KoalaBearDegree4Duplex>,
@@ -53,7 +53,7 @@ impl BasefoldCudaConfig<KoalaBearDegree4Duplex> for Poseidon2KoalaBear16Basefold
     }
 }
 
-impl BasefoldCudaConfig<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>>
+impl BasefoldCudaProverComponents<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>>
     for Poseidon2Bn254FrBasefoldConfig<KoalaBear, BinomialExtensionField<KoalaBear, 4>>
 {
     type DeviceChallenger = MultiField32Challenger<KoalaBear, Bn254Fr, OuterPerm, 3, 2>;

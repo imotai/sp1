@@ -95,7 +95,7 @@ __global__ void jaggedConstraintPolyEval(
 
         folder.data = inputJaggedMle.denseData.data;
         folder.preprocessed_ptr = inputJaggedMle.startIndices[preprocessed_idx] << 1;
-        folder.main_ptr = inputJaggedMle.startIndices[total_num_preprocessed_column + main_idx] << 1;
+        folder.main_ptr = inputJaggedMle.startIndices[total_num_preprocessed_column + 1 + main_idx] << 1;
         folder.height = height;
         folder.publicValues = publicValues;
         folder.powersOfAlpha = powersOfAlpha;

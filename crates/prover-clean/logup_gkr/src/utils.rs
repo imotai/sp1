@@ -34,11 +34,11 @@ pub struct GkrLayerGeneric<Layer: DenseData<B>, B: Backend = TaskScope> {
 }
 
 #[allow(clippy::type_complexity)]
-pub struct GkrInputData {
+pub struct GkrInputData<'a> {
     /// Interactions per chip, on host.
     pub interactions: BTreeMap<String, Arc<Interactions<Felt, CpuBackend>>>,
     /// The jagged traces.
-    pub jagged_trace_data: Arc<JaggedTraceMle<Felt, TaskScope>>,
+    pub jagged_trace_data: &'a JaggedTraceMle<Felt, TaskScope>,
     /// Some randomness used to initialize the denominators
     pub alpha: Ext,
     /// Some randomness used to batch the interaction values.
@@ -49,7 +49,7 @@ pub struct GkrInputData {
     pub backend: TaskScope,
 }
 
-impl GkrInputData {
+impl<'a> GkrInputData<'a> {
     /// Returns the height of the main trace for the given chip.
     ///
     /// Panics if the chip doesn't exist in the traces.
@@ -105,13 +105,13 @@ pub type GkrLayer<B = TaskScope> = GkrLayerGeneric<JaggedGkrLayer<B>, B>;
 pub type FirstGkrLayer<B = TaskScope> = GkrLayerGeneric<JaggedFirstGkrLayer<B>, B>;
 
 /// A layer of the GKR circuit.
-pub enum GkrCircuitLayer<B: Backend = TaskScope> {
+pub enum GkrCircuitLayer<'a, B: Backend = TaskScope> {
     Materialized(GkrLayer<B>),
     FirstLayer(FirstGkrLayer<B>),
-    FirstLayerVirtual(GkrInputData),
+    FirstLayerVirtual(GkrInputData<'a>),
 }
 
-impl HasBackend for GkrCircuitLayer<TaskScope> {
+impl<'a> HasBackend for GkrCircuitLayer<'a, TaskScope> {
     type Backend = TaskScope;
     fn backend(&self) -> &TaskScope {
         match self {
@@ -147,11 +147,11 @@ impl FirstLayerPolynomial {
 /// A representation of the Logup GKR circuit on a GPU.
 ///
 ///
-pub struct LogUpCudaCircuit<A: Backend> {
+pub struct LogUpCudaCircuit<'a, A: Backend> {
     /// The materialized layers of the circuit.
-    pub materialized_layers: Vec<GkrCircuitLayer<A>>,
+    pub materialized_layers: Vec<GkrCircuitLayer<'a, A>>,
     /// The input data for the circuit.
-    pub input_data: GkrInputData,
+    pub input_data: GkrInputData<'a>,
     /// The number of virtual layers.
     ///
     /// In practice, this is set to 1 when the circuit is initially generated with the first layer,
@@ -159,7 +159,7 @@ pub struct LogUpCudaCircuit<A: Backend> {
     pub num_virtual_layers: usize,
 }
 
-impl HasBackend for LogUpCudaCircuit<TaskScope> {
+impl<'a> HasBackend for LogUpCudaCircuit<'a, TaskScope> {
     type Backend = TaskScope;
     fn backend(&self) -> &TaskScope {
         &self.input_data.backend

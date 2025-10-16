@@ -14,7 +14,7 @@ use slop_commit::{Message, Rounds};
 use slop_koala_bear::KoalaBear;
 use slop_merkle_tree::MerkleTreeOpeningAndProof;
 use slop_multilinear::{Evaluations, Mle, MleEval, MleFoldBackend, Point};
-use slop_tensor::{Tensor, TensorView, TransposeBackend};
+use slop_tensor::{Tensor, TransposeBackend};
 
 use csl_cuda::{
     args,
@@ -97,29 +97,32 @@ where
     pub fn new(tcs_prover: P, config: FriConfig<GC::F>, log_height: usize) -> Self {
         Self { tcs_prover, config, log_height, _marker: PhantomData }
     }
-    pub async fn encode_and_commit<'a>(
+    pub async fn encode_and_commit(
         &self,
-        virtual_tensor: TensorView<'a, Felt, TaskScope>,
-        jagged_trace_mle: Arc<JaggedTraceMle<Felt, TaskScope>>,
+        use_preprocessed: bool,
+        jagged_trace_mle: &JaggedTraceMle<Felt, TaskScope>,
     ) -> Result<
         (<GC as IopCtx>::Digest, ProverCleanStackedPcsProverData<GC>),
         SingleLayerMerkleTreeProverError,
     > {
         let encoder = SpparkDftKoalaBear::default();
 
+        let virtual_tensor = if use_preprocessed {
+            jagged_trace_mle.preprocessed_virtual_tensor(self.log_height as u32)
+        } else {
+            jagged_trace_mle.main_virtual_tensor(self.log_height as u32)
+        };
         let encoded_messages =
             encode_batch(encoder, self.config.log_blowup as u32, virtual_tensor).unwrap();
 
         // Commit to the tensors.
 
-        let (commitment, tcs_data) =
-            self.tcs_prover.commit_tensors(encoded_messages.as_view()).await?;
+        let (commitment, tcs_data) = self.tcs_prover.commit_tensors(&encoded_messages).await?;
 
         Ok((
             commitment,
             ProverCleanStackedPcsProverData {
                 merkle_tree_tcs_data: tcs_data,
-                interleaved_mles: jagged_trace_mle,
                 codeword_mle: Arc::new(encoded_messages),
             },
         ))
@@ -133,7 +136,8 @@ where
     ) -> (Mle<GC::EF, TaskScope>, Tensor<GC::F, TaskScope>, GC::EF) {
         let log_stacking_height = self.log_height as u32;
         // Compute all the batch challenge powers.
-        let total_num_polynomials = mles.dense.len() >> log_stacking_height;
+        let total_num_polynomials = codewords.iter().map(|c| c.sizes()[0]).sum::<usize>();
+
         let mut batch_challenge_powers =
             batching_challenge.powers().take(total_num_polynomials).collect::<Vec<_>>();
 
@@ -251,7 +255,7 @@ where
                 .unwrap();
         }
 
-        let (commit, prover_data) = self.tcs_prover.commit_tensors(leaves.as_view()).await?;
+        let (commit, prover_data) = self.tcs_prover.commit_tensors(&leaves).await?;
         // Observe the commitment.
         challenger.observe(commit);
 
@@ -312,7 +316,8 @@ where
         &self,
         mut eval_point: Point<GC::EF>,
         evaluation_claims: Rounds<Evaluations<GC::EF, TaskScope>>,
-        prover_data: Rounds<ProverCleanStackedPcsProverData<GC>>,
+        mles: &JaggedTraceMle<GC::F, TaskScope>,
+        prover_data: Rounds<&ProverCleanStackedPcsProverData<GC>>,
         challenger: &mut GC::Challenger,
     ) -> Result<
         BasefoldProof<GC>,
@@ -325,9 +330,6 @@ where
     where
         GC::Challenger: DeviceGrindingChallenger<Witness = GC::F>,
     {
-        // Get all the mles from all rounds in order.
-        let mles = prover_data.last().unwrap().interleaved_mles.clone();
-
         let encoded_messages = prover_data
             .iter()
             .map(|data| data.codeword_mle.clone())
@@ -403,7 +405,7 @@ where
                 prover_data;
             let values = self
                 .tcs_prover
-                .compute_openings_at_indices(codeword_mle.as_ref().as_view(), &query_indices)
+                .compute_openings_at_indices(codeword_mle.as_ref(), &query_indices)
                 .await;
             let proof = self
                 .tcs_prover
@@ -421,12 +423,11 @@ where
             for index in indices.iter_mut() {
                 *index >>= 1;
             }
-            let values =
-                self.tcs_prover.compute_openings_at_indices(leaves.as_view(), &indices).await;
+            let values = self.tcs_prover.compute_openings_at_indices(&leaves, &indices).await;
 
             let proof = self
                 .tcs_prover
-                .prove_openings_at_indices(data, &indices)
+                .prove_openings_at_indices(&data, &indices)
                 .await
                 .map_err(BasefoldProverError::TcsCommitError)?;
             let opening = MerkleTreeOpeningAndProof { values, proof };
@@ -487,11 +488,11 @@ mod tests {
     use slop_stacked::{FixedRateInterleave, InterleaveMultilinears};
     use sp1_hypercube::prover::{ProverSemaphore, TraceGenerator};
 
-    use cslpc_tracegen::full_tracegen;
     use cslpc_tracegen::test_utils::tracegen_setup::{
-        self, CORE_MAX_LOG_ROW_COUNT, CORE_MAX_TRACE_SIZE, LOG_STACKING_HEIGHT,
+        self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT,
     };
-    use cslpc_utils::{Felt, GC};
+    use cslpc_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
+    use cslpc_utils::{Felt, TestGC};
     use futures::{stream, StreamExt};
 
     use super::*;
@@ -507,11 +508,11 @@ mod tests {
                 Poseidon2KoalaBear16BasefoldCudaProverComponents,
             >::new(&verifier);
 
-            let new_prover = ProverCleanFriCudaProver::<GC, _, Felt> {
+            let new_prover = ProverCleanFriCudaProver::<TestGC, _, Felt> {
                 tcs_prover: Poseidon2KoalaBear16CudaProver::default(),
                 config: verifier.fri_config,
                 log_height: LOG_STACKING_HEIGHT as usize,
-                _marker: PhantomData::<GC>,
+                _marker: PhantomData::<TestGC>,
             };
 
             // Generate traces using the host tracegen.
@@ -554,25 +555,14 @@ mod tests {
                 &scope,
             )
             .await;
-            let new_traces = Arc::new(new_traces);
 
-            let (new_preprocessed_commit, new_prover_data) = new_prover
-                .encode_and_commit(
-                    new_traces.dense().preprocessed_virtual_tensor(LOG_STACKING_HEIGHT),
-                    new_traces.clone(),
-                )
-                .await
-                .unwrap();
+            let (new_preprocessed_commit, new_preprocessed_prover_data) =
+                new_prover.encode_and_commit(true, &new_traces).await.unwrap();
 
             assert_eq!(new_preprocessed_commit, old_preprocessed_commitment);
 
-            let (new_main_commit, new_main_prover_data) = new_prover
-                .encode_and_commit(
-                    new_traces.dense().main_virtual_tensor(LOG_STACKING_HEIGHT),
-                    new_traces.clone(),
-                )
-                .await
-                .unwrap();
+            let (new_main_commit, new_main_prover_data) =
+                new_prover.encode_and_commit(false, &new_traces).await.unwrap();
             let message = old_traces
                 .main_trace_data
                 .traces
@@ -652,13 +642,15 @@ mod tests {
             let mut challenger = KoalaBearDegree4Duplex::default_challenger();
 
             scope.synchronize().await.unwrap();
+
             let now = std::time::Instant::now();
 
             let new_basefold_proof = new_prover
                 .prove_trusted_evaluations_basefold(
                     eval_point_host.clone(),
-                    vec![evaluation_claims_1, evaluation_claims_2].into_iter().collect(),
-                    vec![new_prover_data, new_main_prover_data].into_iter().collect(),
+                    [evaluation_claims_1, evaluation_claims_2].into_iter().collect(),
+                    &new_traces,
+                    [&new_preprocessed_prover_data, &new_main_prover_data].into_iter().collect(),
                     &mut challenger,
                 )
                 .await
