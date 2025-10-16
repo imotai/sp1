@@ -2,8 +2,9 @@
 //!
 //! This module provides a builder for the [`CudaProver`].
 
+use crate::blocking::cpu::CpuProver;
+
 use super::CudaProver;
-use crate::cpu::CpuProver;
 use sp1_core_executor::SP1CoreOpts;
 use sp1_cuda::CudaProver as CudaProverImpl;
 
@@ -43,11 +44,9 @@ impl CudaProverBuilder {
     /// use sp1_core_executor::SP1CoreOpts;
     /// use sp1_sdk::ProverClient;
     ///
-    /// tokio_test::block_on(async {
-    ///     let mut opts = SP1CoreOpts::default();
-    ///     opts.shard_size = 500_000;
-    ///     let prover = ProverClient::builder().cuda().core_opts(opts).build().await;
-    /// });
+    /// let mut opts = SP1CoreOpts::default();
+    /// opts.shard_size = 500_000;
+    /// let prover = ProverClient::builder().cuda().core_opts(opts).build();
     /// ```
     #[must_use]
     pub fn core_opts(mut self, opts: SP1CoreOpts) -> Self {
@@ -62,11 +61,9 @@ impl CudaProverBuilder {
     /// use sp1_core_executor::SP1CoreOpts;
     /// use sp1_sdk::ProverClient;
     ///
-    /// tokio_test::block_on(async {
-    ///     let mut opts = SP1CoreOpts::default();
-    ///     opts.shard_size = 500_000;
-    ///     let prover = ProverClient::builder().cuda().with_opts(opts).build().await;
-    /// });
+    /// let mut opts = SP1CoreOpts::default();
+    /// opts.shard_size = 500_000;
+    /// let prover = ProverClient::builder().cuda().with_opts(opts).build();
     /// ```
     #[must_use]
     pub fn with_opts(self, opts: SP1CoreOpts) -> Self {
@@ -85,11 +82,11 @@ impl CudaProverBuilder {
     /// let prover = ProverClient::builder().cuda().build();
     /// ```
     #[must_use]
-    pub async fn build(self) -> CudaProver {
-        let cpu_prover = CpuProver::new_with_opts(self.core_opts).await;
+    pub fn build(self) -> CudaProver {
+        let cpu_prover = CpuProver::new_with_opts(self.core_opts);
         let cuda_prover = match self.cuda_device_id {
-            Some(id) => CudaProverImpl::new_with_id(id).await,
-            None => CudaProverImpl::new().await,
+            Some(id) => crate::blocking::block_on(CudaProverImpl::new_with_id(id)),
+            None => crate::blocking::block_on(CudaProverImpl::new()),
         };
 
         CudaProver {

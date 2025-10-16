@@ -4,10 +4,6 @@ use super::Prover;
 use sp1_core_executor::{ExecutionError, ExecutionReport, HookEnv, SP1ContextBuilder};
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::{io::SP1PublicValues, Elf};
-use std::{
-    future::{Future, IntoFuture},
-    pin::Pin,
-};
 
 /// A request for executing a program.
 pub struct ExecuteRequest<'a, P: Prover> {
@@ -35,22 +31,20 @@ impl<'a, P: Prover> ExecuteRequest<'a, P> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin};
+    /// use sp1_sdk::{Elf, SP1Stdin};
+    /// use sp1_sdk::blocking::{Prover, ProverClient};
     ///
-    /// tokio_test::block_on(async {
-    ///     let elf = Elf::Static(&[1, 2, 3]);
-    ///     let stdin = SP1Stdin::new();
+    /// let elf = Elf::Static(&[1, 2, 3]);
+    /// let stdin = SP1Stdin::new();
     ///
-    ///     let client = ProverClient::builder().cpu().build().await;
-    ///     let result = client
-    ///         .execute(elf, stdin)
-    ///         .with_hook(1, |env, data| {
-    ///             println!("Hook triggered with data: {:?}", data);
-    ///             vec![vec![1, 2, 3]]
-    ///         })
-    ///         .await
-    ///         .unwrap();
-    /// });
+    /// let client = ProverClient::builder().cpu().build();
+    /// let builder = client
+    ///     .execute(elf, stdin)
+    ///     .with_hook(1, |env, data| {
+    ///         println!("Hook triggered with data: {:?}", data);
+    ///         vec![vec![1, 2, 3]]
+    ///     })
+    ///     .run();
     /// ```
     #[must_use]
     pub fn with_hook(
@@ -74,15 +68,14 @@ impl<'a, P: Prover> ExecuteRequest<'a, P> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin};
+    /// use sp1_sdk::{Elf, SP1Stdin};
+    /// use sp1_sdk::blocking::{Prover, ProverClient};
     ///
-    /// tokio_test::block_on(async {
-    ///     let elf = Elf::Static(&[1, 2, 3]);
-    ///     let stdin = SP1Stdin::new();
+    /// let elf = Elf::Static(&[1, 2, 3]);
+    /// let stdin = SP1Stdin::new();
     ///
-    ///     let client = ProverClient::builder().cpu().build().await;
-    ///     let result = client.execute(elf, stdin).cycle_limit(1000000).await.unwrap();
-    /// });
+    /// let client = ProverClient::builder().cpu().build();
+    /// let result = client.execute(elf, stdin).cycle_limit(1000000).run();
     /// ```
     #[must_use]
     pub fn cycle_limit(mut self, max_cycles: u64) -> Self {
@@ -103,15 +96,14 @@ impl<'a, P: Prover> ExecuteRequest<'a, P> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin};
+    /// use sp1_sdk::{Elf, SP1Stdin};
+    /// use sp1_sdk::blocking::{Prover, ProverClient};
     ///
-    /// tokio_test::block_on(async {
-    ///     let elf = Elf::Static(&[1, 2, 3]);
-    ///     let stdin = SP1Stdin::new();
+    /// let elf = Elf::Static(&[1, 2, 3]);
+    /// let stdin = SP1Stdin::new();
     ///
-    ///     let client = ProverClient::builder().cpu().build().await;
-    ///     let result = client.execute(elf, stdin).deferred_proof_verification(false).await.unwrap();
-    /// });
+    /// let client = ProverClient::builder().cpu().build();
+    /// let result = client.execute(elf, stdin).deferred_proof_verification(false).run();
     /// ```
     #[must_use]
     pub fn deferred_proof_verification(mut self, value: bool) -> Self {
@@ -134,15 +126,14 @@ impl<'a, P: Prover> ExecuteRequest<'a, P> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin};
+    /// use sp1_sdk::{Elf, SP1Stdin};
+    /// use sp1_sdk::blocking::{Prover, ProverClient};
     ///
-    /// tokio_test::block_on(async {
-    ///     let elf = Elf::Static(&[1, 2, 3]);
-    ///     let stdin = SP1Stdin::new();
+    /// let elf = Elf::Static(&[1, 2, 3]);
+    /// let stdin = SP1Stdin::new();
     ///
-    ///     let client = ProverClient::builder().cpu().build().await;
-    ///     let result = client.execute(elf, stdin).calculate_gas(false).await.unwrap();
-    /// });
+    /// let client = ProverClient::builder().cpu().build();
+    /// let result = client.execute(elf, stdin).calculate_gas(false).run();
     /// ```
     #[must_use]
     pub fn calculate_gas(mut self, value: bool) -> Self {
@@ -200,30 +191,12 @@ impl<'a, P: Prover> ExecuteRequest<'a, P> {
     //     self.context_builder.stderr(writer);
     //     self
     // }
-}
 
-impl<'a, P: Prover> IntoFuture for ExecuteRequest<'a, P> {
-    type Output = Result<(SP1PublicValues, ExecutionReport), ExecutionError>;
-
-    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + Send + 'a>>;
-
-    fn into_future(self) -> Self::IntoFuture {
-        let task = async move {
-            let Self { prover, elf, stdin, mut context_builder } = self;
-            let inner = prover.inner();
-            let context = context_builder.build();
-
-            let result_handle = tokio::task::spawn_blocking(move || {
-                let (pv, _, report) = inner.execute(&elf, &stdin, context)?;
-                Ok((pv, report))
-            });
-
-            // todo!(n): if there exists stdout/stderr pipes can just forward them with an mpsc
-            // here, and then write to the actual stdout/stderr writers from this
-            // future.
-
-            result_handle.await.unwrap()
-        };
-        Box::pin(task)
+    pub fn run(self) -> Result<(SP1PublicValues, ExecutionReport), ExecutionError> {
+        let Self { prover, elf, stdin, mut context_builder } = self;
+        let inner = prover.inner();
+        let context = context_builder.build();
+        let (pv, _, report) = inner.execute(&elf, &stdin, context)?;
+        Ok((pv, report))
     }
 }

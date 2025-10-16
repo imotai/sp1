@@ -1,4 +1,4 @@
-use super::{IntoSendFutureResult, Prover};
+use super::Prover;
 use crate::{SP1ProofMode, SP1ProofWithPublicValues, StatusCode};
 use sp1_core_executor::SP1ContextBuilder;
 use sp1_core_machine::io::SP1Stdin;
@@ -6,11 +6,14 @@ use sp1_core_machine::io::SP1Stdin;
 /// A unified collection of methods for all prover types.
 pub trait ProveRequest<'a, P>
 where
-    Self: IntoSendFutureResult<SP1ProofWithPublicValues, P::Error> + Sized + Send,
+    Self: Sized,
     P: Prover + 'a,
 {
     /// Get the base request for the prover.
     fn base(&mut self) -> &mut BaseProveRequest<'a, P>;
+
+    /// Run the prove request.
+    fn run(self) -> Result<SP1ProofWithPublicValues, P::Error>;
 
     /// Set the proof mode to the given [`SP1ProofKind`].
     ///
@@ -19,16 +22,15 @@ where
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1ProofMode, SP1Stdin, ProveRequest};
+    /// use sp1_sdk::{Elf, SP1ProofMode, SP1Stdin};
+    /// use sp1_sdk::blocking::{Prover, ProverClient, ProveRequest};
     ///
-    /// tokio_test::block_on(async {
-    ///     let elf = Elf::Static(&[1, 2, 3]);
-    ///     let stdin = SP1Stdin::new();
+    /// let elf = Elf::Static(&[1, 2, 3]);
+    /// let stdin = SP1Stdin::new();
     ///
-    ///     let client = ProverClient::builder().cpu().build().await;
-    ///     let pk = client.setup(elf).await.unwrap();
-    ///     let proof = client.prove(&pk, stdin).mode(SP1ProofMode::Groth16).await.unwrap();
-    /// });
+    /// let client = ProverClient::builder().cpu().build();
+    /// let pk = client.setup(elf).unwrap();
+    /// let proof = client.prove(&pk, stdin).mode(SP1ProofMode::Groth16).run().unwrap();
     /// ```
     #[must_use]
     fn mode(mut self, mode: SP1ProofMode) -> Self {
@@ -45,16 +47,15 @@ where
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin, ProveRequest};
+    /// use sp1_sdk::{Elf, SP1Stdin};
+    /// use sp1_sdk::blocking::{Prover, ProverClient, ProveRequest};
     ///
-    /// tokio_test::block_on(async {
-    ///     let elf = Elf::Static(&[1, 2, 3]);
-    ///     let stdin = SP1Stdin::new();
+    /// let elf = Elf::Static(&[1, 2, 3]);
+    /// let stdin = SP1Stdin::new();
     ///
-    ///     let client = ProverClient::builder().cpu().build().await;
-    ///     let pk = client.setup(elf).await.unwrap();
-    ///     let proof = client.prove(&pk, stdin).compressed().await.unwrap();
-    /// });
+    /// let client = ProverClient::builder().cpu().build();
+    /// let pk = client.setup(elf).unwrap();
+    /// let proof = client.prove(&pk, stdin).compressed().run().unwrap();
     /// ```
     #[must_use]
     fn compressed(mut self) -> Self {
@@ -72,16 +73,15 @@ where
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin, ProveRequest};
+    /// use sp1_sdk::{Elf, SP1Stdin};
+    /// use sp1_sdk::blocking::{Prover, ProverClient, ProveRequest};
     ///
-    /// tokio_test::block_on(async {
-    ///     let elf = Elf::Static(&[1, 2, 3]);
-    ///     let stdin = SP1Stdin::new();
+    /// let elf = Elf::Static(&[1, 2, 3]);
+    /// let stdin = SP1Stdin::new();
     ///
-    ///     let client = ProverClient::builder().cpu().build().await;
-    ///     let pk = client.setup(elf).await.unwrap();
-    ///     let builder = client.prove(&pk, stdin).plonk().await;
-    /// });
+    /// let client = ProverClient::builder().cpu().build();
+    /// let pk = client.setup(elf).unwrap();
+    /// let proof = client.prove(&pk, stdin).plonk().run().unwrap();
     /// ```
     #[must_use]
     fn plonk(mut self) -> Self {
@@ -97,16 +97,15 @@ where
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin, ProveRequest};
+    /// use sp1_sdk::{Elf, SP1Stdin};
+    /// use sp1_sdk::blocking::{Prover, ProverClient, ProveRequest};
     ///
-    /// tokio_test::block_on(async {
-    ///     let elf = Elf::Static(&[1, 2, 3]);
-    ///     let stdin = SP1Stdin::new();
+    /// let elf = Elf::Static(&[1, 2, 3]);
+    /// let stdin = SP1Stdin::new();
     ///
-    ///     let client = ProverClient::builder().cpu().build().await;
-    ///     let pk = client.setup(elf).await.unwrap();
-    ///     let proof = client.prove(&pk, stdin).groth16().await.unwrap();
-    /// });
+    /// let client = ProverClient::builder().cpu().build();
+    /// let pk = client.setup(elf).unwrap();
+    /// let builder = client.prove(&pk, stdin).groth16().run();
     /// ```
     #[must_use]
     fn groth16(mut self) -> Self {
@@ -122,16 +121,15 @@ where
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin, ProveRequest};
+    /// use sp1_sdk::{Elf, SP1Stdin};
+    /// use sp1_sdk::blocking::{Prover, ProverClient, ProveRequest};
     ///
-    /// tokio_test::block_on(async {
-    ///     let elf = Elf::Static(&[1, 2, 3]);
-    ///     let stdin = SP1Stdin::new();
+    /// let elf = Elf::Static(&[1, 2, 3]);
+    /// let stdin = SP1Stdin::new();
     ///
-    ///     let client = ProverClient::builder().cpu().build().await;
-    ///     let pk = client.setup(elf).await.unwrap();
-    ///     let proof = client.prove(&pk, stdin).core().await.unwrap();
-    /// });
+    /// let client = ProverClient::builder().cpu().build();
+    /// let pk = client.setup(elf).unwrap();
+    /// let builder = client.prove(&pk, stdin).core().run();
     /// ```
     #[must_use]
     fn core(mut self) -> Self {
@@ -147,16 +145,15 @@ where
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin, ProveRequest};
+    /// use sp1_sdk::{Elf, SP1Stdin};
+    /// use sp1_sdk::blocking::{Prover, ProverClient, ProveRequest};
     ///
-    /// tokio_test::block_on(async {
-    ///     let elf = Elf::Static(&[1, 2, 3]);
-    ///     let stdin = SP1Stdin::new();
+    /// let elf = Elf::Static(&[1, 2, 3]);
+    /// let stdin = SP1Stdin::new();
     ///
-    ///     let client = ProverClient::builder().cpu().build().await;
-    ///     let pk = client.setup(elf).await.unwrap();
-    ///     let proof = client.prove(&pk, stdin).cycle_limit(1000000).await.unwrap();
-    /// });
+    /// let client = ProverClient::builder().cpu().build();
+    /// let pk = client.setup(elf).unwrap();
+    /// let builder = client.prove(&pk, stdin).cycle_limit(1000000).run();
     /// ```
     #[must_use]
     fn cycle_limit(mut self, cycle_limit: u64) -> Self {
@@ -177,16 +174,15 @@ where
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin, ProveRequest};
+    /// use sp1_sdk::{Elf, SP1Stdin};
+    /// use sp1_sdk::blocking::{Prover, ProverClient, ProveRequest};
     ///
-    /// tokio_test::block_on(async {
-    ///     let elf = Elf::Static(&[1, 2, 3]);
-    ///     let stdin = SP1Stdin::new();
+    /// let elf = Elf::Static(&[1, 2, 3]);
+    /// let stdin = SP1Stdin::new();
     ///
-    ///     let client = ProverClient::builder().cpu().build().await;
-    ///     let pk = client.setup(elf).await.unwrap();
-    ///     let proof = client.prove(&pk, stdin).deferred_proof_verification(false).await.unwrap();
-    /// });
+    /// let client = ProverClient::builder().cpu().build();
+    /// let pk = client.setup(elf).unwrap();
+    /// let proof = client.prove(&pk, stdin).deferred_proof_verification(false).run().unwrap();
     /// ```
     #[must_use]
     fn deferred_proof_verification(mut self, value: bool) -> Self {

@@ -79,14 +79,16 @@ impl<'a> CpuProveBuilder<'a> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{include_elf, Prover, ProverClient, SP1Stdin};
+    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin};
     ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
+    /// tokio_test::block_on(async {
+    ///     let elf = Elf::Static(&[1, 2, 3]);
+    ///     let stdin = SP1Stdin::new();
     ///
-    /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf).await;
-    /// let proof = client.prove(pk, stdin).run().await.unwrap();
+    ///     let client = ProverClient::builder().cpu().build().await;
+    ///     let pk = client.setup(elf).await.unwrap();
+    ///     let proof = client.prove(&pk, stdin).await.unwrap();
+    /// });
     /// ```
     async fn run(self) -> Result<SP1ProofWithPublicValues, CPUProverError> {
         // Get the arguments.

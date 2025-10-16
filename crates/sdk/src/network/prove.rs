@@ -45,15 +45,17 @@ impl NetworkProveBuilder<'_> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
+    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin};
     /// use std::time::Duration;
     ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
+    /// tokio_test::block_on(async {
+    ///     let elf = Elf::Static(&[1, 2, 3]);
+    ///     let stdin = SP1Stdin::new();
     ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf).await;
-    /// let builder = client.prove(pk, stdin).timeout(Duration::from_secs(60)).run().await;
+    ///     let client = ProverClient::builder().network().build().await;
+    ///     let pk = client.setup(elf).await.unwrap();
+    ///     let proof = client.prove(&pk, stdin).timeout(Duration::from_secs(60)).await.unwrap();
+    /// });
     /// ```
     #[must_use]
     pub fn timeout(mut self, timeout: Duration) -> Self {
@@ -71,14 +73,16 @@ impl NetworkProveBuilder<'_> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
+    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin};
     ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
+    /// tokio_test::block_on(async {
+    ///     let elf = Elf::Static(&[1, 2, 3]);
+    ///     let stdin = SP1Stdin::new();
     ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf).await;
-    /// let builder = client.prove(pk, stdin).skip_simulation(true).run();
+    ///     let client = ProverClient::builder().network().build().await;
+    ///     let pk = client.setup(elf).await.unwrap();
+    ///     let proof = client.prove(&pk, stdin).skip_simulation(true).await.unwrap();
+    /// });
     /// ```
     #[must_use]
     pub fn skip_simulation(mut self, skip_simulation: bool) -> Self {
@@ -93,14 +97,16 @@ impl NetworkProveBuilder<'_> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{network::FulfillmentStrategy, Prover, ProverClient, SP1Stdin};
+    /// use sp1_sdk::{network::FulfillmentStrategy, Elf, Prover, ProverClient, SP1Stdin};
     ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
+    /// tokio_test::block_on(async {
+    ///     let elf = Elf::Static(&[1, 2, 3]);
+    ///     let stdin = SP1Stdin::new();
     ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf).await;
-    /// let proof = client.prove(pk, stdin).strategy(FulfillmentStrategy::Hosted).run().unwrap();
+    ///     let client = ProverClient::builder().network().build().await;
+    ///     let pk = client.setup(elf).await.unwrap();
+    ///     let proof = client.prove(&pk, stdin).strategy(FulfillmentStrategy::Hosted).await.unwrap();
+    /// });
     /// ```
     #[must_use]
     pub fn strategy(mut self, strategy: FulfillmentStrategy) -> Self {
@@ -121,19 +127,21 @@ impl NetworkProveBuilder<'_> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
+    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin};
     ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
+    /// tokio_test::block_on(async {
+    ///     let elf = Elf::Static(&[1, 2, 3]);
+    ///     let stdin = SP1Stdin::new();
     ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf).await;
-    /// let proof = client
-    ///     .prove(pk, stdin)
-    ///     .cycle_limit(1_000_000) // Set 1M cycle limit.
-    ///     .skip_simulation(true) // Skip simulation since the limit is set manually.
-    ///     .run()
-    ///     .unwrap();
+    ///     let client = ProverClient::builder().network().build().await;
+    ///     let pk = client.setup(elf).await.unwrap();
+    ///     let proof = client
+    ///         .prove(&pk, stdin)
+    ///         .cycle_limit(1_000_000) // Set 1M cycle limit.
+    ///         .skip_simulation(true) // Skip simulation since the limit is set manually.
+    ///         .await
+    ///         .unwrap();
+    ///     });
     /// ```
     #[must_use]
     pub fn cycle_limit(mut self, cycle_limit: u64) -> Self {
@@ -154,19 +162,21 @@ impl NetworkProveBuilder<'_> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
+    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin};
     ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
+    /// tokio_test::block_on(async {
+    ///     let elf = Elf::Static(&[1, 2, 3]);
+    ///     let stdin = SP1Stdin::new();
     ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let proof = client
-    ///     .prove(&pk, &stdin)
-    ///     .gas_limit(1_000_000) // Set 1M gas limit.
-    ///     .skip_simulation(true) // Skip simulation since the limit is set manually.
-    ///     .run()
-    ///     .unwrap();
+    ///     let client = ProverClient::builder().network().build().await;
+    ///     let pk = client.setup(elf).await.unwrap();
+    ///     let proof = client
+    ///         .prove(&pk, stdin)
+    ///         .gas_limit(1_000_000) // Set 1M gas limit.
+    ///         .skip_simulation(true) // Skip simulation since the limit is set manually.
+    ///         .await
+    ///         .unwrap();
+    ///     });
     /// ```
     #[must_use]
     pub fn gas_limit(mut self, gas_limit: u64) -> Self {
@@ -181,15 +191,15 @@ impl NetworkProveBuilder<'_> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// fn create_proof() {
-    ///     use sp1_sdk::{Prover, ProverClient, SP1Stdin};
+    /// async fn create_proof() {
+    ///     use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin};
     ///
-    ///     let elf = &[1, 2, 3];
+    ///     let elf = Elf::Static(&[1, 2, 3]);
     ///     let stdin = SP1Stdin::new();
     ///
-    ///     let client = ProverClient::builder().network().build();
-    ///     let (pk, vk) = client.setup(elf);
-    ///     let builder = client.prove(&pk, &stdin).tee_2fa().run();
+    ///     let client = ProverClient::builder().network().build().await;
+    ///     let pk = client.setup(elf).await.unwrap();
+    ///     let proof = client.prove(&pk, stdin).tee_2fa().await.unwrap();
     /// }
     /// ```
     #[must_use]
@@ -207,15 +217,17 @@ impl NetworkProveBuilder<'_> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
+    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin};
     /// use std::time::Duration;
     ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
+    /// tokio_test::block_on(async {
+    ///     let elf = Elf::Static(&[1, 2, 3]);
+    ///     let stdin = SP1Stdin::new();
     ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let builder = client.prove(&pk, &stdin).min_auction_period(60).run();
+    ///     let client = ProverClient::builder().network().build().await;
+    ///     let pk = client.setup(elf).await.unwrap();
+    ///     let builder = client.prove(&pk, stdin).min_auction_period(60).await;
+    /// });
     /// ```
     #[must_use]
     pub fn min_auction_period(mut self, min_auction_period: u64) -> Self {
@@ -235,16 +247,18 @@ impl NetworkProveBuilder<'_> {
     /// # Example
     /// ```rust,no_run
     /// use alloy_primitives::Address;
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
+    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin};
     /// use std::str::FromStr;
     ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
+    /// tokio_test::block_on(async {
+    ///     let elf = Elf::Static(&[1, 2, 3]);
+    ///     let stdin = SP1Stdin::new();
     ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf);
-    /// let whitelist = vec![Address::from_str("0x123").unwrap(), Address::from_str("0x456").unwrap()];
-    /// let builder = client.prove(&pk, &stdin).whitelist(Some(whitelist)).run();
+    ///     let client = ProverClient::builder().network().build().await;
+    ///     let pk = client.setup(elf).await.unwrap();
+    ///     let whitelist = vec![Address::from_str("0x123").unwrap(), Address::from_str("0x456").unwrap()];
+    ///     let proof = client.prove(&pk, stdin).whitelist(Some(whitelist)).await.unwrap();
+    /// });
     /// ```
     #[must_use]
     pub fn whitelist(mut self, whitelist: Option<Vec<Address>>) -> Self {
@@ -259,14 +273,16 @@ impl NetworkProveBuilder<'_> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
+    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin};
     ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
+    /// tokio_test::block_on(async {
+    ///     let elf = Elf::Static(&[1, 2, 3]);
+    ///     let stdin = SP1Stdin::new();
     ///
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf).await;
-    /// let proof = client.prove(pk, stdin).run_async();
+    ///     let client = ProverClient::builder().network().build().await;
+    ///     let pk = client.setup(elf).await.unwrap();
+    ///     let proof = client.prove(&pk, stdin).await.unwrap();
+    /// });
     /// ```
     pub async fn run_async(mut self) -> Result<SP1ProofWithPublicValues> {
         // Check for deprecated environment variable

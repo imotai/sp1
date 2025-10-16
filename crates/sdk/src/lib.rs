@@ -39,6 +39,10 @@ pub mod install;
 pub mod network;
 #[cfg(feature = "network")]
 pub use network::prover::NetworkProver;
+
+#[cfg(feature = "blocking")]
+pub mod blocking;
+
 pub mod utils;
 
 // Re-export the client.

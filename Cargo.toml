@@ -159,7 +159,7 @@ slop-whir = { path = "./slop/crates/whir" }
 
 # For testing.
 test-artifacts = { path = "crates/test-artifacts" }
-
+tokio-test = "0.4.4"
 
 # misc
 alloy-primitives = { version = "1.0", default-features = false }

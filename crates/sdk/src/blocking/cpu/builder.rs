@@ -8,15 +8,10 @@ use sp1_core_executor::SP1CoreOpts;
 /// A builder for the [`CpuProver`].
 ///
 /// The builder is used to configure the [`CpuProver`] before it is built.
+#[derive(Default)]
 pub struct CpuProverBuilder {
     /// Optional core options to configure the prover.
     core_opts: Option<SP1CoreOpts>,
-}
-
-impl Default for CpuProverBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl CpuProverBuilder {
@@ -33,11 +28,9 @@ impl CpuProverBuilder {
     /// use sp1_core_executor::SP1CoreOpts;
     /// use sp1_sdk::ProverClient;
     ///
-    /// tokio_test::block_on(async {
-    ///     let mut opts = SP1CoreOpts::default();
-    ///     opts.shard_size = 500_000;
-    ///     let prover = ProverClient::builder().cpu().core_opts(opts).build().await;
-    /// });
+    /// let mut opts = SP1CoreOpts::default();
+    /// opts.shard_size = 500_000;
+    /// let prover = ProverClient::builder().cpu().core_opts(opts).build();
     /// ```
     #[must_use]
     pub fn core_opts(mut self, opts: SP1CoreOpts) -> Self {
@@ -52,11 +45,9 @@ impl CpuProverBuilder {
     /// use sp1_core_executor::SP1CoreOpts;
     /// use sp1_sdk::ProverClient;
     ///
-    /// tokio_test::block_on(async {
-    ///     let mut opts = SP1CoreOpts::default();
-    ///     opts.shard_size = 500_000;
-    ///     let prover = ProverClient::builder().cpu().with_opts(opts).build().await;
-    /// });
+    /// let mut opts = SP1CoreOpts::default();
+    /// opts.shard_size = 500_000;
+    /// let prover = ProverClient::builder().cpu().with_opts(opts).build();
     /// ```
     #[must_use]
     pub fn with_opts(self, opts: SP1CoreOpts) -> Self {
@@ -73,12 +64,10 @@ impl CpuProverBuilder {
     /// ```rust,no_run
     /// use sp1_sdk::ProverClient;
     ///
-    /// tokio_test::block_on(async {
-    ///     let prover = ProverClient::builder().cpu().build().await;
-    /// });
+    /// let prover = ProverClient::builder().cpu().build();
     /// ```
     #[must_use]
-    pub async fn build(self) -> CpuProver {
-        CpuProver::new_with_opts(self.core_opts).await
+    pub fn build(self) -> CpuProver {
+        CpuProver::new_with_opts(self.core_opts)
     }
 }

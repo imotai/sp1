@@ -216,23 +216,26 @@ impl SP1ProofWithPublicValues {
     /// # Example
     /// ```rust,no_run
     /// use sp1_sdk::{
-    ///     Prover, ProverClient, SP1ProofMode, SP1ProofWithPublicValues, SP1Stdin, SP1_CIRCUIT_VERSION,
+    ///     Elf, Prover, ProverClient, SP1ProofMode, SP1ProofWithPublicValues, SP1Stdin,
+    ///     SP1_CIRCUIT_VERSION, ProvingKey
     /// };
     ///
-    /// let elf = &[1, 2, 3];
-    /// let stdin = SP1Stdin::new();
+    /// tokio_test::block_on(async {
+    ///     let elf = Elf::Static(&[1, 2, 3]);
+    ///     let stdin = SP1Stdin::new();
     ///
-    /// let client = ProverClient::builder().cpu().build();
-    /// let (pk, vk) = client.setup(elf).await;
-    /// let (public_values, _) = client.execute(&pk.elf, &stdin).run().unwrap();
+    ///     let client = ProverClient::builder().cpu().build().await;
+    ///     let pk = client.setup(elf.clone()).await.unwrap();
+    ///     let (public_values, _) = client.execute(elf, stdin).await.unwrap();
     ///
-    /// // Create a mock Plonk proof.
-    /// let mock_proof = SP1ProofWithPublicValues::create_mock_proof(
-    ///     &pk,
-    ///     public_values,
-    ///     SP1ProofMode::Plonk,
-    ///     SP1_CIRCUIT_VERSION,
-    /// );
+    ///     // Create a mock Plonk proof.
+    ///     let mock_proof = SP1ProofWithPublicValues::create_mock_proof(
+    ///         &pk.verifying_key(),
+    ///         public_values,
+    ///         SP1ProofMode::Plonk,
+    ///         SP1_CIRCUIT_VERSION,
+    ///     );
+    /// });
     /// ```
     #[must_use]
     #[allow(clippy::needless_pass_by_value)]

@@ -63,6 +63,7 @@ eventsource-stream = { workspace = true }         # SSE Extenstion for reqwest
 [dev-dependencies]
 test-artifacts = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
+tokio-test = { workspace = true }
 
 [features]
 default = ["network", "reserved-capacity"]
@@ -84,8 +85,8 @@ reserved-capacity = ["network"]
 cuda = []
 bigint-rug = ["sp1-core-machine/bigint-rug"]
 unsound = ["sp1-prover/unsound"]
-
 profiling = ["sp1-core-executor/profiling"]
+blocking = []
 
 
 [lints]

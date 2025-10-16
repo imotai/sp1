@@ -137,13 +137,14 @@ impl NetworkProver {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Prover, ProverClient, SP1Stdin};
+    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin, ProvingKey};
     ///
-    /// let elf = &[1, 2, 3];
-    /// let client = ProverClient::builder().network().build();
-    /// let (pk, vk) = client.setup(elf).await;
-    ///
-    /// let vk_hash = client.register_program(&vk, elf);
+    /// tokio_test::block_on(async {
+    ///     let elf = Elf::Static(&[1, 2, 3]);
+    ///     let client = ProverClient::builder().network().build().await;
+    ///     let pk = client.setup(elf).await.unwrap();
+    ///     let vk_hash = client.register_program(&pk.verifying_key(), pk.elf()).await.unwrap();
+    /// });
     /// ```
     pub async fn register_program(&self, vk: &SP1VerifyingKey, elf: &[u8]) -> Result<B256> {
         self.client.register_program(vk, elf).await
@@ -182,7 +183,7 @@ impl NetworkProver {
     ///
     /// tokio_test::block_on(async {
     ///     let request_id = B256::from_slice(&vec![1u8; 32]);
-    ///     let client = ProverClient::builder().network().build();
+    ///     let client = ProverClient::builder().network().build().await;
     ///     let (status, maybe_proof) = client.get_proof_status(request_id).await.unwrap();
     /// })
     /// ```
@@ -210,7 +211,7 @@ impl NetworkProver {
     ///
     /// tokio_test::block_on(async {
     ///     let request_id = B256::from_slice(&vec![1u8; 32]);
-    ///     let client = ProverClient::builder().network().build();
+    ///     let client = ProverClient::builder().network().build().await;
     ///     let request = client.get_proof_request(request_id).await.unwrap();
     /// })
     /// ```
@@ -235,7 +236,7 @@ impl NetworkProver {
     ///
     /// tokio_test::block_on(async {
     ///     let request_id = B256::from_slice(&vec![1u8; 32]);
-    ///     let client = ProverClient::builder().network().build();
+    ///     let client = ProverClient::builder().network().build().await;
     ///     let (maybe_proof, fulfillment_status) =
     ///         client.process_proof_status(request_id, None).await.unwrap();
     /// })
