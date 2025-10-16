@@ -1032,14 +1032,15 @@ mod tests {
         for ((col, enc), val) in
             columns.into_iter().zip(encoding_of_fold_vec).zip(bit_reversed_powers)
         {
-            // We fixed `r1` as last variable first, so it should be the last coordinate of the point.
-            // This assertion tests that the encoding of the folded polynomial matches the folding
-            // onf the encoded polynomial.
+            // We fixed `r1` as last variable first, so it should be the last coordinate of the
+            // point. This assertion tests that the encoding of the folded polynomial
+            // matches the folding onf the encoded polynomial.
             assert_eq!(enc, col.blocking_eval_at(&vec![r4, r3, r2, r1].into())[0]);
 
             // This assertion checks that the encoding of the folded polynomial is the bit-reversed
-            // RS-encoding of the univariate polynomial whose coefficients are the same as the elements
-            // of the folded polynomial (we always represent multilinears in the evaluation basis).
+            // RS-encoding of the univariate polynomial whose coefficients are the same as the
+            // elements of the folded polynomial (we always represent multilinears in
+            // the evaluation basis).
             assert_eq!(enc, uv.eval_at_point(val));
             let num_variables = mle_evals.num_variables() as usize;
             let point = (0..num_variables)
@@ -1047,8 +1048,9 @@ mod tests {
                 .collect::<Point<_>>();
 
             // This assertion checks the compatibility between the multilinear representation of the
-            // folded polynomial and its encoding: namely if we form the point (val^{2^{num_variables-1}}, ..., val^2, val)
-            // and evaluate `mle_evals` in the monomial basis representation, that should be the same
+            // folded polynomial and its encoding: namely if we form the point
+            // (val^{2^{num_variables-1}}, ..., val^2, val) and evaluate `mle_evals` in
+            // the monomial basis representation, that should be the same
             // thing as computing the DFT value at the current location.
             assert_eq!(enc, mle_evals.blocking_monomial_basis_eval_at(&point)[0]);
         }

@@ -30,7 +30,8 @@ pub async fn reduce_sumcheck_to_evaluation<
     // Check that all the polynomials have the same number of variables.
     assert!(polys.iter().all(|poly| poly.num_variables() == num_variables));
 
-    // The first round will process the first t variables, so we need to ensure that there are at least t variables.
+    // The first round will process the first t variables, so we need to ensure that there are at
+    // least t variables.
     assert!(num_variables >= t as u32);
 
     // The point at which the reduced sumcheck proof should be evaluated.

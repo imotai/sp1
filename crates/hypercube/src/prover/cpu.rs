@@ -49,7 +49,7 @@ where
     type Air = A;
     type Prover = ShardProver<GC, CpuShardProverComponents<GC, PcsComponents, A>>;
 
-    fn preprocessed_table_heights(
+    async fn preprocessed_table_heights(
         pk: Arc<super::ProvingKey<GC, Self::Config, Self::Air, Self::Prover>>,
     ) -> BTreeMap<String, usize> {
         pk.preprocessed_data

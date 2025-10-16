@@ -1,12 +1,11 @@
-use derive_where::derive_where;
+use serde::{Deserialize, Serialize};
+
 use slop_tensor::TransposeBackend;
-use std::iter::once;
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, iter::once, sync::Arc};
 use tracing::Instrument;
 
 use slop_algebra::{AbstractField, ExtensionField, Field};
-use slop_alloc::mem::CopyError;
-use slop_alloc::{Buffer, HasBackend, ToHost};
+use slop_alloc::{mem::CopyError, Buffer, HasBackend, ToHost};
 use slop_challenger::{FieldChallenger, IopCtx};
 use slop_commit::{Message, Rounds};
 use slop_multilinear::{
@@ -89,10 +88,9 @@ pub struct JaggedProver<GC: IopCtx, C: JaggedProverComponents<GC>> {
     pub max_log_row_count: usize,
 }
 
-#[derive_where(Debug, Clone; <C::BatchPcsProver as MultilinearPcsProver<GC>>::ProverData: Debug + Clone)]
-#[derive_where(Serialize, Deserialize; <C::BatchPcsProver as MultilinearPcsProver<GC>>::ProverData)]
-pub struct JaggedProverData<GC: IopCtx, C: JaggedProverComponents<GC>> {
-    pub pcs_prover_data: <C::BatchPcsProver as MultilinearPcsProver<GC>>::ProverData,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JaggedProverData<GC: IopCtx, ProverData> {
+    pub pcs_prover_data: ProverData,
     pub row_counts: Arc<Vec<usize>>,
     pub column_counts: Arc<Vec<usize>>,
     /// The number of columns added as a result of padding in the undedrlying stacked PCS.
@@ -140,7 +138,10 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
         &self,
         multilinears: Vec<PaddedMle<GC::F, C::A>>,
     ) -> Result<
-        (GC::Digest, JaggedProverData<GC, C>),
+        (
+            GC::Digest,
+            JaggedProverData<GC, <C::BatchPcsProver as MultilinearPcsProver<GC>>::ProverData>,
+        ),
         JaggedProverError<<C::BatchPcsProver as MultilinearPcsProver<GC>>::ProverError>,
     > {
         let mut row_counts = multilinears.iter().map(|x| x.num_real_entries()).collect::<Vec<_>>();
@@ -155,9 +156,9 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
 
         // Because of the padding in the stacked PCS, it's necessary to add a "dummy columns" in the
         // jagged commitment scheme to pad the area to the next multiple of the stacking height.
-        // We do this in the form of two dummy tables, one with the maximum number of rows and possibly
-        // multiple columns, and one with a single column and the remaining number of "leftover"
-        // values.
+        // We do this in the form of two dummy tables, one with the maximum number of rows and
+        // possibly multiple columns, and one with a single column and the remaining number
+        // of "leftover" values.
 
         // Collect all the multilinears that have at least one non-zero entry into a commit message
         // for the dense PCS.
@@ -199,7 +200,9 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
         &self,
         eval_point: Point<GC::EF>,
         evaluation_claims: Rounds<Evaluations<GC::EF, C::A>>,
-        prover_data: Rounds<JaggedProverData<GC, C>>,
+        prover_data: Rounds<
+            JaggedProverData<GC, <C::BatchPcsProver as MultilinearPcsProver<GC>>::ProverData>,
+        >,
         challenger: &mut GC::Challenger,
     ) -> Result<
         JaggedPcsProof<GC, C::Config>,

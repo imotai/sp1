@@ -1,5 +1,4 @@
-use std::marker::PhantomData;
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 
 use itertools::Itertools;
 use slop_algebra::{ExtensionField, Field};

@@ -1,7 +1,6 @@
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use slop_algebra::AbstractExtensionField;
-use slop_algebra::{AbstractField, TwoAdicField};
+use slop_algebra::{AbstractExtensionField, AbstractField, TwoAdicField};
 use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger, IopCtx};
 use slop_merkle_tree::{MerkleTreeOpeningAndProof, MerkleTreeTcs, MerkleTreeTcsError};
 use slop_multilinear::{MleEval, MultilinearPcsBatchVerifier, Point};
@@ -183,6 +182,7 @@ where
         // first_poly[0] + X_d * first_poly[1]`.
         let first_poly = proof.univariate_messages[0];
         if eval_claim != (GC::EF::one() - *point[0]) * first_poly[0] + *point[0] * first_poly[1] {
+            println!("failed in first_poly");
             return Err(BaseFoldVerifierError::Sumcheck);
         };
 
@@ -197,6 +197,7 @@ where
             // The check is similar to the one for `first_poly`.
             let i = i + 1;
             if expected_eval != (GC::EF::one() - *point[i]) * poly[0] + *point[i] * poly[1] {
+                println!("failed in round {}", i);
                 return Err(BaseFoldVerifierError::Sumcheck);
             }
 
@@ -291,8 +292,8 @@ where
         Ok(())
     }
 
-    /// The FRI verifier for a single query. We modify this from Plonky3 to be compatible with opening
-    /// only a single vector.
+    /// The FRI verifier for a single query. We modify this from Plonky3 to be compatible with
+    /// opening only a single vector.
     fn verify_queries(
         &self,
         commitments: &[GC::Digest],

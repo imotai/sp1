@@ -35,17 +35,18 @@ pub trait JaggedEvalProver<F: Field, EF: ExtensionField<F>, Challenger>:
 #[cfg(test)]
 mod tests {
 
-    use crate::JaggedLittlePolynomialVerifierParams;
     use crate::{
         jagged_eval::sumcheck_poly::JaggedEvalSumcheckPoly, BranchingProgram,
-        JaggedLittlePolynomialProverParams,
+        JaggedLittlePolynomialProverParams, JaggedLittlePolynomialVerifierParams,
     };
     use itertools::Itertools;
     use rand::{thread_rng, Rng};
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_alloc::CpuBackend;
-    use slop_baby_bear::baby_bear_poseidon2::{my_bb_16_perm, Perm};
-    use slop_baby_bear::BabyBear;
+    use slop_baby_bear::{
+        baby_bear_poseidon2::{my_bb_16_perm, Perm},
+        BabyBear,
+    };
     use slop_challenger::DuplexChallenger;
     use slop_multilinear::Mle;
     use slop_sumcheck::partially_verify_sumcheck_proof;

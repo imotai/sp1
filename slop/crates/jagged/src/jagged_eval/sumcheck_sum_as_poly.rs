@@ -1,5 +1,4 @@
-use std::sync::Arc;
-use std::{future::Future, marker::PhantomData};
+use std::{future::Future, marker::PhantomData, sync::Arc};
 
 use itertools::Itertools;
 use rayon::{
@@ -34,8 +33,8 @@ pub trait JaggedAssistSumAsPoly<
     ) -> impl Future<Output = Self> + Send + Sync;
 
     #[allow(clippy::too_many_arguments)]
-    /// Compute the sum as a polynomial in the last varaible, storing the result in `sum_values`, then
-    /// sample randomness, storing the result in `rhos`. Expected to return the evaluation
+    /// Compute the sum as a polynomial in the last varaible, storing the result in `sum_values`,
+    /// then sample randomness, storing the result in `rhos`. Expected to return the evaluation
     /// of the polynomial at the sampled point.
     fn sum_as_poly_and_sample_into_point(
         &self,
@@ -80,8 +79,8 @@ impl<F: Field, EF: ExtensionField<F>, Challenger: FieldChallenger<F>>
     ) -> EF {
         // We want to calculate eq(z_col, col_idx) * eq(x_1, (x, rho)) * h(x_2, x, rho) where
         // x_1 || x_2 = merged_prefix_sum and rho is the sumcheck random point.  Note that the
-        // eq(x_col, col_idx) is already computed as `z_col_eq_val` and all but one term of eq(x_i, (x, rho))
-        // is computed as `intermediate_eq_full_eval`.
+        // eq(x_col, col_idx) is already computed as `z_col_eq_val` and all but one term of eq(x_i,
+        // (x, rho)) is computed as `intermediate_eq_full_eval`.
 
         // Split the merged prefix sum so that x_1 || x_2 = merged_prefix_sum.
         let (h_prefix_sum, eq_prefix_sum) =

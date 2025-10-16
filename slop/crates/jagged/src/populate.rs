@@ -1,5 +1,4 @@
-use std::future::Future;
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, future::Future, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 use slop_commit::Rounds;

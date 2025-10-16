@@ -2,8 +2,7 @@ use std::fmt::Debug;
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use slop_algebra::AbstractField;
-use slop_algebra::PrimeField32;
+use slop_algebra::{AbstractField, PrimeField32};
 use slop_challenger::IopCtx;
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 use slop_tensor::Tensor;

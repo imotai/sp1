@@ -638,8 +638,7 @@ mod tests {
     use sp1_core_machine::utils::setup_logger;
     use sp1_hypercube::{prover::CpuProverBuilder, MachineProof, MachineVerifier, ShardVerifier};
     use sp1_primitives::SP1GlobalContext;
-    use sp1_recursion_compiler::circuit::AsmConfig;
-    use sp1_recursion_compiler::config::InnerConfig;
+    use sp1_recursion_compiler::{circuit::AsmConfig, config::InnerConfig};
     use sp1_recursion_machine::RecursionAir;
     use std::{collections::VecDeque, marker::PhantomData, sync::Arc};
 

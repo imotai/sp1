@@ -107,7 +107,8 @@ where
         // The batching randomness for the claim
         let lambda = challenger.sample_ext_element();
 
-        // At this point, the claims are that (Az)[alpha] = v_a, (Bz)[alpha] = v_b, (Cz)[alpha] = v_c
+        // At this point, the claims are that (Az)[alpha] = v_a, (Bz)[alpha] = v_b, (Cz)[alpha] =
+        // v_c
         let batched_lincheck_poly = BatchedLincheckPoly::<_, CpuBackend>::new(
             &witness,
             [&self.r1cs.a, &self.r1cs.b, &self.r1cs.c].into_iter(),

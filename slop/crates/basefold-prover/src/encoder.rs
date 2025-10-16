@@ -52,7 +52,8 @@ impl<F: TwoAdicField, D: Dft<F>> ReedSolomonEncoder<F> for CpuDftEncoder<F, D> {
             for data in data {
                 let data = data.borrow().guts();
                 assert_eq!(data.sizes().len(), 2, "Expected a 2D tensor");
-                // Perform a DFT along the first axis of the tensor (assumed to be the long dimension).
+                // Perform a DFT along the first axis of the tensor (assumed to be the long
+                // dimension).
                 let dft = dft.dft(data, log_blowup, DftOrdering::BitReversed, 0).unwrap();
                 results.push(Arc::new(RsCodeWord { data: dft }));
             }

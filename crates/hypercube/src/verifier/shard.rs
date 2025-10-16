@@ -3,7 +3,7 @@ use slop_merkle_tree::MerkleTreeTcs;
 use slop_whir::{Verifier, WhirJaggedConfig, WhirProofShape};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    iter::once,
+    iter::{once, repeat_n},
     marker::PhantomData,
     ops::Deref,
 };
@@ -288,14 +288,16 @@ where
             &gkr_evaluations.point,
             &proof.zerocheck_proof.point_and_eval.0,
         );
-        let zerocheck_eq_vals = vec![zerocheck_eq_val; shard_chips.len()];
 
         // To verify the constraints, we need to check that the RLC'ed reduced eval in the zerocheck
         // proof is correct.
         let mut rlc_eval = GC::EF::zero();
-        for ((chip, (_, openings)), zerocheck_eq_val) in
-            shard_chips.iter().zip_eq(opened_values.chips.iter()).zip_eq(zerocheck_eq_vals)
+        for ((chip, (chip_name, openings)), zerocheck_eq_val) in shard_chips
+            .iter()
+            .zip_eq(opened_values.chips.iter())
+            .zip_eq(repeat_n(zerocheck_eq_val, shard_chips.len()))
         {
+            assert_eq!(&chip.name(), chip_name);
             // Verify the shape of the opening arguments matches the expected values.
             Self::verify_opening_shape(chip, openings)?;
 
@@ -645,8 +647,8 @@ where
             );
         }
 
-        // Check that the row counts in the jagged proof match the chip degrees in the `ChipOpenedValues`
-        // struct.
+        // Check that the row counts in the jagged proof match the chip degrees in the
+        // `ChipOpenedValues` struct.
         for (chip_opening_row_counts, proof_row_counts) in
             [preprocessed_chip_degrees, main_chip_degrees]
                 .iter()
@@ -662,10 +664,11 @@ where
             }
         }
 
-        // Check that the shape of the proof struct column counts matches the shape of the shard chips.
-        // In the future, we may allow for a layer of abstraction where the proof row counts and
-        // column counts can be separate from the machine chips (e.g. if two chips in a row have the
-        // same height, the proof could have the column counts merged).
+        // Check that the shape of the proof struct column counts matches the shape of the shard
+        // chips. In the future, we may allow for a layer of abstraction where the proof row
+        // counts and column counts can be separate from the machine chips (e.g. if two
+        // chips in a row have the same height, the proof could have the column counts
+        // merged).
         if !proof
             .evaluation_proof
             .row_counts_and_column_counts

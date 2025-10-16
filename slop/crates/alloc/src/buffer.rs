@@ -8,8 +8,8 @@
 //!
 //! - **Fixed Capacity**: Buffers cannot reallocate to grow beyond their initial capacity
 //! - **Backend Support**: Works with different memory allocators (CPU, GPU, etc.)
-//! - **CPU Backend Exception**: Only `Buffer<T, CpuBackend>` supports capacity growth
-//!   through conversion to/from `Vec<T>`
+//! - **CPU Backend Exception**: Only `Buffer<T, CpuBackend>` supports capacity growth through
+//!   conversion to/from `Vec<T>`
 //!
 //! # Examples
 //!
@@ -26,15 +26,15 @@
 use serde::{Deserialize, Serialize, Serializer};
 use slop_algebra::{ExtensionField, Field};
 
-use crate::backend::{Backend, CpuBackend, GLOBAL_CPU_BACKEND};
-use crate::mem::{CopyDirection, CopyError};
-use crate::slice::Slice;
-use crate::{HasBackend, Init};
-use crate::{RawBuffer, TryReserveError};
-use std::mem::ManuallyDrop;
+use crate::{
+    backend::{Backend, CpuBackend, GLOBAL_CPU_BACKEND},
+    mem::{CopyDirection, CopyError},
+    slice::Slice,
+    HasBackend, Init, RawBuffer, TryReserveError,
+};
 use std::{
     alloc::Layout,
-    mem::MaybeUninit,
+    mem::{ManuallyDrop, MaybeUninit},
     ops::{
         Deref, DerefMut, Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo,
         RangeToInclusive,
@@ -869,10 +869,9 @@ impl<T> Buffer<T, CpuBackend> {
 
         // SAFETY:
         // - `elems` comes directly from `as_mut_slice` and is therefore valid.
-        // - Setting `self.len` before calling `drop_in_place` means that,
-        //   if an element's `Drop` impl panics, the vector's `Drop` impl will
-        //   do nothing (leaking the rest of the elements) instead of dropping
-        //   some twice.
+        // - Setting `self.len` before calling `drop_in_place` means that, if an element's `Drop`
+        //   impl panics, the vector's `Drop` impl will do nothing (leaking the rest of the
+        //   elements) instead of dropping some twice.
         unsafe {
             self.len = 0;
             std::ptr::drop_in_place(elems);

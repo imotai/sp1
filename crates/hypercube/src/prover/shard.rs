@@ -17,7 +17,8 @@ use slop_commit::Rounds;
 use slop_jagged::{JaggedBackend, JaggedProver, JaggedProverComponents, JaggedProverData};
 use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{
-    Evaluations, HostEvaluationBackend, Mle, MleEval, PaddedMle, Point, PointBackend, VirtualGeq,
+    Evaluations, HostEvaluationBackend, Mle, MleEval, MultilinearPcsProver, PaddedMle, Point,
+    PointBackend, VirtualGeq,
 };
 use slop_sumcheck::{reduce_sumcheck_to_evaluation, PartialSumcheckProof};
 use slop_tensor::Tensor;
@@ -33,6 +34,12 @@ use crate::{
 };
 
 use super::{TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
+
+type ShardProverComponentsJaggedProverData<GC, C> = JaggedProverData<
+    GC,
+    <<<C as ShardProverComponents<GC>>::PcsProverComponents as JaggedProverComponents<GC>>::BatchPcsProver
+        as MultilinearPcsProver<GC>>::ProverData,
+>;
 
 /// A prover for an AIR.
 #[allow(clippy::type_complexity)]
@@ -193,7 +200,7 @@ pub struct PreprocessedTraceData<F: Field, B: Backend> {
 /// The preprocessed data for a program.
 pub struct PreprocessedData<T> {
     /// The proving key.
-    pk: Arc<T>,
+    pub pk: Arc<T>,
     /// A permit for a prover resource.
     pub permit: ProverPermit,
 }
@@ -446,7 +453,7 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
     async fn commit_traces(
         &self,
         traces: &Traces<GC::F, C::B>,
-    ) -> (GC::Digest, JaggedProverData<GC, C::PcsProverComponents>) {
+    ) -> (GC::Digest, ShardProverComponentsJaggedProverData<GC, C>) {
         let message = traces.values().cloned().collect::<Vec<_>>();
         self.pcs_prover.commit_multilinears(message).await.unwrap()
     }
@@ -834,14 +841,15 @@ where
 /// A proving key for a STARK.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(
-    serialize = "Tensor<GC::F, C::B>: Serialize, JaggedProverData<GC,C::PcsProverComponents>: Serialize, GC::F: Serialize, C::B: Serialize, "
+    serialize = "Tensor<GC::F, C::B>: Serialize, ShardProverComponentsJaggedProverData<GC, C>: Serialize, GC::F: Serialize, C::B: Serialize, "
 ))]
 #[serde(bound(
-    deserialize = "Tensor<GC::F, C::B>: Deserialize<'de>, JaggedProverData<GC,C::PcsProverComponents>: Deserialize<'de>, GC::F: Deserialize<'de>, C::B: Deserialize<'de>, "
+    deserialize = "Tensor<GC::F, C::B>: Deserialize<'de>, ShardProverComponentsJaggedProverData<GC, C>: Deserialize<'de>, GC::F: Deserialize<'de>, C::B: Deserialize<'de>, "
 ))]
 pub struct ShardProverData<GC: IopCtx, C: ShardProverComponents<GC>> {
     /// The preprocessed traces.
     pub preprocessed_traces: Traces<GC::F, C::B>,
     /// The pcs data for the preprocessed traces.
-    pub preprocessed_data: JaggedProverData<GC, C::PcsProverComponents>,
+    pub preprocessed_data:
+        JaggedProverData<GC, <<C::PcsProverComponents as JaggedProverComponents<GC>>::BatchPcsProver as MultilinearPcsProver<GC>>::ProverData>,
 }

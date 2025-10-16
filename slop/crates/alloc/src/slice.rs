@@ -1,13 +1,17 @@
-use std::alloc::Layout;
-use std::marker::PhantomData;
-use std::ops::{
-    Deref, DerefMut, Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo,
-    RangeToInclusive,
+use std::{
+    alloc::Layout,
+    marker::PhantomData,
+    ops::{
+        Deref, DerefMut, Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo,
+        RangeToInclusive,
+    },
 };
 
-use crate::backend::CpuBackend;
-use crate::mem::{CopyDirection, CopyError, DeviceMemory};
-use crate::{Allocator, Init};
+use crate::{
+    backend::CpuBackend,
+    mem::{CopyDirection, CopyError, DeviceMemory},
+    Allocator, Init,
+};
 
 /// A slice of data associated with a specific allocator type.
 ///

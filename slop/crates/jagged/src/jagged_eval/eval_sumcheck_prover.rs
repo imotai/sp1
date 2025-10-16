@@ -5,11 +5,11 @@ use slop_sumcheck::PartialSumcheckProof;
 
 use super::{JaggedAssistSumAsPoly, JaggedEvalSumcheckPoly};
 
-/// The standard implementation of the sumcheck prover from an implementation of `SumcheckPoly` makes
-/// assumptions about how the Fiat-Shamir challenges are observed and sampled. This function produces
-/// a sumcheck proof using slightly different assumptions on the polynomial and the challenger, and
-/// in particular allows for the possibility of keeping intermediate results on hardware memory
-/// and copying them to the CPU only at the end.
+/// The standard implementation of the sumcheck prover from an implementation of `SumcheckPoly`
+/// makes assumptions about how the Fiat-Shamir challenges are observed and sampled. This function
+/// produces a sumcheck proof using slightly different assumptions on the polynomial and the
+/// challenger, and in particular allows for the possibility of keeping intermediate results on
+/// hardware memory and copying them to the CPU only at the end.
 ///
 ///  # Panics
 ///  Will panic if the polynomial has zero variables.

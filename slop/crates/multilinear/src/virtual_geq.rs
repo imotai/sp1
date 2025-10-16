@@ -33,14 +33,15 @@ impl<F: Field> VirtualGeq<F> {
         // The value above the threshold is unchanged.
         let new_geq_coefficient = self.geq_coefficient.into();
         let new_eq_coefficient = if self.threshold & 1 == 0 {
-            // If there is an even number of zeroes, the geq polynomial folds to a new geq polynomial,
-            // and the only contribution is from the eq polynomial fixing the last variable.
+            // If there is an even number of zeroes, the geq polynomial folds to a new geq
+            // polynomial, and the only contribution is from the eq polynomial fixing
+            // the last variable.
             (EF::one() - alpha) * self.eq_coefficient
         } else {
             // If there is an odd number of zeroes, there is the usual contribution from fixing the
             // last variable of the eq polynomial, but also fixing the geq polynomial produces a
-            // value at the threshold index equal to the result of fixing last variable of the vector
-            // `[0, geq_coefficient`] to alpha.
+            // value at the threshold index equal to the result of fixing last variable of the
+            // vector `[0, geq_coefficient`] to alpha.
             alpha * (self.eq_coefficient + self.geq_coefficient) - self.geq_coefficient
         };
 

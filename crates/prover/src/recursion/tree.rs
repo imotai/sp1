@@ -195,7 +195,8 @@ impl CompressTree {
     ///
     /// ### Notes
     ///
-    /// This function will terminate when the batch size is reached or when the full range is reached.
+    /// This function will terminate when the batch size is reached or when the full range is
+    /// reached.
     pub async fn reduce_proofs(
         &mut self,
         mut full_range_rx: oneshot::Receiver<ShardRange>,

@@ -137,8 +137,8 @@ where
             eval_two +=
                 (eq_1 - common_eq) * ((az_1 - common_az) * (bz_1 - common_bz) - (cz_1 - common_cz));
 
-            // These are old less efficient variants, kept here for completeness since the optimized version is harder to read
-            // Note each of these is 3 mult
+            // These are old less efficient variants, kept here for completeness since the optimized
+            // version is harder to read Note each of these is 3 mult
             //eval_half += (eq_0 + eq_1) * ((az_0 + az_1) * (bz_0 + bz_1).halve() - (cz_0 + cz_1));
             // Note each of these are just 2 mults! 2 > 1/2
             //eval_m_one += (eq_0 + eq_0 - eq_1)
@@ -147,7 +147,8 @@ where
             //    * ((-az_0 + (az_1 + az_1)) * (-bz_0 + bz_1 + bz_1) - (-cz_0 + cz_1 + cz_1))
             // This would be if we used three
             //  eval_three += (-(eq_0 + eq_0) + (eq_1 + eq_1 + eq_1))
-            //    * ((-(az_0 + az_0) + (az_1 + az_1 + az_1)) * (-(bz_0+bz_0) + bz_1 + bz_1 + bz_1) - (-(cz_0 + cz_0) + cz_1 + cz_1 + cz_1))
+            //    * ((-(az_0 + az_0) + (az_1 + az_1 + az_1)) * (-(bz_0+bz_0) + bz_1 + bz_1 + bz_1) -
+            //      (-(cz_0 + cz_0) + cz_1 + cz_1 + cz_1))
         }
 
         let eval_one = claim.unwrap() - eval_zero;

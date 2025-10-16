@@ -202,10 +202,11 @@ impl<A: Allocator> RawBufferInner<A> {
         if elem_layout.size() == 0 || self.cap == 0 {
             None
         } else {
-            // We could use Layout::array here which ensures the absence of isize and usize overflows
-            // and could hypothetically handle differences between stride and size, but this memory
-            // has already been allocated so we know it can't overflow and currently Rust does not
-            // support such types. So we can do better by skipping some checks and avoid an unwrap.
+            // We could use Layout::array here which ensures the absence of isize and usize
+            // overflows and could hypothetically handle differences between stride and
+            // size, but this memory has already been allocated so we know it can't
+            // overflow and currently Rust does not support such types. So we can do
+            // better by skipping some checks and avoid an unwrap.
             unsafe {
                 let alloc_size = elem_layout.size().unchecked_mul(self.cap);
                 let layout = Layout::from_size_align_unchecked(alloc_size, elem_layout.align());

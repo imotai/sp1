@@ -23,7 +23,6 @@ pub enum CopyDirection {
 /// A trait that defines memory operations for a device.
 pub trait DeviceMemory {
     /// # Safety
-    ///
     unsafe fn copy_nonoverlapping(
         &self,
         src: *const u8,

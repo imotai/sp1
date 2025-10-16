@@ -398,7 +398,8 @@ impl<'a> TracingVM<'a> {
 
         // If the syscall is not retained, we need to track the local memory access separately.
         //
-        // Note that the `precompile_local_memory_access` is set to `None` in the `postprocess_precompile` method.
+        // Note that the `precompile_local_memory_access` is set to `None` in the
+        // `postprocess_precompile` method.
         if !self.core().is_retained_syscall(code) {
             self.precompile_local_memory_access = Some(LocalMemoryAccess::default());
         }

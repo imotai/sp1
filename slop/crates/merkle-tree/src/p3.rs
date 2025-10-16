@@ -171,8 +171,8 @@ where
                 "matrix heights that round up to the same power of two must be equal"
             );
 
-            // Sorting the trees by height, but this is expected to be a no-op because of the assertions
-            // at the top of the function.
+            // Sorting the trees by height, but this is expected to be a no-op because of the
+            // assertions at the top of the function.
 
             let mut leaves_largest_first =
                 leaves.iter().sorted_by_key(|l| Reverse(l.height())).peekable();

@@ -23,9 +23,9 @@ impl<Challenger: Clone + Send + Sync, A: Send + Sync> FromChallenger<Challenger,
     }
 }
 
-/// A trait packaging together the types that usually appear in interactive oracle proofs in the context of
-/// SP1: a field and a its cryptographically secure extension, a Fiat-Shamir challenger, and a
-/// succinct commitment to data.
+/// A trait packaging together the types that usually appear in interactive oracle proofs in the
+/// context of SP1: a field and a its cryptographically secure extension, a Fiat-Shamir challenger,
+/// and a succinct commitment to data.
 pub trait IopCtx:
     Clone + 'static + Send + Sync + Serialize + for<'de> Deserialize<'de> + Debug + Default
 {

@@ -7,8 +7,8 @@ use slop_algebra::{
 use slop_alloc::{Backend, CpuBackend, HasBackend};
 use slop_multilinear::MleBaseBackend;
 use slop_sumcheck::{
-    SumcheckPolyBase, SumcheckPolyFirstRound,
-    {ComponentPolyEvalBackend, SumCheckPolyFirstRoundBackend, SumcheckPolyBackend},
+    ComponentPolyEvalBackend, SumCheckPolyFirstRoundBackend, SumcheckPolyBackend, SumcheckPolyBase,
+    SumcheckPolyFirstRound,
 };
 use tokio::sync::oneshot;
 
@@ -110,7 +110,8 @@ where
         let poly_ext = poly.ext.first_component_mle().clone();
         let (tx, rx) = oneshot::channel();
         slop_futures::rayon::spawn(move || {
-            // The sumcheck polynomial is a multi-quadratic polynomial, so three evaluations are needed.
+            // The sumcheck polynomial is a multi-quadratic polynomial, so three evaluations are
+            // needed.
             let eval_0 = poly_ext
                 .guts()
                 .as_slice()

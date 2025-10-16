@@ -76,8 +76,9 @@ where
                                 .get((2 * i + 1) * num_polynomials + j)
                                 .copied()
                                 .unwrap_or_else(|| padding_values[j]);
-                            // return alpha * y + (EF::one() - alpha) * x, but in a more efficient way
-                            // that minimizes extension field multiplications.
+                            // return alpha * y + (EF::one() - alpha) * x, but in a more efficient
+                            // way that minimizes extension field
+                            // multiplications.
                             result_chunk[i * num_polynomials + j] = alpha * (y - x) + x;
                         });
                     });

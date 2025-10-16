@@ -705,7 +705,8 @@ impl MinimalExecutor {
                 *next_clk = next_clk.wrapping_add(256);
             }
             _ => {
-                // In the normal case, we just want to advance to the next instruction, which has already been done by the ecall handler.
+                // In the normal case, we just want to advance to the next instruction, which has
+                // already been done by the ecall handler.
                 *next_clk = next_clk.wrapping_add(256);
             }
         }

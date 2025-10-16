@@ -5,8 +5,7 @@ use std::{
 
 use itertools::Itertools;
 use slop_algebra::{AbstractField, Field};
-use slop_bn254::outer_perm;
-use slop_bn254::{Bn254Fr, OUTER_CHALLENGER_STATE_WIDTH};
+use slop_bn254::{outer_perm, Bn254Fr, OUTER_CHALLENGER_STATE_WIDTH};
 use slop_challenger::IopCtx;
 use slop_symmetric::{CryptographicHasher, Permutation};
 use sp1_hypercube::{inner_perm, SP1CoreJaggedConfig};

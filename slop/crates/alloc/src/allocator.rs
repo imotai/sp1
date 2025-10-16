@@ -12,9 +12,8 @@ pub struct AllocError;
 ///
 /// # Safety
 ///
-/// * Memory blocks returned from an allocator that are [*currently allocated*] must point to
-///   valid memory and retain their validity while they are [*currently allocated*] and the shorter
-///   of:
+/// * Memory blocks returned from an allocator that are [*currently allocated*] must point to valid
+///   memory and retain their validity while they are [*currently allocated*] and the shorter of:
 ///   - the borrow-checker lifetime of the allocator type itself.
 ///   - as long as at least one of the instance and all of its clones has not been dropped.
 ///
@@ -26,12 +25,14 @@ pub struct AllocError;
 pub unsafe trait Allocator {
     /// Attempts to allocate a block of memory.
     ///
-    /// On success, returns a [`NonNull<[u8]>`][NonNull] meeting the size and alignment guarantees of `layout`.
+    /// On success, returns a [`NonNull<[u8]>`][NonNull] meeting the size and alignment guarantees
+    /// of `layout`.
     ///
     /// The returned block may have a larger size than specified by `layout.size()`, and may or may
     /// not have its contents initialized.
     ///
-    /// The returned block of memory remains valid as long as it is [*currently allocated*] and the shorter of:
+    /// The returned block of memory remains valid as long as it is [*currently allocated*] and the
+    /// shorter of:
     ///   - the borrow-checker lifetime of the allocator type itself.
     ///   - as long as at the allocator and all its clones has not been dropped.
     ///

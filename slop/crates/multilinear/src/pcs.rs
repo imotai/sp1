@@ -1,12 +1,15 @@
-use std::ops::{Deref, DerefMut};
-use std::{error::Error, fmt::Debug, future::Future};
+use std::{
+    error::Error,
+    fmt::Debug,
+    future::Future,
+    ops::{Deref, DerefMut},
+};
 
 use crate::{Mle, MleEval, MleEvaluationBackend, Point};
 use derive_where::derive_where;
 use serde::{de::DeserializeOwned, Serialize};
 use slop_algebra::{ExtensionField, Field};
-use slop_alloc::ToHost;
-use slop_alloc::{Backend, CpuBackend, HasBackend};
+use slop_alloc::{Backend, CpuBackend, HasBackend, ToHost};
 use slop_challenger::{FieldChallenger, IopCtx};
 use slop_commit::{Message, Rounds};
 

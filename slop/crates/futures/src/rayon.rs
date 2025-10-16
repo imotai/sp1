@@ -1,6 +1,4 @@
-use std::any::Any;
-use std::backtrace::Backtrace;
-use std::sync::OnceLock;
+use std::{any::Any, backtrace::Backtrace, sync::OnceLock};
 
 use futures::stream::AbortHandle;
 use thiserror::Error;

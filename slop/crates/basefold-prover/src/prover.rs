@@ -1,11 +1,11 @@
-use slop_algebra::extension::{BinomiallyExtendable, HasTwoAdicBionmialExtension};
-use slop_algebra::PrimeField31;
+use slop_algebra::{
+    extension::{BinomiallyExtendable, HasTwoAdicBionmialExtension},
+    PrimeField31,
+};
 use slop_baby_bear::baby_bear_poseidon2::BabyBearDegree4Duplex;
 use slop_bn254::{Bn254Fr, Poseidon2Bn254GlobalConfig, BNGC, OUTER_DIGEST_SIZE};
 use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
-use std::fmt::Debug;
-use std::marker::PhantomData;
-use std::sync::Arc;
+use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
 use derive_where::derive_where;
 
@@ -14,8 +14,7 @@ use serde::{Deserialize, Serialize};
 use slop_algebra::{ExtensionField, Field, TwoAdicField};
 use slop_alloc::{Backend, CpuBackend};
 use slop_baby_bear::BabyBear;
-use slop_basefold::BasefoldVerifier;
-use slop_basefold::{BasefoldProof, RsCodeWord};
+use slop_basefold::{BasefoldProof, BasefoldVerifier, RsCodeWord};
 use slop_challenger::{CanSampleBits, FieldChallenger, IopCtx};
 use slop_commit::{Message, Rounds};
 use slop_dft::p3::Radix2DitParallel;

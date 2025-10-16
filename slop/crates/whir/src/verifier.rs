@@ -250,7 +250,8 @@ where
         // batching in- and out-of-domain claims from round to round.
         let mut all_claim_batching_randomness = vec![claim_batching_randomness];
 
-        // This is relative to the previous commitment (i.e. prev_commitment has a domain size of this size)
+        // This is relative to the previous commitment (i.e. prev_commitment has a domain size of
+        // this size)
         let mut domain_size = config.starting_interleaved_log_height + config.starting_log_inv_rate;
         let mut generator = config.domain_generator;
         let mut prev_commitment = commitment;
@@ -329,9 +330,9 @@ where
 
             // Chunk the Merkle openings into chunks of size `1<<prev_folding_factor`
             // so that the verifier can induce in-domain evaluation claims about the next codeword.
-            // Except in the first round, the opened values in the Merkle proof are secretly extension
-            // field elements, so we have to reinterpret them as such. (The Merkle tree API commits
-            // to and opens only base-field values.)
+            // Except in the first round, the opened values in the Merkle proof are secretly
+            // extension field elements, so we have to reinterpret them as such. (The
+            // Merkle tree API commits to and opens only base-field values.)
             let merkle_read_values: Vec<Mle<GC::EF>> = if round_index != 0 {
                 merkle_proof
                     .iter()
@@ -383,13 +384,15 @@ where
                 )
                 .map_err(|err| (err, round_index + 1))?;
 
-            // Prepend the folding randomness from the sumcheck into the combined folding randomness.
+            // Prepend the folding randomness from the sumcheck into the combined folding
+            // randomness.
             concatenated_folding_randomness =
                 [folding_randomness.clone(), concatenated_folding_randomness].concat();
 
             all_claim_batching_randomness.push(claim_batching_randomness);
 
-            // Add both the in-domain and out-of-domain claims to the set of final evaluation points.
+            // Add both the in-domain and out-of-domain claims to the set of final evaluation
+            // points.
             final_evaluation_points.push(
                 [
                     ood_points.clone(),

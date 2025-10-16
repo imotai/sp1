@@ -182,7 +182,12 @@ impl<T, A: Backend> Tensor<T, A> {
 
     #[inline]
     pub fn as_view(&'_ self) -> TensorView<'_, T, A> {
-        TensorView { ptr: self.as_ptr(), dimensions: self.dimensions.clone(), _marker: PhantomData }
+        TensorView {
+            ptr: self.as_ptr(),
+            dimensions: self.dimensions.clone(),
+            backend: self.backend().clone(),
+            _marker: PhantomData,
+        }
     }
 
     #[inline]
@@ -351,10 +356,10 @@ impl<T> Tensor<T, CpuBackend> {
 }
 
 #[derive(Debug)]
-#[repr(C)]
 pub struct TensorView<'a, T, A: Backend = CpuBackend> {
     ptr: *const T,
     dimensions: Dimensions,
+    backend: A,
     /// Marker to ensure that the view is not used after the original tensor is freed.
     _marker: PhantomData<&'a Tensor<T, A>>,
 }
@@ -368,6 +373,19 @@ impl<'a, T, A: Backend> TensorView<'a, T, A> {
     #[inline]
     pub fn sizes(&self) -> &[usize] {
         self.dimensions.sizes()
+    }
+
+    #[inline]
+    pub fn backend(&self) -> &A {
+        &self.backend
+    }
+
+    #[inline]
+    /// # Safety
+    ///
+    /// The caller must ensure that the pointer is valid for the given dimensions and backend.
+    pub unsafe fn from_raw_parts(ptr: *const T, dimensions: Dimensions, backend: A) -> Self {
+        Self { ptr, dimensions, backend, _marker: PhantomData }
     }
 
     #[inline]
@@ -407,7 +425,12 @@ impl<'a, T, A: Backend> TensorView<'a, T, A> {
         if self.dimensions.compatible(&dimensions).is_err() {
             dimension_fail(&dimensions, &self.dimensions);
         }
-        TensorView { ptr: self.ptr, dimensions, _marker: PhantomData }
+        TensorView {
+            ptr: self.ptr,
+            dimensions,
+            backend: self.backend.clone(),
+            _marker: PhantomData,
+        }
     }
 
     #[inline]
@@ -420,7 +443,12 @@ impl<'a, T, A: Backend> TensorView<'a, T, A> {
         let offset = index * stride;
 
         let ptr = unsafe { self.ptr.add(offset) };
-        Some(Self { ptr, dimensions: self.dimensions, _marker: PhantomData })
+        Some(Self {
+            ptr,
+            dimensions: self.dimensions,
+            backend: self.backend.clone(),
+            _marker: PhantomData,
+        })
     }
 
     pub fn split(self) -> impl Iterator<Item = Self> {
@@ -430,7 +458,12 @@ impl<'a, T, A: Backend> TensorView<'a, T, A> {
 
 impl<'a, T, A: Backend> Clone for TensorView<'a, T, A> {
     fn clone(&self) -> Self {
-        Self { ptr: self.ptr, dimensions: self.dimensions.clone(), _marker: PhantomData }
+        Self {
+            ptr: self.ptr,
+            dimensions: self.dimensions.clone(),
+            backend: self.backend.clone(),
+            _marker: PhantomData,
+        }
     }
 }
 

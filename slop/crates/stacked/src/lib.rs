@@ -3,11 +3,11 @@
 //!
 //!
 //! For any multilinear PCS that can commit to batches of matrices of the same height (considering
-//! the columns of those matrices as evaluations of multilinear polynomials on the Boolean hypercube),
-//! and then prove joint evaluations of those multililiner polynomials at the same point, this module
-//! provides functionality that can commit to heterogeneous batches of matrices (considering that
-//! batch as a single mutlilinear polynomial in many variables), and then prove evaluations of that
-//! multilinear polynomial at a point.
+//! the columns of those matrices as evaluations of multilinear polynomials on the Boolean
+//! hypercube), and then prove joint evaluations of those multililiner polynomials at the same
+//! point, this module provides functionality that can commit to heterogeneous batches of matrices
+//! (considering that batch as a single mutlilinear polynomial in many variables), and then prove
+//! evaluations of that multilinear polynomial at a point.
 //!
 //! This is implemented by making a virtual vector consisting of the concatenation of all of the
 //! data in the matrices in the batch, splitting that vector up into vectors of a prescribed size,

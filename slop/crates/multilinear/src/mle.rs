@@ -305,9 +305,9 @@ impl<T> Mle<T, CpuBackend> {
         MleEval::new(eval_mle_at_point_blocking(self.guts(), point))
     }
 
-    /// Evaluate the `Mle` at `point` assuming that the entry at index `i = (i_0,...,i_{n-1})` is the
-    /// coefficient of the monomial `X_0^{i_0} ... X_{n-1}^{i_{n-1}}`, where `i_0` is the most
-    /// significant bit of `i` and `i_{n-1}` is the least-significant one.
+    /// Evaluate the `Mle` at `point` assuming that the entry at index `i = (i_0,...,i_{n-1})` is
+    /// the coefficient of the monomial `X_0^{i_0} ... X_{n-1}^{i_{n-1}}`, where `i_0` is the
+    /// most significant bit of `i` and `i_{n-1}` is the least-significant one.
     pub fn blocking_monomial_basis_eval_at<E>(&self, point: &Point<E>) -> MleEval<E>
     where
         T: AbstractField + 'static + Send + Sync,
@@ -324,12 +324,13 @@ impl<T> Mle<T, CpuBackend> {
         Mle::new(guts)
     }
 
-    /// Evaluates the 2n-variate multilinear polynomial f(X,Y) = Prod_i (X_i * Y_i + (1-X_i) * (1-Y_i))
-    /// at a given pair (X,Y) of n-dimenional BabyBearExtensionField points.
+    /// Evaluates the 2n-variate multilinear polynomial f(X,Y) = Prod_i (X_i * Y_i + (1-X_i) *
+    /// (1-Y_i)) at a given pair (X,Y) of n-dimenional BabyBearExtensionField points.
     ///
-    /// This evaluation takes time linear in n to compute, so the verifier can easily compute it. Hence,
-    /// even though
-    /// ```full_lagrange_eval(point_1, point_2)==partial_lagrange_eval(point_1).eval_at_point(point_2)```,
+    /// This evaluation takes time linear in n to compute, so the verifier can easily compute it.
+    /// Hence, even though
+    /// ```full_lagrange_eval(point_1,
+    /// point_2)==partial_lagrange_eval(point_1).eval_at_point(point_2)```,
     /// the RHS of the above equation runs in O(2^n) time, while the LHS runs in O(n).
     ///
     /// The polynomial f(X,Y) is an important building block in zerocheck and other protocols which use
@@ -415,8 +416,8 @@ pub fn partial_geq<F: Field>(threshold: usize, num_variables: usize) -> Vec<F> {
     (0..(1 << num_variables)).map(|x| if x >= threshold { F::one() } else { F::zero() }).collect()
 }
 
-/// A succinct way to compute the evaluation of `partial_geq` at `eval_point`. The threshold is passed
-/// as a `Point` on the Boolean hypercube.
+/// A succinct way to compute the evaluation of `partial_geq` at `eval_point`. The threshold is
+/// passed as a `Point` on the Boolean hypercube.
 ///
 /// # Panics
 /// If the dimensions of `threshold` and `eval_point` do not match.

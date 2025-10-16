@@ -12,7 +12,8 @@ pub struct SparsePolynomial<F: Field> {
     pub num_variables: usize,
 }
 
-// Implement a function that takes as input a Btree map and pads it to the desired length by adding zeros
+// Implement a function that takes as input a Btree map and pads it to the desired length by adding
+// zeros
 fn pad_btree_map<F: Field>(map: &mut BTreeMap<usize, F>, desired_length: usize) {
     let mut i = 0;
     while map.len() < desired_length {

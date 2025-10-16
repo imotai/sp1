@@ -17,12 +17,11 @@
 //!
 //! i = t_c + r.
 //!
-//! and also checks that i < t_{c+1}. The addition is checked via the grade-school algorithm. This is
-//! for a fixed column c. To check over all the columns, we combine via a random linear combination
-//! with coefficients eq(z_col, _).
+//! and also checks that i < t_{c+1}. The addition is checked via the grade-school algorithm. This
+//! is for a fixed column c. To check over all the columns, we combine via a random linear
+//! combination with coefficients eq(z_col, _).
 use core::fmt;
-use std::iter::once;
-use std::{array, cmp::max};
+use std::{array, cmp::max, iter::once};
 
 use rayon::prelude::*;
 
@@ -33,9 +32,9 @@ use slop_utils::log2_ceil_usize;
 
 use slop_multilinear::{Mle, Point};
 
-/// A struct recording the state of the memory of the branching program. Because the program performs
-/// a two-way addition and one u32 comparison, the memory needed is a carry (which lies in {0,1})
-/// and a boolean to store the comparison of the u32s up to the current bit.
+/// A struct recording the state of the memory of the branching program. Because the program
+/// performs a two-way addition and one u32 comparison, the memory needed is a carry (which lies in
+/// {0,1}) and a boolean to store the comparison of the u32s up to the current bit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MemoryState {
     pub carry: bool,
@@ -86,8 +85,8 @@ impl fmt::Display for StateOrFail {
     }
 }
 
-/// A struct representing the four bits the branching program needs to read in order to go to the next
-/// layer of the program. The program streams the bits of the row, column, index, and the
+/// A struct representing the four bits the branching program needs to read in order to go to the
+/// next layer of the program. The program streams the bits of the row, column, index, and the
 /// "table area prefix sum".
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BitState<T> {
@@ -183,8 +182,8 @@ pub struct JaggedLittlePolynomialVerifierParams<K> {
 }
 
 impl<F: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierParams<F> {
-    /// Given `z_index`, evaluate the special multilinear polynomial appearing in the jagged sumcheck
-    /// protocol.
+    /// Given `z_index`, evaluate the special multilinear polynomial appearing in the jagged
+    /// sumcheck protocol.
     pub fn full_jagged_little_polynomial_evaluation<
         EF: AbstractExtensionField<F> + 'static + Send + Sync,
     >(
@@ -458,7 +457,8 @@ impl<K: AbstractField + 'static> BranchingProgram<K> {
                     if let StateOrFail::State(output_state) = state_or_fail {
                         accum_elems[output_state.get_index()] += elem.clone();
                     }
-                    // If the state is a fail state, we don't need to add anything to the accumulator.
+                    // If the state is a fail state, we don't need to add anything to the
+                    // accumulator.
                 }
 
                 let accum = accum_elems.iter().zip(state_by_state_results.iter()).fold(

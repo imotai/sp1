@@ -210,7 +210,7 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         let shrink_proof_shape = SP1RecursionProofShape {
             shape: RecursionShape::new(<C::RecursionComponents as MachineProverComponents<
                 SP1GlobalContext,
-            >>::preprocessed_table_heights(pk)),
+            >>::preprocessed_table_heights(pk).await),
         };
 
         let wrap_input =

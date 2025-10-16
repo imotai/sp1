@@ -4,8 +4,7 @@ use crate::{
 };
 use itertools::{izip, Itertools};
 use serde::{Deserialize, Serialize};
-use slop_algebra::AbstractField;
-use slop_algebra::PrimeField32;
+use slop_algebra::{AbstractField, PrimeField32};
 use slop_challenger::{FieldChallenger, IopCtx};
 use slop_commit::Rounds;
 use slop_multilinear::{full_geq, Mle, MleEval, MultilinearPcsVerifier, Point};
@@ -164,7 +163,8 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
             .iter()
             .zip(column_counts.iter())
             .map(|(rc, cc)| {
-                // The counts have been checked above to be at least length 2, so it's safe to subtract 2.
+                // The counts have been checked above to be at least length 2, so it's safe to
+                // subtract 2.
                 let rc_len = rc.len() - 2;
                 let cc_len = cc.len() - 2;
                 rc.iter()
@@ -262,9 +262,9 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
             .collect();
 
         // For each commit, the stacked PCS needed a commitment to a vector of length a multiple of
-        // 1 << self.pcs.log_stackiinng_height, and this is achieved by adding columns of zeroes after
-        // the "real" columns. We insert these "artificial" zeroes into the evaluation claims on the
-        // verifier side.
+        // 1 << self.pcs.log_stackiinng_height, and this is achieved by adding columns of zeroes
+        // after the "real" columns. We insert these "artificial" zeroes into the evaluation
+        // claims on the verifier side.
         for (insertion_point, num_added_columns) in
             insertion_points.iter().rev().zip_eq(proof_added_columns.iter().rev())
         {
