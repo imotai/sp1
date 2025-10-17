@@ -97,10 +97,10 @@ impl<'a, A: Backend> DenseData<A> for JaggedFirstRoundPoly<'a, A> {
 
 /// TODO: document
 pub fn generate_jagged_sumcheck_poly(
-    traces: &JaggedTraceMle<Felt, TaskScope>,
+    traces: &'_ JaggedTraceMle<Felt, TaskScope>,
     eq_z_col: Mle<Ext, TaskScope>,
     eq_z_row: Mle<Ext, TaskScope>,
-) -> JaggedFirstRoundSumcheckPoly {
+) -> JaggedFirstRoundSumcheckPoly<'_> {
     let half_len = traces.dense().dense.len() >> 1;
     JaggedFirstRoundSumcheckPoly {
         poly: JaggedFirstRoundPolyMle::new(

@@ -1,6 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use csl_cuda::{cuda_memory_info, TaskScope};
+use cslpc_tracegen::CORE_MAX_TRACE_SIZE;
 use sp1_hypercube::prover::ProverSemaphore;
 use sp1_prover::{components::SP1ProverComponents, local::LocalProverOpts, SP1ProverBuilder};
 
@@ -142,16 +143,23 @@ impl SP1ProverCleanBuilder {
         let mut num_prover_workers = 4;
 
         let core_verifier = ProverCleanSP1ProverComponents::core_verifier();
-        let core_prover = new_prover_clean_prover(core_verifier.clone(), scope.clone());
+        let core_prover = new_prover_clean_prover(
+            core_verifier.clone(),
+            CORE_MAX_TRACE_SIZE as usize,
+            scope.clone(),
+        );
 
+        // TODO: tune this more precisely and make it a constant.
         let recursion_verifier = ProverCleanSP1ProverComponents::compress_verifier();
-        let recursion_prover = new_prover_clean_prover(recursion_verifier.clone(), scope.clone());
+        let recursion_prover =
+            new_prover_clean_prover(recursion_verifier.clone(), 1 << 27, scope.clone());
 
         let shrink_verifier = ProverCleanSP1ProverComponents::shrink_verifier();
-        let shrink_prover = new_prover_clean_prover(shrink_verifier.clone(), scope.clone());
+        let shrink_prover =
+            new_prover_clean_prover(shrink_verifier.clone(), 1 << 24, scope.clone());
 
         let wrap_verifier = ProverCleanSP1ProverComponents::wrap_verifier();
-        let wrap_prover = new_prover_clean_prover(wrap_verifier.clone(), scope.clone());
+        let wrap_prover = new_prover_clean_prover(wrap_verifier.clone(), 1 << 25, scope.clone());
 
         if cpu_memory_gb <= 20 {
             num_prover_workers = 1;

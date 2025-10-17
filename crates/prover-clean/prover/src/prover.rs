@@ -13,8 +13,8 @@ use cslpc_basefold::{ProverCleanFriCudaProver, ProverCleanStackedPcsProverData};
 use cslpc_jagged_sumcheck::{generate_jagged_sumcheck_poly, jagged_sumcheck};
 use cslpc_logup_gkr::prove_logup_gkr;
 use cslpc_merkle_tree::{SingleLayerMerkleTreeProverError, TcsProverClean};
+use cslpc_tracegen::full_tracegen;
 use cslpc_tracegen::main_tracegen;
-use cslpc_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
 use cslpc_utils::{Ext, Felt, JaggedTraceMle};
 use cslpc_zerocheck::zerocheck;
 use slop_algebra::AbstractField;
@@ -54,6 +54,7 @@ pub struct CudaShardProver<GC: IopCtx, PC: ProverCleanProverComponents<GC>> {
     pub log_stacking_height: u32,
     pub basefold_prover: ProverCleanFriCudaProver<GC, PC::P, GC::F>,
     pub machine: Machine<GC::F, PC::Air>,
+    pub max_trace_size: usize,
     pub backend: TaskScope,
     pub _marker: PhantomData<GC>,
 }
@@ -168,7 +169,7 @@ where
             &self.machine,
             program,
             record,
-            CORE_MAX_TRACE_SIZE as usize,
+            self.max_trace_size,
             self.log_stacking_height,
             &self.backend,
         )
@@ -782,6 +783,7 @@ mod tests {
                     max_log_row_count: CORE_MAX_LOG_ROW_COUNT as usize,
                     log_stacking_height: LOG_STACKING_HEIGHT,
                     basefold_prover,
+                    max_trace_size: CORE_MAX_TRACE_SIZE as usize,
                     machine,
                     backend: scope.clone(),
                     _marker: PhantomData,

@@ -173,6 +173,7 @@ where
 
 pub fn new_prover_clean_prover<GC, C, PC>(
     verifier: sp1_hypercube::MachineVerifier<GC, C, PC::Air>,
+    max_trace_size: usize,
     scope: TaskScope,
 ) -> CudaShardProver<GC, PC>
 where
@@ -207,6 +208,7 @@ where
         max_log_row_count,
         log_stacking_height,
         basefold_prover,
+        max_trace_size,
         machine,
         backend: scope,
         _marker: PhantomData,

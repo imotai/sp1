@@ -19,6 +19,7 @@ csl-logup-gkr = { workspace = true }
 cslpc-prover = { workspace = true }
 cslpc-basefold = { workspace = true }
 cslpc-merkle-tree = { workspace = true }
+cslpc-tracegen = { workspace = true }
 
 # slop
 slop-koala-bear = { workspace = true }

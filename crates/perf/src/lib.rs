@@ -71,7 +71,6 @@ pub async fn make_measurement(
                 .normalize_cache_size(recursion_cache_size)
                 .set_max_compose_arity(DEFAULT_ARITY)
                 .without_vk_verification()
-                .without_recursion_vks()
                 .build()
                 .await;
             Arc::new(LocalProver::new(sp1_prover, opts))

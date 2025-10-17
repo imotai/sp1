@@ -161,7 +161,7 @@ pub async fn generate_first_layer<'a>(
 }
 
 impl<'a> LogUpCudaCircuit<'a, TaskScope> {
-    pub async fn next(&mut self) -> Option<GkrCircuitLayer> {
+    pub async fn next(&'_ mut self) -> Option<GkrCircuitLayer<'_>> {
         if let Some(layer) = self.materialized_layers.pop() {
             Some(layer)
         } else {

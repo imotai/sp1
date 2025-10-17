@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 
 use csl_basefold::DeviceGrindingChallenger;
 use csl_cuda::TaskScope;
-use cslpc_tracegen::{setup_tracegen, CORE_MAX_TRACE_SIZE};
+use cslpc_tracegen::setup_tracegen;
 use cslpc_utils::{Ext, Felt, JaggedTraceMle};
 use slop_algebra::AbstractField;
 use slop_basefold::BasefoldProof;
@@ -51,7 +51,7 @@ where
         let preprocessed_data = setup_tracegen(
             &self.machine,
             program,
-            CORE_MAX_TRACE_SIZE as usize,
+            self.max_trace_size,
             self.log_stacking_height,
             &self.backend,
         )
