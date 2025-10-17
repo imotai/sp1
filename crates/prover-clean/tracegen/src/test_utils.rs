@@ -33,7 +33,7 @@ pub mod tracegen_setup {
 
         // 2. Create stdin with fibonacci input
         let mut stdin = SP1Stdin::new();
-        stdin.write(&800_000u32);
+        stdin.write(&8_000u32);
 
         // 3. Create executor and channel
         let opts = SP1CoreOpts::default();

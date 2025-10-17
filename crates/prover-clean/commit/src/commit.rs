@@ -5,9 +5,11 @@ use cslpc_basefold::{ProverCleanFriCudaProver, ProverCleanStackedPcsProverData};
 use cslpc_merkle_tree::{SingleLayerMerkleTreeProverError, TcsProverClean};
 use cslpc_utils::{traces::JaggedTraceMle, Ext, Felt};
 use slop_algebra::AbstractField;
+use slop_alloc::HasBackend;
 use slop_challenger::IopCtx;
 use slop_jagged::JaggedProverData;
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction as _};
+use slop_tensor::Tensor;
 
 /// TODO: document
 pub async fn commit_multilinears<GC: IopCtx<F = Felt, EF = Ext>, P: TcsProverClean<GC>>(
@@ -19,13 +21,30 @@ pub async fn commit_multilinears<GC: IopCtx<F = Felt, EF = Ext>, P: TcsProverCle
     (GC::Digest, JaggedProverData<GC, ProverCleanStackedPcsProverData<GC>>),
     SingleLayerMerkleTreeProverError,
 > {
-    let (index, padding) = if use_preprocessed {
+    let (index, padding, dst) = if use_preprocessed {
         (
             &jagged_trace_mle.dense().preprocessed_table_index,
             jagged_trace_mle.dense().preprocessed_padding,
+            Tensor::<Felt, TaskScope>::with_sizes_in(
+                [
+                    jagged_trace_mle.dense().preprocessed_offset >> basefold_prover.log_height,
+                    1 << (basefold_prover.log_height + basefold_prover.config.log_blowup()),
+                ],
+                jagged_trace_mle.dense().dense.backend().clone(),
+            ),
         )
     } else {
-        (&jagged_trace_mle.dense().main_table_index, jagged_trace_mle.dense().main_padding)
+        (
+            &jagged_trace_mle.dense().main_table_index,
+            jagged_trace_mle.dense().main_padding,
+            Tensor::<Felt, TaskScope>::with_sizes_in(
+                [
+                    jagged_trace_mle.dense().main_size() >> basefold_prover.log_height,
+                    1 << (basefold_prover.log_height + basefold_prover.config.log_blowup()),
+                ],
+                jagged_trace_mle.dense().dense.backend().clone(),
+            ),
+        )
     };
     let (mut row_counts, mut column_counts) = (
         index.values().map(|x| x.poly_size).collect::<Vec<_>>(),
@@ -33,7 +52,7 @@ pub async fn commit_multilinears<GC: IopCtx<F = Felt, EF = Ext>, P: TcsProverCle
     );
 
     let (commitment, data) =
-        basefold_prover.encode_and_commit(use_preprocessed, jagged_trace_mle).await?;
+        basefold_prover.encode_and_commit(use_preprocessed, jagged_trace_mle, dst).await?;
 
     let num_added_cols = padding.div_ceil(1 << max_log_row_count).max(1);
 

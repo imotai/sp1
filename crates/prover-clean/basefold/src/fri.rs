@@ -101,29 +101,34 @@ where
         &self,
         use_preprocessed: bool,
         jagged_trace_mle: &JaggedTraceMle<Felt, TaskScope>,
+        mut dst: Tensor<Felt, TaskScope>,
     ) -> Result<
         (<GC as IopCtx>::Digest, ProverCleanStackedPcsProverData<GC>),
         SingleLayerMerkleTreeProverError,
     > {
         let encoder = SpparkDftKoalaBear::default();
 
+        unsafe {
+            dst.assume_init();
+        }
+
         let virtual_tensor = if use_preprocessed {
             jagged_trace_mle.preprocessed_virtual_tensor(self.log_height as u32)
         } else {
             jagged_trace_mle.main_virtual_tensor(self.log_height as u32)
         };
-        let encoded_messages =
-            encode_batch(encoder, self.config.log_blowup as u32, virtual_tensor).unwrap();
+
+        encode_batch(encoder, self.config.log_blowup as u32, virtual_tensor, &mut dst).unwrap();
 
         // Commit to the tensors.
 
-        let (commitment, tcs_data) = self.tcs_prover.commit_tensors(&encoded_messages).await?;
+        let (commitment, tcs_data) = self.tcs_prover.commit_tensors(&dst).await?;
 
         Ok((
             commitment,
             ProverCleanStackedPcsProverData {
                 merkle_tree_tcs_data: tcs_data,
-                codeword_mle: Arc::new(encoded_messages),
+                codeword_mle: Arc::new(dst),
             },
         ))
     }
@@ -286,6 +291,12 @@ where
             [<GC::EF as AbstractExtensionField<GC::F>>::D, folded_height],
             scope.clone(),
         );
+
+        let mut folded_codeword = Tensor::<GC::F, TaskScope>::zeros_in(
+            [<GC::EF as AbstractExtensionField<GC::F>>::D, folded_height << self.config.log_blowup],
+            scope.clone(),
+        );
+
         let block_dim = 256;
         let grid_dim = folded_height.div_ceil(block_dim);
         unsafe {
@@ -297,7 +308,7 @@ where
                 .unwrap();
         }
         let encoder = SpparkDftKoalaBear::default();
-        let folded_codeword = encode_batch(encoder, 1, folded_mle_flattened.as_view()).unwrap();
+        encode_batch(encoder, 1, folded_mle_flattened.as_view(), &mut folded_codeword).unwrap();
 
         Ok((beta, folded_mle, folded_codeword, commit, leaves, prover_data))
     }
@@ -556,13 +567,29 @@ mod tests {
             )
             .await;
 
+            let dst = Tensor::<Felt, TaskScope>::with_sizes_in(
+                [
+                    new_traces.0.dense().preprocessed_offset >> LOG_STACKING_HEIGHT,
+                    1 << (LOG_STACKING_HEIGHT as usize + verifier.fri_config.log_blowup()),
+                ],
+                scope.clone(),
+            );
+
             let (new_preprocessed_commit, new_preprocessed_prover_data) =
-                new_prover.encode_and_commit(true, &new_traces).await.unwrap();
+                new_prover.encode_and_commit(true, &new_traces, dst).await.unwrap();
 
             assert_eq!(new_preprocessed_commit, old_preprocessed_commitment);
 
+            let dst = Tensor::<Felt, TaskScope>::with_sizes_in(
+                [
+                    new_traces.0.dense().main_size() >> LOG_STACKING_HEIGHT,
+                    1 << (LOG_STACKING_HEIGHT as usize + verifier.fri_config.log_blowup()),
+                ],
+                scope.clone(),
+            );
+
             let (new_main_commit, new_main_prover_data) =
-                new_prover.encode_and_commit(false, &new_traces).await.unwrap();
+                new_prover.encode_and_commit(false, &new_traces, dst).await.unwrap();
             let message = old_traces
                 .main_trace_data
                 .traces

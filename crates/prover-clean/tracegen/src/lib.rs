@@ -13,6 +13,7 @@ use slop_algebra::AbstractField;
 use slop_alloc::{Backend, Buffer, CopyIntoBackend, HasBackend, Slice};
 use slop_multilinear::Mle;
 
+use sp1_core_executor::ELEMENT_THRESHOLD;
 use sp1_hypercube::{air::MachineAir, Machine};
 
 use sp1_hypercube::{Chip, MachineRecord};
@@ -24,7 +25,7 @@ pub mod test_utils;
 // ------------- The following logic is mostly copied from crates/tracegen/src/lib.rs -------------
 // TODO: is this a reasonable upper bound on number of columns per trace? ~16k
 pub const MAX_COLS_PER_TRACE: usize = 1 << 14;
-pub const CORE_MAX_TRACE_SIZE: u32 = 1 << 29;
+pub const CORE_MAX_TRACE_SIZE: u32 = (ELEMENT_THRESHOLD + (ELEMENT_THRESHOLD >> 4)) as u32;
 
 /// The output of the host phase of the tracegen.
 pub struct HostPhaseTracegen<A> {

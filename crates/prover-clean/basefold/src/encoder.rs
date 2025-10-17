@@ -10,7 +10,7 @@ use csl_cuda::{
     sys::dft::{batch_coset_dft, sppark_init_default_stream},
     CudaError, DeviceCopy,
 };
-use slop_algebra::Field;
+use slop_algebra::{AbstractField, Field};
 use slop_koala_bear::KoalaBear;
 use slop_tensor::{Tensor, TensorView};
 
@@ -18,9 +18,18 @@ pub fn encode_batch<'a>(
     dft: SpparkDftKoalaBear,
     log_blowup: u32,
     data: TensorView<'a, Felt, TaskScope>,
-) -> Result<Tensor<Felt, TaskScope>, CudaError> {
-    let dft = dft.dft(data, log_blowup as usize, DftOrdering::BitReversed, 1).unwrap();
-    Ok(dft)
+    dst: &mut Tensor<Felt, TaskScope>,
+) -> Result<(), CudaError> {
+    dft.coset_dft_into(
+        data,
+        dst,
+        <Felt as AbstractField>::one(),
+        log_blowup as usize,
+        DftOrdering::BitReversed,
+        1,
+    )
+    .unwrap();
+    Ok(())
 }
 
 pub trait SpparkCudaDftSys<T: DeviceCopy>: 'static + Send + Sync {
@@ -101,31 +110,6 @@ impl<T: Field, F: SpparkCudaDftSys<T>> SpparkDft<F, T> {
             )
         }
     }
-
-    fn coset_dft<'a>(
-        &self,
-        src: TensorView<'a, T, TaskScope>,
-        shift: T,
-        log_blowup: usize,
-        ordering: DftOrdering,
-        dim: usize,
-    ) -> Result<Tensor<T, TaskScope>, CudaError> {
-        let mut sizes = src.sizes().to_vec();
-        sizes[dim] <<= log_blowup;
-        let mut dst = Tensor::with_sizes_in(sizes, src.backend().clone());
-        self.coset_dft_into(src, &mut dst, shift, log_blowup, ordering, dim)?;
-        Ok(dst)
-    }
-
-    fn dft<'a>(
-        &self,
-        src: TensorView<'a, T, TaskScope>,
-        log_blowup: usize,
-        ordering: DftOrdering,
-        dim: usize,
-    ) -> Result<Tensor<T, TaskScope>, CudaError> {
-        self.coset_dft(src, T::one(), log_blowup, ordering, dim)
-    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -195,11 +179,19 @@ mod tests {
             let result = csl_cuda::spawn(move |t| async move {
                 let tensor = t.into_device(tensor_h_sent).await.unwrap().transpose();
                 let dft = SpparkDftKoalaBear::default();
-                let result = dft
-                    .coset_dft(tensor.as_view(), shift, log_blowup, DftOrdering::BitReversed, 1)
-                    .unwrap();
+                let mut dst =
+                    Tensor::<Felt, _>::with_sizes_in([batch_size, d << log_blowup], t.clone());
+                dft.coset_dft_into(
+                    tensor.as_view(),
+                    &mut dst,
+                    shift,
+                    log_blowup,
+                    DftOrdering::BitReversed,
+                    1,
+                )
+                .unwrap();
 
-                let result = result.transpose();
+                let result = dst.transpose();
                 result.into_host().await.unwrap()
             })
             .await
