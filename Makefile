@@ -123,18 +123,24 @@ ALL_OBJ_DIRS := $(CUDA_OBJ_DIRS) $(SPPARK_OBJ_DIRS)
 .PHONY: all
 all: $(LIB_DIR)/$(LIB_NAME)
 
+# Automatically delete targets on error to prevent corrupted artifacts
+.DELETE_ON_ERROR:
+
 # Create directories
 $(ALL_OBJ_DIRS) $(LIB_DIR) $(INCLUDE_DIR):
 	@mkdir -p $@
 
-# Main library target - create library first, then device-link
+# Main library target - create library atomically using a temporary file
+# This prevents leaving corrupted .a files if the build is interrupted
 $(LIB_DIR)/$(LIB_NAME): $(ALL_OBJECTS) | $(LIB_DIR) $(OBJ_DIR)
-	@echo "Creating initial static library $@"
-	@ar rcs $@ $^
+	@echo "Creating initial static library $@.tmp"
+	@ar rcs $@.tmp $^
 	@echo "Device linking library..."
-	@$(NVCC) $(ARCH_FLAGS) --device-link -o $(OBJ_DIR)/device_link.o $@
+	@$(NVCC) $(ARCH_FLAGS) --device-link -o $(OBJ_DIR)/device_link.o $^
 	@echo "Adding device link to library..."
-	@ar r $@ $(OBJ_DIR)/device_link.o
+	@ar r $@.tmp $(OBJ_DIR)/device_link.o
+	@echo "Moving library to final location..."
+	@mv -f $@.tmp $@
 	@echo "Library created: $@"
 
 # CUDA compilation rules
