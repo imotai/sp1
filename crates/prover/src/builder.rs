@@ -166,7 +166,7 @@ impl SP1ProverCleanBuilder {
         }
 
         // Log the memory on CPU and GPU.
-        tracing::info!("cpu_memory_gb={}, gpu_memory_gb={}", cpu_memory_gb, gpu_memory_gb);
+        tracing::debug!("cpu_memory_gb={}, gpu_memory_gb={}", cpu_memory_gb, gpu_memory_gb);
 
         let num_core_workers = num_prover_workers;
         let num_recursion_workers = num_prover_workers;

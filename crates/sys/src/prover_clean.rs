@@ -8,6 +8,11 @@ extern "C" {
     pub fn sum_kernel_felt() -> KernelPtr;
     pub fn sum_kernel_ext() -> KernelPtr;
 
+    // Tracegen kernels
+    pub fn generate_col_index() -> KernelPtr;
+    pub fn generate_start_indices() -> KernelPtr;
+    pub fn fill_buffer() -> KernelPtr;
+
     // Reduce kernels
     pub fn reduce_kernel_felt() -> KernelPtr;
     pub fn reduce_kernel_ext() -> KernelPtr;

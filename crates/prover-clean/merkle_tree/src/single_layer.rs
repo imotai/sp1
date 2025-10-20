@@ -423,13 +423,15 @@ mod tests {
             let (old_preprocessed_commitment, old_prover_data) =
                 old_prover.commit_tensors(interleaved_message.clone()).await.unwrap();
 
-            let (_, new_traces, _) = full_tracegen(
+            let new_semaphore = ProverSemaphore::new(1);
+            let (_, new_traces, _, _) = full_tracegen(
                 &machine,
                 program,
                 Arc::new(record),
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 &scope,
+                new_semaphore.clone(),
             )
             .await;
             let new_traces = Arc::new(new_traces);

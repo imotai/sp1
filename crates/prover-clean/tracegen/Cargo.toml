@@ -14,13 +14,16 @@ csl-tracegen = { workspace = true }
 
 # prover-clean subcrates
 cslpc-utils = { workspace = true }
+cslpc-basefold = { workspace = true }
 
 # slop
 slop-air = { workspace = true }
 slop-algebra = { workspace = true }
 slop-alloc = { workspace = true }
+slop-jagged = { workspace = true }
 slop-multilinear = { workspace = true }
 slop-futures = { workspace = true }
+slop-challenger = { workspace = true }
 
 # sp1
 sp1-hypercube = { workspace = true }

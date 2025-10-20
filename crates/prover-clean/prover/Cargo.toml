@@ -12,7 +12,6 @@ categories.workspace = true
 csl-cuda = { workspace = true }
 csl-jagged = { workspace = true }
 csl-basefold = { workspace = true }
-csl-challenger = { workspace = true }
 csl-tracegen = { workspace = true }
 csl-air = { workspace = true }
 
@@ -41,7 +40,6 @@ slop-stacked = { workspace = true }
 sp1-hypercube = { workspace = true }
 
 # utils
-futures-util = "0.3.31"
 thiserror = "1.0"
 tracing = { workspace = true }
 tokio = { workspace = true }

@@ -149,13 +149,14 @@ mod tests {
             // Commit to preprocessed and main using the new prover.
             // Do tracegen with the new setup.
             let record = Arc::new(record);
-            let (_public_values, jagged_trace_data, _chip_set) = full_tracegen(
+            let (_public_values, jagged_trace_data, _chip_set, _permit) = full_tracegen(
                 &machine,
                 program.clone(),
                 record.clone(),
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 &scope,
+                ProverSemaphore::new(1),
             )
             .await;
 

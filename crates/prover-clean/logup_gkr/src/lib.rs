@@ -12,7 +12,7 @@ use slop_algebra::AbstractField;
 use slop_alloc::{CanCopyFromRef, HasBackend, ToHost};
 use slop_challenger::FieldChallenger;
 use slop_multilinear::{Mle, MultilinearPcsChallenger, Point};
-use tracing::Instrument;
+use tracing::instrument;
 
 use sp1_hypercube::{
     air::MachineAir, Chip, ChipEvaluation, LogUpEvaluations, LogUpGkrOutput, LogupGkrProof,
@@ -127,6 +127,7 @@ pub async fn prove_round<'a, C: FieldChallenger<Felt>>(
 }
 
 /// Proves the GKR circuit, layer by layer.
+#[instrument(skip_all, level = "debug")]
 pub async fn prove_gkr_circuit<'a, C: FieldChallenger<Felt>>(
     numerator_value: Ext,
     denominator_value: Ext,
@@ -227,7 +228,6 @@ pub async fn prove_logup_gkr<A: MachineAir<Felt>, C: MultilinearPcsChallenger<Fe
         circuit,
         challenger,
     )
-    .instrument(tracing::info_span!("prove GKR circuit"))
     .await;
 
     // Get the evaluations for each chip at the evaluation point of the last round.
@@ -288,7 +288,7 @@ mod tests {
     use slop_alloc::ToHost;
     use slop_challenger::{FieldChallenger, IopCtx};
     use slop_sumcheck::partially_verify_sumcheck_proof;
-    use sp1_hypercube::ShardVerifier;
+    use sp1_hypercube::{prover::ProverSemaphore, ShardVerifier};
     use std::sync::Arc;
 
     use crate::execution::{extract_outputs, gkr_transition, layer_transition};
@@ -532,13 +532,14 @@ mod tests {
 
         run_in_place(|scope| async move {
             // *********** Generate traces using the host tracegen. ***********
-            let (public_values, jagged_trace_data, shard_chips) = full_tracegen(
+            let (public_values, jagged_trace_data, shard_chips, _permit) = full_tracegen(
                 &machine,
                 program.clone(),
                 Arc::new(record),
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 &scope,
+                ProverSemaphore::new(1),
             )
             .await;
 

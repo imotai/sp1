@@ -9,10 +9,12 @@ use csl_cuda::{
     ToDevice,
 };
 use futures::{stream::FuturesUnordered, StreamExt};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use slop_alloc::{Buffer, HasBackend};
 use slop_multilinear::{Mle, Point};
 use slop_tensor::Tensor;
 use sp1_hypercube::{air::MachineAir, Chip, LogUpGkrOutput};
+use tracing::{instrument, Instrument};
 
 use crate::{
     extract_outputs, gkr_transition,
@@ -26,6 +28,7 @@ use cslpc_utils::{Ext, Felt};
 /// Generates the first layer of the GKR circuit.
 ///
 /// Processes all of the chip interaction information and traces into GKR circuit format.
+#[instrument(skip_all, level = "debug")]
 pub async fn generate_first_layer<'a>(
     input_data: &GkrInputData<'a>,
     backend: &TaskScope,
@@ -33,19 +36,22 @@ pub async fn generate_first_layer<'a>(
     let num_row_variables = input_data.num_row_variables - 1;
 
     // interaction_row_counts iterates through the traces by chip order, and returns column sizes for each interaction.
-    let interaction_row_counts = input_data
-        .interactions
-        .iter()
-        .flat_map(|(name, interactions)| {
-            let real_height = input_data.main_poly_height(name).unwrap();
-            // For padding reasons, `height` always needs to be at least 2.
-            let height = std::cmp::max(real_height, 8);
-            // Divide by 2 because each row has even height, so we only store length / 2.
-            // Divide by 2 again because numerator(x, 0) and numerator(x, 1) are stored separately.
-            let height = height.div_ceil(4);
-            vec![height as u32; interactions.num_interactions]
-        })
-        .collect::<Vec<_>>();
+    let interaction_row_counts =
+        tracing::trace_span!("row counts and start indices").in_scope(|| {
+            input_data
+                .interactions
+                .par_iter()
+                .flat_map(|(name, interactions)| {
+                    let real_height = input_data.main_poly_height(name).unwrap();
+                    // For padding reasons, `height` always needs to be at least 2.
+                    let height = std::cmp::max(real_height, 8);
+                    // Divide by 2 because each row has even height, so we only store length / 2.
+                    // Divide by 2 again because numerator(x, 0) and numerator(x, 1) are stored separately.
+                    let height = height.div_ceil(4);
+                    vec![height as u32; interactions.num_interactions]
+                })
+                .collect::<Vec<_>>()
+        });
 
     // interaction_start_indices is a prefix sum of interaction_row_counts.
     let interaction_start_indices = once(0)
@@ -61,17 +67,13 @@ pub async fn generate_first_layer<'a>(
     let mut numerator = Tensor::<Felt, _>::with_sizes_in([2, 1, height * 2], backend.clone());
     let mut denominator = Tensor::<Ext, _>::with_sizes_in([2, 1, height * 2], backend.clone());
 
-    const BLOCK_SIZE: usize = 256;
-    const ROW_STRIDE: usize = 8;
-    const INTERACTION_STRIDE: usize = 4;
-
     let beta = input_data.beta_seed.clone();
     let beta = beta.to_device_in(backend).await.unwrap();
     let betas = Mle::partial_lagrange(&beta).await;
 
     // Generate traces per chip, sorted by chip name.
     let mut interaction_offset = 0;
-    let handles = FuturesUnordered::new();
+    let mut handles = FuturesUnordered::new();
     for (name, interactions) in input_data.interactions.iter() {
         let alpha = input_data.alpha;
         let interactions = interactions.clone();
@@ -81,10 +83,13 @@ pub async fn generate_first_layer<'a>(
         let mut numerator = unsafe { numerator.owned_unchecked() };
         let mut denominator = unsafe { denominator.owned_unchecked() };
         let betas = unsafe { betas.owned_unchecked() };
+        let real_height = input_data.main_poly_height(name).unwrap();
+        let outer_span = tracing::Span::current();
 
         let handle = backend.run_in_place(move |scope| async move {
-            let real_height = input_data.main_poly_height(name).unwrap();
-
+            const BLOCK_SIZE: usize = 256;
+            const ROW_STRIDE: usize = 8;
+            const INTERACTION_STRIDE: usize = 4;
             // To fit the padding requirement, each trace must have even height.
             assert_eq!(real_height % 2, 0);
             let is_padding = real_height == 0;
@@ -130,13 +135,13 @@ pub async fn generate_first_layer<'a>(
                     )
                     .unwrap();
             }
-        });
+        }.instrument(tracing::debug_span!(parent: &outer_span, "populate last circuit layer", name = %name)));
         handles.push(handle);
 
         interaction_offset += num_interactions;
     }
 
-    handles.collect::<Vec<_>>().await;
+    while (handles.next().await).is_some() {}
 
     unsafe {
         interaction_data.assume_init();
@@ -178,6 +183,7 @@ impl<'a> LogUpCudaCircuit<'a, TaskScope> {
 }
 
 /// Generates a GKR circuit from the given chips and jagged trace data.
+#[instrument(skip_all, level = "debug")]
 pub async fn generate_gkr_circuit<'a, A: MachineAir<Felt>>(
     chips: &BTreeSet<Chip<Felt, A>>,
     jagged_trace_data: &'a JaggedTraceMle<Felt, TaskScope>,
@@ -210,13 +216,15 @@ pub async fn generate_gkr_circuit<'a, A: MachineAir<Felt>>(
     let num_interaction_variables = first_layer.num_interaction_variables;
 
     let first_layer = GkrCircuitLayer::FirstLayer(first_layer);
-    let layer: GkrCircuitLayer = gkr_transition(&first_layer).await;
+    let layer = gkr_transition(&first_layer).await;
     drop(first_layer);
 
     // Transition from the previous layer to generate the next one.
     materialized_layers.push(layer);
-    for _ in 0..num_row_variables - 2 {
-        let layer = gkr_transition(materialized_layers.last().unwrap()).await;
+    for i in 0..num_row_variables - 2 {
+        let layer = gkr_transition(materialized_layers.last().unwrap())
+            .instrument(tracing::debug_span!("gkr transition", layer = i))
+            .await;
         materialized_layers.push(layer);
     }
 

@@ -749,12 +749,6 @@ where
         preprocessed_ptr += preprocessed_width;
 
         let width = chip.width();
-        // println!(
-        //     "name: {}, preprocessed: {:?}, main: {:?}",
-        //     chip.air.name(),
-        //     &individual_column_evals[preprocessed_ptr - preprocessed_width..preprocessed_ptr],
-        //     &individual_column_evals[main_ptr..main_ptr + width]
-        // );
 
         let main =
             AirOpenedValues { local: individual_column_evals[main_ptr..main_ptr + width].to_vec() };
@@ -803,8 +797,8 @@ pub mod tests {
     use sp1_hypercube::air::{MachineAir, SP1AirBuilder};
     use sp1_hypercube::prover::ZerocheckAir;
     use sp1_hypercube::{
-        Chip, ChipEvaluation, ChipOpenedValues, ConstraintSumcheckFolder, LogUpEvaluations,
-        ShardOpenedValues, VerifierConstraintFolder,
+        prover::ProverSemaphore, Chip, ChipEvaluation, ChipOpenedValues, ConstraintSumcheckFolder,
+        LogUpEvaluations, ShardOpenedValues, VerifierConstraintFolder,
     };
 
     use std::collections::{BTreeMap, BTreeSet};
@@ -2043,13 +2037,14 @@ pub mod tests {
         run_in_place(|t| async move {
             let mut rng = rand::thread_rng();
 
-            let (public_values, trace_mle, chips) = full_tracegen(
+            let (public_values, trace_mle, chips, _permit) = full_tracegen(
                 &machine,
                 program.clone(),
                 Arc::new(record),
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 &t,
+                ProverSemaphore::new(1),
             )
             .await;
             let chips = machine.smallest_cluster(&chips).unwrap();

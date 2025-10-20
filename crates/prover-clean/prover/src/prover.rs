@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::iter::once;
 use std::{marker::PhantomData, sync::Arc};
 use tokio::sync::Mutex;
@@ -13,8 +13,7 @@ use cslpc_basefold::{ProverCleanFriCudaProver, ProverCleanStackedPcsProverData};
 use cslpc_jagged_sumcheck::{generate_jagged_sumcheck_poly, jagged_sumcheck};
 use cslpc_logup_gkr::prove_logup_gkr;
 use cslpc_merkle_tree::{SingleLayerMerkleTreeProverError, TcsProverClean};
-use cslpc_tracegen::full_tracegen;
-use cslpc_tracegen::main_tracegen;
+use cslpc_tracegen::{full_tracegen, main_tracegen, CudaShardProverData};
 use cslpc_utils::{Ext, Felt, JaggedTraceMle};
 use cslpc_zerocheck::zerocheck;
 use slop_algebra::AbstractField;
@@ -57,32 +56,6 @@ pub struct CudaShardProver<GC: IopCtx, PC: ProverCleanProverComponents<GC>> {
     pub max_trace_size: usize,
     pub backend: TaskScope,
     pub _marker: PhantomData<GC>,
-}
-
-pub struct CudaShardProverData<GC: IopCtx, Air: MachineAir<GC::F>> {
-    /// The preprocessed traces.
-    pub preprocessed_traces: JaggedTraceMle<Felt, TaskScope>,
-    /// The pcs data for the preprocessed traces.
-    pub preprocessed_data: JaggedProverData<GC, ProverCleanStackedPcsProverData<GC>>,
-    phantom: PhantomData<Air>,
-}
-
-impl<GC: IopCtx, Air: MachineAir<GC::F>> CudaShardProverData<GC, Air> {
-    pub fn new(
-        preprocessed_traces: JaggedTraceMle<Felt, TaskScope>,
-        preprocessed_data: JaggedProverData<GC, ProverCleanStackedPcsProverData<GC>>,
-    ) -> Self {
-        Self { preprocessed_traces, preprocessed_data, phantom: PhantomData }
-    }
-
-    pub fn preprocessed_table_heights(&self) -> BTreeMap<String, usize> {
-        self.preprocessed_traces
-            .dense()
-            .preprocessed_table_index
-            .iter()
-            .map(|(name, offset)| (name.clone(), offset.poly_size))
-            .collect()
-    }
 }
 
 impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>>
@@ -164,21 +137,19 @@ where
 
         let record = Arc::new(record);
 
-        // Generate trace. TODO PERMITS
-        let (public_values, trace_data, chip_set) = full_tracegen(
+        // Generate trace.
+        let (public_values, trace_data, chip_set, permit) = full_tracegen(
             &self.machine,
             program,
             record,
             self.max_trace_size,
             self.log_stacking_height,
             &self.backend,
+            prover_permits,
         )
-        .instrument(tracing::debug_span!("generate main traces"))
+        .instrument(tracing::debug_span!("generate all traces"))
         .await;
 
-        // let TraceData { preprocessed_traces, main_trace_data } = trace_data;
-
-        let permit = prover_permits.acquire().await.unwrap();
         let (pk, vk) = self
             .setup_from_preprocessed_data_and_traces(
                 pc_start,
@@ -196,12 +167,12 @@ where
         let pk = Arc::new(pk);
 
         let main_trace_data =
-            MainTraceData { traces: pk.clone(), public_values, shard_chips: chip_set, permit };
+            MainTraceData { traces: pk, public_values, shard_chips: chip_set, permit };
 
         // Observe the preprocessed information.
         vk.observe_into(challenger);
 
-        let shard_data = ShardData { pk, main_trace_data };
+        let shard_data = ShardData { main_trace_data };
 
         let (shard_proof, permit) = self
             .prove_shard_with_data(shard_data, challenger)
@@ -220,24 +191,20 @@ where
         challenger: &mut GC::Challenger,
     ) -> (ShardProof<GC, PC::C>, ProverPermit) {
         // Generate the traces.
-        let permit = prover_permits.acquire().await.unwrap();
         let record = Arc::new(record);
-        let mut jagged_traces = pk.preprocessed_data.lock().await;
 
-        let (public_values, chip_set) = main_tracegen(
+        let (public_values, chip_set, permit) = main_tracegen(
             &self.machine,
             record,
-            &mut jagged_traces.preprocessed_traces,
+            &pk.preprocessed_data,
             self.log_stacking_height,
             &self.backend,
+            prover_permits,
         )
         .instrument(tracing::debug_span!("generate main traces"))
         .await;
 
-        drop(jagged_traces);
-
         let shard_data = ShardData {
-            pk: pk.clone(),
             main_trace_data: MainTraceData {
                 traces: pk.clone(),
                 public_values,
@@ -578,7 +545,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
         <GC::Challenger as DeviceGrindingChallenger>::OnDeviceChallenger:
             FromChallenger<GC::Challenger, TaskScope> + Clone,
     {
-        let ShardData { pk: _, main_trace_data } = data;
+        let ShardData { main_trace_data } = data;
         let MainTraceData { traces, public_values, shard_chips, permit } = main_trace_data;
 
         // // Log the shard data.
@@ -758,13 +725,14 @@ mod tests {
         let (machine, record, program) = tracegen_setup::setup().await;
         run_in_place(|scope| async move {
             // *********** Generate traces using the host tracegen. ***********
-            let (_public_values, jagged_trace_data, _shard_chips) = full_tracegen(
+            let (_public_values, jagged_trace_data, _shard_chips, _permit) = full_tracegen(
                 &machine,
                 program.clone(),
                 Arc::new(record),
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 &scope,
+                ProverSemaphore::new(1),
             )
             .await;
 

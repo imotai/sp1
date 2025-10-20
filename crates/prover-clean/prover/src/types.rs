@@ -16,8 +16,6 @@ pub struct ShardData<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverCompon
 where
     crate::CudaShardProver<GC, PC>: AirProver<GC, PC::C, PC::Air>,
 {
-    /// The proving key.
-    pub pk: Arc<ProvingKey<GC, PC::C, PC::Air, crate::CudaShardProver<GC, PC>>>,
     /// Main trace data
     pub main_trace_data: MainTraceData<GC, PC::Air, PC::C, crate::CudaShardProver<GC, PC>>,
 }
