@@ -439,6 +439,7 @@ where
     );
 
     let partial_lagrange = Mle::partial_lagrange(&rest_point).await;
+    let rest_point_dim = rest_point.dimension() as u32;
 
     unsafe {
         output.assume_init();
@@ -464,7 +465,8 @@ where
             input.preprocessed_column.as_ptr(),
             input.main_column.as_ptr(),
             input.total_num_preprocessed_column,
-            output.as_mut_ptr()
+            output.as_mut_ptr(),
+            rest_point_dim
         );
         backend
             .launch_kernel(

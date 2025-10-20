@@ -56,7 +56,8 @@ __global__ void jaggedConstraintPolyEval(
     const uint32_t* __restrict__ preprocessed_column,
     const uint32_t* __restrict__ main_column,
     uint32_t total_num_preprocessed_column,
-    ext_t* __restrict__ constraintValues
+    ext_t* __restrict__ constraintValues,
+    uint32_t rest_point_dim
 ) {
     K expr_f[MEMORY_SIZE];
     JaggedConstraintFolder<K> folder = JaggedConstraintFolder<K>();
@@ -299,8 +300,10 @@ __global__ void jaggedConstraintPolyEval(
             geq_correction = (zeroVal + eval_point * (oneVal - zeroVal)) * paddedRowAdjustment[chip_idx];
         }
 
-        ext_t eq = ext_t::load(partialLagrange, rowIdx);
-        thread_sum += (folder.accumulator + gkr_correction - geq_correction) * eq * powersOfLambda[chip_idx];
+        if (rowIdx < (1 << rest_point_dim)) {
+            ext_t eq = ext_t::load(partialLagrange, rowIdx);
+            thread_sum += (folder.accumulator + gkr_correction - geq_correction) * eq * powersOfLambda[chip_idx];
+        }
     }
 
     extern __shared__ unsigned char memory[];
