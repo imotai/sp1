@@ -52,11 +52,14 @@ where
     async fn preprocessed_table_heights(
         pk: Arc<super::ProvingKey<GC, Self::Config, Self::Air, Self::Prover>>,
     ) -> BTreeMap<String, usize> {
-        pk.preprocessed_data
-            .preprocessed_traces
-            .iter()
-            .map(|(name, trace)| (name.to_owned(), trace.num_real_entries()))
-            .collect()
+        std::future::ready(
+            pk.preprocessed_data
+                .preprocessed_traces
+                .iter()
+                .map(|(name, trace)| (name.to_owned(), trace.num_real_entries()))
+                .collect(),
+        )
+        .await
     }
 }
 

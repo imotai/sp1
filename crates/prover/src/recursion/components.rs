@@ -4,14 +4,14 @@ use sp1_recursion_circuit::machine::InnerVal;
 
 use crate::{CompressAir, InnerSC, OuterSC, WrapAir};
 
-pub(crate) const RECURSION_LOG_BLOWUP: usize = 1;
+pub const RECURSION_LOG_BLOWUP: usize = 1;
 pub(crate) const RECURSION_LOG_STACKING_HEIGHT: u32 = 20;
 pub const RECURSION_MAX_LOG_ROW_COUNT: usize = 20;
 const SHRINK_LOG_STACKING_HEIGHT: u32 = 18;
 pub(crate) const SHRINK_MAX_LOG_ROW_COUNT: usize = 18;
 
-const SHRINK_LOG_BLOWUP: usize = 4;
-const WRAP_LOG_BLOWUP: usize = 4;
+pub const SHRINK_LOG_BLOWUP: usize = 4;
+pub const WRAP_LOG_BLOWUP: usize = 4;
 
 pub trait RecursionProverComponents:
     MachineProverComponents<SP1GlobalContext, Config = InnerSC, Air = CompressAir<SP1Field>>

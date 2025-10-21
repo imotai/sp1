@@ -31,6 +31,7 @@ pub(crate) fn hook_ecrecover(buf: &[u8]) -> Vec<Vec<u8>> {
 }
 
 pub(crate) mod ecrecover {
+    #![allow(deprecated)]
     use sp1_curves::{k256, p256};
 
     /// The non-quadratic residue for the curve for secp256k1 and secp256r1.

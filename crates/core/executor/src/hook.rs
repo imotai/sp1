@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use core::fmt::Debug;
 
 use std::sync::{Arc, RwLock, RwLockWriteGuard};
