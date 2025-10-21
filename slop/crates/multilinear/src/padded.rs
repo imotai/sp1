@@ -87,13 +87,7 @@ impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
         A: MleBaseBackend<T>,
     {
         assert!(inner.num_non_zero_entries() <= 1 << num_variables);
-        match padding_values {
-            Padding::Generic(ref p) => {
-                assert!(p.num_polynomials() == inner.num_polynomials());
-            }
-            Padding::Constant(_) => {}
-            Padding::Zero(_) => {}
-        }
+        assert_eq!(padding_values.num_polynomials(), inner.num_polynomials());
         Self { inner: Some(inner), num_variables, padding_values }
     }
 
