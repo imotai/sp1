@@ -11,6 +11,7 @@ use crate::{
     ExecutionError, Instruction, Opcode, Program, Register, RetainedEventsPreset, SP1CoreOpts,
     HALT_PC, M64,
 };
+use sp1_hypercube::air::{PROOF_NONCE_NUM_WORDS, PV_DIGEST_NUM_WORDS};
 use sp1_jit::{MemReads, MinimalTrace};
 use std::{mem::MaybeUninit, num::Wrapping, ptr::addr_of_mut, sync::Arc};
 
@@ -52,11 +53,15 @@ pub struct CoreVM<'a> {
     pub opts: SP1CoreOpts,
     /// The end clk of the trace chunk.
     pub clk_end: u64,
+    /// The public value digest.
+    pub public_value_digest: [u32; PV_DIGEST_NUM_WORDS],
+    /// The nonce associated with the proof.
+    pub proof_nonce: [u32; PROOF_NONCE_NUM_WORDS],
 }
 
 impl<'a> CoreVM<'a> {
     /// Create a [`CoreVM`] from a [`MinimalTrace`] and a [`Program`].
-    pub fn new<T: MinimalTrace>(trace: &'a T, program: Arc<Program>) -> Self {
+    pub fn new<T: MinimalTrace>(trace: &'a T, program: Arc<Program>, opts: SP1CoreOpts) -> Self {
         let start_clk = trace.clk_start();
 
         // SAFETY: We're mapping a [T; 32] -> [T; 32] infallibly.
@@ -71,7 +76,6 @@ impl<'a> CoreVM<'a> {
         };
         let start_pc = trace.pc_start();
 
-        let opts = SP1CoreOpts::default();
         let retained_syscall_codes = opts
             .retained_events_presets
             .iter()
@@ -104,6 +108,8 @@ impl<'a> CoreVM<'a> {
             retained_syscall_codes,
             opts,
             clk_end: trace.clk_end(),
+            public_value_digest: [0; PV_DIGEST_NUM_WORDS],
+            proof_nonce: [0; PROOF_NONCE_NUM_WORDS],
         }
     }
 

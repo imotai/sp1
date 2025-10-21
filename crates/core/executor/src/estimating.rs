@@ -14,7 +14,7 @@ use crate::{
         syscall::SyscallRuntime,
         CoreVM,
     },
-    ExecutionError, ExecutionReport, Instruction, Opcode, Program, Register,
+    ExecutionError, ExecutionReport, Instruction, Opcode, Program, Register, SP1CoreOpts,
 };
 
 /// A RISC-V VM that uses a [`MinimalTrace`] to create a [`ExecutionReport`].
@@ -124,9 +124,10 @@ impl<'a> GasEstimatingVM<'a> {
         trace: &'a T,
         program: Arc<Program>,
         touched_addresses: &'a mut CompressedMemory,
+        opts: SP1CoreOpts,
     ) -> Self {
         Self {
-            core: CoreVM::new(trace, program),
+            core: CoreVM::new(trace, program, opts),
             touched_addresses,
             hint_lens_idx: 0,
             gas_calculator: ReportGenerator::new(trace.clk_start()),

@@ -16,8 +16,10 @@ sp1-recursion-compiler = { workspace = true }
 sp1-recursion-circuit = { workspace = true }
 sp1-recursion-machine = { workspace = true }
 sp1-recursion-executor = { workspace = true }
+sp1-jit = { workspace = true }
 sp1-recursion-gnark-ffi = { workspace = true }
 sp1-core-machine = { workspace = true }
+sp1-derive = { workspace = true }
 slop-challenger = { workspace = true }
 slop-basefold = { workspace = true }
 sp1-hypercube = { workspace = true }
@@ -53,6 +55,10 @@ hashbrown = { workspace = true, features = ["inline-more"] }
 enum-map = { workspace = true }
 static_assertions = { workspace = true }
 rand = { workspace = true }
+mti = { workspace = true }
+opentelemetry = { workspace = true }
+dashmap = { workspace = true }
+pin-project = { workspace = true }
 
 [build-dependencies]
 downloader = { workspace = true, features = ["rustls-tls", "verify"] }

@@ -337,6 +337,12 @@ impl MinimalExecutor {
         self.exit_code
     }
 
+    /// Get the public values stream of the executor
+    #[must_use]
+    pub fn public_values_stream(&self) -> &Vec<u8> {
+        &self.public_values_stream
+    }
+
     /// Consume self, and return the public values stream.
     #[must_use]
     pub fn into_public_values_stream(self) -> Vec<u8> {

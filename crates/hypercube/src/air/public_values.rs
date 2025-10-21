@@ -253,27 +253,55 @@ impl PublicValues<u32, u64, u64, u32> {
 
     /// Update the public values to the state, as a non-execution shard in the final state of the
     /// program's execution.
-    pub fn update_finalized_state(&mut self, state: &PublicValues<u32, u64, u64, u32>) {
-        self.pc_start = state.next_pc;
-        self.next_pc = state.next_pc;
-        self.exit_code = state.exit_code;
-        self.initial_timestamp = state.last_timestamp;
-        self.last_timestamp = state.last_timestamp;
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_finalized_state(
+        &mut self,
+        timestamp: u64,
+        pc: u64,
+        exit_code: u32,
+        is_untrusted_programs_enabled: u32,
+        committed_value_digest: [u32; PV_DIGEST_NUM_WORDS],
+        deferred_proofs_digest: [u32; POSEIDON_NUM_WORDS],
+        nonce: [u32; PROOF_NONCE_NUM_WORDS],
+    ) {
+        self.pc_start = pc;
+        self.next_pc = pc;
+        self.exit_code = exit_code;
+        self.initial_timestamp = timestamp;
+        self.last_timestamp = timestamp;
         self.is_timestamp_high_eq = 1;
         self.is_timestamp_low_eq = 1;
         self.is_first_execution_shard = 0;
         self.is_execution_shard = 0;
         self.initial_timestamp_inv = 0;
         self.last_timestamp_inv = 0;
-        self.prev_committed_value_digest = state.committed_value_digest;
-        self.committed_value_digest = state.committed_value_digest;
-        self.prev_deferred_proofs_digest = state.deferred_proofs_digest;
-        self.deferred_proofs_digest = state.deferred_proofs_digest;
-        self.is_untrusted_programs_enabled = state.is_untrusted_programs_enabled;
-        self.prev_commit_syscall = state.commit_syscall;
-        self.commit_syscall = state.commit_syscall;
-        self.prev_commit_deferred_syscall = state.commit_deferred_syscall;
-        self.commit_deferred_syscall = state.commit_deferred_syscall;
+        self.prev_committed_value_digest = committed_value_digest;
+        self.committed_value_digest = committed_value_digest;
+        self.prev_deferred_proofs_digest = deferred_proofs_digest;
+        self.deferred_proofs_digest = deferred_proofs_digest;
+        self.is_untrusted_programs_enabled = is_untrusted_programs_enabled;
+        self.prev_commit_syscall = 1;
+        self.commit_syscall = 1;
+        self.prev_commit_deferred_syscall = 1;
+        self.commit_deferred_syscall = 1;
+        self.proof_nonce = nonce;
+    }
+
+    /// Similar to [`update_finalized_state`], but takes all the values from an existing public
+    /// values struct for convenience.
+    pub fn update_finalized_state_from_public_values(
+        &mut self,
+        public_values: &PublicValues<u32, u64, u64, u32>,
+    ) {
+        self.update_finalized_state(
+            public_values.last_timestamp,
+            public_values.next_pc,
+            public_values.exit_code,
+            public_values.is_untrusted_programs_enabled,
+            public_values.committed_value_digest,
+            public_values.deferred_proofs_digest,
+            public_values.proof_nonce,
+        );
     }
 }
 

@@ -22,7 +22,7 @@ use crate::{
         CoreVM,
     },
     ALUTypeRecord, ExecutionError, ExecutionRecord, ITypeRecord, Instruction, JTypeRecord,
-    MemoryAccessRecord, Opcode, Program, RTypeRecord, Register,
+    MemoryAccessRecord, Opcode, Program, RTypeRecord, Register, SP1CoreOpts,
 };
 
 /// A RISC-V VM that uses a [`MinimalTrace`] to create a [`ExecutionRecord`].
@@ -180,12 +180,12 @@ impl TracingVM<'_> {
 
 impl<'a> TracingVM<'a> {
     /// Create a new full-tracing VM from a minimal trace.
-    pub fn new<T: MinimalTrace>(trace: &'a T, program: Arc<Program>) -> Self {
+    pub fn new<T: MinimalTrace>(trace: &'a T, program: Arc<Program>, opts: SP1CoreOpts) -> Self {
         let mut record = ExecutionRecord::new(program.clone());
         record.initial_timestamp = trace.clk_start();
 
         Self {
-            core: CoreVM::new(trace, program),
+            core: CoreVM::new(trace, program, opts),
             record,
             local_memory_access: LocalMemoryAccess::default(),
             precompile_local_memory_access: None,

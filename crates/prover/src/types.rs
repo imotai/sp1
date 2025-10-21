@@ -233,11 +233,13 @@ pub enum SP1RecursionProverError {
     RuntimeError(String),
 }
 
+pub type SP1CompressWitness = SP1ShapedWitnessValues<SP1GlobalContext, InnerSC>;
+
 #[allow(clippy::large_enum_variant)]
 pub enum SP1CircuitWitness {
     Core(SP1NormalizeWitnessValues<SP1GlobalContext, CoreSC>),
     Deferred(SP1DeferredWitnessValues<SP1GlobalContext, InnerSC>),
-    Compress(SP1ShapedWitnessValues<SP1GlobalContext, InnerSC>),
+    Compress(SP1CompressWitness),
     Shrink(SP1CompressWithVKeyWitnessValues<InnerSC>),
     Wrap(SP1CompressWithVKeyWitnessValues<InnerSC>),
 }

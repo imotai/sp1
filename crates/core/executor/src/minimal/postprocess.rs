@@ -89,7 +89,8 @@ impl MinimalExecutor {
 ///
 /// The last chunk is not guaranteed to be 8 bytes, so we need to handle that case by padding with
 /// 0s.
-fn chunked_memory_init_events(start: u64, bytes: &[u8]) -> Vec<MemoryInitializeFinalizeEvent> {
+#[must_use]
+pub fn chunked_memory_init_events(start: u64, bytes: &[u8]) -> Vec<MemoryInitializeFinalizeEvent> {
     let chunks = bytes.chunks_exact(8);
     let num_chunks = chunks.len();
     let last = chunks.remainder();

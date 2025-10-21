@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 // use sp1_stark::SP1ProverOpts;
 use clap::{command, Parser};
 use sp1_core_executor::{
-    CompressedMemory, CycleResult, Executor, ExecutorMode, MinimalExecutor, Program, Simple,
-    SplicedMinimalTrace, SplicingVM, Trace, TracingVM,
+    CompressedMemory, CycleResult, Executor, ExecutorMode, MinimalExecutor, Program, SP1CoreOpts,
+    Simple, SplicedMinimalTrace, SplicingVM, Trace, TracingVM,
 };
 use sp1_sdk::{self, SP1Stdin};
 use std::sync::Arc;
@@ -181,8 +181,12 @@ async fn main() {
             );
 
             let mut touched_addresses = CompressedMemory::new();
-            let mut splicing_vm =
-                SplicingVM::new(&minimal_trace, program.clone(), &mut touched_addresses);
+            let mut splicing_vm = SplicingVM::new(
+                &minimal_trace,
+                program.clone(),
+                &mut touched_addresses,
+                SP1CoreOpts::default(),
+            );
 
             let mut spliced_traces = Vec::new();
             let mut last_spliced_trace = SplicedMinimalTrace::new_full_trace(minimal_trace.clone());
@@ -223,7 +227,8 @@ async fn main() {
             let mut total_execution_duration = Duration::ZERO;
             let mut shard_tracing_durations = Vec::new();
             for (i, spliced) in spliced_traces.iter().enumerate() {
-                let mut tracing_vm = TracingVM::new(spliced, program.clone());
+                let mut tracing_vm =
+                    TracingVM::new(spliced, program.clone(), SP1CoreOpts::default());
                 let (result, execution_duration) = time_operation(|| tracing_vm.execute());
                 let result = result.expect("failed to execute chunk");
                 assert!(result.is_shard_boundry() || result.is_done());

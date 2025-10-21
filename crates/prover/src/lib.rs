@@ -22,6 +22,7 @@ pub mod shapes;
 mod types;
 pub mod utils;
 pub mod verify;
+pub mod worker;
 
 use core::SP1CoreProver;
 pub use recursion::SP1RecursionProver;

@@ -6,6 +6,7 @@ use std::{
 
 use futures::future::try_join_all;
 use hashbrown::HashSet;
+use serde::{Deserialize, Serialize};
 use slop_algebra::PrimeField32;
 use slop_futures::queue::{TryAcquireWorkerError, WorkerQueue};
 use sp1_core_executor::{
@@ -100,8 +101,12 @@ impl<F: PrimeField32> MachineExecutor<F> {
         let mut touched_addresses = CompressedMemory::new();
 
         for chunk in chunks {
-            let mut gas_estimating_vm =
-                GasEstimatingVM::new(&chunk, program.clone(), &mut touched_addresses);
+            let mut gas_estimating_vm = GasEstimatingVM::new(
+                &chunk,
+                program.clone(),
+                &mut touched_addresses,
+                self.opts.clone(),
+            );
             let report = gas_estimating_vm.execute().unwrap();
             accumulated_report += report;
         }
@@ -148,15 +153,13 @@ impl<F: PrimeField32> MachineExecutor<F> {
                         let permit = permitting.acquire(2 * 1024 * 1024 * 1024).await.unwrap();
 
                         let program = program.clone();
-                        let opts = opts.clone();
                         let (done, mut record, registers) = tokio::task::spawn_blocking({
                             let program = program.clone();
                             let opts = opts.clone();
-
                             move || {
                                 let _debug_span =
                                     tracing::trace_span!("tracing chunk blocking task").entered();
-                                trace_chunk(program, opts, chunk)
+                                trace_chunk::<F>(program, opts, chunk)
                             }
                         })
                         .await
@@ -174,7 +177,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
 
                             let deferred_records = {
                                 let mut deferred = deferred.lock().unwrap();
-                                defer::<F>(&mut record, &mut deferred, &split_opts, opts, done)
+                                defer(&mut record, &mut deferred, &split_opts, opts.clone(), done)
                             };
                             start_prove(
                                 machine.clone(),
@@ -224,6 +227,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
 
         let touched_addresses = tokio::task::spawn({
             let program: Arc<Program> = program.clone();
+            let opts = self.opts.clone();
             async move {
                 let mut splicing_handles = Vec::new();
                 let touched_addresses = Arc::new(Mutex::new(HashSet::new()));
@@ -233,13 +237,14 @@ impl<F: PrimeField32> MachineExecutor<F> {
                         let program = program.clone();
                         let touched_addresses = touched_addresses.clone();
                         let record_worker_channels = record_worker_channels.clone();
-
+                        let opts = opts.clone();
                         move || {
                             generate_chunks(
                                 program,
                                 chunk,
                                 record_worker_channels,
                                 touched_addresses,
+                                opts,
                             )
                         }
                     });
@@ -279,7 +284,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
             let mut deferred = deferred.lock().unwrap();
             // let mut state = state.lock().unwrap();
             tracing::trace_span!("defer last shard").in_scope(|| {
-                defer::<F>(&mut last_record, &mut deferred, &split_opts, self.opts.clone(), true)
+                defer(&mut last_record, &mut deferred, &split_opts, self.opts.clone(), true)
             })
         });
 
@@ -309,13 +314,14 @@ pub enum MachineExecutorError {
 }
 
 /// The output of the machine executor.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ExecutionOutput {
     pub public_value_stream: Vec<u8>,
     pub cycles: u64,
 }
 
-struct RecordTask {
-    chunk: SplicedMinimalTrace<TraceChunkRaw>,
+pub struct RecordTask {
+    pub chunk: SplicedMinimalTrace<TraceChunkRaw>,
 }
 
 /// Generate the chunks (corresponding to shards) and send them to the record workers.
@@ -325,9 +331,10 @@ fn generate_chunks(
     chunk: TraceChunkRaw,
     record_worker_channels: Arc<WorkerQueue<UnboundedSender<RecordTask>>>,
     all_touched_addresses: Arc<Mutex<HashSet<u64>>>,
+    opts: SP1CoreOpts,
 ) -> Result<(), ExecutionError> {
     let mut touched_addresses = CompressedMemory::new();
-    let mut vm = SplicingVM::new(&chunk, program.clone(), &mut touched_addresses);
+    let mut vm = SplicingVM::new(&chunk, program.clone(), &mut touched_addresses, opts);
 
     let start_num_mem_reads = chunk.num_mem_reads();
 
@@ -396,12 +403,12 @@ fn generate_chunks(
     name = "trace_chunk",
     skip_all,
 )]
-fn trace_chunk(
+pub fn trace_chunk<F: PrimeField32>(
     program: Arc<Program>,
-    _opts: SP1CoreOpts,
-    chunk: SplicedMinimalTrace<TraceChunkRaw>,
+    opts: SP1CoreOpts,
+    chunk: impl MinimalTrace,
 ) -> Result<(bool, ExecutionRecord, [MemoryRecord; 32]), ExecutionError> {
-    let mut vm = TracingVM::new(&chunk, program);
+    let mut vm = TracingVM::new(&chunk, program, opts);
     let status = vm.execute()?;
     tracing::trace!("chunk ended at clk: {}", vm.core.clk());
     tracing::trace!("chunk ended at pc: {}", vm.core.pc());
@@ -432,58 +439,20 @@ fn trace_chunk(
         }
     }
 
+    // Finalize the public values
+    record.finalize_public_values::<F>();
+
     Ok((status.is_done(), record, *vm.core.registers()))
 }
 
 #[tracing::instrument(name = "defer", skip_all)]
-fn defer<F: PrimeField32>(
+fn defer(
     record: &mut ExecutionRecord,
     deferred: &mut ExecutionRecord,
     split_opts: &SplitOpts,
     opts: SP1CoreOpts,
     done: bool,
 ) -> Vec<ExecutionRecord> {
-    let state = &mut record.public_values;
-    state.is_execution_shard = 1;
-
-    let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
-    let initial_timestamp_low = (state.initial_timestamp & 0xFFFFFF) as u32;
-    let last_timestamp_high = (state.last_timestamp >> 24) as u32;
-    let last_timestamp_low = (state.last_timestamp & 0xFFFFFF) as u32;
-
-    state.initial_timestamp_inv = if state.initial_timestamp == 1 {
-        0
-    } else {
-        F::from_canonical_u32(initial_timestamp_high + initial_timestamp_low - 1)
-            .inverse()
-            .as_canonical_u32()
-    };
-
-    state.last_timestamp_inv = F::from_canonical_u32(last_timestamp_high + last_timestamp_low - 1)
-        .inverse()
-        .as_canonical_u32();
-
-    if initial_timestamp_high == last_timestamp_high {
-        state.is_timestamp_high_eq = 1;
-    } else {
-        state.is_timestamp_high_eq = 0;
-        state.inv_timestamp_high = (F::from_canonical_u32(last_timestamp_high)
-            - F::from_canonical_u32(initial_timestamp_high))
-        .inverse()
-        .as_canonical_u32();
-    }
-
-    if initial_timestamp_low == last_timestamp_low {
-        state.is_timestamp_low_eq = 1;
-    } else {
-        state.is_timestamp_low_eq = 0;
-        state.inv_timestamp_low = (F::from_canonical_u32(last_timestamp_low)
-            - F::from_canonical_u32(initial_timestamp_low))
-        .inverse()
-        .as_canonical_u32();
-    }
-    state.is_first_execution_shard = (state.initial_timestamp == 1) as u32;
-
     // Defer events that are too expensive to include in every shard.
     deferred.append(&mut record.defer(&opts.retained_events_presets));
 

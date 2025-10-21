@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use serde::Serialize;
-use sp1_jit::{MemReads, MinimalTrace, TraceChunk};
+use sp1_jit::{MemReads, MemValue, MinimalTrace, TraceChunk};
 
 use crate::{
     events::{MemoryReadRecord, MemoryWriteRecord},
@@ -13,7 +13,7 @@ use crate::{
         syscall::SyscallRuntime,
         CoreVM,
     },
-    ExecutionError, Instruction, Opcode, Program,
+    ExecutionError, Instruction, Opcode, Program, SP1CoreOpts,
 };
 
 /// A RISC-V VM that uses a [`MinimalTrace`] to create multiple [`SplicedMinimalTrace`]s.
@@ -170,10 +170,11 @@ impl<'a> SplicingVM<'a> {
         trace: &'a T,
         program: Arc<Program>,
         touched_addresses: &'a mut CompressedMemory,
+        opts: SP1CoreOpts,
     ) -> Self {
         let program_len = program.instructions.len() as u64;
         Self {
-            core: CoreVM::new(trace, program),
+            core: CoreVM::new(trace, program, opts),
             touched_addresses,
             hint_lens_idx: 0,
             shape_checker: ShapeChecker::new(program_len, trace.clk_start()),
@@ -425,7 +426,14 @@ impl<T: MinimalTrace> Serialize for SplicedMinimalTrace<T> {
     where
         S: serde::Serializer,
     {
-        let mem_reads_buf = self.mem_reads().take(self.last_mem_reads_idx).collect::<Arc<[_]>>();
+        let len = self.last_mem_reads_idx - self.memory_reads_idx;
+        let mem_reads = unsafe {
+            let mem_reads_buf = Arc::new_uninit_slice(len);
+            let start_mem_reads = self.mem_reads();
+            let src_ptr = start_mem_reads.head_raw();
+            std::ptr::copy_nonoverlapping(src_ptr, mem_reads_buf.as_ptr() as *mut MemValue, len);
+            mem_reads_buf.assume_init()
+        };
 
         let trace = TraceChunk {
             start_registers: self.start_registers,
@@ -435,7 +443,7 @@ impl<T: MinimalTrace> Serialize for SplicedMinimalTrace<T> {
             // Just copy the whole hint_lens buffer,
             // its small enough that sending the whole buffer is fine (for now).
             hint_lens: self.hint_lens().to_vec(),
-            mem_reads: mem_reads_buf,
+            mem_reads,
         };
 
         trace.serialize(serializer)

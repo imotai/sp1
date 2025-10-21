@@ -1,7 +1,7 @@
 use deepsize2::DeepSizeOf;
 use hashbrown::HashMap;
 use slop_air::AirBuilder;
-use slop_algebra::{AbstractField, Field, PrimeField};
+use slop_algebra::{AbstractField, Field, PrimeField, PrimeField32};
 use sp1_hypercube::{
     air::{
         AirInteraction, BaseAirBuilder, InteractionScope, MachineAir, PublicValues, SP1AirBuilder,
@@ -235,7 +235,9 @@ impl ExecutionRecord {
             let last_record_public_values = last_record.public_values;
 
             // Update the state of the blank record
-            blank_record.public_values.update_finalized_state(&last_record_public_values);
+            blank_record
+                .public_values
+                .update_finalized_state_from_public_values(&last_record_public_values);
 
             // If `last_record` is None, use a blank record to store the memory events.
             let mem_record_ref =
@@ -310,7 +312,7 @@ impl ExecutionRecord {
                         // Reset the public values execution state to match the last record state.
                         mem_record_ref
                             .public_values
-                            .update_finalized_state(&last_record_public_values);
+                            .update_finalized_state_from_public_values(&last_record_public_values);
                     }
                 }
             }
@@ -369,7 +371,9 @@ impl ExecutionRecord {
                     // provided by `take` contains no instructions.)
                     mem_record_ref.program = self.program.clone();
                     // Reset the public values execution state to match the last record state.
-                    mem_record_ref.public_values.update_finalized_state(&last_record_public_values);
+                    mem_record_ref
+                        .public_values
+                        .update_finalized_state_from_public_values(&last_record_public_values);
                 }
             }
         }
@@ -1348,5 +1352,50 @@ impl ExecutionRecord {
             ),
             InteractionScope::Local,
         );
+    }
+
+    /// Finalize the public values.
+    pub fn finalize_public_values<F: PrimeField32>(&mut self) {
+        let state = &mut self.public_values;
+        state.is_execution_shard = 1;
+
+        let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
+        let initial_timestamp_low = (state.initial_timestamp & 0xFFFFFF) as u32;
+        let last_timestamp_high = (state.last_timestamp >> 24) as u32;
+        let last_timestamp_low = (state.last_timestamp & 0xFFFFFF) as u32;
+
+        state.initial_timestamp_inv = if state.initial_timestamp == 1 {
+            0
+        } else {
+            F::from_canonical_u32(initial_timestamp_high + initial_timestamp_low - 1)
+                .inverse()
+                .as_canonical_u32()
+        };
+
+        state.last_timestamp_inv =
+            F::from_canonical_u32(last_timestamp_high + last_timestamp_low - 1)
+                .inverse()
+                .as_canonical_u32();
+
+        if initial_timestamp_high == last_timestamp_high {
+            state.is_timestamp_high_eq = 1;
+        } else {
+            state.is_timestamp_high_eq = 0;
+            state.inv_timestamp_high = (F::from_canonical_u32(last_timestamp_high)
+                - F::from_canonical_u32(initial_timestamp_high))
+            .inverse()
+            .as_canonical_u32();
+        }
+
+        if initial_timestamp_low == last_timestamp_low {
+            state.is_timestamp_low_eq = 1;
+        } else {
+            state.is_timestamp_low_eq = 0;
+            state.inv_timestamp_low = (F::from_canonical_u32(last_timestamp_low)
+                - F::from_canonical_u32(initial_timestamp_low))
+            .inverse()
+            .as_canonical_u32();
+        }
+        state.is_first_execution_shard = (state.initial_timestamp == 1) as u32;
     }
 }

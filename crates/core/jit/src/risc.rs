@@ -229,6 +229,11 @@ impl<'a> MemReads<'a> {
         }
     }
 
+    /// Get the raw pointer to the head of the slice.
+    pub fn head_raw(&self) -> *const MemValue {
+        self.inner
+    }
+
     /// The remaining length of the slice from our current position.
     #[must_use]
     pub fn len(&self) -> usize {
