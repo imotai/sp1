@@ -31,10 +31,10 @@ __global__ void generateStartIndices(
     }
 }
 
-__global__ void fillBuffer(uint32_t* dst, uint32_t val, size_t len) {
+__global__ void fillBuffer(uint32_t* dst, uint32_t val, uint32_t max_log_row_count, size_t len) {
 
     for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < len; i += blockDim.x * gridDim.x) {
-        dst[i] = val;
+        dst[i] = val + i/(1 << (max_log_row_count-1));
     }
 }
 

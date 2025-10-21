@@ -3,7 +3,12 @@ use std::ops::{Deref, DerefMut};
 use csl_cuda::{cuda_memory_info, TaskScope};
 use cslpc_tracegen::CORE_MAX_TRACE_SIZE;
 use sp1_hypercube::prover::ProverSemaphore;
-use sp1_prover::{components::SP1ProverComponents, local::LocalProverOpts, SP1ProverBuilder};
+use sp1_prover::{
+    components::SP1ProverComponents,
+    local::LocalProverOpts,
+    recursion::{RECURSION_LOG_BLOWUP, SHRINK_LOG_BLOWUP, WRAP_LOG_BLOWUP},
+    SP1ProverBuilder, CORE_LOG_BLOWUP,
+};
 
 use crate::{
     new_cuda_prover_sumcheck_eval, new_prover_clean_prover, CudaSP1ProverComponents,
@@ -146,20 +151,30 @@ impl SP1ProverCleanBuilder {
         let core_prover = new_prover_clean_prover(
             core_verifier.clone(),
             CORE_MAX_TRACE_SIZE as usize,
+            CORE_LOG_BLOWUP,
             scope.clone(),
         );
 
         // TODO: tune this more precisely and make it a constant.
         let recursion_verifier = ProverCleanSP1ProverComponents::compress_verifier();
-        let recursion_prover =
-            new_prover_clean_prover(recursion_verifier.clone(), 1 << 27, scope.clone());
+        let recursion_prover = new_prover_clean_prover(
+            recursion_verifier.clone(),
+            1 << 27,
+            RECURSION_LOG_BLOWUP,
+            scope.clone(),
+        );
 
         let shrink_verifier = ProverCleanSP1ProverComponents::shrink_verifier();
-        let shrink_prover =
-            new_prover_clean_prover(shrink_verifier.clone(), 1 << 24, scope.clone());
+        let shrink_prover = new_prover_clean_prover(
+            shrink_verifier.clone(),
+            1 << 24,
+            SHRINK_LOG_BLOWUP,
+            scope.clone(),
+        );
 
         let wrap_verifier = ProverCleanSP1ProverComponents::wrap_verifier();
-        let wrap_prover = new_prover_clean_prover(wrap_verifier.clone(), 1 << 25, scope.clone());
+        let wrap_prover =
+            new_prover_clean_prover(wrap_verifier.clone(), 1 << 25, WRAP_LOG_BLOWUP, scope.clone());
 
         if cpu_memory_gb <= 20 {
             num_prover_workers = 1;

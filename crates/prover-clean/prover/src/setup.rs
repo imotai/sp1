@@ -52,7 +52,8 @@ where
             &self.machine,
             program,
             self.max_trace_size,
-            self.log_stacking_height,
+            self.basefold_prover.log_height,
+            self.max_log_row_count,
             setup_permits,
             &self.backend,
         )
@@ -87,7 +88,7 @@ where
         // Commit to the preprocessed traces, if there are any.
         let (preprocessed_commit, preprocessed_data) = cslpc_commit::commit_multilinears(
             &preprocessed_traces,
-            self.max_log_row_count as u32,
+            self.max_log_row_count,
             true,
             &self.basefold_prover,
         )

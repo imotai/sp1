@@ -49,8 +49,7 @@ pub trait ProverCleanProverComponents<GC: IopCtx>: Send + Sync + 'static {
 }
 /// A prover for the hypercube STARK, given a configuration.
 pub struct CudaShardProver<GC: IopCtx, PC: ProverCleanProverComponents<GC>> {
-    pub max_log_row_count: usize,
-    pub log_stacking_height: u32,
+    pub max_log_row_count: u32,
     pub basefold_prover: ProverCleanFriCudaProver<GC, PC::P, GC::F>,
     pub machine: Machine<GC::F, PC::Air>,
     pub max_trace_size: usize,
@@ -143,7 +142,8 @@ where
             program,
             record,
             self.max_trace_size,
-            self.log_stacking_height,
+            self.basefold_prover.log_height,
+            self.max_log_row_count,
             &self.backend,
             prover_permits,
         )
@@ -197,7 +197,8 @@ where
             &self.machine,
             record,
             &pk.preprocessed_data,
-            self.log_stacking_height,
+            self.basefold_prover.log_height,
+            self.max_log_row_count,
             &self.backend,
             prover_permits,
         )
@@ -239,7 +240,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
     > {
         cslpc_commit::commit_multilinears::<GC, PC::P>(
             multilinears,
-            self.max_log_row_count as u32,
+            self.max_log_row_count,
             use_preprocessed_data,
             &self.basefold_prover,
         )
@@ -387,7 +388,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
                         })
                 })
                 .collect(),
-            self.max_log_row_count,
+            self.max_log_row_count as usize,
         );
 
         // Generate the jagged sumcheck proof.
@@ -450,7 +451,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
         let final_eval_point = sumcheck_proof.point_and_eval.0.clone();
 
         let (_, stack_point) = final_eval_point
-            .split_at(final_eval_point.dimension() - self.log_stacking_height as usize);
+            .split_at(final_eval_point.dimension() - self.basefold_prover.log_height as usize);
         // let stack_point = stack_point.copy_into(&backend);
 
         let batch_evaluations = self.round_stacked_evaluations(&stack_point, all_mles).await;
@@ -605,7 +606,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
         let logup_gkr_proof = prove_logup_gkr(
             shard_chips,
             traces,
-            self.max_log_row_count as u32,
+            self.max_log_row_count,
             alpha,
             beta_seed,
             challenger,
@@ -731,6 +732,7 @@ mod tests {
                 Arc::new(record),
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
+                CORE_MAX_LOG_ROW_COUNT,
                 &scope,
                 ProverSemaphore::new(1),
             )
@@ -743,13 +745,12 @@ mod tests {
             let basefold_prover = ProverCleanFriCudaProver::<TestGC, _, Felt>::new(
                 Poseidon2KoalaBear16CudaProver::default(),
                 verifier.fri_config,
-                LOG_STACKING_HEIGHT as usize,
+                LOG_STACKING_HEIGHT,
             );
 
             let shard_prover: CudaShardProver<TestGC, ProverCleanTestProverComponentsImpl> =
                 CudaShardProver {
-                    max_log_row_count: CORE_MAX_LOG_ROW_COUNT as usize,
-                    log_stacking_height: LOG_STACKING_HEIGHT,
+                    max_log_row_count: CORE_MAX_LOG_ROW_COUNT,
                     basefold_prover,
                     max_trace_size: CORE_MAX_TRACE_SIZE as usize,
                     machine,

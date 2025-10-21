@@ -33,7 +33,7 @@ pub mod test_utils;
 // ------------- The following logic is mostly copied from crates/tracegen/src/lib.rs -------------
 // TODO: is this a reasonable upper bound on number of columns per trace? ~16k
 pub const MAX_COLS_PER_TRACE: usize = 1 << 14;
-pub const CORE_MAX_TRACE_SIZE: u32 = (ELEMENT_THRESHOLD + (ELEMENT_THRESHOLD >> 4)) as u32;
+pub const CORE_MAX_TRACE_SIZE: u32 = (ELEMENT_THRESHOLD + (ELEMENT_THRESHOLD >> 1)) as u32;
 
 /// The output of the host phase of the tracegen.
 pub struct HostPhaseTracegen<A> {
@@ -94,8 +94,8 @@ impl<GC: IopCtx, Air: MachineAir<GC::F>> CudaShardProverData<GC, Air> {
     }
 }
 
-fn fill_buf(dst: *mut u32, val: u32, len: usize, backend: &TaskScope) {
-    let args = args!(dst, val, len);
+fn fill_buf(dst: *mut u32, val: u32, len: usize, max_log_row_count: u32, backend: &TaskScope) {
+    let args = args!(dst, val, max_log_row_count, len);
     const BLOCK_DIM: usize = 256;
     let grid_dim = len.div_ceil(BLOCK_DIM);
 
@@ -117,6 +117,7 @@ async fn generate_jagged_traces(
     initial_offset: usize,
     initial_cols: usize,
     log_stacking_height: u32,
+    max_log_row_count: u32,
 ) -> (usize, usize, usize, BTreeMap<String, TraceOffset>) {
     let mut offset = initial_offset;
     let mut cols_so_far = initial_cols;
@@ -239,7 +240,7 @@ async fn generate_jagged_traces(
 
                 tracing::trace_span!("padding start indices gen and copy", chip = %name, padding_cols = %padding_cols).in_scope(
                     || unsafe {
-                        fill_buf(start_indices.as_mut_ptr().add(start_indices_range.start), (offset >> 1) as u32, *padding_cols, &backend);
+                        fill_buf(start_indices.as_mut_ptr().add(start_indices_range.start), (offset >> 1) as u32, *padding_cols, max_log_row_count, &backend);
                     },
                 );
 
@@ -251,6 +252,9 @@ async fn generate_jagged_traces(
     let result = async {
         // Now, pad the dense data with 0's to the next multiple of 2^log_stacking_height.
         let next_multiple = offset.next_multiple_of(1 << log_stacking_height);
+        let num_added_vals = next_multiple - offset;
+        let num_added_cols = num_added_vals.div_ceil(1 << max_log_row_count);
+        let remainder = num_added_vals % (1 << max_log_row_count);
         if next_multiple == offset {
             // TODO: this is buggy right now, add another elt to start indices.
             println!("WARNING: unexpected exact multiple of 2^log_stacking_height");
@@ -258,7 +262,7 @@ async fn generate_jagged_traces(
         }
         let dst_dense_slice = &mut dense_data[offset..next_multiple];
         let dst_col_idx_slice = &mut col_index[offset >> 1..(next_multiple >> 1)];
-        let dst_start_idx_slice = &mut start_indices[cols_so_far..cols_so_far + 2];
+        let dst_start_idx_slice = &mut start_indices[cols_so_far..cols_so_far + 1 + num_added_cols];
 
         unsafe {
             backend
@@ -274,20 +278,29 @@ async fn generate_jagged_traces(
             dst_col_idx_slice.as_mut_ptr(),
             cols_so_far as u32,
             (next_multiple - offset) >> 1,
+            max_log_row_count,
             &backend,
         );
 
-        let start_idx = Buffer::from(vec![(offset >> 1) as u32, (next_multiple >> 1) as u32])
-            .copy_into_backend(&backend)
-            .await
-            .unwrap();
+        let mut start_idx_vec = vec![(offset >> 1) as u32];
+
+        for i in 0..num_added_cols - 1 {
+            start_idx_vec
+                .push((offset >> 1) as u32 + ((i + 1) * (1 << (max_log_row_count - 1))) as u32);
+        }
+
+        start_idx_vec.push((next_multiple >> 1) as u32);
+
+        let start_idx = Buffer::from(start_idx_vec).copy_into_backend(&backend).await.unwrap();
 
         unsafe {
             dst_start_idx_slice.copy_from_slice(&start_idx, &backend).unwrap();
         }
 
-        column_heights.push(((next_multiple - offset) >> 1) as u32);
-        cols_so_far += 1;
+        column_heights
+            .extend((0..num_added_cols - 1).map(|_| (1 << (max_log_row_count - 1)) as u32));
+        column_heights.push((remainder >> 1) as u32);
+        cols_so_far += num_added_cols;
         (next_multiple, cols_so_far, next_multiple - offset, table_index)
     }
     .instrument(tracing::trace_span!("final padding"))
@@ -368,6 +381,7 @@ async fn allocate_and_initialize_traces(
     preprocessed_traces: BTreeMap<String, Trace<TaskScope>>,
     max_trace_size: usize,
     log_stacking_height: u32,
+    max_log_row_count: u32,
     backend: &TaskScope,
 ) -> JaggedTraceMle<Felt, TaskScope> {
     let total_bytes = max_trace_size * std::mem::size_of::<Felt>()
@@ -403,6 +417,7 @@ async fn allocate_and_initialize_traces(
             0,
             0,
             log_stacking_height,
+            max_log_row_count,
         )
         .await;
 
@@ -428,6 +443,7 @@ async fn copy_main_jagged_traces(
     traces: BTreeMap<String, Trace<TaskScope>>,
     jagged_traces: &mut JaggedTraceMle<Felt, TaskScope>,
     log_stacking_height: u32,
+    max_log_row_count: u32,
 ) {
     // At this point, all traces are on device. Now we need to copy them into the Jagged MLE struct.
     let JaggedMle { dense_data: trace_dense_data, col_index, start_indices, column_heights } =
@@ -459,6 +475,7 @@ async fn copy_main_jagged_traces(
             *preprocessed_offset,
             *preprocessed_cols,
             log_stacking_height,
+            max_log_row_count,
         )
         .await;
 
@@ -480,6 +497,7 @@ pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
     program: Arc<<A as MachineAir<Felt>>::Program>,
     max_trace_size: usize,
     log_stacking_height: u32,
+    max_log_row_count: u32,
     prover_permit: ProverSemaphore,
     backend: &TaskScope,
 ) -> (JaggedTraceMle<Felt, TaskScope>, ProverPermit) {
@@ -496,6 +514,7 @@ pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
         preprocessed_traces,
         max_trace_size,
         log_stacking_height,
+        max_log_row_count,
         backend,
     )
     .await;
@@ -636,6 +655,7 @@ pub async fn main_tracegen<GC: IopCtx<F = Felt>, A: CudaTracegenAir<Felt>>(
     record: Arc<<A as MachineAir<Felt>>::Record>,
     jagged_traces: &Mutex<CudaShardProverData<GC, A>>,
     log_stacking_height: u32,
+    max_log_row_count: u32,
     backend: &TaskScope,
     prover_permit: ProverSemaphore,
 ) -> (Vec<Felt>, BTreeSet<Chip<Felt, A>>, ProverPermit) {
@@ -653,8 +673,13 @@ pub async fn main_tracegen<GC: IopCtx<F = Felt>, A: CudaTracegenAir<Felt>>(
     let (traces, public_values) =
         device_main_tracegen(host_phase_tracegen, record, initial_traces, backend).await;
 
-    copy_main_jagged_traces(traces, &mut jagged_traces.preprocessed_traces, log_stacking_height)
-        .await;
+    copy_main_jagged_traces(
+        traces,
+        &mut jagged_traces.preprocessed_traces,
+        log_stacking_height,
+        max_log_row_count,
+    )
+    .await;
 
     (public_values, chip_set, permit)
 }
@@ -663,13 +688,14 @@ pub async fn main_tracegen<GC: IopCtx<F = Felt>, A: CudaTracegenAir<Felt>>(
 ///
 /// TODO: output a `MainTraceData` (from prover-clean/prover/types.rs)
 #[instrument(skip_all, level = "debug")]
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub async fn full_tracegen<A: CudaTracegenAir<Felt>>(
     machine: &Machine<Felt, A>,
     program: Arc<<A as MachineAir<Felt>>::Program>,
     record: Arc<<A as MachineAir<Felt>>::Record>,
     max_trace_size: usize,
     log_stacking_height: u32,
+    max_log_row_count: u32,
     backend: &TaskScope,
     prover_permits: ProverSemaphore,
 ) -> (Vec<Felt>, JaggedTraceMle<Felt, TaskScope>, BTreeSet<Chip<Felt, A>>, ProverPermit) {
@@ -695,11 +721,13 @@ pub async fn full_tracegen<A: CudaTracegenAir<Felt>>(
         preprocessed_traces,
         max_trace_size,
         log_stacking_height,
+        max_log_row_count,
         backend,
     )
     .await;
 
-    copy_main_jagged_traces(main_traces, &mut jagged_mle, log_stacking_height).await;
+    copy_main_jagged_traces(main_traces, &mut jagged_mle, log_stacking_height, max_log_row_count)
+        .await;
 
     (public_values, jagged_mle, chip_set, permit)
 }
@@ -822,6 +850,7 @@ mod tests {
                 record,
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
+                CORE_MAX_LOG_ROW_COUNT,
                 &scope,
                 semaphore.clone(),
             )
@@ -865,7 +894,7 @@ mod tests {
             let copied_buf = Buffer::from(randoms).copy_into_backend(&scope).await.unwrap();
 
             let mut generated_buf: Buffer<u32, _> = Buffer::with_capacity_in(1024, scope.clone());
-            fill_buf(generated_buf.as_mut_ptr(), val, 1024, &scope);
+            fill_buf(generated_buf.as_mut_ptr(), val, 1024, 11, &scope);
 
             unsafe {
                 generated_buf.set_len(1024);

@@ -135,7 +135,7 @@ pub async fn generate_first_layer<'a>(
                     )
                     .unwrap();
             }
-        }.instrument(tracing::debug_span!(parent: &outer_span, "populate last circuit layer", name = %name)));
+        }.instrument(tracing::trace_span!(parent: &outer_span, "populate last circuit layer", name = %name)));
         handles.push(handle);
 
         interaction_offset += num_interactions;
@@ -223,7 +223,7 @@ pub async fn generate_gkr_circuit<'a, A: MachineAir<Felt>>(
     materialized_layers.push(layer);
     for i in 0..num_row_variables - 2 {
         let layer = gkr_transition(materialized_layers.last().unwrap())
-            .instrument(tracing::debug_span!("gkr transition", layer = i))
+            .instrument(tracing::trace_span!("gkr transition", layer = i))
             .await;
         materialized_layers.push(layer);
     }

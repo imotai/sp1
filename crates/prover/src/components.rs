@@ -174,6 +174,7 @@ where
 pub fn new_prover_clean_prover<GC, C, PC>(
     verifier: sp1_hypercube::MachineVerifier<GC, C, PC::Air>,
     max_trace_size: usize,
+    log_blowup: usize,
     scope: TaskScope,
 ) -> CudaShardProver<GC, PC>
 where
@@ -196,17 +197,16 @@ where
 
     // Create the basefold prover from the verifier's PCS config
     // TODO: get this straight from the verifier.
-    let basefold_verifier = BasefoldVerifier::<GC>::new(1, 2);
+    let basefold_verifier = BasefoldVerifier::<GC>::new(log_blowup, 2);
 
     let basefold_prover = ProverCleanFriCudaProver::<GC, PC::P, GC::F>::new(
         PC::P::default(),
         basefold_verifier.fri_config,
-        log_stacking_height as usize,
+        log_stacking_height,
     );
 
     CudaShardProver {
-        max_log_row_count,
-        log_stacking_height,
+        max_log_row_count: max_log_row_count as u32,
         basefold_prover,
         max_trace_size,
         machine,

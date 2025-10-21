@@ -571,7 +571,7 @@ pub async fn zerocheck<A, C>(
     logup_evaluations: &LogUpEvaluations<Ext>,
     public_values: Vec<Felt>,
     challenger: &mut C,
-    max_log_row_count: usize,
+    max_log_row_count: u32,
 ) -> (ShardOpenedValues<Felt, Ext>, PartialSumcheckProof<Ext>)
 where
     A: ZerocheckAir<Felt, Ext> + for<'a> BlockAir<SymbolicProverFolder<'a>>,
@@ -765,7 +765,10 @@ where
                 preprocessed,
                 main,
                 local_cumulative_sum: Ext::zero(),
-                degree: Point::from_usize(initial_heights[i] as usize, max_log_row_count + 1),
+                degree: Point::from_usize(
+                    initial_heights[i] as usize,
+                    (max_log_row_count + 1) as usize,
+                ),
             },
         );
     }
@@ -2013,7 +2016,7 @@ pub mod tests {
                 &logup_evaluations,
                 public_values.clone(),
                 &mut challenger_prover,
-                max_log_row_count,
+                max_log_row_count as u32,
             )
             .await;
 
@@ -2045,6 +2048,7 @@ pub mod tests {
                 Arc::new(record),
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
+                CORE_MAX_LOG_ROW_COUNT,
                 &t,
                 ProverSemaphore::new(1),
             )
@@ -2067,7 +2071,7 @@ pub mod tests {
             let mut challenger_prover = challenger.clone();
             let batching_challenge = challenger_prover.sample_ext_element();
             let gkr_opening_batch_randomness = challenger_prover.sample_ext_element();
-            let max_log_row_count = CORE_MAX_LOG_ROW_COUNT as usize;
+            let max_log_row_count = CORE_MAX_LOG_ROW_COUNT;
 
             let zeta = Point::<Ext>::rand(&mut rng, CORE_MAX_LOG_ROW_COUNT);
             let individual_column_evals = evaluate_jagged_columns(&trace_mle, zeta.clone()).await;
@@ -2121,7 +2125,7 @@ pub mod tests {
                 zerocheck_proof,
                 &public_values,
                 &mut challenger_verifier,
-                max_log_row_count,
+                max_log_row_count as usize,
             );
         })
         .await;

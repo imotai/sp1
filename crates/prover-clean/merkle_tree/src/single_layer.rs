@@ -430,6 +430,7 @@ mod tests {
                 Arc::new(record),
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
+                CORE_MAX_LOG_ROW_COUNT,
                 &scope,
                 new_semaphore.clone(),
             )

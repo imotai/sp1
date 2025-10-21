@@ -76,7 +76,7 @@ where
 pub struct ProverCleanFriCudaProver<GC, P, F> {
     pub tcs_prover: P,
     pub config: FriConfig<F>,
-    pub log_height: usize,
+    pub log_height: u32,
     _marker: PhantomData<GC>,
 }
 
@@ -94,7 +94,7 @@ where
         + RsCodeWordTransposeKernel<GC::F, GC::EF>
         + MleFlattenKernel<GC::F, GC::EF>,
 {
-    pub fn new(tcs_prover: P, config: FriConfig<GC::F>, log_height: usize) -> Self {
+    pub fn new(tcs_prover: P, config: FriConfig<GC::F>, log_height: u32) -> Self {
         Self { tcs_prover, config, log_height, _marker: PhantomData }
     }
     pub async fn encode_and_commit(
@@ -113,9 +113,9 @@ where
         }
 
         let virtual_tensor = if use_preprocessed {
-            jagged_trace_mle.preprocessed_virtual_tensor(self.log_height as u32)
+            jagged_trace_mle.preprocessed_virtual_tensor(self.log_height)
         } else {
-            jagged_trace_mle.main_virtual_tensor(self.log_height as u32)
+            jagged_trace_mle.main_virtual_tensor(self.log_height)
         };
 
         encode_batch(encoder, self.config.log_blowup as u32, virtual_tensor, &mut dst).unwrap();
@@ -139,7 +139,7 @@ where
         codewords: Message<Tensor<Felt, TaskScope>>,
         evaluation_claims: Vec<MleEval<GC::EF, TaskScope>>,
     ) -> (Mle<GC::EF, TaskScope>, Tensor<GC::F, TaskScope>, GC::EF) {
-        let log_stacking_height = self.log_height as u32;
+        let log_stacking_height = self.log_height;
         // Compute all the batch challenge powers.
         let total_num_polynomials = codewords.iter().map(|c| c.sizes()[0]).sum::<usize>();
 
@@ -308,7 +308,13 @@ where
                 .unwrap();
         }
         let encoder = SpparkDftKoalaBear::default();
-        encode_batch(encoder, 1, folded_mle_flattened.as_view(), &mut folded_codeword).unwrap();
+        encode_batch(
+            encoder,
+            self.config.log_blowup as u32,
+            folded_mle_flattened.as_view(),
+            &mut folded_codeword,
+        )
+        .unwrap();
 
         Ok((beta, folded_mle, folded_codeword, commit, leaves, prover_data))
     }
@@ -522,7 +528,7 @@ mod tests {
             let new_prover = ProverCleanFriCudaProver::<TestGC, _, Felt> {
                 tcs_prover: Poseidon2KoalaBear16CudaProver::default(),
                 config: verifier.fri_config,
-                log_height: LOG_STACKING_HEIGHT as usize,
+                log_height: LOG_STACKING_HEIGHT,
                 _marker: PhantomData::<TestGC>,
             };
 
@@ -564,6 +570,7 @@ mod tests {
                 Arc::new(record),
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
+                CORE_MAX_LOG_ROW_COUNT,
                 &scope,
                 new_semaphore,
             )

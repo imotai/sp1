@@ -337,8 +337,18 @@ mod tests {
                 for commitment in commitments.iter() {
                     challenger.observe(*commitment);
                 }
+                let round_areas = round_widths_and_log_heights
+                    .iter()
+                    .map(|dims| {
+                        dims.iter()
+                            .map(|&(w, h)| w << h)
+                            .sum::<usize>()
+                            .next_multiple_of(1 << log_stacking_height)
+                    })
+                    .collect::<Vec<_>>();
                 let _ = verifier.verify_trusted_evaluation(
                     &commitments,
+                    &round_areas,
                     &point,
                     &proof,
                     eval_claim,

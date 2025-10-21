@@ -28,7 +28,8 @@ pub async fn commit_multilinears<GC: IopCtx<F = Felt, EF = Ext>, P: TcsProverCle
             Tensor::<Felt, TaskScope>::with_sizes_in(
                 [
                     jagged_trace_mle.dense().preprocessed_offset >> basefold_prover.log_height,
-                    1 << (basefold_prover.log_height + basefold_prover.config.log_blowup()),
+                    1 << (basefold_prover.log_height as usize
+                        + basefold_prover.config.log_blowup()),
                 ],
                 jagged_trace_mle.dense().dense.backend().clone(),
             ),
@@ -40,7 +41,8 @@ pub async fn commit_multilinears<GC: IopCtx<F = Felt, EF = Ext>, P: TcsProverCle
             Tensor::<Felt, TaskScope>::with_sizes_in(
                 [
                     jagged_trace_mle.dense().main_size() >> basefold_prover.log_height,
-                    1 << (basefold_prover.log_height + basefold_prover.config.log_blowup()),
+                    1 << (basefold_prover.log_height as usize
+                        + basefold_prover.config.log_blowup()),
                 ],
                 jagged_trace_mle.dense().dense.backend().clone(),
             ),
@@ -155,6 +157,7 @@ mod tests {
                 record.clone(),
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
+                CORE_MAX_LOG_ROW_COUNT,
                 &scope,
                 ProverSemaphore::new(1),
             )
@@ -165,7 +168,7 @@ mod tests {
             let basefold_prover = ProverCleanFriCudaProver::<TestGC, _, <TestGC as IopCtx>::F>::new(
                 tcs_prover,
                 jagged_verifier.pcs_verifier.pcs_verifier.fri_config,
-                LOG_STACKING_HEIGHT as usize,
+                LOG_STACKING_HEIGHT,
             );
 
             let (new_preprocessed_commitment, new_preprocessed_data) = commit_multilinears(
