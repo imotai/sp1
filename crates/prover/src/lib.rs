@@ -275,7 +275,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         self
     }
 
-    #[cfg(feature = "unsound")]
+    #[cfg(feature = "experimental")]
     pub fn without_vk_verification(&mut self) -> &mut Self {
         self.vk_verification = false;
         self

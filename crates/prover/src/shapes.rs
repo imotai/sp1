@@ -770,7 +770,7 @@ pub fn build_shape_from_recursion_air_event_count(
     SP1RecursionProofShape { shape: chips_and_heights.into_iter().collect() }
 }
 
-#[cfg(all(test, feature = "unsound"))]
+#[cfg(all(test, feature = "experimental"))]
 mod tests {
     use anyhow::Context;
     use serial_test::serial;
@@ -824,7 +824,7 @@ mod tests {
         let (_, _, vk) = prover.core().setup(&elf).await;
 
         let context =
-            "Shape is not valid. To fix: From sp1-wip directory, run `cargo test --release -p sp1-prover --features unsound -- test_find_recursion_shape --include-ignored`";
+            "Shape is not valid. To fix: From sp1-wip directory, run `cargo test --release -p sp1-prover --features experimental -- test_find_recursion_shape --include-ignored`";
 
         let machine = RiscvAir::<SP1Field>::machine();
         let chip_clusters = &machine.shape().chip_clusters;

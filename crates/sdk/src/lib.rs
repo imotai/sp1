@@ -153,13 +153,13 @@ mod tests {
     // }
 
     // TODO BEFORE RELEASE: remove use of unsound prover when vkey commitments are finally built.
-    #[cfg(feature = "unsound")]
+    #[cfg(feature = "experimental")]
     #[tokio::test]
     async fn test_e2e_compressed() {
         use crate::{prover::ProveRequest, CpuProver};
 
         utils::setup_logger();
-        let client = CpuProver::new_unsound().await;
+        let client = CpuProver::new_experimental().await;
         let elf = test_artifacts::FIBONACCI_ELF;
         let pk = client.setup(elf).await.unwrap();
         let mut stdin = SP1Stdin::new();
@@ -178,13 +178,13 @@ mod tests {
 
     // TODO BEFORE RELEASE: add this back when implemented as well as a similar groth16 test, and
     // remove use of unsound prover (see above).
-    // #[cfg(feature = "unsound")]
+    // #[cfg(feature = "experimental")]
     // #[tokio::test]
     // async fn test_e2e_prove_plonk() {
     //     use crate::CpuProver;
 
     //     utils::setup_logger();
-    //     let client = CpuProver::new_unsound().await;
+    //     let client = CpuProver::new_experimental().await;
     //     let elf = test_artifacts::FIBONACCI_ELF;
     //     let pk = client.setup(elf).await.unwrap();
     //     let mut stdin = SP1Stdin::new();

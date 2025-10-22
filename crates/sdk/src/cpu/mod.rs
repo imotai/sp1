@@ -130,15 +130,15 @@ impl CpuProver {
         Self { prover }
     }
 
-    /// # ⚠️ WARNING: This prover is unsound and should NEVER be used in production.
-    /// It is intended purely for development and debugging purposes.
+    /// # ⚠️ WARNING: This prover is experimental and should not be used in production.
+    /// It is intended for development and debugging purposes.
     ///
     /// Creates a new [`CpuProver`], using the default [`LocalProverOpts`].
     /// Verification of the proof system's verification key is skipped, meaning that the
     /// recursion proofs are not guaranteed to be about a permitted recursion program.
-    #[cfg(feature = "unsound")]
+    #[cfg(feature = "experimental")]
     #[must_use]
-    pub async fn new_unsound() -> Self {
+    pub async fn new_experimental() -> Self {
         let prover = SP1ProverBuilder::<CpuSP1ProverComponents>::new()
             .without_vk_verification()
             .build()

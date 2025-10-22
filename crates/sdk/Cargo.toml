@@ -86,7 +86,7 @@ tee-2fa = []
 reserved-capacity = ["network"]
 cuda = []
 bigint-rug = ["sp1-core-machine/bigint-rug"]
-unsound = ["sp1-prover/unsound"]
+experimental = ["sp1-prover/experimental"]
 profiling = ["sp1-core-executor/profiling"]
 blocking = []
 
