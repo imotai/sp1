@@ -333,7 +333,7 @@ __global__ void branchingProgram(
 
 )
 {
-    int num_layers = static_cast<int>(z_index_length) + 1;
+    int num_layers = static_cast<int>(max(z_index_length, z_row_length)) + 1;
 
     int curr_prefix_sum_lambda_layer_idx;
     int next_prefix_sum_lambda_layer_idx;
