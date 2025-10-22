@@ -58,7 +58,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release --workspace --exclude sp1-verifier --exclude sp1-sdk --features native-gnark --features unsound -- --test-threads=4
+          args: --release --workspace --exclude sp1-verifier --exclude sp1-sdk --features native-gnark --features experimental -- --test-threads=4
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0
           RUST_BACKTRACE: 1
@@ -100,7 +100,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release --workspace --exclude sp1-verifier --exclude sp1-sdk --features native-gnark --features unsound
+          args: --release --workspace --exclude sp1-verifier --exclude sp1-sdk --features native-gnark --features experimental
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0
           RUST_BACKTRACE: 1

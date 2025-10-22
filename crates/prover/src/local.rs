@@ -684,7 +684,7 @@ struct ProveTask<C: SP1ProverComponents> {
     record: RecursionRecord<SP1Field>,
 }
 
-#[cfg(all(test, feature = "unsound"))]
+#[cfg(all(test, feature = "experimental"))]
 pub mod tests {
     use sp1_core_executor::RetainedEventsPreset;
     use tracing::Instrument;
