@@ -195,19 +195,6 @@ impl<F: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
         let z_col_partial_lagrange = Mle::blocking_partial_lagrange(z_col);
         let z_col_partial_lagrange = z_col_partial_lagrange.guts().as_slice();
 
-        // The program below reads only the first log_m +1 bits of z_row, but z_row could in theory
-        // be longer than that if the total trace area is less than the padded height. This
-        // correction ensures that the higher bits are zero.
-        let log_m = z_index.dimension();
-        let z_row_correction: EF = z_row
-            .reversed()
-            .to_vec()
-            .iter()
-            .skip(log_m + 1)
-            .cloned()
-            .map(|x| EF::one() - x)
-            .product();
-
         let branching_program = BranchingProgram::new(z_row.clone(), z_index.clone());
 
         // Iterate over all columns. For each column, we need to know the total length of all the
@@ -238,7 +225,7 @@ impl<F: AbstractField + 'static + Send + Sync> JaggedLittlePolynomialVerifierPar
                 *branching_program_eval =
                     branching_program.eval(&prefix_sum_ef, &next_prefix_sum_ef);
 
-                z_row_correction.clone() * z_col_correction.clone() * branching_program_eval.clone()
+                z_col_correction.clone() * branching_program_eval.clone()
             })
             .sum::<EF>();
 
@@ -326,6 +313,7 @@ impl JaggedLittlePolynomialProverParams {
     /// evaluation algorithm.
     pub fn into_verifier_params<K: Field>(self) -> JaggedLittlePolynomialVerifierParams<K> {
         let log_m = log2_ceil_usize(*self.col_prefix_sums_usize.last().unwrap());
+        let log_m = log_m.max(self.max_log_row_count);
         let col_prefix_sums =
             self.col_prefix_sums_usize.iter().map(|&x| Point::from_usize(x, log_m + 1)).collect();
         JaggedLittlePolynomialVerifierParams { col_prefix_sums }
@@ -406,7 +394,7 @@ pub struct BranchingProgram<K: AbstractField> {
 
 impl<K: AbstractField + 'static> BranchingProgram<K> {
     pub fn new(z_row: Point<K>, z_index: Point<K>) -> Self {
-        let log_m = z_index.dimension();
+        let log_m = z_index.dimension().max(z_row.dimension());
 
         Self {
             z_row,

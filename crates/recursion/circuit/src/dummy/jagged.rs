@@ -55,6 +55,7 @@ pub fn dummy_query_proof(
 /// The parameter `batch_shapes` contains (width, height) data for each matrix in each batch.
 pub fn dummy_pcs_proof(
     fri_queries: usize,
+    max_log_row_count: usize,
     log_stacking_height_multiples: &[usize],
     log_stacking_height: usize,
     log_blowup: usize,
@@ -101,9 +102,10 @@ pub fn dummy_pcs_proof(
 
     let stacked_proof = StackedPcsProof { pcs_proof: basefold_proof, batch_evaluations };
 
-    let total_num_variables = log2_ceil_usize(
+    let total_trace = log2_ceil_usize(
         log_stacking_height_multiples.iter().sum::<usize>() * (1 << log_stacking_height),
     );
+    let total_num_variables = total_trace.max(max_log_row_count);
 
     // Add 2 because of the dummy columns after the preprocessed and main rounds, and then one more
     // because the prefix sums start at 0 and end at total trace area (so there is one more prefix
@@ -114,7 +116,7 @@ pub fn dummy_pcs_proof(
 
     let jagged_params = JaggedLittlePolynomialVerifierParams { col_prefix_sums };
 
-    let partial_sumcheck_proof = dummy_sumcheck_proof(total_num_variables, 2);
+    let partial_sumcheck_proof = dummy_sumcheck_proof(total_trace, 2);
 
     let eval_sumcheck_proof = dummy_sumcheck_proof(2 * (total_num_variables + 1), 2);
 
@@ -284,6 +286,7 @@ mod tests {
         let dummy_proof = dummy_pcs_proof(
             // Magic constant is the number of queries in the FRI phase.
             84,
+            max_log_row_count as usize,
             &[prep_multiple, main_multiple],
             log_stacking_height as usize,
             log_blowup,

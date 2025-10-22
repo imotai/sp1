@@ -28,7 +28,21 @@ pub async fn run_test(
     runtime.run::<Trace>().unwrap();
     let public_values = SP1PublicValues::from(&runtime.state.public_values_stream);
 
-    let _ = run_test_core(runtime, inputs).await?;
+    let _ = run_test_core(runtime, inputs, 21, 22).await?;
+    Ok(public_values)
+}
+
+/// This function tests cases where `max_log_row_count` is potentially larger than the `log(trace)`.
+pub async fn run_test_small_trace(
+    program: Arc<Program>,
+    inputs: SP1Stdin,
+) -> Result<SP1PublicValues, MachineVerifierConfigError<SP1GlobalContext, SP1CoreJaggedConfig>> {
+    let mut runtime = Executor::new(program, SP1CoreOpts::default());
+    runtime.write_vecs(&inputs.buffer);
+    runtime.run::<Trace>().unwrap();
+    let public_values = SP1PublicValues::from(&runtime.state.public_values_stream);
+
+    let _ = run_test_core(runtime, inputs, 20, 23).await?;
     Ok(public_values)
 }
 
@@ -71,13 +85,13 @@ pub async fn run_test(
 pub async fn run_test_core(
     runtime: Executor<'static>,
     inputs: SP1Stdin,
+    log_stacking_height: u32,
+    max_log_row_count: usize,
 ) -> Result<
     MachineProof<SP1GlobalContext, SP1CoreJaggedConfig>,
     MachineVerifierConfigError<SP1GlobalContext, SP1CoreJaggedConfig>,
 > {
     let log_blowup = 1;
-    let log_stacking_height = 21;
-    let max_log_row_count = 22;
     let machine = RiscvAir::machine();
 
     let verifier = ShardVerifier::from_basefold_parameters(

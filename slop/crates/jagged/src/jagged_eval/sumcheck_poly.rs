@@ -91,6 +91,7 @@ impl<
             + CanCopyFrom<Buffer<F>, CpuBackend, Output = Buffer<F, A>>,
     {
         let log_m = log2_ceil_usize(*prefix_sums.last().unwrap());
+        let log_m = log_m.max(z_row.dimension());
         let col_prefix_sums: Vec<Point<F>> =
             prefix_sums.iter().map(|&x| Point::from_usize(x, log_m + 1)).collect();
 

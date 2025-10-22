@@ -1034,7 +1034,11 @@ pub mod tests {
     use sp1_hypercube::air::MachineAir;
     use sp1_primitives::SP1Field;
 
-    use crate::{programs::tests::*, riscv::RiscvAir, utils::setup_logger};
+    use crate::{
+        programs::tests::*,
+        riscv::RiscvAir,
+        utils::{run_test_small_trace, setup_logger},
+    };
     use sp1_core_executor::add_halt;
     use sp1_hypercube::InteractionKind;
     use strum::IntoEnumIterator;
@@ -1115,7 +1119,8 @@ pub mod tests {
         setup_logger();
         let program = simple_program();
         let stdin = SP1Stdin::new();
-        run_test(Arc::new(program), stdin).await.unwrap();
+        run_test(Arc::new(program.clone()), stdin.clone()).await.unwrap();
+        run_test_small_trace(Arc::new(program), stdin).await.unwrap();
     }
 
     #[tokio::test]
@@ -1170,7 +1175,8 @@ pub mod tests {
         add_halt(&mut instructions);
         let program = Program::new(instructions, 0, 0);
         let stdin = SP1Stdin::new();
-        run_test(Arc::new(program), stdin).await.unwrap();
+        run_test(Arc::new(program.clone()), stdin.clone()).await.unwrap();
+        run_test_small_trace(Arc::new(program), stdin).await.unwrap();
     }
 
     #[tokio::test]
@@ -1184,7 +1190,8 @@ pub mod tests {
         add_halt(&mut instructions);
         let program = Program::new(instructions, 0, 0);
         let stdin = SP1Stdin::new();
-        run_test(Arc::new(program), stdin).await.unwrap();
+        run_test(Arc::new(program.clone()), stdin.clone()).await.unwrap();
+        run_test_small_trace(Arc::new(program), stdin).await.unwrap();
     }
 
     #[tokio::test]
@@ -1198,7 +1205,8 @@ pub mod tests {
         add_halt(&mut instructions);
         let program = Program::new(instructions, 0, 0);
         let stdin = SP1Stdin::new();
-        run_test(Arc::new(program), stdin).await.unwrap();
+        run_test(Arc::new(program.clone()), stdin.clone()).await.unwrap();
+        run_test_small_trace(Arc::new(program), stdin).await.unwrap();
     }
 
     #[test]
@@ -1251,7 +1259,8 @@ pub mod tests {
         add_halt(&mut instructions);
         let program = Program::new(instructions, 0, 0);
         let stdin = SP1Stdin::new();
-        run_test(Arc::new(program), stdin).await.unwrap();
+        run_test(Arc::new(program.clone()), stdin.clone()).await.unwrap();
+        run_test_small_trace(Arc::new(program), stdin).await.unwrap();
     }
 
     #[tokio::test]
@@ -1267,7 +1276,8 @@ pub mod tests {
             add_halt(&mut instructions);
             let program = Program::new(instructions, 0, 0);
             let stdin = SP1Stdin::new();
-            run_test(Arc::new(program), stdin).await.unwrap();
+            run_test(Arc::new(program.clone()), stdin.clone()).await.unwrap();
+            run_test_small_trace(Arc::new(program), stdin).await.unwrap();
         }
     }
 
@@ -1285,7 +1295,8 @@ pub mod tests {
             add_halt(&mut instructions);
             let program = Program::new(instructions, 0, 0);
             let stdin = SP1Stdin::new();
-            run_test(Arc::new(program), stdin).await.unwrap();
+            run_test(Arc::new(program.clone()), stdin.clone()).await.unwrap();
+            run_test_small_trace(Arc::new(program), stdin).await.unwrap();
         }
     }
 
@@ -1350,7 +1361,8 @@ pub mod tests {
         add_halt(&mut instructions);
         let program = Program::new(instructions.to_vec(), 0, 0);
         let stdin = SP1Stdin::new();
-        run_test(Arc::new(program), stdin).await.unwrap();
+        run_test(Arc::new(program.clone()), stdin.clone()).await.unwrap();
+        run_test_small_trace(Arc::new(program), stdin).await.unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread")]

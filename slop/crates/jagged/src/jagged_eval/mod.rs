@@ -75,6 +75,15 @@ mod tests {
 
         prefix_sums.push(*prefix_sums.last().unwrap() + row_counts.last().unwrap());
         let log_m = log2_ceil_usize(*prefix_sums.last().unwrap());
+
+        let log_max_row_count = 7;
+
+        let z_row: Point<EF> = (0..log_max_row_count).map(|_| rng.gen::<EF>()).collect();
+        let z_col: Point<EF> =
+            (0..log2_ceil_usize(row_counts.len())).map(|_| rng.gen::<EF>()).collect();
+        let z_index: Point<EF> = (0..log_m + 1).map(|_| rng.gen::<EF>()).collect();
+        let log_m = log_m.max(z_row.dimension());
+
         let merged_prefix_sums = prefix_sums
             .windows(2)
             .map(|x| {
@@ -84,20 +93,12 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        let log_max_row_count = 7;
-
-        let z_row: Point<EF> = (0..log_max_row_count).map(|_| rng.gen::<EF>()).collect();
-        let z_col: Point<EF> =
-            (0..log2_ceil_usize(row_counts.len())).map(|_| rng.gen::<EF>()).collect();
-        let z_index: Point<EF> = (0..log_m + 1).map(|_| rng.gen::<EF>()).collect();
-
         let z_col_eq_vals = (0..row_counts.len())
             .map(|c| {
                 let c_point: Point<EF> = Point::from_usize(c, z_col.dimension());
                 Mle::full_lagrange_eval(&c_point, &z_col)
             })
             .collect_vec();
-
         let h_poly = BranchingProgram::new(z_row.clone(), z_index.clone());
 
         let prover_params =
@@ -126,7 +127,7 @@ mod tests {
         let default_perm = my_bb_16_perm();
         let mut challenger = Challenger::new(default_perm.clone());
 
-        let mut sum_values = Buffer::from(vec![EF::zero(); 6 * z_index.dimension()]);
+        let mut sum_values = Buffer::from(vec![EF::zero(); 6 * (log_m + 1)]);
 
         let sc_proof = prove_jagged_eval_sumcheck(
             batch_eval_poly,

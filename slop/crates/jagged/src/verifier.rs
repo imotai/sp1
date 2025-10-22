@@ -237,7 +237,8 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
         usize_prefix_sums
             .push(*usize_prefix_sums.last().unwrap() + *usize_column_heights.last().unwrap());
 
-        let log_m = log2_ceil_usize(usize_prefix_sums.last().copied().unwrap());
+        let log_trace = log2_ceil_usize(usize_prefix_sums.last().copied().unwrap());
+        let log_m = log_trace.max(self.max_log_row_count);
 
         if log_m >= 30 {
             return Err(JaggedPcsVerifierError::AreaOutOfBounds);
@@ -294,13 +295,8 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
             ));
         }
 
-        partially_verify_sumcheck_proof(
-            sumcheck_proof,
-            challenger,
-            params.col_prefix_sums[0].len() - 1,
-            2,
-        )
-        .map_err(JaggedPcsVerifierError::SumcheckError)?;
+        partially_verify_sumcheck_proof(sumcheck_proof, challenger, log_trace, 2)
+            .map_err(JaggedPcsVerifierError::SumcheckError)?;
 
         for (t_col, next_t_col) in
             params.col_prefix_sums.iter().zip(params.col_prefix_sums.iter().skip(1))

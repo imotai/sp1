@@ -70,13 +70,10 @@ where
             return Err(JaggedEvalSumcheckError::IncorrectShape);
         }
 
+        let log_m = params.col_prefix_sums[0].dimension().max(z_row.dimension() + 1);
         // Verify the jagged eval proof.
-        let result = partially_verify_sumcheck_proof(
-            partial_sumcheck_proof,
-            challenger,
-            2 * params.col_prefix_sums[0].dimension(),
-            2,
-        );
+        let result =
+            partially_verify_sumcheck_proof(partial_sumcheck_proof, challenger, 2 * log_m, 2);
 
         if let Err(result) = result {
             return Err(JaggedEvalSumcheckError::SumcheckError(result));
@@ -212,7 +209,8 @@ where
         let expected_sum =
             verifier_params.full_jagged_little_polynomial_evaluation(z_row, z_col, z_trace);
 
-        let log_m = log2_ceil_usize(*params.col_prefix_sums_usize.last().unwrap());
+        let log_m =
+            log2_ceil_usize(*params.col_prefix_sums_usize.last().unwrap()).max(z_row.dimension());
 
         let mut sum_values = Tensor::zeros_in([3, 2 * (log_m + 1)], backend.clone()).into_buffer();
 

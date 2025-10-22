@@ -51,6 +51,7 @@ pub fn dummy_shard_proof<A: MachineAir<SP1Field>>(
 
     let evaluation_proof = dummy_pcs_proof(
         fri_queries,
+        max_log_row_count,
         log_stacking_height_multiples,
         log_stacking_height,
         log_blowup,
