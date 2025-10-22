@@ -52,7 +52,7 @@ rayon = "1.10.0"
 [dev-dependencies]
 serial_test = "3.1"
 zstd = "0.13.3"
-sp1-sdk = { workspace = true, features = ["unsound"] }
+sp1-sdk = { workspace = true, features = ["experimental"] }
 sp1-recursion-circuit = { workspace = true }
 
 [[bin]]

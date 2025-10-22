@@ -13,7 +13,7 @@ csl-prover = { workspace = true }
 csl-tracing = { workspace = true }
 sp1-core-machine = { workspace = true }
 sp1-core-executor = { workspace = true }
-sp1-prover = { workspace = true, features = ["unsound"] }
+sp1-prover = { workspace = true, features = ["experimental"] }
 
 
 csv = "1.3.0"
