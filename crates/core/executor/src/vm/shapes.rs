@@ -3,7 +3,7 @@ use hashbrown::HashMap;
 
 use crate::{
     syscalls::SyscallCode, vm::memory::CompressedMemory, Instruction, Opcode, RiscvAirId,
-    SP1CoreOpts, ShardingThreshold, BYTE_NUM_ROWS, RANGE_NUM_ROWS,
+    ShardingThreshold, BYTE_NUM_ROWS, RANGE_NUM_ROWS,
 };
 use std::str::FromStr;
 
@@ -35,10 +35,7 @@ pub struct ShapeChecker {
 }
 
 impl ShapeChecker {
-    pub fn new(program_len: u64, shard_start_clk: u64) -> Self {
-        // todo from args
-        let opts = SP1CoreOpts::default();
-
+    pub fn new(program_len: u64, shard_start_clk: u64, elem_threshold: ShardingThreshold) -> Self {
         let costs: HashMap<String, usize> =
             serde_json::from_str(include_str!("../artifacts/rv64im_costs.json")).unwrap();
         let costs: EnumMap<RiscvAirId, u64> =
@@ -55,7 +52,7 @@ impl ShapeChecker {
             syscall_sent: false,
             shard_start_clk,
             heights: EnumMap::default(),
-            sharding_threshold: opts.sharding_threshold,
+            sharding_threshold: elem_threshold,
             costs,
             // Assume that all registers will be touched in each shard.
             local_mem_counts: 32,
@@ -104,7 +101,7 @@ impl ShapeChecker {
     /// Set the start clock of the shard.
     #[inline]
     pub fn reset(&mut self, clk: u64) {
-        *self = Self::new(self.program_len, clk);
+        *self = Self::new(self.program_len, clk, self.sharding_threshold);
     }
 
     /// Check if the shard limit has been reached.

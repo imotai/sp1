@@ -173,11 +173,12 @@ impl<'a> SplicingVM<'a> {
         opts: SP1CoreOpts,
     ) -> Self {
         let program_len = program.instructions.len() as u64;
+        let sharding_threshold = opts.sharding_threshold;
         Self {
             core: CoreVM::new(trace, program, opts),
             touched_addresses,
             hint_lens_idx: 0,
-            shape_checker: ShapeChecker::new(program_len, trace.clk_start()),
+            shape_checker: ShapeChecker::new(program_len, trace.clk_start(), sharding_threshold),
         }
     }
 
