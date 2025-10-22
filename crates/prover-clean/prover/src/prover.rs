@@ -549,22 +549,6 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
         let ShardData { main_trace_data } = data;
         let MainTraceData { traces, public_values, shard_chips, permit } = main_trace_data;
 
-        // // Log the shard data.
-        // let mut total_number_of_cells = 0;
-        // tracing::info!("Proving shard");
-        // for (chip, trace) in shard_chips.iter().zip_eq(traces.values()) {
-        //     let height = trace.num_real_entries();
-        //     let stats = ChipStatistics::new(chip, height);
-        //     tracing::info!("{}", stats);
-        //     total_number_of_cells += stats.total_number_of_cells();
-        // }
-
-        // tracing::info!(
-        //     "Total number of cells: {}, number of variables: {}",
-        //     total_number_of_cells,
-        //     total_number_of_cells.next_power_of_two().ilog2(),
-        // );
-
         let shard_chips = self.machine().smallest_cluster(&shard_chips).unwrap();
 
         // Observe the public values.

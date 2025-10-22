@@ -1,14 +1,20 @@
 use std::ops::{Deref, DerefMut};
 
 use csl_cuda::{cuda_memory_info, TaskScope};
-use cslpc_tracegen::CORE_MAX_TRACE_SIZE;
+
+use sp1_core_executor::ELEMENT_THRESHOLD;
 use sp1_hypercube::prover::ProverSemaphore;
 use sp1_prover::{
     components::SP1ProverComponents,
+    core::CORE_LOG_STACKING_HEIGHT,
     local::LocalProverOpts,
     recursion::{RECURSION_LOG_BLOWUP, SHRINK_LOG_BLOWUP, WRAP_LOG_BLOWUP},
     SP1ProverBuilder, CORE_LOG_BLOWUP,
 };
+
+pub const RECURSION_TRACE_ALLOCATION: usize = 1 << 27;
+pub const SHRINK_TRACE_ALLOCATION: usize = 1 << 24;
+pub const WRAP_TRACE_ALLOCATION: usize = 1 << 25;
 
 use crate::{
     new_cuda_prover_sumcheck_eval, new_prover_clean_prover, CudaSP1ProverComponents,
@@ -147,10 +153,20 @@ impl SP1ProverCleanBuilder {
 
         let mut num_prover_workers = 4;
 
+        // TODO: Change this to be calculated from SplitOpts, but this requires a refactor in
+        // `sp1-wip`.
+        let num_elts = if gpu_memory_gb <= 30 {
+            ELEMENT_THRESHOLD - (1 << 25)
+        } else {
+            ELEMENT_THRESHOLD + (1 << 26) + (1 << 25)
+        };
+
+        let num_elts = (num_elts as f64).ceil() as usize + (1 << CORE_LOG_STACKING_HEIGHT);
+
         let core_verifier = ProverCleanSP1ProverComponents::core_verifier();
         let core_prover = new_prover_clean_prover(
             core_verifier.clone(),
-            CORE_MAX_TRACE_SIZE as usize,
+            num_elts as usize,
             CORE_LOG_BLOWUP,
             scope.clone(),
         );
@@ -159,7 +175,7 @@ impl SP1ProverCleanBuilder {
         let recursion_verifier = ProverCleanSP1ProverComponents::compress_verifier();
         let recursion_prover = new_prover_clean_prover(
             recursion_verifier.clone(),
-            1 << 27,
+            RECURSION_TRACE_ALLOCATION,
             RECURSION_LOG_BLOWUP,
             scope.clone(),
         );
@@ -167,14 +183,18 @@ impl SP1ProverCleanBuilder {
         let shrink_verifier = ProverCleanSP1ProverComponents::shrink_verifier();
         let shrink_prover = new_prover_clean_prover(
             shrink_verifier.clone(),
-            1 << 24,
+            SHRINK_TRACE_ALLOCATION,
             SHRINK_LOG_BLOWUP,
             scope.clone(),
         );
 
         let wrap_verifier = ProverCleanSP1ProverComponents::wrap_verifier();
-        let wrap_prover =
-            new_prover_clean_prover(wrap_verifier.clone(), 1 << 25, WRAP_LOG_BLOWUP, scope.clone());
+        let wrap_prover = new_prover_clean_prover(
+            wrap_verifier.clone(),
+            WRAP_TRACE_ALLOCATION,
+            WRAP_LOG_BLOWUP,
+            scope.clone(),
+        );
 
         if cpu_memory_gb <= 20 {
             num_prover_workers = 1;

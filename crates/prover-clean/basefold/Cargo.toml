@@ -44,7 +44,7 @@ serde = { workspace = true }
 cslpc-tracegen = { workspace = true }
 serial_test = "3.1"
 zstd = "0.13.3"
-sp1-sdk = { workspace = true, features = ["unsound"] }
+sp1-sdk = { workspace = true }
 sp1-recursion-circuit = { workspace = true }
 csl-prover = { workspace = true }
 csl-basefold = { workspace = true }

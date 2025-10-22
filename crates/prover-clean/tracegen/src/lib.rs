@@ -1,4 +1,5 @@
 use core::pin::pin;
+use itertools::Itertools;
 use slop_alloc::mem::DeviceMemory;
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::ready;
@@ -23,7 +24,7 @@ use sp1_hypercube::prover::{ProverPermit, ProverSemaphore};
 
 use sp1_core_executor::ELEMENT_THRESHOLD;
 use sp1_hypercube::{air::MachineAir, Machine};
-use sp1_hypercube::{Chip, MachineRecord};
+use sp1_hypercube::{Chip, ChipStatistics, MachineRecord};
 
 use cslpc_basefold::ProverCleanStackedPcsProverData;
 use cslpc_utils::{Felt, JaggedMle, JaggedTraceMle, TraceDenseData, TraceOffset};
@@ -673,6 +674,8 @@ pub async fn main_tracegen<GC: IopCtx<F = Felt>, A: CudaTracegenAir<Felt>>(
     let (traces, public_values) =
         device_main_tracegen(host_phase_tracegen, record, initial_traces, backend).await;
 
+    log_chip_stats(machine, &chip_set, &traces);
+
     copy_main_jagged_traces(
         traces,
         &mut jagged_traces.preprocessed_traces,
@@ -717,6 +720,8 @@ pub async fn full_tracegen<A: CudaTracegenAir<Felt>>(
         device_main_tracegen(main_host_phase_tracegen, record.clone(), initial_traces, backend)
     );
 
+    log_chip_stats(machine, &chip_set, &main_traces);
+
     let mut jagged_mle = allocate_and_initialize_traces(
         preprocessed_traces,
         max_trace_size,
@@ -730,6 +735,28 @@ pub async fn full_tracegen<A: CudaTracegenAir<Felt>>(
         .await;
 
     (public_values, jagged_mle, chip_set, permit)
+}
+
+fn log_chip_stats<A: CudaTracegenAir<Felt>>(
+    machine: &Machine<Felt, A>,
+    chip_set: &BTreeSet<Chip<Felt, A>>,
+    traces: &BTreeMap<String, Trace<TaskScope>>,
+) {
+    let mut total_number_of_cells = 0;
+    tracing::info!("Proving shard");
+    for (chip, trace) in machine.smallest_cluster(chip_set).unwrap().iter().zip_eq(traces.values())
+    {
+        let height = trace.num_real_entries();
+        let stats = ChipStatistics::new(chip, height);
+        tracing::info!("{}", stats);
+        total_number_of_cells += stats.total_number_of_cells();
+    }
+
+    tracing::info!(
+        "Total number of cells: {}, number of variables: {}",
+        total_number_of_cells,
+        total_number_of_cells.next_power_of_two().ilog2(),
+    );
 }
 
 #[cfg(test)]

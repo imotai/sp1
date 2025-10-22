@@ -1,13 +1,11 @@
 use std::{sync::Arc, time::Duration};
 
 use clap::ValueEnum;
-use csl_cuda::TaskScope;
-use csl_prover::local_gpu_opts;
-use csl_prover::SP1ProverCleanBuilder;
 use sp1_core_executor::SP1Context;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_prover::utils::generate_nonce;
-use sp1_prover::{local::LocalProver, shapes::DEFAULT_ARITY, SP1CoreProofData};
+use sp1_prover::SP1ProverComponents;
+use sp1_prover::{local::LocalProver, SP1CoreProofData};
 use tokio::time::Instant;
 use tracing::Instrument;
 
@@ -44,40 +42,13 @@ pub enum Stage {
     Wrap,
 }
 
-pub async fn make_measurement(
+pub async fn make_measurement<C: SP1ProverComponents>(
     name: &str,
     elf: &[u8],
     stdin: SP1Stdin,
     stage: Stage,
-    backend: ProverBackend,
-    t: TaskScope,
+    prover: Arc<LocalProver<C>>,
 ) -> Measurement {
-    let recursion_cache_size = 5;
-    let opts = local_gpu_opts();
-
-    // Create the appropriate prover based on the backend selection
-    let prover: Arc<LocalProver<_>> = match backend {
-        // ProverBackend::Old => {
-        //     let sp1_prover = csl_prover::SP1CudaProverBuilder::new(t.clone())
-        //         .normalize_cache_size(recursion_cache_size)
-        //         .set_max_compose_arity(DEFAULT_ARITY)
-        //         .without_vk_verification()
-        //         .build()
-        //         .await;
-        //     Arc::new(LocalProver::new(sp1_prover, opts))
-        // }
-        ProverBackend::ProverClean => {
-            let sp1_prover = SP1ProverCleanBuilder::new(t.clone())
-                .normalize_cache_size(recursion_cache_size)
-                .set_max_compose_arity(DEFAULT_ARITY)
-                .without_vk_verification()
-                .build()
-                .await;
-            Arc::new(LocalProver::new(sp1_prover, opts))
-        }
-        _ => unimplemented!(),
-    };
-
     let time = Instant::now();
     let (pk, program, vk) = prover
         .prover()
