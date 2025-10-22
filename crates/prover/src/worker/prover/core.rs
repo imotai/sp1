@@ -13,13 +13,11 @@ use sp1_hypercube::{
 };
 use sp1_jit::TraceChunk;
 use sp1_primitives::{SP1Field, SP1GlobalContext};
+use sp1_prover_types::{Artifact, ArtifactClient, ArtifactType};
 
 use crate::{
     components::CoreProver,
-    worker::{
-        Artifact, ArtifactClient, CommonProverInput, GlobalMemoryShard, TaskId, TraceData,
-        WorkerClient,
-    },
+    worker::{CommonProverInput, GlobalMemoryShard, TaskId, TraceData, WorkerClient},
     CoreSC, InnerSC, SP1ProverComponents,
 };
 
@@ -234,7 +232,10 @@ where
         self.artifact_client.upload(&output, proof).await.expect("failed to upload proof");
 
         // Remove the record artifact since it is no longer needed
-        self.artifact_client.try_delete(&record_artifact).await;
+        self.artifact_client
+            .try_delete(&record_artifact, ArtifactType::UnspecifiedArtifactType)
+            .await
+            .expect("failed to delete record artifact");
 
         id
     }

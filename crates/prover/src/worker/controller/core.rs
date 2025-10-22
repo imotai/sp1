@@ -18,14 +18,11 @@ use sp1_core_machine::{
 };
 use sp1_hypercube::air::{PROOF_NONCE_NUM_WORDS, PV_DIGEST_NUM_WORDS};
 use sp1_jit::MinimalTrace;
-
+use sp1_prover_types::{Artifact, ArtifactClient, TaskType};
 use tokio::{sync::mpsc, task::JoinSet};
 
 use crate::{
-    worker::{
-        Artifact, ArtifactClient, ArtifactType, ProofId, RawTaskRequest, RequesterId, TaskId,
-        TaskKind, WorkerClient,
-    },
+    worker::{ProofId, RawTaskRequest, RequesterId, TaskId, WorkerClient},
     SP1VerifyingKey,
 };
 
@@ -355,7 +352,9 @@ where
                     let data = TraceData::Memory(Box::new(mem_global_shard));
 
                     // Upload the data
-                    let data_artifact = artifact_client.create_artifact(ArtifactType::Unspecified);
+                    let data_artifact = artifact_client
+                        .create_artifact()
+                        .expect("failed to create record artifact");
                     artifact_client
                         .upload(&data_artifact, data)
                         .await
@@ -371,7 +370,8 @@ where
                     .to_vec();
 
                     // Allocate an artifact for the proof
-                    let proof_artifact = artifact_client.create_artifact(ArtifactType::Unspecified);
+                    let proof_artifact =
+                        artifact_client.create_artifact().expect("failed to create proof artifact");
 
                     // Prepare the task.
                     let task = RawTaskRequest {
@@ -385,7 +385,7 @@ where
 
                     // Send the task to the worker.
                     let task_id = worker_client
-                        .submit_task(TaskKind::ProveShard, task)
+                        .submit_task(TaskType::ProveShard, task)
                         .await
                         .expect("failed to send task");
 
@@ -608,8 +608,9 @@ where
                         bincode::serialize(&record.chunk).expect("failed to serialize record");
                     let data = TraceData::Core(chunk_bytes);
                     // Upload the record
-                    let record_artifact =
-                        artifact_client.create_artifact(ArtifactType::Unspecified);
+                    let record_artifact = artifact_client
+                        .create_artifact()
+                        .expect("failed to create record artifact");
                     artifact_client
                         .upload(&record_artifact, data)
                         .await
@@ -627,7 +628,9 @@ where
                     .to_vec();
 
                     // Allocate an artifact for the proof
-                    let proof_artifact = artifact_client.create_artifact(ArtifactType::Unspecified);
+                    let proof_artifact = artifact_client
+                        .create_artifact()
+                        .expect("failed to create shard proof artifact");
 
                     // Prepare the task.
                     let task = RawTaskRequest {
@@ -641,7 +644,7 @@ where
 
                     // Send the task to the worker.
                     let task_id = worker_client
-                        .submit_task(TaskKind::ProveShard, task)
+                        .submit_task(TaskType::ProveShard, task)
                         .await
                         .expect("failed to send task");
 
@@ -743,8 +746,9 @@ where
 #[cfg(test)]
 mod tests {
     use sp1_core_machine::utils::setup_logger;
+    use sp1_prover_types::InMemoryArtifactClient;
 
-    use crate::worker::{InMemoryArtifactClient, TrivialWorkerClient};
+    use crate::worker::TrivialWorkerClient;
 
     use super::*;
 
@@ -774,18 +778,25 @@ mod tests {
         let parent_id = None;
         let parent_context = None;
         let requester_id = RequesterId::new("test_pure_execution");
-        let common_input = artifact_client.create_artifact(ArtifactType::Unspecified);
+        let common_input =
+            artifact_client.create_artifact().expect("failed to create common input artifact");
 
         let (sender, mut receiver) = mpsc::unbounded_channel();
 
-        let elf_artifact = artifact_client.create_artifact(ArtifactType::Program);
+        let elf_artifact =
+            artifact_client.create_artifact().expect("failed to create elf artifact");
         let elf_bytes = elf.to_vec();
-        artifact_client.upload(&elf_artifact, elf_bytes).await.expect("failed to upload elf");
+        artifact_client
+            .upload_program(&elf_artifact, elf_bytes)
+            .await
+            .expect("failed to upload elf");
 
-        let stdin_artifact = artifact_client.create_artifact(ArtifactType::Stdin);
+        let stdin_artifact =
+            artifact_client.create_artifact().expect("failed to create stdin artifact");
         artifact_client.upload(&stdin_artifact, stdin).await.expect("failed to upload stdin");
 
-        let opts_artifact = artifact_client.create_artifact(ArtifactType::Unspecified);
+        let opts_artifact =
+            artifact_client.create_artifact().expect("failed to create opts artifact");
         artifact_client.upload(&opts_artifact, opts).await.expect("failed to upload opts");
 
         let executor = SP1CoreExecutor {

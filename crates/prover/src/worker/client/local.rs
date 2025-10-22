@@ -1,24 +1,24 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use dashmap::DashMap;
-use enum_map::EnumMap;
+use hashbrown::HashMap;
 use mti::prelude::{MagicTypeIdExt, V7};
+use sp1_prover_types::{ProofRequestStatus, TaskStatus, TaskType};
 use tokio::sync::{mpsc, watch};
 
 use crate::worker::{
-    ProofId, ProofRequestStatus, RawTaskRequest, SubscriberBuilder, TaskId, TaskKind, TaskMetadata,
-    TaskStatus, WorkerClient,
+    ProofId, RawTaskRequest, SubscriberBuilder, TaskId, TaskMetadata, WorkerClient,
 };
 
 type LocalDb = Arc<DashMap<TaskId, (watch::Sender<TaskStatus>, watch::Receiver<TaskStatus>)>>;
 
 pub struct LocalWorkerClientChannels {
-    pub task_receivers: BTreeMap<TaskKind, mpsc::Receiver<(TaskId, RawTaskRequest)>>,
+    pub task_receivers: BTreeMap<TaskType, mpsc::Receiver<(TaskId, RawTaskRequest)>>,
 }
 
 pub struct LocalWorkerClientInner {
     db: LocalDb,
-    input_task_queues: EnumMap<TaskKind, mpsc::Sender<(TaskId, RawTaskRequest)>>,
+    input_task_queues: HashMap<TaskType, mpsc::Sender<(TaskId, RawTaskRequest)>>,
 }
 
 impl LocalWorkerClientInner {
@@ -31,46 +31,61 @@ impl LocalWorkerClientInner {
         let mut task_outputs = BTreeMap::new();
 
         let unspecified_channel = mpsc::channel(1);
-        task_inputs.insert(TaskKind::Unspecified, unspecified_channel.0);
-        task_outputs.insert(TaskKind::Unspecified, unspecified_channel.1);
+        task_inputs.insert(TaskType::UnspecifiedTaskType, unspecified_channel.0);
+        task_outputs.insert(TaskType::UnspecifiedTaskType, unspecified_channel.1);
 
         let controller_channel = mpsc::channel(1);
-        task_inputs.insert(TaskKind::Controller, controller_channel.0);
-        task_outputs.insert(TaskKind::Controller, controller_channel.1);
+        task_inputs.insert(TaskType::Controller, controller_channel.0);
+        task_outputs.insert(TaskType::Controller, controller_channel.1);
 
         let prove_shard_channel = mpsc::channel(1);
-        task_inputs.insert(TaskKind::ProveShard, prove_shard_channel.0);
-        task_outputs.insert(TaskKind::ProveShard, prove_shard_channel.1);
+        task_inputs.insert(TaskType::ProveShard, prove_shard_channel.0);
+        task_outputs.insert(TaskType::ProveShard, prove_shard_channel.1);
 
         let recursion_reduce_channel = mpsc::channel(1);
-        task_inputs.insert(TaskKind::RecursionReduce, recursion_reduce_channel.0);
-        task_outputs.insert(TaskKind::RecursionReduce, recursion_reduce_channel.1);
+        task_inputs.insert(TaskType::RecursionReduce, recursion_reduce_channel.0);
+        task_outputs.insert(TaskType::RecursionReduce, recursion_reduce_channel.1);
 
         let recursion_deferred_channel = mpsc::channel(1);
-        task_inputs.insert(TaskKind::RecursionDeferred, recursion_deferred_channel.0);
-        task_outputs.insert(TaskKind::RecursionDeferred, recursion_deferred_channel.1);
+        task_inputs.insert(TaskType::RecursionDeferred, recursion_deferred_channel.0);
+        task_outputs.insert(TaskType::RecursionDeferred, recursion_deferred_channel.1);
 
         let shrink_wrap_channel = mpsc::channel(1);
-        task_inputs.insert(TaskKind::ShrinkWrap, shrink_wrap_channel.0);
-        task_outputs.insert(TaskKind::ShrinkWrap, shrink_wrap_channel.1);
+        task_inputs.insert(TaskType::ShrinkWrap, shrink_wrap_channel.0);
+        task_outputs.insert(TaskType::ShrinkWrap, shrink_wrap_channel.1);
 
         let setup_vkey_channel = mpsc::channel(1);
-        task_inputs.insert(TaskKind::SetupVkey, setup_vkey_channel.0);
-        task_outputs.insert(TaskKind::SetupVkey, setup_vkey_channel.1);
+        task_inputs.insert(TaskType::SetupVkey, setup_vkey_channel.0);
+        task_outputs.insert(TaskType::SetupVkey, setup_vkey_channel.1);
 
         let marker_deferred_record_channel = mpsc::channel(1);
-        task_inputs.insert(TaskKind::MarkerDeferredRecord, marker_deferred_record_channel.0);
-        task_outputs.insert(TaskKind::MarkerDeferredRecord, marker_deferred_record_channel.1);
+        task_inputs.insert(TaskType::MarkerDeferredRecord, marker_deferred_record_channel.0);
+        task_outputs.insert(TaskType::MarkerDeferredRecord, marker_deferred_record_channel.1);
 
         let plonk_wrap_channel = mpsc::channel(1);
-        task_inputs.insert(TaskKind::PlonkWrap, plonk_wrap_channel.0);
-        task_outputs.insert(TaskKind::PlonkWrap, plonk_wrap_channel.1);
+        task_inputs.insert(TaskType::PlonkWrap, plonk_wrap_channel.0);
+        task_outputs.insert(TaskType::PlonkWrap, plonk_wrap_channel.1);
 
         let groth16_wrap_channel = mpsc::channel(1);
-        task_inputs.insert(TaskKind::Groth16Wrap, groth16_wrap_channel.0);
-        task_outputs.insert(TaskKind::Groth16Wrap, groth16_wrap_channel.1);
+        task_inputs.insert(TaskType::Groth16Wrap, groth16_wrap_channel.0);
+        task_outputs.insert(TaskType::Groth16Wrap, groth16_wrap_channel.1);
 
-        let task_queues = EnumMap::from_fn(|kind| task_inputs.remove(&kind).unwrap());
+        let mut task_queues = HashMap::new();
+        for task_type in [
+            TaskType::UnspecifiedTaskType,
+            TaskType::Controller,
+            TaskType::ProveShard,
+            TaskType::RecursionReduce,
+            TaskType::RecursionDeferred,
+            TaskType::ShrinkWrap,
+            TaskType::SetupVkey,
+            TaskType::MarkerDeferredRecord,
+            TaskType::PlonkWrap,
+            TaskType::Groth16Wrap,
+        ] {
+            task_queues.insert(task_type, task_inputs.remove(&task_type).unwrap());
+        }
+
         let inner = Self { db: Arc::new(DashMap::new()), input_task_queues: task_queues };
         (inner, LocalWorkerClientChannels { task_receivers: task_outputs })
     }
@@ -96,14 +111,14 @@ impl Clone for LocalWorkerClient {
 }
 
 impl WorkerClient for LocalWorkerClient {
-    async fn submit_task(&self, kind: TaskKind, task: RawTaskRequest) -> anyhow::Result<TaskId> {
+    async fn submit_task(&self, kind: TaskType, task: RawTaskRequest) -> anyhow::Result<TaskId> {
         tracing::info!("submitting task of kind {kind:?}");
         let task_id = LocalWorkerClientInner::create_id();
         // Create a db entry for the task.
         let (tx, rx) = watch::channel(TaskStatus::Pending);
         self.inner.db.insert(task_id.clone(), (tx, rx));
         // Send the task to the input queue.
-        self.inner.input_task_queues[kind]
+        self.inner.input_task_queues[&kind]
             .send((task_id.clone(), task))
             .await
             .map_err(|_| anyhow::anyhow!("failed to send task of kind {:?} to queue", kind))?;

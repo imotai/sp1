@@ -1,14 +1,17 @@
 use std::{env, sync::Arc};
 
 use sp1_hypercube::prover::ProverSemaphore;
+use sp1_prover_types::{
+    ArtifactClient, ArtifactType, InMemoryArtifactClient, TaskStatus, TaskType,
+};
 use tokio::{sync::mpsc, task::JoinSet};
 
 use crate::{
     components::{CoreProver, RecursionProver, WrapProver},
     worker::{
-        ArtifactClient, InMemoryArtifactClient, LocalWorkerClient, RawTaskRequest, SP1Controller,
-        SP1ControllerConfig, SP1CoreProverConfig, SP1LocalNode, SP1LocalNodeConfig,
-        SP1ProverConfig, SP1ProverEngine, TaskKind, TaskMetadata, TaskStatus, WorkerClient,
+        LocalWorkerClient, RawTaskRequest, SP1Controller, SP1ControllerConfig, SP1CoreProverConfig,
+        SP1LocalNode, SP1LocalNodeConfig, SP1ProverConfig, SP1ProverEngine, TaskMetadata,
+        WorkerClient,
     },
     SP1ProverComponents,
 };
@@ -141,7 +144,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
 
         // Spawn the controller handler
         tokio::task::spawn({
-            let mut controller_rx = channels.task_receivers.remove(&TaskKind::Controller).unwrap();
+            let mut controller_rx = channels.task_receivers.remove(&TaskType::Controller).unwrap();
             let worker_client = worker_client.clone();
             let artifact_client = artifact_client.clone();
             let controller = SP1Controller::new(
@@ -163,7 +166,10 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
 
                     // Remove all the inputs from the task
                     for input in request.inputs {
-                        artifact_client.delete(&input).await.unwrap();
+                        artifact_client
+                            .delete(&input, ArtifactType::UnspecifiedArtifactType)
+                            .await
+                            .unwrap();
                     }
                 }
             }
@@ -182,7 +188,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
 
         // Spawn the setup handler
         tokio::task::spawn({
-            let mut setup_rx = channels.task_receivers.remove(&TaskKind::SetupVkey).unwrap();
+            let mut setup_rx = channels.task_receivers.remove(&TaskType::SetupVkey).unwrap();
             let prover_engine = prover_engine.clone();
             let worker_client = worker_client.clone();
             async move {
@@ -219,7 +225,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
 
         // Spawn the prove shard handler
         tokio::task::spawn({
-            let mut core_prover_rx = channels.task_receivers.remove(&TaskKind::ProveShard).unwrap();
+            let mut core_prover_rx = channels.task_receivers.remove(&TaskType::ProveShard).unwrap();
             let worker_client = worker_client.clone();
             async move {
                 let mut task_set = JoinSet::new();

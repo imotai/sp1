@@ -5,12 +5,12 @@ pub use config::*;
 pub use init::*;
 use sp1_core_executor::{SP1Context, SP1CoreOpts};
 use sp1_core_machine::io::SP1Stdin;
+use sp1_prover_types::{
+    ArtifactClient, ArtifactType, InMemoryArtifactClient, TaskStatus, TaskType,
+};
 
 use crate::{
-    worker::{
-        ArtifactClient, ArtifactType, InMemoryArtifactClient, LocalWorkerClient, ProofId,
-        RawTaskRequest, RequesterId, TaskKind, TaskStatus, WorkerClient,
-    },
+    worker::{LocalWorkerClient, ProofId, RawTaskRequest, RequesterId, WorkerClient},
     SP1CoreProof,
 };
 
@@ -32,17 +32,21 @@ impl SP1LocalNode {
         let proof_id = ProofId::new("core_proof");
         let requester_id = RequesterId::new("local node");
 
-        let elf_artifact = self.artifact_client.create_artifact(ArtifactType::Program);
-        self.artifact_client.upload(&elf_artifact, elf.to_vec()).await?;
+        let elf_artifact = self.artifact_client.create_artifact()?;
+        self.artifact_client
+            .upload_with_type(&elf_artifact, ArtifactType::Program, elf.to_vec())
+            .await?;
 
-        let stdin_artifact = self.artifact_client.create_artifact(ArtifactType::Stdin);
-        self.artifact_client.upload(&stdin_artifact, stdin).await?;
+        let stdin_artifact = self.artifact_client.create_artifact()?;
+        self.artifact_client.upload_with_type(&stdin_artifact, ArtifactType::Stdin, stdin).await?;
 
-        let opts_artifact = self.artifact_client.create_artifact(ArtifactType::Unspecified);
-        self.artifact_client.upload(&opts_artifact, opts).await?;
+        let opts_artifact = self.artifact_client.create_artifact()?;
+        self.artifact_client
+            .upload_with_type(&opts_artifact, ArtifactType::UnspecifiedArtifactType, opts)
+            .await?;
 
         // Create an artifact for the output
-        let output_artifact = self.artifact_client.create_artifact(ArtifactType::Unspecified);
+        let output_artifact = self.artifact_client.create_artifact()?;
 
         let request = RawTaskRequest {
             inputs: vec![elf_artifact.clone(), stdin_artifact.clone(), opts_artifact.clone()],
@@ -53,7 +57,7 @@ impl SP1LocalNode {
             requester_id,
         };
 
-        let task_id = self.worker_client.submit_task(TaskKind::Controller, request).await?;
+        let task_id = self.worker_client.submit_task(TaskType::Controller, request).await?;
         let subscriber = self.worker_client.subscriber().await.per_task();
         let status = subscriber.wait_task(task_id).await?;
         if status != TaskStatus::Succeeded {
@@ -63,10 +67,14 @@ impl SP1LocalNode {
         let proof = self.artifact_client.download::<SP1CoreProof>(&output_artifact).await?;
 
         // Clean up the artifacts
-        self.artifact_client.try_delete(&elf_artifact).await;
-        self.artifact_client.try_delete(&stdin_artifact).await;
-        self.artifact_client.try_delete(&opts_artifact).await;
-        self.artifact_client.try_delete(&output_artifact).await;
+        self.artifact_client.try_delete(&elf_artifact, ArtifactType::Program).await?;
+        self.artifact_client.try_delete(&stdin_artifact, ArtifactType::Stdin).await?;
+        self.artifact_client
+            .try_delete(&opts_artifact, ArtifactType::UnspecifiedArtifactType)
+            .await?;
+        self.artifact_client
+            .try_delete(&output_artifact, ArtifactType::UnspecifiedArtifactType)
+            .await?;
 
         Ok(proof)
     }

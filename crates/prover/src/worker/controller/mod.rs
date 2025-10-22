@@ -8,6 +8,7 @@ use opentelemetry::Context;
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
 use sp1_hypercube::ShardProof;
 use sp1_primitives::{io::SP1PublicValues, SP1GlobalContext};
+use sp1_prover_types::{Artifact, ArtifactClient, TaskStatus, TaskType};
 use std::sync::Arc;
 use tokio::{
     sync::{mpsc, oneshot},
@@ -16,10 +17,7 @@ use tokio::{
 use tracing::Instrument;
 
 use crate::{
-    worker::{
-        Artifact, ArtifactClient, ArtifactType, ProofId, RawTaskRequest, RequesterId, TaskId,
-        TaskKind, TaskStatus, WorkerClient,
-    },
+    worker::{ProofId, RawTaskRequest, RequesterId, TaskId, WorkerClient},
     CoreSC, SP1CoreProof, SP1CoreProofData, SP1VerifyingKey,
 };
 
@@ -90,7 +88,8 @@ where
         let num_deffered_proofs = 0usize;
 
         // Create a setup task and wait for the vk
-        let vk_artifact = self.artifact_client.create_artifact(ArtifactType::Unspecified);
+        let vk_artifact =
+            self.artifact_client.create_artifact().expect("failed to create vk artifact");
         let setup_request = RawTaskRequest {
             inputs: vec![elf.clone()],
             outputs: vec![vk_artifact.clone()],
@@ -100,7 +99,7 @@ where
             requester_id: requester_id.clone(),
         };
         tracing::trace!("submitting setup task");
-        let setup_id = self.worker_client.submit_task(TaskKind::SetupVkey, setup_request).await?;
+        let setup_id = self.worker_client.submit_task(TaskType::SetupVkey, setup_request).await?;
         // Wait for the setup task to finish
         let subscriber = self.worker_client.subscriber().await.per_task();
         let status =
@@ -114,7 +113,8 @@ where
         // Create the common input
         let common_input = CommonProverInput { vk, deferred_digest, num_deffered_proofs };
         // Upload the common input
-        let common_input_artifact = self.artifact_client.create_artifact(ArtifactType::Unspecified);
+        let common_input_artifact =
+            self.artifact_client.create_artifact().expect("failed to create common input artifact");
         self.artifact_client.upload(&common_input_artifact, common_input).await?;
 
         let (core_proof_tx, mut core_proof_rx) = mpsc::unbounded_channel();
