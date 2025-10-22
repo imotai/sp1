@@ -1363,8 +1363,11 @@ dependencies = [
  "slop-symmetric",
  "slop-tensor",
  "sp1-hypercube",
+ "sp1-recursion-circuit",
+ "sp1-sdk",
  "tokio",
  "tracing",
+ "zstd",
 ]
 
 [[package]]
@@ -4381,9 +4384,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.33"
+version = "0.23.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "751e04a496ca00bb97a5e043158d23d66b5aabf2e1d5aa2a0aaebb1aafe6f82c"
+checksum = "6a9586e9ee2b4f8fab52a0048ca7334d7024eef48e2cb9407e3497bb7cab7fa7"
 dependencies = [
  "log",
  "once_cell",
@@ -4739,7 +4742,7 @@ checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 [[package]]
 name = "slop-air"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "p3-air",
 ]
@@ -4747,7 +4750,7 @@ dependencies = [
 [[package]]
 name = "slop-algebra"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "itertools 0.13.0",
  "p3-field",
@@ -4757,7 +4760,7 @@ dependencies = [
 [[package]]
 name = "slop-alloc"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "serde",
  "slop-algebra",
@@ -4767,7 +4770,7 @@ dependencies = [
 [[package]]
 name = "slop-baby-bear"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "lazy_static",
  "p3-baby-bear",
@@ -4781,7 +4784,7 @@ dependencies = [
 [[package]]
 name = "slop-basefold"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "derive-where",
  "itertools 0.13.0",
@@ -4802,7 +4805,7 @@ dependencies = [
 [[package]]
 name = "slop-basefold-prover"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "derive-where",
  "itertools 0.13.0",
@@ -4829,7 +4832,7 @@ dependencies = [
 [[package]]
 name = "slop-bn254"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "ff 0.13.1",
  "p3-bn254-fr",
@@ -4844,7 +4847,7 @@ dependencies = [
 [[package]]
 name = "slop-challenger"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "futures",
  "p3-challenger",
@@ -4856,7 +4859,7 @@ dependencies = [
 [[package]]
 name = "slop-commit"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "p3-commit",
  "serde",
@@ -4866,7 +4869,7 @@ dependencies = [
 [[package]]
 name = "slop-dft"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "p3-dft",
  "serde",
@@ -4879,7 +4882,7 @@ dependencies = [
 [[package]]
 name = "slop-fri"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "p3-fri",
 ]
@@ -4887,7 +4890,7 @@ dependencies = [
 [[package]]
 name = "slop-futures"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "crossbeam",
  "futures",
@@ -4901,7 +4904,7 @@ dependencies = [
 [[package]]
 name = "slop-jagged"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "derive-where",
  "futures",
@@ -4934,7 +4937,7 @@ dependencies = [
 [[package]]
 name = "slop-keccak-air"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "p3-keccak-air",
 ]
@@ -4942,7 +4945,7 @@ dependencies = [
 [[package]]
 name = "slop-koala-bear"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "lazy_static",
  "p3-koala-bear",
@@ -4956,7 +4959,7 @@ dependencies = [
 [[package]]
 name = "slop-matrix"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "p3-matrix",
 ]
@@ -4964,7 +4967,7 @@ dependencies = [
 [[package]]
 name = "slop-maybe-rayon"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "p3-maybe-rayon",
 ]
@@ -4972,7 +4975,7 @@ dependencies = [
 [[package]]
 name = "slop-merkle-tree"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "derive-where",
  "ff 0.13.1",
@@ -4999,7 +5002,7 @@ dependencies = [
 [[package]]
 name = "slop-multilinear"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "derive-where",
  "futures",
@@ -5020,7 +5023,7 @@ dependencies = [
 [[package]]
 name = "slop-poseidon2"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "p3-poseidon2",
 ]
@@ -5028,7 +5031,7 @@ dependencies = [
 [[package]]
 name = "slop-stacked"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "derive-where",
  "futures",
@@ -5048,7 +5051,7 @@ dependencies = [
 [[package]]
 name = "slop-sumcheck"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "futures",
  "itertools 0.13.0",
@@ -5065,7 +5068,7 @@ dependencies = [
 [[package]]
 name = "slop-symmetric"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "p3-symmetric",
 ]
@@ -5073,7 +5076,7 @@ dependencies = [
 [[package]]
 name = "slop-tensor"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "arrayvec",
  "derive-where",
@@ -5093,7 +5096,7 @@ dependencies = [
 [[package]]
 name = "slop-uni-stark"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "p3-uni-stark",
 ]
@@ -5101,7 +5104,7 @@ dependencies = [
 [[package]]
 name = "slop-utils"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "p3-util",
  "tracing-forest",
@@ -5111,7 +5114,7 @@ dependencies = [
 [[package]]
 name = "slop-whir"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "derive-where",
  "futures",
@@ -5179,7 +5182,7 @@ dependencies = [
 [[package]]
 name = "sp1-build"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -5192,7 +5195,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-executor"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -5231,7 +5234,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-machine"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "bincode",
  "cfg-if",
@@ -5277,7 +5280,7 @@ dependencies = [
 [[package]]
 name = "sp1-cuda"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "bincode",
  "bytes",
@@ -5296,7 +5299,7 @@ dependencies = [
 [[package]]
 name = "sp1-curves"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "cfg-if",
  "dashu",
@@ -5317,7 +5320,7 @@ dependencies = [
 [[package]]
 name = "sp1-derive"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5327,7 +5330,7 @@ dependencies = [
 [[package]]
 name = "sp1-hypercube"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "arrayref",
  "deepsize2",
@@ -5371,7 +5374,7 @@ dependencies = [
 [[package]]
 name = "sp1-jit"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "dynasmrt",
  "hashbrown 0.14.5",
@@ -5385,7 +5388,7 @@ dependencies = [
 [[package]]
 name = "sp1-primitives"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "bincode",
  "blake3",
@@ -5407,7 +5410,7 @@ dependencies = [
 [[package]]
 name = "sp1-prover"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "anyhow",
  "bincode",
@@ -5463,7 +5466,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-circuit"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "itertools 0.13.0",
  "rand 0.8.5",
@@ -5501,7 +5504,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-compiler"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "backtrace",
  "cfg-if",
@@ -5521,7 +5524,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-executor"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "backtrace",
  "cfg-if",
@@ -5544,7 +5547,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-gnark-ffi"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "anyhow",
  "bincode",
@@ -5567,7 +5570,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-machine"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "itertools 0.13.0",
  "rand 0.8.5",
@@ -5588,7 +5591,7 @@ dependencies = [
 [[package]]
 name = "sp1-sdk"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#3ca2c456194622a0ec800b18c8d2cde80a852784"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
 dependencies = [
  "alloy-primitives",
  "anyhow",

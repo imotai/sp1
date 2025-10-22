@@ -32,13 +32,16 @@ if(DEFINED CBINDGEN_INCLUDE_DIR)
 endif()
 
 # Custom target to invoke Makefile
+# USES_TERMINAL gives the command access to the console pool, which helps
+# with jobserver propagation when building under cargo's parallel execution
 add_custom_target(cuda_library ALL
-    COMMAND ${CMAKE_MAKE_PROGRAM} 
+    COMMAND ${CMAKE_MAKE_PROGRAM}
             -C ${PROJECT_ROOT}
             BUILD_TYPE=${MAKE_BUILD_TYPE}
             ${CBINDGEN_FLAG}
             all
     COMMENT "Building CUDA library via Makefile"
+    USES_TERMINAL
     VERBATIM
 )
 
@@ -64,5 +67,6 @@ set(CSL_SYS_CUDA_LIB "${PROJECT_ROOT}/target/cuda-build/lib/libsys-cuda.a" CACHE
 add_custom_target(clean_cuda
     COMMAND ${CMAKE_MAKE_PROGRAM} -C ${PROJECT_ROOT} clean
     COMMENT "Cleaning CUDA build artifacts"
+    USES_TERMINAL
     VERBATIM
 )
