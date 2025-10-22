@@ -1,9 +1,7 @@
-mod config;
 mod init;
 
 use std::borrow::Borrow;
 
-pub use config::*;
 pub use init::*;
 use sp1_core_executor::{SP1Context, SP1CoreOpts};
 use sp1_core_machine::io::SP1Stdin;

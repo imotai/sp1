@@ -27,8 +27,8 @@ pub struct SP1ControllerConfig {
 
 pub struct SP1Controller<A, W> {
     splicing_engine: Arc<SplicingEngine<A, W>>,
-    artifact_client: A,
-    worker_client: W,
+    pub(crate) artifact_client: A,
+    pub(crate) worker_client: W,
 }
 
 impl<A, W> SP1Controller<A, W>

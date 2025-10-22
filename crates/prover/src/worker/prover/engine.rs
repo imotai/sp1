@@ -14,7 +14,7 @@ pub struct SP1ProverConfig {
     pub core_prover_config: SP1CoreProverConfig,
 }
 
-pub struct SP1ProverEngine<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> {
+pub struct SP1ProverEngine<A, W, C: SP1ProverComponents> {
     pub core_prover: SP1CoreProver<A, W, C>,
 }
 
