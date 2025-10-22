@@ -1,6 +1,5 @@
 mod compress;
 mod core;
-mod deferred;
 
 pub use compress::*;
 pub use core::*;

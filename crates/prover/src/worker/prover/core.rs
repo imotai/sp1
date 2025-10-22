@@ -108,16 +108,25 @@ where
                             chunk.clk_start,
                             chunk.clk_end
                         );
-                        let (_, record, _) = trace_chunk::<SP1Field>(program.clone(), opts, chunk)
-                            .expect("failed to trace chunk");
+                        let (_, mut record, _) =
+                            trace_chunk::<SP1Field>(program.clone(), opts.clone(), chunk)
+                                .expect("failed to trace chunk");
 
-                        // TODO: defer precompile events
+                        // TODO: Handle deferred precompile events
+                        let _deferred_events = record.defer(&opts.retained_events_presets);
 
                         record
                     }
                     TraceData::Memory(shard) => {
-                        let GlobalMemoryShard { final_state, initialize_events, finalize_events } =
-                            *shard;
+                        let GlobalMemoryShard {
+                            final_state,
+                            initialize_events,
+                            finalize_events,
+                            last_init_addr,
+                            last_finalize_addr,
+                            last_init_page_idx,
+                            last_finalize_page_idx,
+                        } = *shard;
                         let mut record = ExecutionRecord::new(program.clone());
                         record.global_memory_initialize_events = initialize_events;
                         record.global_memory_finalize_events = finalize_events;
@@ -135,8 +144,37 @@ where
                             common_input.deferred_digest,
                             final_state.proof_nonce,
                         );
+                        // Update previous init and finalize addresses and page indices fromt the
+                        // oracle values received from the controller.
+                        record.public_values.previous_init_addr = last_init_addr;
+                        record.public_values.previous_finalize_addr = last_finalize_addr;
+                        record.public_values.previous_init_page_idx = last_init_page_idx;
+                        record.public_values.previous_finalize_page_idx = last_finalize_page_idx;
 
-                        record.finalize_public_values::<SP1Field>();
+                        // Update last init and finalize addresses and page indices from the events
+                        // of the shard.
+                        record.public_values.last_init_addr = record
+                            .global_memory_initialize_events
+                            .last()
+                            .map(|event| event.addr)
+                            .unwrap_or(0);
+                        record.public_values.last_finalize_addr = record
+                            .global_memory_finalize_events
+                            .last()
+                            .map(|event| event.addr)
+                            .unwrap_or(0);
+                        record.public_values.last_init_page_idx = record
+                            .global_page_prot_initialize_events
+                            .last()
+                            .map(|event| event.page_idx)
+                            .unwrap_or(0);
+                        record.public_values.last_finalize_page_idx = record
+                            .global_page_prot_finalize_events
+                            .last()
+                            .map(|event| event.page_idx)
+                            .unwrap_or(0);
+
+                        record.finalize_public_values::<SP1Field>(false);
 
                         record
                     }
@@ -144,7 +182,8 @@ where
                 };
 
                 // Generate the dependencies
-                machine.generate_dependencies([&mut record].into_iter(), None);
+                let record_iter = std::iter::once(&mut record);
+                machine.generate_dependencies(record_iter, None);
 
                 (program, record)
             }

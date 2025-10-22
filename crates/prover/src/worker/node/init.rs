@@ -8,6 +8,7 @@ use tokio::{sync::mpsc, task::JoinSet};
 
 use crate::{
     components::{CoreProver, RecursionProver, WrapProver},
+    verify::SP1Verifier,
     worker::{
         LocalWorkerClient, RawTaskRequest, SP1Controller, SP1ControllerConfig, SP1CoreProverConfig,
         SP1LocalNode, SP1LocalNodeConfig, SP1ProverConfig, SP1ProverEngine, TaskMetadata,
@@ -24,6 +25,8 @@ pub struct SP1LocalNodeBuilder<C: SP1ProverComponents> {
     compress_air_prover_and_permits: Option<(Arc<RecursionProver<C>>, ProverSemaphore)>,
     shrink_air_prover_and_permits: Option<(Arc<RecursionProver<C>>, ProverSemaphore)>,
     wrap_air_prover_and_permits: Option<(Arc<WrapProver<C>>, ProverSemaphore)>,
+    #[allow(dead_code)]
+    vk_map_path: String,
 }
 
 impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
@@ -82,12 +85,16 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         // Get the local node config from parts above.
         let config = SP1LocalNodeConfig { controller_config, prover_config };
 
+        let vk_map_path =
+            env::var("SP1_LOCAL_NODE_VK_MAP_PATH").unwrap_or("./src/vk_map.bin".to_string());
+
         Self {
             config,
             core_air_prover_and_permits: None,
             compress_air_prover_and_permits: None,
             shrink_air_prover_and_permits: None,
             wrap_air_prover_and_permits: None,
+            vk_map_path,
         }
     }
 
@@ -135,6 +142,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
             compress_air_prover_and_permits: _,
             shrink_air_prover_and_permits: _,
             wrap_air_prover_and_permits: _,
+            vk_map_path: _,
         } = self;
 
         let artifact_client = InMemoryArtifactClient::new();
@@ -263,6 +271,25 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
             }
         });
 
-        Ok(SP1LocalNode { artifact_client, worker_client })
+        // Create the verifier
+        let core_verifier = C::core_verifier();
+        let compress_verifier = C::compress_verifier();
+        let shrink_verifier = C::shrink_verifier();
+        let wrap_verifier = C::wrap_verifier();
+        let verifier = SP1Verifier {
+            core: core_verifier,
+            compress: compress_verifier,
+            shrink: shrink_verifier,
+            wrap: wrap_verifier,
+            // TODO: get the actual values
+            recursion_vk_root: Default::default(),
+            // TODO: get the actual values
+            recursion_vk_map: Default::default(),
+            vk_verification: true,
+            shrink_vk: None,
+            wrap_vk: None,
+        };
+
+        Ok(SP1LocalNode { artifact_client, worker_client, verifier })
     }
 }
