@@ -2,13 +2,11 @@ use std::sync::Arc;
 
 use slop_futures::pipeline::TaskHandle;
 use sp1_hypercube::prover::ProverSemaphore;
+use sp1_prover_types::{Artifact, ArtifactClient};
 
 use crate::{
     components::CoreProver,
-    worker::{
-        Artifact, ArtifactClient, SP1CoreProver, SP1CoreProverConfig, SetupTask, TaskId,
-        TracingTask, WorkerClient,
-    },
+    worker::{SP1CoreProver, SP1CoreProverConfig, SetupTask, TaskId, TracingTask, WorkerClient},
     SP1ProverComponents,
 };
 
@@ -16,7 +14,7 @@ pub struct SP1ProverConfig {
     pub core_prover_config: SP1CoreProverConfig,
 }
 
-pub struct SP1ProverEngine<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> {
+pub struct SP1ProverEngine<A, W, C: SP1ProverComponents> {
     pub core_prover: SP1CoreProver<A, W, C>,
 }
 

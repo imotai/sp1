@@ -127,6 +127,11 @@ runs:
           echo "pkg-config and libssl-dev are already installed."
         fi
 
+    - name: Install Protoc
+      uses: arduino/setup-protoc@v3
+      with:
+        version: "29.4"
+  
     - name: Echo docker buildx version
       shell: bash
       run: docker buildx version

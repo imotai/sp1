@@ -18,14 +18,11 @@ use sp1_core_machine::{
 };
 use sp1_hypercube::air::{PROOF_NONCE_NUM_WORDS, PV_DIGEST_NUM_WORDS};
 use sp1_jit::MinimalTrace;
-
+use sp1_prover_types::{Artifact, ArtifactClient, TaskType};
 use tokio::{sync::mpsc, task::JoinSet};
 
 use crate::{
-    worker::{
-        Artifact, ArtifactClient, ArtifactType, ProofId, RawTaskRequest, RequesterId, TaskId,
-        TaskKind, WorkerClient,
-    },
+    worker::{ProofId, RawTaskRequest, RequesterId, TaskId, WorkerClient},
     SP1VerifyingKey,
 };
 
@@ -49,6 +46,10 @@ pub struct GlobalMemoryShard {
     pub final_state: FinalVmState,
     pub initialize_events: Vec<MemoryInitializeFinalizeEvent>,
     pub finalize_events: Vec<MemoryInitializeFinalizeEvent>,
+    pub last_init_addr: u64,
+    pub last_finalize_addr: u64,
+    pub last_init_page_idx: u64,
+    pub last_finalize_page_idx: u64,
 }
 
 pub struct ProveShardInput {
@@ -348,14 +349,34 @@ where
 
             async move {
                 let mut counter = 0;
+                let mut last_init_addr = 0;
+                let mut last_finalize_addr = 0;
+                let mut last_init_page_idx = 0;
+                let mut last_finalize_page_idx = 0;
                 while let Some((initialize_events, finalize_events)) = shard_data_rx.recv().await {
                     tracing::trace!("Got global memory shard number {counter}");
-                    let mem_global_shard =
-                        GlobalMemoryShard { final_state, initialize_events, finalize_events };
+                    let next_init_addr =
+                        initialize_events.last().map(|event| event.addr).unwrap_or(0);
+                    let next_finalize_addr =
+                        finalize_events.last().map(|event| event.addr).unwrap_or(0);
+                    let next_init_page_idx = last_init_page_idx;
+                    let next_finalize_page_idx = last_finalize_page_idx;
+                    let mem_global_shard = GlobalMemoryShard {
+                        final_state,
+                        initialize_events,
+                        finalize_events,
+                        last_init_addr,
+                        last_finalize_addr,
+                        last_init_page_idx,
+                        last_finalize_page_idx,
+                    };
+
                     let data = TraceData::Memory(Box::new(mem_global_shard));
 
                     // Upload the data
-                    let data_artifact = artifact_client.create_artifact(ArtifactType::Unspecified);
+                    let data_artifact = artifact_client
+                        .create_artifact()
+                        .expect("failed to create record artifact");
                     artifact_client
                         .upload(&data_artifact, data)
                         .await
@@ -371,7 +392,8 @@ where
                     .to_vec();
 
                     // Allocate an artifact for the proof
-                    let proof_artifact = artifact_client.create_artifact(ArtifactType::Unspecified);
+                    let proof_artifact =
+                        artifact_client.create_artifact().expect("failed to create proof artifact");
 
                     // Prepare the task.
                     let task = RawTaskRequest {
@@ -385,7 +407,7 @@ where
 
                     // Send the task to the worker.
                     let task_id = worker_client
-                        .submit_task(TaskKind::ProveShard, task)
+                        .submit_task(TaskType::ProveShard, task)
                         .await
                         .expect("failed to send task");
 
@@ -394,6 +416,10 @@ where
                     prove_shard_tx.send(proof_data).expect("failed to send task id");
                     tracing::trace!("Submitted memory global shard {counter}");
                     counter += 1;
+                    last_init_addr = next_init_addr;
+                    last_finalize_addr = next_finalize_addr;
+                    last_init_page_idx = next_init_page_idx;
+                    last_finalize_page_idx = next_finalize_page_idx;
                 }
             }
         });
@@ -464,7 +490,10 @@ where
                 MemoryInitializeFinalizeEvent::finalize(addr, entry.value, entry.clk)
             }));
 
-        (global_memory_initialize_events, global_memory_finalize_events)
+        (
+            global_memory_initialize_events.sorted_by_key(|event| event.addr),
+            global_memory_finalize_events.sorted_by_key(|event| event.addr),
+        )
     }
 }
 
@@ -608,8 +637,9 @@ where
                         bincode::serialize(&record.chunk).expect("failed to serialize record");
                     let data = TraceData::Core(chunk_bytes);
                     // Upload the record
-                    let record_artifact =
-                        artifact_client.create_artifact(ArtifactType::Unspecified);
+                    let record_artifact = artifact_client
+                        .create_artifact()
+                        .expect("failed to create record artifact");
                     artifact_client
                         .upload(&record_artifact, data)
                         .await
@@ -627,7 +657,9 @@ where
                     .to_vec();
 
                     // Allocate an artifact for the proof
-                    let proof_artifact = artifact_client.create_artifact(ArtifactType::Unspecified);
+                    let proof_artifact = artifact_client
+                        .create_artifact()
+                        .expect("failed to create shard proof artifact");
 
                     // Prepare the task.
                     let task = RawTaskRequest {
@@ -641,7 +673,7 @@ where
 
                     // Send the task to the worker.
                     let task_id = worker_client
-                        .submit_task(TaskKind::ProveShard, task)
+                        .submit_task(TaskType::ProveShard, task)
                         .await
                         .expect("failed to send task");
 
@@ -743,8 +775,9 @@ where
 #[cfg(test)]
 mod tests {
     use sp1_core_machine::utils::setup_logger;
+    use sp1_prover_types::InMemoryArtifactClient;
 
-    use crate::worker::{InMemoryArtifactClient, TrivialWorkerClient};
+    use crate::worker::TrivialWorkerClient;
 
     use super::*;
 
@@ -774,18 +807,25 @@ mod tests {
         let parent_id = None;
         let parent_context = None;
         let requester_id = RequesterId::new("test_pure_execution");
-        let common_input = artifact_client.create_artifact(ArtifactType::Unspecified);
+        let common_input =
+            artifact_client.create_artifact().expect("failed to create common input artifact");
 
         let (sender, mut receiver) = mpsc::unbounded_channel();
 
-        let elf_artifact = artifact_client.create_artifact(ArtifactType::Program);
+        let elf_artifact =
+            artifact_client.create_artifact().expect("failed to create elf artifact");
         let elf_bytes = elf.to_vec();
-        artifact_client.upload(&elf_artifact, elf_bytes).await.expect("failed to upload elf");
+        artifact_client
+            .upload_program(&elf_artifact, elf_bytes)
+            .await
+            .expect("failed to upload elf");
 
-        let stdin_artifact = artifact_client.create_artifact(ArtifactType::Stdin);
+        let stdin_artifact =
+            artifact_client.create_artifact().expect("failed to create stdin artifact");
         artifact_client.upload(&stdin_artifact, stdin).await.expect("failed to upload stdin");
 
-        let opts_artifact = artifact_client.create_artifact(ArtifactType::Unspecified);
+        let opts_artifact =
+            artifact_client.create_artifact().expect("failed to create opts artifact");
         artifact_client.upload(&opts_artifact, opts).await.expect("failed to upload opts");
 
         let executor = SP1CoreExecutor {

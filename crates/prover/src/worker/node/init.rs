@@ -1,91 +1,32 @@
-use std::{env, sync::Arc};
+use std::sync::Arc;
 
 use sp1_hypercube::prover::ProverSemaphore;
+use sp1_prover_types::{
+    ArtifactClient, ArtifactType, InMemoryArtifactClient, TaskStatus, TaskType,
+};
 use tokio::{sync::mpsc, task::JoinSet};
 
 use crate::{
     components::{CoreProver, RecursionProver, WrapProver},
+    verify::SP1Verifier,
     worker::{
-        ArtifactClient, InMemoryArtifactClient, LocalWorkerClient, RawTaskRequest, SP1Controller,
-        SP1ControllerConfig, SP1CoreProverConfig, SP1LocalNode, SP1LocalNodeConfig,
-        SP1ProverConfig, SP1ProverEngine, TaskKind, TaskMetadata, TaskStatus, WorkerClient,
+        LocalWorkerClient, LocalWorkerClientChannels, RawTaskRequest, SP1LocalNode,
+        SP1WorkerBuilder, TaskMetadata, WorkerClient,
     },
     SP1ProverComponents,
 };
 
-use super::config::*;
-
 pub struct SP1LocalNodeBuilder<C: SP1ProverComponents> {
-    config: SP1LocalNodeConfig,
-    core_air_prover_and_permits: Option<(Arc<CoreProver<C>>, ProverSemaphore)>,
-    compress_air_prover_and_permits: Option<(Arc<RecursionProver<C>>, ProverSemaphore)>,
-    shrink_air_prover_and_permits: Option<(Arc<RecursionProver<C>>, ProverSemaphore)>,
-    wrap_air_prover_and_permits: Option<(Arc<WrapProver<C>>, ProverSemaphore)>,
+    worker_builder: SP1WorkerBuilder<InMemoryArtifactClient, LocalWorkerClient, C>,
+    channels: LocalWorkerClientChannels,
 }
 
 impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
     pub fn new() -> Self {
-        // Build the core config using data from environment or default values.
-        //
-        // TODO: base default values on system information.
-
-        // Build the controller config.
-        let num_splicing_workers = env::var("SP1_LOCAL_NODE_NUM_SPLICING_WORKERS")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(DEFAULT_NUM_SPLICING_WORKERS);
-        let splicing_buffer_size = env::var("SP1_LOCAL_NODE_SPLICING_BUFFER_SIZE")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(DEFAULT_SPLICING_BUFFER_SIZE);
-        let controller_config = SP1ControllerConfig { num_splicing_workers, splicing_buffer_size };
-
-        // Build the core prover config.
-        let num_trace_executor_workers = env::var("SP1_LOCAL_NODE_NUM_TRACE_EXECUTOR_WORKERS")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(DEFAULT_NUM_TRACE_EXECUTOR_WORKERS);
-        let trace_executor_buffer_size = env::var("SP1_LOCAL_NODE_TRACE_EXECUTOR_BUFFER_SIZE")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(DEFAULT_TRACE_EXECUTOR_BUFFER_SIZE);
-        let num_core_prover_workers = env::var("SP1_LOCAL_NODE_NUM_CORE_PROVER_WORKERS")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(DEFAULT_NUM_CORE_PROVER_WORKERS);
-        let core_prover_buffer_size = env::var("SP1_LOCAL_NODE_CORE_PROVER_BUFFER_SIZE")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(DEFAULT_CORE_PROVER_BUFFER_SIZE);
-        let num_setup_workers = env::var("SP1_LOCAL_NODE_NUM_SETUP_WORKERS")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(DEFAULT_NUM_SETUP_WORKERS);
-        let setup_buffer_size = env::var("SP1_LOCAL_NODE_SETUP_BUFFER_SIZE")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(DEFAULT_SETUP_BUFFER_SIZE);
-        let core_prover_config = SP1CoreProverConfig {
-            num_trace_executor_workers,
-            trace_executor_buffer_size,
-            num_core_prover_workers,
-            core_prover_buffer_size,
-            num_setup_workers,
-            setup_buffer_size,
-        };
-
-        let prover_config = SP1ProverConfig { core_prover_config };
-
-        // Get the local node config from parts above.
-        let config = SP1LocalNodeConfig { controller_config, prover_config };
-
-        Self {
-            config,
-            core_air_prover_and_permits: None,
-            compress_air_prover_and_permits: None,
-            shrink_air_prover_and_permits: None,
-            wrap_air_prover_and_permits: None,
-        }
+        let artifact_client = InMemoryArtifactClient::new();
+        let (worker_client, channels) = LocalWorkerClient::init();
+        let worker_builder = SP1WorkerBuilder::new(artifact_client, worker_client);
+        Self { worker_builder, channels }
     }
 
     pub fn with_core_air_prover(
@@ -93,7 +34,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         core_air_prover: Arc<CoreProver<C>>,
         permit: ProverSemaphore,
     ) -> Self {
-        self.core_air_prover_and_permits = Some((core_air_prover, permit));
+        self.worker_builder = self.worker_builder.with_core_air_prover(core_air_prover, permit);
         self
     }
 
@@ -102,7 +43,8 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         compress_air_prover: Arc<RecursionProver<C>>,
         permit: ProverSemaphore,
     ) -> Self {
-        self.compress_air_prover_and_permits = Some((compress_air_prover, permit));
+        self.worker_builder =
+            self.worker_builder.with_compress_air_prover(compress_air_prover, permit);
         self
     }
 
@@ -111,7 +53,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         shrink_air_prover: Arc<RecursionProver<C>>,
         permit: ProverSemaphore,
     ) -> Self {
-        self.shrink_air_prover_and_permits = Some((shrink_air_prover, permit));
+        self.worker_builder = self.worker_builder.with_shrink_air_prover(shrink_air_prover, permit);
         self
     }
 
@@ -120,71 +62,52 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         wrap_air_prover: Arc<WrapProver<C>>,
         permit: ProverSemaphore,
     ) -> Self {
-        self.wrap_air_prover_and_permits = Some((wrap_air_prover, permit));
+        self.worker_builder = self.worker_builder.with_wrap_air_prover(wrap_air_prover, permit);
         self
     }
 
     pub fn build(self) -> anyhow::Result<SP1LocalNode> {
         // Destructure the builder.
-        let Self {
-            config,
-            core_air_prover_and_permits,
-            compress_air_prover_and_permits: _,
-            shrink_air_prover_and_permits: _,
-            wrap_air_prover_and_permits: _,
-        } = self;
+        let Self { worker_builder, mut channels } = self;
 
-        let artifact_client = InMemoryArtifactClient::new();
-        let (worker_client, mut channels) = LocalWorkerClient::init();
+        // Build the node.
+        let worker = worker_builder.build()?;
 
         // Spawn tasks to handle all the requests
 
         // Spawn the controller handler
         tokio::task::spawn({
-            let mut controller_rx = channels.task_receivers.remove(&TaskKind::Controller).unwrap();
-            let worker_client = worker_client.clone();
-            let artifact_client = artifact_client.clone();
-            let controller = SP1Controller::new(
-                config.controller_config,
-                artifact_client.clone(),
-                worker_client.clone(),
-            );
+            let mut controller_rx = channels.task_receivers.remove(&TaskType::Controller).unwrap();
+            let worker = worker.clone();
             async move {
-                let worker_client = worker_client.clone();
                 while let Some((task_id, request)) = controller_rx.recv().await {
                     // Run the controller task
-                    controller.run(request.clone()).await.unwrap();
+                    worker.controller().run(request.clone()).await.unwrap();
 
                     // Complete the task
-                    worker_client
+                    worker
+                        .worker_client()
                         .complete_task(request.proof_id, task_id, TaskMetadata { gpu_time: None })
                         .await
                         .unwrap();
 
                     // Remove all the inputs from the task
                     for input in request.inputs {
-                        artifact_client.delete(&input).await.unwrap();
+                        worker
+                            .artifact_client()
+                            .delete(&input, ArtifactType::UnspecifiedArtifactType)
+                            .await
+                            .unwrap();
                     }
                 }
             }
         });
 
-        // Create the prover engine
-        let core_air_prover_and_permits = core_air_prover_and_permits
-            .ok_or(anyhow::anyhow!("Core air prover and permit are required"))?;
-        let prover_engine = SP1ProverEngine::<_, _, C>::new(
-            config.prover_config,
-            artifact_client.clone(),
-            worker_client.clone(),
-            core_air_prover_and_permits,
-        );
-        let prover_engine = Arc::new(prover_engine);
-
         // Spawn the setup handler
         tokio::task::spawn({
-            let mut setup_rx = channels.task_receivers.remove(&TaskKind::SetupVkey).unwrap();
-            let prover_engine = prover_engine.clone();
-            let worker_client = worker_client.clone();
+            let mut setup_rx = channels.task_receivers.remove(&TaskType::SetupVkey).unwrap();
+            let worker = worker.clone();
+            let worker_client = worker.worker_client().clone();
             async move {
                 let mut task_set = JoinSet::new();
                 let (task_tx, mut task_rx) = mpsc::unbounded_channel();
@@ -195,7 +118,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                             let elf = inputs[0].clone();
                             let output = outputs[0].clone();
                             // TODO: handle errors
-                            let handle = prover_engine.submit_setup(id, elf, output).await.unwrap();
+                            let handle = worker.prover_engine().submit_setup(id, elf, output).await.unwrap();
                             let proof_id = proof_id.clone();
                             let tx = task_tx.clone();
                             task_set.spawn(async move {
@@ -219,8 +142,9 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
 
         // Spawn the prove shard handler
         tokio::task::spawn({
-            let mut core_prover_rx = channels.task_receivers.remove(&TaskKind::ProveShard).unwrap();
-            let worker_client = worker_client.clone();
+            let mut core_prover_rx = channels.task_receivers.remove(&TaskType::ProveShard).unwrap();
+            let worker = worker.clone();
+            let worker_client = worker.worker_client().clone();
             async move {
                 let mut task_set = JoinSet::new();
                 let (task_tx, mut task_rx) = mpsc::unbounded_channel();
@@ -236,7 +160,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                             let opts = inputs[3].clone();
                             let output = outputs[0].clone();
 
-                            let handle = prover_engine.submit_prove_core_shard(id, elf, common_input, record, opts, output).await.unwrap();
+                            let handle = worker.prover_engine().submit_prove_core_shard(id, elf, common_input, record, opts, output).await.unwrap();
                             let proof_id = proof_id.clone();
                             let tx = task_tx.clone();
                             task_set.spawn(async move {
@@ -257,6 +181,28 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
             }
         });
 
-        Ok(SP1LocalNode { artifact_client, worker_client })
+        // Create the verifier
+        let core_verifier = C::core_verifier();
+        let compress_verifier = C::compress_verifier();
+        let shrink_verifier = C::shrink_verifier();
+        let wrap_verifier = C::wrap_verifier();
+        let verifier = SP1Verifier {
+            core: core_verifier,
+            compress: compress_verifier,
+            shrink: shrink_verifier,
+            wrap: wrap_verifier,
+            // TODO: get the actual values
+            recursion_vk_root: Default::default(),
+            // TODO: get the actual values
+            recursion_vk_map: Default::default(),
+            vk_verification: true,
+            shrink_vk: None,
+            wrap_vk: None,
+        };
+
+        let artifact_client = worker.artifact_client().clone();
+        let worker_client = worker.worker_client().clone();
+
+        Ok(SP1LocalNode { artifact_client, worker_client, verifier })
     }
 }

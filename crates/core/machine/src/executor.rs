@@ -440,7 +440,7 @@ pub fn trace_chunk<F: PrimeField32>(
     }
 
     // Finalize the public values
-    record.finalize_public_values::<F>();
+    record.finalize_public_values::<F>(true);
 
     Ok((status.is_done(), record, *vm.core.registers()))
 }

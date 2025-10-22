@@ -8,17 +8,17 @@ use slop_futures::pipeline::{
 use sp1_core_executor::{ExecutionRecord, Program, SP1CoreOpts};
 use sp1_core_machine::{executor::trace_chunk, riscv::RiscvAir};
 use sp1_hypercube::{
-    prover::{AirProver, MachineProverComponents, ProverSemaphore},
+    prover::{MachineProverComponents, ProverSemaphore},
     Machine, SP1RecursionProof, ShardProof,
 };
 use sp1_jit::TraceChunk;
 use sp1_primitives::{SP1Field, SP1GlobalContext};
+use sp1_prover_types::{Artifact, ArtifactClient, ArtifactType};
 
 use crate::{
     components::CoreProver,
     worker::{
-        Artifact, ArtifactClient, CommonProverInput, GlobalMemoryShard, TaskId, TraceData,
-        WorkerClient,
+        AirProverWorker, CommonProverInput, GlobalMemoryShard, TaskId, TraceData, WorkerClient,
     },
     CoreSC, InnerSC, SP1ProverComponents,
 };
@@ -110,16 +110,25 @@ where
                             chunk.clk_start,
                             chunk.clk_end
                         );
-                        let (_, record, _) = trace_chunk::<SP1Field>(program.clone(), opts, chunk)
-                            .expect("failed to trace chunk");
+                        let (_, mut record, _) =
+                            trace_chunk::<SP1Field>(program.clone(), opts.clone(), chunk)
+                                .expect("failed to trace chunk");
 
-                        // TODO: defer precompile events
+                        // TODO: Handle deferred precompile events
+                        let _deferred_events = record.defer(&opts.retained_events_presets);
 
                         record
                     }
                     TraceData::Memory(shard) => {
-                        let GlobalMemoryShard { final_state, initialize_events, finalize_events } =
-                            *shard;
+                        let GlobalMemoryShard {
+                            final_state,
+                            initialize_events,
+                            finalize_events,
+                            last_init_addr,
+                            last_finalize_addr,
+                            last_init_page_idx,
+                            last_finalize_page_idx,
+                        } = *shard;
                         let mut record = ExecutionRecord::new(program.clone());
                         record.global_memory_initialize_events = initialize_events;
                         record.global_memory_finalize_events = finalize_events;
@@ -137,8 +146,37 @@ where
                             common_input.deferred_digest,
                             final_state.proof_nonce,
                         );
+                        // Update previous init and finalize addresses and page indices fromt the
+                        // oracle values received from the controller.
+                        record.public_values.previous_init_addr = last_init_addr;
+                        record.public_values.previous_finalize_addr = last_finalize_addr;
+                        record.public_values.previous_init_page_idx = last_init_page_idx;
+                        record.public_values.previous_finalize_page_idx = last_finalize_page_idx;
 
-                        record.finalize_public_values::<SP1Field>();
+                        // Update last init and finalize addresses and page indices from the events
+                        // of the shard.
+                        record.public_values.last_init_addr = record
+                            .global_memory_initialize_events
+                            .last()
+                            .map(|event| event.addr)
+                            .unwrap_or(0);
+                        record.public_values.last_finalize_addr = record
+                            .global_memory_finalize_events
+                            .last()
+                            .map(|event| event.addr)
+                            .unwrap_or(0);
+                        record.public_values.last_init_page_idx = record
+                            .global_page_prot_initialize_events
+                            .last()
+                            .map(|event| event.page_idx)
+                            .unwrap_or(0);
+                        record.public_values.last_finalize_page_idx = record
+                            .global_page_prot_finalize_events
+                            .last()
+                            .map(|event| event.page_idx)
+                            .unwrap_or(0);
+
+                        record.finalize_public_values::<SP1Field>(false);
 
                         record
                     }
@@ -146,7 +184,8 @@ where
                 };
 
                 // Generate the dependencies
-                machine.generate_dependencies([&mut record].into_iter(), None);
+                let record_iter = std::iter::once(&mut record);
+                machine.generate_dependencies(record_iter, None);
 
                 (program, record)
             }
@@ -190,26 +229,20 @@ pub struct CoreProveOutput {
     pub proof: SP1CoreShardProof,
 }
 
-struct CoreProverWorker<A, C: SP1ProverComponents> {
+struct CoreProverWorker<A, P> {
     artifact_client: A,
-    core_prover: Arc<<C::CoreComponents as MachineProverComponents<SP1GlobalContext>>::Prover>,
+    core_prover: Arc<P>,
     permits: ProverSemaphore,
 }
 
-impl<A, C: SP1ProverComponents> CoreProverWorker<A, C> {
-    pub fn new(
-        artifact_client: A,
-        core_prover: Arc<CoreProver<C>>,
-        permits: ProverSemaphore,
-    ) -> Self {
+impl<A, P> CoreProverWorker<A, P> {
+    pub fn new(artifact_client: A, core_prover: Arc<P>, permits: ProverSemaphore) -> Self {
         Self { artifact_client, core_prover, permits }
     }
 }
 
-impl<A, C> AsyncWorker<CoreProveTask, TaskId> for CoreProverWorker<A, C>
-where
-    C: SP1ProverComponents,
-    A: ArtifactClient,
+impl<A: ArtifactClient, P: AirProverWorker<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>>
+    AsyncWorker<CoreProveTask, TaskId> for CoreProverWorker<A, P>
 {
     async fn call(&self, input: CoreProveTask) -> TaskId {
         let CoreProveTask { id, program, common_input, record, output, record_artifact } = input;
@@ -234,16 +267,17 @@ where
         self.artifact_client.upload(&output, proof).await.expect("failed to upload proof");
 
         // Remove the record artifact since it is no longer needed
-        self.artifact_client.try_delete(&record_artifact).await;
+        self.artifact_client
+            .try_delete(&record_artifact, ArtifactType::UnspecifiedArtifactType)
+            .await
+            .expect("failed to delete record artifact");
 
         id
     }
 }
 
-impl<A, C> AsyncWorker<SetupTask, TaskId> for CoreProverWorker<A, C>
-where
-    C: SP1ProverComponents,
-    A: ArtifactClient,
+impl<A: ArtifactClient, P: AirProverWorker<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>>
+    AsyncWorker<SetupTask, TaskId> for CoreProverWorker<A, P>
 {
     async fn call(&self, input: SetupTask) -> TaskId {
         let SetupTask { id, elf, output } = input;
@@ -255,7 +289,7 @@ where
         let program = Arc::new(program);
 
         let permits = self.permits.clone();
-        let (_, vk) = self.core_prover.setup(program, permits).await;
+        let vk = self.core_prover.setup(program, permits).await;
 
         // Upload the vk
         self.artifact_client.upload(&output, vk).await.expect("failed to upload vk");
@@ -264,15 +298,17 @@ where
     }
 }
 
-type SetupEngine<A, C> = Arc<AsyncEngine<SetupTask, TaskId, CoreProverWorker<A, C>>>;
+type SetupEngine<A, P> = Arc<AsyncEngine<SetupTask, TaskId, CoreProverWorker<A, P>>>;
 
 type TraceEngine<A, W> = Arc<AsyncEngine<TracingTask, CoreProveTask, TracingWorker<A, W>>>;
-type CoreProveEngine<A, C> = Arc<AsyncEngine<CoreProveTask, TaskId, CoreProverWorker<A, C>>>;
-type SP1CoreEngine<A, W, C> = Chain<TraceEngine<A, W>, CoreProveEngine<A, C>>;
+type CoreProveEngine<A, P> = Arc<AsyncEngine<CoreProveTask, TaskId, CoreProverWorker<A, P>>>;
+type SP1CoreEngine<A, W, P> = Chain<TraceEngine<A, W>, CoreProveEngine<A, P>>;
 
-pub struct SP1CoreProver<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> {
-    prove_shard_engine: Arc<SP1CoreEngine<A, W, C>>,
-    setup_engine: SetupEngine<A, C>,
+type CoreProverFromComponents<C> = <<C as SP1ProverComponents>::CoreComponents as MachineProverComponents<SP1GlobalContext>>::Prover;
+
+pub struct SP1CoreProver<A, W, C: SP1ProverComponents> {
+    prove_shard_engine: Arc<SP1CoreEngine<A, W, CoreProverFromComponents<C>>>,
+    setup_engine: SetupEngine<A, CoreProverFromComponents<C>>,
 }
 
 impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> Clone for SP1CoreProver<A, W, C> {
@@ -284,7 +320,10 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> Clone for SP1Co
     }
 }
 
-impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A, W, C> {
+impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A, W, C>
+where
+    CoreProverFromComponents<C>: AirProverWorker<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>,
+{
     pub async fn submit_prove_shard(
         &self,
         task: TracingTask,

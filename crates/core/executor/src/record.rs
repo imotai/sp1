@@ -1355,9 +1355,9 @@ impl ExecutionRecord {
     }
 
     /// Finalize the public values.
-    pub fn finalize_public_values<F: PrimeField32>(&mut self) {
+    pub fn finalize_public_values<F: PrimeField32>(&mut self, is_execution_shard: bool) {
         let state = &mut self.public_values;
-        state.is_execution_shard = 1;
+        state.is_execution_shard = is_execution_shard as u32;
 
         let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
         let initial_timestamp_low = (state.initial_timestamp & 0xFFFFFF) as u32;

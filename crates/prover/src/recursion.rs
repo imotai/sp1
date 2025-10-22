@@ -92,14 +92,14 @@ pub struct SP1RecursionProver<C: SP1ProverComponents> {
         MachineVerifyingKey<SP1GlobalContext, RecursionConfig<C>>,
     )>,
     shrink_program: Arc<RecursionProgram<SP1Field>>,
-    shrink_keys: Mutex<
+    pub(crate) shrink_keys: Mutex<
         Option<(
             Arc<MachineProvingKey<SP1GlobalContext, C::RecursionComponents>>,
             MachineVerifyingKey<SP1GlobalContext, RecursionConfig<C>>,
         )>,
     >,
     wrap_program: Arc<RecursionProgram<SP1Field>>,
-    wrap_keys: Mutex<
+    pub(crate) wrap_keys: Mutex<
         Option<(
             Arc<MachineProvingKey<SP1OuterGlobalContext, C::WrapComponents>>,
             MachineVerifyingKey<SP1OuterGlobalContext, WrapConfig<C>>,
@@ -116,7 +116,7 @@ pub struct SP1RecursionProver<C: SP1ProverComponents> {
     /// The merkle root of allowed vks.
     pub recursion_vk_tree: MerkleTree<SP1GlobalContext>,
     /// Whether to verify the vk.
-    vk_verification: bool,
+    pub(crate) vk_verification: bool,
     maximum_compose_arity: usize,
     normalize_batch_size: usize,
 }

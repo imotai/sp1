@@ -7,19 +7,19 @@ use std::{
 };
 
 use dashmap::DashMap;
-use enum_map::Enum;
 use futures::{prelude::*, stream::FuturesOrdered};
 use hashbrown::HashSet;
 use mti::prelude::{MagicTypeIdExt, V7};
 use opentelemetry::Context;
 use serde::{Deserialize, Serialize};
+use sp1_prover_types::{
+    Artifact, ArtifactClient, ArtifactType, ProofRequestStatus, TaskStatus, TaskType,
+};
 use thiserror::Error;
 use tokio::{
     sync::{mpsc, oneshot, watch},
     task::{AbortHandle, JoinSet},
 };
-
-use crate::worker::{Artifact, ArtifactClient};
 
 mod local;
 
@@ -28,7 +28,7 @@ pub use local::*;
 pub trait WorkerClient: Send + Sync + Clone + 'static {
     fn submit_task(
         &self,
-        kind: TaskKind,
+        kind: TaskType,
         task: RawTaskRequest,
     ) -> impl Future<Output = anyhow::Result<TaskId>> + Send;
 
@@ -50,7 +50,7 @@ pub trait WorkerClient: Send + Sync + Clone + 'static {
 
     fn submit_tasks(
         &self,
-        kind: TaskKind,
+        kind: TaskType,
         tasks: impl IntoIterator<Item = RawTaskRequest> + Send,
     ) -> impl Future<Output = anyhow::Result<Vec<TaskId>>> + Send {
         tasks
@@ -62,7 +62,7 @@ pub trait WorkerClient: Send + Sync + Clone + 'static {
 
     fn submit_all(
         &self,
-        kind: TaskKind,
+        kind: TaskType,
         tasks: impl Stream<Item = RawTaskRequest> + Send,
     ) -> impl Future<Output = anyhow::Result<Vec<TaskId>>> + Send {
         tasks.then(move |task| self.submit_task(kind, task)).try_collect()
@@ -117,20 +117,6 @@ impl fmt::Display for RequesterId {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Enum)]
-pub enum TaskKind {
-    Unspecified,
-    Controller,
-    ProveShard,
-    RecursionReduce,
-    RecursionDeferred,
-    ShrinkWrap,
-    SetupVkey,
-    MarkerDeferredRecord,
-    PlonkWrap,
-    Groth16Wrap,
-}
-
 #[derive(Clone)]
 pub struct RawTaskRequest {
     pub inputs: Vec<Artifact>,
@@ -141,27 +127,8 @@ pub struct RawTaskRequest {
     pub requester_id: RequesterId,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum TaskStatus {
-    UnspecifiedStatus,
-    Pending,
-    Running,
-    Succeeded,
-    FailedRetryable,
-    FailedFatal,
-}
-
 pub struct TaskMetadata {
     pub gpu_time: Option<u64>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum ProofRequestStatus {
-    Unspecified,
-    Pending,
-    Completed,
-    Failed,
-    Cancelled,
 }
 
 pub struct SubscriberBuilder<W> {
@@ -380,22 +347,25 @@ impl Stream for EventStream {
 #[derive(Clone, Debug)]
 pub struct TrivialWorkerClient {
     inner: Arc<Mutex<HashSet<TaskId>>>,
-    task_sender: mpsc::Sender<(TaskKind, RawTaskRequest)>,
+    task_sender: mpsc::Sender<(TaskType, RawTaskRequest)>,
 }
 
 impl TrivialWorkerClient {
     pub fn new<A: ArtifactClient>(task_capacity: usize, artifact_client: A) -> Self {
         let (task_sender, mut task_receiver) =
-            mpsc::channel::<(TaskKind, RawTaskRequest)>(task_capacity);
+            mpsc::channel::<(TaskType, RawTaskRequest)>(task_capacity);
 
         tokio::task::spawn(async move {
             while let Some((kind, task)) = task_receiver.recv().await {
                 match kind {
-                    TaskKind::ProveShard => {
+                    TaskType::ProveShard => {
                         let input = task.inputs;
                         let record_artifact = input.last().unwrap();
                         // remove the record artifact from the client
-                        artifact_client.delete(record_artifact).await.unwrap();
+                        artifact_client
+                            .delete(record_artifact, ArtifactType::UnspecifiedArtifactType)
+                            .await
+                            .unwrap();
                     }
                     _ => unimplemented!(),
                 }
@@ -407,7 +377,7 @@ impl TrivialWorkerClient {
 }
 
 impl WorkerClient for TrivialWorkerClient {
-    async fn submit_task(&self, kind: TaskKind, task: RawTaskRequest) -> anyhow::Result<TaskId> {
+    async fn submit_task(&self, kind: TaskType, task: RawTaskRequest) -> anyhow::Result<TaskId> {
         let task_id = TaskId::new("task".create_type_id::<V7>().to_string());
         self.inner.lock().unwrap().insert(task_id.clone());
         self.task_sender.send((kind, task)).await.unwrap();
@@ -458,8 +428,7 @@ mod tests {
     use std::time::Duration;
 
     use mti::prelude::{MagicTypeIdExt, V7};
-
-    use crate::worker::{ArtifactClient, ArtifactType, InMemoryArtifactClient};
+    use sp1_prover_types::{ArtifactClient, InMemoryArtifactClient};
 
     use super::*;
 
@@ -493,10 +462,10 @@ mod tests {
             let parent_context = None;
             let requester_id = RequesterId::new("test_requester_id");
 
-            let input_artifact = client.create_artifact(ArtifactType::Unspecified);
+            let input_artifact = client.create_artifact().expect("failed to create input artifact");
             client.upload(&input_artifact, self.kind).await.unwrap();
             let outputs = if let TestTaskKind::Read = self.kind {
-                let artifact = client.create_artifact(ArtifactType::Unspecified);
+                let artifact = client.create_artifact().expect("failed to create output artifact");
                 vec![artifact]
             } else {
                 vec![]
@@ -560,7 +529,7 @@ mod tests {
     impl WorkerClient for TestWorkerClient {
         async fn submit_task(
             &self,
-            _kind: TaskKind,
+            _kind: TaskType,
             task: RawTaskRequest,
         ) -> anyhow::Result<TaskId> {
             let task_id = TaskId::new("task".create_type_id::<V7>().to_string());
@@ -624,7 +593,7 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::print_stdout)]
     async fn test_worker_client() {
-        let artifact_client = InMemoryArtifactClient::new();
+        let artifact_client = InMemoryArtifactClient::default();
         let worker_client = TestWorkerClient::new(artifact_client.clone());
         let increment_task = TestTask { kind: TestTaskKind::Increment };
         let increment_task = increment_task.into_raw(&artifact_client).await;
@@ -643,7 +612,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(100 * i)).await;
                 subscriber
                     .client()
-                    .submit_task(TaskKind::Unspecified, increment_task.clone())
+                    .submit_task(TaskType::UnspecifiedTaskType, increment_task.clone())
                     .await
                     .unwrap()
             });
@@ -652,7 +621,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(300)).await;
         let read_task_id = subscriber
             .client()
-            .submit_task(TaskKind::Unspecified, read_task.clone())
+            .submit_task(TaskType::UnspecifiedTaskType, read_task.clone())
             .await
             .unwrap();
 
