@@ -15,7 +15,8 @@ cslpc-prover = { workspace = true }
 sp1-core-machine = { workspace = true }
 sp1-core-executor = { workspace = true }
 sp1-prover = { workspace = true, features = ["experimental"] }
-
+sp1-hypercube = { workspace = true }
+sp1-prover-types = { workspace = true }
 
 csv = "1.3.0"
 tracing = { workspace = true }
@@ -48,3 +49,20 @@ bigint-rug = [
 
 [lints]
 workspace = true
+
+
+[[bin]]
+name = "e2e"
+path = "src/bin/e2e.rs"
+
+[[bin]]
+name = "reduce"
+path = "src/bin/reduce.rs"
+
+[[bin]]
+name = "exec"
+path = "src/bin/exec.rs"
+
+[[bin]]
+name = "node"
+path = "src/bin/node.rs"

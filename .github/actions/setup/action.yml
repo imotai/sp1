@@ -88,21 +88,25 @@ runs:
         . "$HOME/.cargo/env" 
         echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-    # install pkg-config, openssl, and cmake
-    - name: Install pkg-config, openssl, and cmake
+    - name: Install pkg-config, openssl, cmake, and unzip
       shell: bash
       run: |
-        if ! dpkg -s pkg-config libssl-dev cmake &> /dev/null; then
-          echo "pkg-config, libssl-dev, and/or cmake not found. Installing..."
+        if ! dpkg -s pkg-config libssl-dev cmake unzip &> /dev/null; then
+          echo "pkg-config, libssl-dev, cmake, and unzip not found. Installing..."
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev cmake
+          sudo apt-get install -y pkg-config libssl-dev cmake unzip
         else
-          echo "pkg-config, libssl-dev, and cmake are already installed."
+          echo "pkg-config, libssl-dev, cmake, and unzip are already installed."
         fi
 
     - name: Echo docker buildx version
       shell: bash
       run: docker buildx version
+
+    - name: Install Protoc
+      uses: arduino/setup-protoc@v3
+      with:
+        version: "29.4"
 
     - name: Set up Docker
       uses: crazy-max/ghaction-setup-docker@v3

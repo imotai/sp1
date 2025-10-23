@@ -1,4 +1,7 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 
 use csl_cuda::{cuda_memory_info, TaskScope};
 
@@ -9,8 +12,10 @@ use sp1_prover::{
     core::CORE_LOG_STACKING_HEIGHT,
     local::LocalProverOpts,
     recursion::{RECURSION_LOG_BLOWUP, SHRINK_LOG_BLOWUP, WRAP_LOG_BLOWUP},
+    worker::{SP1WorkerBuilder, WorkerClient},
     SP1ProverBuilder, CORE_LOG_BLOWUP,
 };
+use sp1_prover_types::ArtifactClient;
 
 pub const RECURSION_TRACE_ALLOCATION: usize = 1 << 27;
 pub const SHRINK_TRACE_ALLOCATION: usize = 1 << 24;
@@ -248,4 +253,24 @@ impl DerefMut for SP1ProverCleanBuilder {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
+}
+
+/// A type alias for [SP1WorkerBuilder] with [CudaSP1ProverComponents].
+pub type SP1CudaWorkerBuilder<A, W> = SP1WorkerBuilder<A, W, CudaSP1ProverComponents>;
+
+/// Create a [SP1CudaWorkerBuilder]
+pub fn cuda_worker_builder<A: ArtifactClient, W: WorkerClient>(
+    artifact_client: A,
+    worker_client: W,
+    scope: TaskScope,
+) -> SP1CudaWorkerBuilder<A, W> {
+    let prover_permits = ProverSemaphore::new(1);
+
+    let core_verifier = CudaSP1ProverComponents::core_verifier();
+    let core_air_prover =
+        new_cuda_prover_sumcheck_eval(core_verifier.shard_verifier().clone(), scope.clone());
+    let core_air_prover = Arc::new(core_air_prover);
+
+    SP1CudaWorkerBuilder::new(artifact_client, worker_client)
+        .with_core_air_prover(core_air_prover, prover_permits)
 }

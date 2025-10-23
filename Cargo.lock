@@ -227,6 +227,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
+name = "async-scoped"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4042078ea593edffc452eef14e99fdb2b120caa4ad9618bcdeabc4a023b98740"
+dependencies = [
+ "futures",
+ "pin-project",
+ "tokio",
+]
+
+[[package]]
 name = "async-stream"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -245,7 +256,7 @@ checksum = "c7c24de15d275a1ecfd47a380fb4d5ec9bfe0933f309ed5e705b775596a3574d"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -256,7 +267,7 @@ checksum = "9035ad2d096bed7955a320ee7e2230574d28fd3c3a0f186cbea1ff3c7eed5dbb"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -466,7 +477,7 @@ dependencies = [
  "regex",
  "rustc-hash 1.1.0",
  "shlex",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -627,7 +638,7 @@ dependencies = [
  "quote",
  "serde",
  "serde_json",
- "syn 2.0.107",
+ "syn 2.0.108",
  "tempfile",
  "toml",
 ]
@@ -718,7 +729,7 @@ dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -1099,7 +1110,9 @@ dependencies = [
  "prettytable",
  "sp1-core-executor",
  "sp1-core-machine",
+ "sp1-hypercube",
  "sp1-prover",
+ "sp1-prover-types",
  "tikv-jemallocator",
  "tokio",
  "tracing",
@@ -1132,6 +1145,7 @@ dependencies = [
  "sp1-hypercube",
  "sp1-primitives",
  "sp1-prover",
+ "sp1-prover-types",
  "sysinfo 0.31.4",
  "tracing",
 ]
@@ -1676,7 +1690,7 @@ checksum = "e0f8817865cacf3b93b943ca06b0fc5fd8e99eabfdb7ea5d296efcbc4afc4f69"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -1718,7 +1732,7 @@ checksum = "ef941ded77d15ca19b40374869ac6000af1c9f2a4c0f3d4c70926287e6364a8f"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -1747,7 +1761,7 @@ checksum = "cb7330aeadfbe296029522e6c40f315320aba36fc43a5b3632f3795348f3bd22"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -1758,7 +1772,7 @@ checksum = "bda628edc44c4bb645fbe0f758797143e4e07926f7ebf4e9bdfbd3d2ce621df3"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
  "unicode-xid",
 ]
 
@@ -1824,7 +1838,7 @@ checksum = "97369cbbc041bc366949bc74d34658d6cda5621039731c6310521892a3a20ae0"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -1859,7 +1873,7 @@ dependencies = [
  "proc-macro-error2",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -1946,7 +1960,7 @@ checksum = "f282cfdfe92516eb26c2af8589c274c7c17681f5ecc03c18255fe741c6aa64eb"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -2038,6 +2052,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52051878f80a721bb68ebfbc930e07b65ba72f2da88968ea5c06fd6ca3d3a127"
 
 [[package]]
+name = "fixedbitset"
+version = "0.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2126,7 +2146,7 @@ checksum = "162ee34ebcb7c64a8abebc059ce0fee27c2262618d7b60ed8faf72fef13c3650"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -2725,7 +2745,7 @@ checksum = "a0eb5a3343abf848c0984fe4604b2b105da9539376e24fc0a3b0007411ae4fd9"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -3096,6 +3116,12 @@ dependencies = [
  "typeid_prefix",
  "typeid_suffix",
 ]
+
+[[package]]
+name = "multimap"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
 
 [[package]]
 name = "nom"
@@ -3666,7 +3692,7 @@ dependencies = [
  "proc-macro-crate 3.4.0",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -3750,6 +3776,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
+name = "petgraph"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3672b37090dbd86368a4145bc067582552b29c27377cad4e0a306c97f9bd7772"
+dependencies = [
+ "fixedbitset",
+ "indexmap 2.12.0",
+]
+
+[[package]]
 name = "pin-project"
 version = "1.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3766,7 +3802,7 @@ checksum = "6e918e4ff8c4549eb882f14b3a4bc8c8bc93de829416eacf579f1207a8fbf861"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -3834,7 +3870,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
 dependencies = [
  "proc-macro2",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -3898,14 +3934,14 @@ dependencies = [
  "proc-macro-error-attr2",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.101"
+version = "1.0.102"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89ae43fd86e4158d6db51ad8e2b80f313af9cc74f5c0e03ccb87de09998732de"
+checksum = "8e0f6df8eaa422d97d72edcd152e1451618fed47fabbdbd5a8864167b1d4aff7"
 dependencies = [
  "unicode-ident",
 ]
@@ -3945,6 +3981,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "prost-build"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
+dependencies = [
+ "heck 0.5.0",
+ "itertools 0.14.0",
+ "log",
+ "multimap",
+ "once_cell",
+ "petgraph",
+ "prettyplease",
+ "prost 0.13.5",
+ "prost-types",
+ "regex",
+ "syn 2.0.108",
+ "tempfile",
+]
+
+[[package]]
 name = "prost-derive"
 version = "0.12.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3954,7 +4010,7 @@ dependencies = [
  "itertools 0.12.1",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -3967,7 +4023,16 @@ dependencies = [
  "itertools 0.14.0",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
+]
+
+[[package]]
+name = "prost-types"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52c2c1bf36ddb1a1c396b3601a3cec27c2462e45f07c386894ec3ccf5332bd16"
+dependencies = [
+ "prost 0.13.5",
 ]
 
 [[package]]
@@ -4472,7 +4537,7 @@ dependencies = [
  "proc-macro-crate 3.4.0",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -4589,7 +4654,7 @@ checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -4669,7 +4734,7 @@ checksum = "5d69265a08751de7844521fd15003ae0a888e035773ba05695c5c759a6f89eef"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -4742,7 +4807,7 @@ checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 [[package]]
 name = "slop-air"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "p3-air",
 ]
@@ -4750,7 +4815,7 @@ dependencies = [
 [[package]]
 name = "slop-algebra"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "itertools 0.13.0",
  "p3-field",
@@ -4760,7 +4825,7 @@ dependencies = [
 [[package]]
 name = "slop-alloc"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "serde",
  "slop-algebra",
@@ -4770,7 +4835,7 @@ dependencies = [
 [[package]]
 name = "slop-baby-bear"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "lazy_static",
  "p3-baby-bear",
@@ -4784,7 +4849,7 @@ dependencies = [
 [[package]]
 name = "slop-basefold"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "derive-where",
  "itertools 0.13.0",
@@ -4805,7 +4870,7 @@ dependencies = [
 [[package]]
 name = "slop-basefold-prover"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "derive-where",
  "itertools 0.13.0",
@@ -4832,7 +4897,7 @@ dependencies = [
 [[package]]
 name = "slop-bn254"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "ff 0.13.1",
  "p3-bn254-fr",
@@ -4847,7 +4912,7 @@ dependencies = [
 [[package]]
 name = "slop-challenger"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "futures",
  "p3-challenger",
@@ -4859,7 +4924,7 @@ dependencies = [
 [[package]]
 name = "slop-commit"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "p3-commit",
  "serde",
@@ -4869,7 +4934,7 @@ dependencies = [
 [[package]]
 name = "slop-dft"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "p3-dft",
  "serde",
@@ -4882,7 +4947,7 @@ dependencies = [
 [[package]]
 name = "slop-fri"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "p3-fri",
 ]
@@ -4890,7 +4955,7 @@ dependencies = [
 [[package]]
 name = "slop-futures"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "crossbeam",
  "futures",
@@ -4904,7 +4969,7 @@ dependencies = [
 [[package]]
 name = "slop-jagged"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "derive-where",
  "futures",
@@ -4937,7 +5002,7 @@ dependencies = [
 [[package]]
 name = "slop-keccak-air"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "p3-keccak-air",
 ]
@@ -4945,7 +5010,7 @@ dependencies = [
 [[package]]
 name = "slop-koala-bear"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "lazy_static",
  "p3-koala-bear",
@@ -4959,7 +5024,7 @@ dependencies = [
 [[package]]
 name = "slop-matrix"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "p3-matrix",
 ]
@@ -4967,7 +5032,7 @@ dependencies = [
 [[package]]
 name = "slop-maybe-rayon"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "p3-maybe-rayon",
 ]
@@ -4975,7 +5040,7 @@ dependencies = [
 [[package]]
 name = "slop-merkle-tree"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "derive-where",
  "ff 0.13.1",
@@ -5002,7 +5067,7 @@ dependencies = [
 [[package]]
 name = "slop-multilinear"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "derive-where",
  "futures",
@@ -5023,7 +5088,7 @@ dependencies = [
 [[package]]
 name = "slop-poseidon2"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "p3-poseidon2",
 ]
@@ -5031,7 +5096,7 @@ dependencies = [
 [[package]]
 name = "slop-stacked"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "derive-where",
  "futures",
@@ -5051,7 +5116,7 @@ dependencies = [
 [[package]]
 name = "slop-sumcheck"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "futures",
  "itertools 0.13.0",
@@ -5068,7 +5133,7 @@ dependencies = [
 [[package]]
 name = "slop-symmetric"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "p3-symmetric",
 ]
@@ -5076,7 +5141,7 @@ dependencies = [
 [[package]]
 name = "slop-tensor"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "arrayvec",
  "derive-where",
@@ -5096,7 +5161,7 @@ dependencies = [
 [[package]]
 name = "slop-uni-stark"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "p3-uni-stark",
 ]
@@ -5104,7 +5169,7 @@ dependencies = [
 [[package]]
 name = "slop-utils"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "p3-util",
  "tracing-forest",
@@ -5114,7 +5179,7 @@ dependencies = [
 [[package]]
 name = "slop-whir"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "derive-where",
  "futures",
@@ -5182,7 +5247,7 @@ dependencies = [
 [[package]]
 name = "sp1-build"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -5195,7 +5260,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-executor"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -5234,7 +5299,7 @@ dependencies = [
 [[package]]
 name = "sp1-core-machine"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "bincode",
  "cfg-if",
@@ -5280,7 +5345,7 @@ dependencies = [
 [[package]]
 name = "sp1-cuda"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "bincode",
  "bytes",
@@ -5299,7 +5364,7 @@ dependencies = [
 [[package]]
 name = "sp1-curves"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "cfg-if",
  "dashu",
@@ -5320,7 +5385,7 @@ dependencies = [
 [[package]]
 name = "sp1-derive"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5330,7 +5395,7 @@ dependencies = [
 [[package]]
 name = "sp1-hypercube"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "arrayref",
  "deepsize2",
@@ -5374,7 +5439,7 @@ dependencies = [
 [[package]]
 name = "sp1-jit"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "dynasmrt",
  "hashbrown 0.14.5",
@@ -5388,7 +5453,7 @@ dependencies = [
 [[package]]
 name = "sp1-primitives"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "bincode",
  "blake3",
@@ -5410,7 +5475,7 @@ dependencies = [
 [[package]]
 name = "sp1-prover"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "anyhow",
  "bincode",
@@ -5449,6 +5514,7 @@ dependencies = [
  "sp1-hypercube",
  "sp1-jit",
  "sp1-primitives",
+ "sp1-prover-types",
  "sp1-recursion-circuit",
  "sp1-recursion-compiler",
  "sp1-recursion-executor",
@@ -5464,9 +5530,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp1-prover-types"
+version = "6.0.0"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
+dependencies = [
+ "anyhow",
+ "async-scoped",
+ "bincode",
+ "chrono",
+ "futures-util",
+ "hashbrown 0.14.5",
+ "mti",
+ "prost 0.13.5",
+ "serde",
+ "tokio",
+ "tonic 0.12.3",
+ "tonic-build",
+ "tracing",
+]
+
+[[package]]
 name = "sp1-recursion-circuit"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "itertools 0.13.0",
  "rand 0.8.5",
@@ -5504,7 +5590,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-compiler"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "backtrace",
  "cfg-if",
@@ -5524,7 +5610,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-executor"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "backtrace",
  "cfg-if",
@@ -5547,7 +5633,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-gnark-ffi"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "anyhow",
  "bincode",
@@ -5570,7 +5656,7 @@ dependencies = [
 [[package]]
 name = "sp1-recursion-machine"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "itertools 0.13.0",
  "rand 0.8.5",
@@ -5591,7 +5677,7 @@ dependencies = [
 [[package]]
 name = "sp1-sdk"
 version = "6.0.0"
-source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#a55837902b67c65df9b91f42bdedf539ca95f756"
+source = "git+https://github.com/succinctlabs/sp1-wip.git?branch=multilinear_v6#dc29248d3180786a109a196ffc22755a5ec4c3f7"
 dependencies = [
  "alloy-primitives",
  "anyhow",
@@ -5685,7 +5771,7 @@ dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -5697,7 +5783,7 @@ dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -5719,9 +5805,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.107"
+version = "2.0.108"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a26dbd934e5451d21ef060c018dae56fc073894c5a7896f882928a76e6d081b"
+checksum = "da58917d35242480a05c2897064da0a80589a2a0476c9a3f2fdc83b53502e917"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5751,7 +5837,7 @@ checksum = "728a70f3dbaf5bab7f0c4b1ac8d7ae5ea60a4b5549c8a5914361c99147a709d2"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -5839,7 +5925,7 @@ checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -5850,7 +5936,7 @@ checksum = "3ff15c8ecd7de3849db632e14d18d2571fa09dfc5ed93479bc4485c7a517c913"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -5982,7 +6068,7 @@ checksum = "af407857209536a95c8e56f8231ef2c2e2aff839b22e07a1ffcbc617e9db9fa5"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -6162,6 +6248,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tonic-build"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9557ce109ea773b399c9b9e5dca39294110b74f1f342cb347a80d1fce8c26a11"
+dependencies = [
+ "prettyplease",
+ "proc-macro2",
+ "prost-build",
+ "prost-types",
+ "quote",
+ "syn 2.0.108",
+]
+
+[[package]]
 name = "tower"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6259,7 +6359,7 @@ checksum = "81383ab64e72a7a8b8e13130c49e3dab29def6d0c7d76a03087b3cf71c5c6903"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -6533,7 +6633,7 @@ dependencies = [
  "log",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
  "wasm-bindgen-shared",
 ]
 
@@ -6568,7 +6668,7 @@ checksum = "9f07d2f20d4da7b26400c9f4a0511e6e0345b040694e8a75bd41d578fa4421d7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -6720,7 +6820,7 @@ checksum = "9107ddc059d5b6fbfbffdfa7a7fe3e22a226def0b2608f72e9d552763d3e1ad7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -6731,7 +6831,7 @@ checksum = "053e2e040ab57b9dc951b72c264860db7eb3b0200ba345b4e4c3b14f67855ddf"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -6742,7 +6842,7 @@ checksum = "29bee4b38ea3cde66011baa44dba677c432a78593e202392d1e9070cf2a7fca7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -6753,7 +6853,7 @@ checksum = "3f316c4a2570ba26bbec722032c4099d8c8bc095efccdc15688708623367e358"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -7085,7 +7185,7 @@ checksum = "38da3c9736e16c5d3c8c597a9aaa5d1fa565d0532ae05e27c24aa62fb32c0ab6"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
  "synstructure",
 ]
 
@@ -7106,7 +7206,7 @@ checksum = "88d2b8d9c68ad2b9e4340d7832716a4d21a22a1154777ad56ea55c51a9cf3831"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -7126,7 +7226,7 @@ checksum = "d71e5d6e06ab090c67b5e44993ec16b72dcbaabc526db883a360057678b48502"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
  "synstructure",
 ]
 
@@ -7147,7 +7247,7 @@ checksum = "ce36e65b0d2999d2aafac989fb249189a141aee1f53c612c1f37d72631959f69"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -7180,7 +7280,7 @@ checksum = "5b96237efa0c878c64bd89c436f661be4e46b2f3eff1ebb976f7ef2321d2f58f"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]

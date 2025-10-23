@@ -124,7 +124,10 @@ sp1-recursion-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", 
 sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-cuda = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-derive = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-sdk = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6", features = ["experimental"] }
+sp1-sdk = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6", features = [
+    "experimental",
+] }
+sp1-prover-types = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 
 # # slop local copy
 # slop-air = { path = "../sp1-wip/slop/crates/air" }
@@ -162,6 +165,7 @@ sp1-sdk = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multi
 # sp1-cuda = { path = "../sp1-wip/crates/cuda" }
 # sp1-derive = { path = "../sp1-wip/crates/derive" }
 # sp1-sdk = { path = "../sp1-wip/crates/sdk" }
+# sp1-prover-types = { path = "../sp1-wip/crates/prover-types" }
 
 # async/concurrency
 tokio = { version = "1.42.0" }
