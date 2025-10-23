@@ -1,4 +1,8 @@
-use std::{mem::ManuallyDrop, ops::Deref, sync::Arc};
+use std::{
+    mem::ManuallyDrop,
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 
 use thiserror::Error;
 
@@ -80,6 +84,12 @@ impl<T> Deref for Worker<T> {
 
     fn deref(&self) -> &Self::Target {
         &self.worker
+    }
+}
+
+impl<T> DerefMut for Worker<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.worker
     }
 }
 
