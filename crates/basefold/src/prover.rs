@@ -226,15 +226,6 @@ mod tests {
                 .sum::<usize>();
             let total_number_of_variables = total_data_length.next_power_of_two().ilog2();
 
-            let round_areas = round_widths_and_log_heights
-                .iter()
-                .map(|dims| {
-                    dims.iter()
-                        .map(|&(w, log_h)| w << log_h)
-                        .sum::<usize>()
-                        .next_multiple_of(1 << log_stacking_height)
-                })
-                .collect::<Vec<_>>();
             println!("total_number_of_variables: {total_number_of_variables}");
 
             let last_log_height = log_stacking_height;

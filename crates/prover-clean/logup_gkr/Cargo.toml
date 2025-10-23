@@ -54,14 +54,6 @@ sp1-sdk = { workspace = true}
 sp1-recursion-circuit = { workspace = true }
 
 [[bin]]
-name = "hadamard_sumcheck_bench"
-path = "bin/hadamard_sumcheck_bench.rs"
-
-[[bin]]
-name = "zerocheck_bench"
-path = "bin/zerocheck_bench.rs"
-
-[[bin]]
 name = "logup_gkr_bench"
 path = "bin/logup_gkr_bench.rs"
 
