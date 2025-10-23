@@ -3,11 +3,12 @@ mod init;
 use std::borrow::Borrow;
 
 pub use init::*;
-use sp1_core_executor::{SP1Context, SP1CoreOpts};
+use sp1_core_executor::SP1Context;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_hypercube::air::PublicValues;
 use sp1_prover_types::{
-    ArtifactClient, ArtifactType, InMemoryArtifactClient, TaskStatus, TaskType,
+    network_base_types::ProofMode, Artifact, ArtifactClient, ArtifactType, InMemoryArtifactClient,
+    TaskStatus, TaskType,
 };
 use tracing::Instrument;
 
@@ -26,7 +27,7 @@ pub struct SP1LocalNode {
 impl SP1LocalNode {
     pub async fn setup(&self, elf: &[u8]) -> anyhow::Result<SP1VerifyingKey> {
         let elf_artifact = self.artifact_client.create_artifact()?;
-        self.artifact_client.upload(&elf_artifact, elf.to_vec()).await?;
+        self.artifact_client.upload_program(&elf_artifact, elf.to_vec()).await?;
 
         // Create a setup task and wait for the vk
         let vk_artifact = self.artifact_client.create_artifact()?;
@@ -43,7 +44,7 @@ impl SP1LocalNode {
         tracing::trace!("submitting setup task");
         let setup_id = self.worker_client.submit_task(TaskType::SetupVkey, setup_request).await?;
         // Wait for the setup task to finish
-        let subscriber = self.worker_client.subscriber().await.per_task();
+        let subscriber = self.worker_client.subscriber(proof_id.clone()).await?.per_task();
         let status =
             subscriber.wait_task(setup_id).instrument(tracing::debug_span!("setup task")).await?;
         if status != TaskStatus::Succeeded {
@@ -66,7 +67,6 @@ impl SP1LocalNode {
         &self,
         elf: &[u8],
         stdin: SP1Stdin,
-        opts: SP1CoreOpts,
         _context: SP1Context<'static>,
     ) -> anyhow::Result<SP1CoreProof> {
         // Create a request for the controller task.
@@ -75,32 +75,27 @@ impl SP1LocalNode {
         let requester_id = RequesterId::new("local node");
 
         let elf_artifact = self.artifact_client.create_artifact()?;
-        self.artifact_client
-            .upload_with_type(&elf_artifact, ArtifactType::Program, elf.to_vec())
-            .await?;
+        self.artifact_client.upload_program(&elf_artifact, elf.to_vec()).await?;
 
         let stdin_artifact = self.artifact_client.create_artifact()?;
         self.artifact_client.upload_with_type(&stdin_artifact, ArtifactType::Stdin, stdin).await?;
 
-        let opts_artifact = self.artifact_client.create_artifact()?;
-        self.artifact_client
-            .upload_with_type(&opts_artifact, ArtifactType::UnspecifiedArtifactType, opts)
-            .await?;
+        let mode_artifact = Artifact((ProofMode::Core as i32).to_string());
 
         // Create an artifact for the output
         let output_artifact = self.artifact_client.create_artifact()?;
 
         let request = RawTaskRequest {
-            inputs: vec![elf_artifact.clone(), stdin_artifact.clone(), opts_artifact.clone()],
+            inputs: vec![elf_artifact.clone(), stdin_artifact.clone(), mode_artifact.clone()],
             outputs: vec![output_artifact.clone()],
-            proof_id,
+            proof_id: proof_id.clone(),
             parent_id: None,
             parent_context: None,
             requester_id,
         };
 
         let task_id = self.worker_client.submit_task(TaskType::Controller, request).await?;
-        let subscriber = self.worker_client.subscriber().await.per_task();
+        let subscriber = self.worker_client.subscriber(proof_id.clone()).await?.per_task();
         let status = subscriber.wait_task(task_id).await?;
         if status != TaskStatus::Succeeded {
             return Err(anyhow::anyhow!("controller task failed"));
@@ -112,7 +107,7 @@ impl SP1LocalNode {
         self.artifact_client.try_delete(&elf_artifact, ArtifactType::Program).await?;
         self.artifact_client.try_delete(&stdin_artifact, ArtifactType::Stdin).await?;
         self.artifact_client
-            .try_delete(&opts_artifact, ArtifactType::UnspecifiedArtifactType)
+            .try_delete(&mode_artifact, ArtifactType::UnspecifiedArtifactType)
             .await?;
         self.artifact_client
             .try_delete(&output_artifact, ArtifactType::UnspecifiedArtifactType)

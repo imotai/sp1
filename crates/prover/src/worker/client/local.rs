@@ -155,7 +155,7 @@ impl WorkerClient for LocalWorkerClient {
         unimplemented!("Not used for local worker client");
     }
 
-    async fn subscriber(&self) -> SubscriberBuilder<Self> {
+    async fn subscriber(&self, _proof_id: ProofId) -> anyhow::Result<SubscriberBuilder<Self>> {
         let (subscriber_input_tx, mut subscriber_input_rx) = mpsc::unbounded_channel();
         let (subscriber_output_tx, subscriber_output_rx) = mpsc::unbounded_channel();
 
@@ -182,6 +182,6 @@ impl WorkerClient for LocalWorkerClient {
                 }
             }
         });
-        SubscriberBuilder::new(self.clone(), subscriber_input_tx, subscriber_output_rx)
+        Ok(SubscriberBuilder::new(self.clone(), subscriber_input_tx, subscriber_output_rx))
     }
 }

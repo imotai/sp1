@@ -5,7 +5,7 @@ use slop_challenger::IopCtx;
 use slop_futures::pipeline::{
     AsyncEngine, AsyncWorker, Chain, Pipeline, SubmitError, TaskHandle, TaskInput,
 };
-use sp1_core_executor::{ExecutionRecord, Program, SP1CoreOpts};
+use sp1_core_executor::{ExecutionRecord, Program};
 use sp1_core_machine::{executor::trace_chunk, riscv::RiscvAir};
 use sp1_hypercube::{
     prover::{MachineProverComponents, ProverSemaphore},
@@ -18,7 +18,8 @@ use sp1_prover_types::{Artifact, ArtifactClient, ArtifactType};
 use crate::{
     components::CoreProver,
     worker::{
-        AirProverWorker, CommonProverInput, GlobalMemoryShard, TaskId, TraceData, WorkerClient,
+        cluster_opts, AirProverWorker, CommonProverInput, GlobalMemoryShard, TaskId, TraceData,
+        WorkerClient,
     },
     CoreSC, InnerSC, SP1ProverComponents,
 };
@@ -40,7 +41,6 @@ pub struct TracingTask {
     pub elf: Artifact,
     pub common_input: Artifact,
     pub record: Artifact,
-    pub opts: Artifact,
     pub output: Artifact,
 }
 
@@ -75,26 +75,13 @@ where
         // Save the trace input artifact for later use in the task
         let record_artifact = input.record.clone();
         // Ok to panic because it will send a JoinError.
-        let elf = self
-            .artifact_client
-            .download::<Vec<u8>>(&input.elf)
-            .await
-            .expect("failed to download elf");
-        let common_input = self
-            .artifact_client
-            .download::<CommonProverInput>(&input.common_input)
-            .await
-            .expect("failed to download common input");
-        let record = self
-            .artifact_client
-            .download::<TraceData>(&input.record)
-            .await
-            .expect("failed to download record");
-        let opts = self
-            .artifact_client
-            .download::<SP1CoreOpts>(&input.opts)
-            .await
-            .expect("failed to download opts");
+        let opts = cluster_opts();
+        let (elf, common_input, record) = tokio::try_join!(
+            self.artifact_client.download_program(&input.elf),
+            self.artifact_client.download::<CommonProverInput>(&input.common_input),
+            self.artifact_client.download::<TraceData>(&input.record),
+        )
+        .expect("failed to download artifacts");
 
         let (program, record) = tokio::task::spawn_blocking({
             let machine = self.machine.clone();
@@ -283,16 +270,18 @@ impl<A: ArtifactClient, P: AirProverWorker<SP1GlobalContext, CoreSC, RiscvAir<SP
         let SetupTask { id, elf, output } = input;
 
         let elf =
-            self.artifact_client.download::<Vec<u8>>(&elf).await.expect("failed to download elf");
+            self.artifact_client.download_program(&elf).await.expect("failed to download elf");
 
         let program = Program::from(&elf).expect("failed to disassemble program");
         let program = Arc::new(program);
 
         let permits = self.permits.clone();
         let vk = self.core_prover.setup(program, permits).await;
+        tracing::info!("Setup completed for task {}", id);
 
         // Upload the vk
         self.artifact_client.upload(&output, vk).await.expect("failed to upload vk");
+        tracing::info!("Upload completed for artifact {}", output.to_id());
 
         id
     }

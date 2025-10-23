@@ -15,6 +15,9 @@ pub use worker::*;
 
 mod utils;
 
+#[rustfmt::skip]
+pub mod network_base_types;
+
 impl WorkerType {
     pub fn from_task_type(task_type: TaskType) -> Self {
         match task_type {

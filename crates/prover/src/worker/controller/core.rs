@@ -31,6 +31,11 @@ pub struct ProofData {
     pub proof: Artifact,
 }
 
+pub fn cluster_opts() -> SP1CoreOpts {
+    let log2_shard_size = 24;
+    SP1CoreOpts { shard_size: 1 << log2_shard_size, ..Default::default() }
+}
+
 #[derive(Serialize, Deserialize)]
 pub enum TraceData {
     /// A core record to be proven
@@ -60,17 +65,12 @@ pub struct ProveShardInput {
 }
 
 #[repr(C)]
-pub struct ProveShardInputArtifacts([Artifact; 4]);
+pub struct ProveShardInputArtifacts([Artifact; 3]);
 
 impl ProveShardInputArtifacts {
     #[inline]
-    pub const fn new(
-        elf: Artifact,
-        common_input: Artifact,
-        record: Artifact,
-        opts: Artifact,
-    ) -> Self {
-        Self([elf, common_input, record, opts])
+    pub const fn new(elf: Artifact, common_input: Artifact, record: Artifact) -> Self {
+        Self([elf, common_input, record])
     }
 
     #[inline]
@@ -92,26 +92,20 @@ impl ProveShardInputArtifacts {
     pub const fn as_slice(&self) -> &[Artifact] {
         &self.0
     }
-
-    #[inline]
-    pub const fn opts(&self) -> &Artifact {
-        &self.0[3]
-    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CommonProverInput {
     pub vk: SP1VerifyingKey,
     pub deferred_digest: [u32; 8],
-    pub num_deffered_proofs: usize,
+    pub num_deferred_proofs: usize,
 }
 
 pub struct SP1CoreExecutor<A, W> {
     splicing_engine: Arc<SplicingEngine<A, W>>,
     elf: Artifact,
-    stdin: Artifact,
+    stdin: Arc<SP1Stdin>,
     common_input: Artifact,
-    opts: Artifact,
     proof_id: ProofId,
     parent_id: Option<TaskId>,
     parent_context: Option<Context>,
@@ -125,9 +119,8 @@ impl<A, W> SP1CoreExecutor<A, W> {
     pub fn new(
         splicing_engine: Arc<SplicingEngine<A, W>>,
         elf: Artifact,
-        stdin: Artifact,
+        stdin: Arc<SP1Stdin>,
         common_input: Artifact,
-        opts: Artifact,
         proof_id: ProofId,
         parent_id: Option<TaskId>,
         parent_context: Option<Context>,
@@ -138,7 +131,6 @@ impl<A, W> SP1CoreExecutor<A, W> {
     ) -> Self {
         Self {
             splicing_engine,
-            opts,
             elf,
             stdin,
             common_input,
@@ -159,12 +151,9 @@ where
     W: WorkerClient,
 {
     pub async fn execute(self) -> anyhow::Result<ExecutionOutput> {
-        // Get the program and input from artifacts
-        let elf_bytes = self.artifact_client.download::<Vec<u8>>(&self.elf).await?;
-
-        let stdin = self.artifact_client.download::<SP1Stdin>(&self.stdin).await?;
-
-        let opts = self.artifact_client.download::<SP1CoreOpts>(&self.opts).await?;
+        let elf_bytes = self.artifact_client.download_program(&self.elf).await?;
+        let opts = cluster_opts();
+        let stdin = self.stdin.clone();
 
         // Get the program from the elf. TODO: handle errors.
         let program = Arc::new(Program::from(&elf_bytes).unwrap());
@@ -190,7 +179,6 @@ where
             let sender = self.sender.clone();
             let final_vm_state = final_vm_state.clone();
             let opts = opts.clone();
-            let opts_artifact = self.opts.clone();
             move || {
                 let _guard = parent.enter();
 
@@ -198,12 +186,13 @@ where
                 let mut minimal_executor = MinimalExecutor::tracing(program.clone(), None);
 
                 // Write input to the minimal executor.
-                for buf in stdin.buffer {
-                    minimal_executor.with_input(&buf);
+                for buf in stdin.buffer.iter() {
+                    minimal_executor.with_input(buf);
                 }
 
                 let splicing_handles = FuturesUnordered::new();
-                tracing::trace!("Starting minimal executor");
+                tracing::info!("Starting minimal executor");
+                let now = std::time::Instant::now();
                 while let Some(chunk) = minimal_executor.execute_chunk() {
                     tracing::trace!("program is done?: {}", minimal_executor.is_done());
                     tracing::trace!(
@@ -225,7 +214,6 @@ where
                         parent_context: parent_context.clone(),
                         requester_id: requester_id.clone(),
                         opts: opts.clone(),
-                        opts_artifact: opts_artifact.clone(),
                     };
 
                     let splicing_handle = splicing_engine
@@ -234,7 +222,12 @@ where
 
                     splicing_handles.push(splicing_handle);
                 }
-                tracing::trace!("minimal executor finished");
+                let elapsed = now.elapsed().as_secs_f64();
+                tracing::info!(
+                    "executor finished. elapsed: {}s, mhz: {}",
+                    elapsed,
+                    minimal_executor.global_clk() as f64 / (elapsed * 1e6)
+                );
                 (minimal_executor, splicing_handles)
             }
         });
@@ -268,7 +261,6 @@ where
             final_state,
             touched_addresses,
             opts,
-            self.opts.clone(),
         )
         .await?;
 
@@ -282,7 +274,6 @@ where
         final_state: FinalVmState,
         touched_addresses: HashSet<u64>,
         opts: SP1CoreOpts,
-        opts_artifact: Artifact,
     ) -> anyhow::Result<()> {
         // Get the split opts
         let split_opts = SplitOpts::new(&opts, program.instructions.len(), false);
@@ -386,7 +377,6 @@ where
                         elf_artifact.clone(),
                         common_input_artifact.clone(),
                         data_artifact,
-                        opts_artifact.clone(),
                     )
                     .as_slice()
                     .to_vec();
@@ -575,7 +565,6 @@ pub struct SplicingTask {
     parent_context: Option<Context>,
     requester_id: RequesterId,
     opts: SP1CoreOpts,
-    opts_artifact: Artifact,
 }
 
 impl TaskInput for SplicingTask {
@@ -619,7 +608,6 @@ where
             parent_context,
             requester_id,
             opts,
-            opts_artifact,
         } = input;
 
         let (splicing_tx, mut splicing_rx) = mpsc::channel::<RecordTask>(1);
@@ -651,7 +639,6 @@ where
                         elf_artifact.clone(),
                         common_input_artifact.clone(),
                         record_artifact,
-                        opts_artifact.clone(),
                     )
                     .as_slice()
                     .to_vec();
@@ -801,7 +788,6 @@ mod tests {
 
         let splicing_engine = Arc::new(SplicingEngine::new(splicing_workers, splicing_buffer_size));
 
-        let opts = SP1CoreOpts::default();
         let stdin = SP1Stdin::default();
         let proof_id = ProofId::new("test_pure_execution");
         let parent_id = None;
@@ -820,19 +806,10 @@ mod tests {
             .await
             .expect("failed to upload elf");
 
-        let stdin_artifact =
-            artifact_client.create_artifact().expect("failed to create stdin artifact");
-        artifact_client.upload(&stdin_artifact, stdin).await.expect("failed to upload stdin");
-
-        let opts_artifact =
-            artifact_client.create_artifact().expect("failed to create opts artifact");
-        artifact_client.upload(&opts_artifact, opts).await.expect("failed to upload opts");
-
         let executor = SP1CoreExecutor {
             splicing_engine,
-            opts: opts_artifact,
             elf: elf_artifact,
-            stdin: stdin_artifact,
+            stdin: Arc::new(stdin),
             common_input,
             proof_id,
             parent_id,

@@ -41,12 +41,11 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
         elf: Artifact,
         common_input: Artifact,
         record: Artifact,
-        opts: Artifact,
         output: Artifact,
     ) -> anyhow::Result<TaskHandle<TaskId>> {
         let handle = self
             .core_prover
-            .submit_prove_shard(TracingTask { id, elf, common_input, record, opts, output })
+            .submit_prove_shard(TracingTask { id, elf, common_input, record, output })
             .await?;
         Ok(handle)
     }

@@ -157,10 +157,9 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                             let elf = inputs[0].clone();
                             let common_input = inputs[1].clone();
                             let record = inputs[2].clone();
-                            let opts = inputs[3].clone();
                             let output = outputs[0].clone();
 
-                            let handle = worker.prover_engine().submit_prove_core_shard(id, elf, common_input, record, opts, output).await.unwrap();
+                            let handle = worker.prover_engine().submit_prove_core_shard(id, elf, common_input, record, output).await.unwrap();
                             let proof_id = proof_id.clone();
                             let tx = task_tx.clone();
                             task_set.spawn(async move {

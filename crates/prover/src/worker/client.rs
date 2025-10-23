@@ -46,7 +46,10 @@ pub trait WorkerClient: Send + Sync + Clone + 'static {
         status: ProofRequestStatus,
     ) -> impl Future<Output = anyhow::Result<()>> + Send;
 
-    fn subscriber(&self) -> impl Future<Output = SubscriberBuilder<Self>> + Send;
+    fn subscriber(
+        &self,
+        proof_id: ProofId,
+    ) -> impl Future<Output = anyhow::Result<SubscriberBuilder<Self>>> + Send;
 
     fn submit_tasks(
         &self,
@@ -81,7 +84,7 @@ impl ProofId {
 
 impl fmt::Display for ProofId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ProofId({})", self.0)
+        write!(f, "{}", self.0) // TODO: nicely indicate that it is a proof id. Right now, it messes with the coordinator communication.
     }
 }
 
@@ -97,7 +100,7 @@ impl TaskId {
 
 impl fmt::Display for TaskId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "TaskId({})", self.0)
+        write!(f, "{}", self.0) // TODO: nicely indicate that it is a task id. Right now, it messes with the coordinator communication.
     }
 }
 
@@ -113,7 +116,7 @@ impl RequesterId {
 
 impl fmt::Display for RequesterId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "RequesterId({})", self.0)
+        write!(f, "{}", self.0)
     }
 }
 
@@ -127,6 +130,7 @@ pub struct RawTaskRequest {
     pub requester_id: RequesterId,
 }
 
+#[derive(Serialize, Deserialize, Default)]
 pub struct TaskMetadata {
     pub gpu_time: Option<u64>,
 }
@@ -402,7 +406,7 @@ impl WorkerClient for TrivialWorkerClient {
         Ok(())
     }
 
-    async fn subscriber(&self) -> SubscriberBuilder<Self> {
+    async fn subscriber(&self, _proof_id: ProofId) -> anyhow::Result<SubscriberBuilder<Self>> {
         let (sub_input_tx, mut sub_input_rx) = mpsc::unbounded_channel();
         let (sub_output_tx, sub_output_rx) = mpsc::unbounded_channel();
 
@@ -419,7 +423,7 @@ impl WorkerClient for TrivialWorkerClient {
             }
         });
 
-        SubscriberBuilder::new(self.clone(), sub_input_tx, sub_output_rx)
+        Ok(SubscriberBuilder::new(self.clone(), sub_input_tx, sub_output_rx))
     }
 }
 
@@ -558,7 +562,7 @@ mod tests {
             unimplemented!()
         }
 
-        async fn subscriber(&self) -> SubscriberBuilder<Self> {
+        async fn subscriber(&self, _proof_id: ProofId) -> anyhow::Result<SubscriberBuilder<Self>> {
             let (subscriber_input_tx, mut subscriber_input_rx) = mpsc::unbounded_channel();
             let (subscriber_output_tx, subscriber_output_rx) = mpsc::unbounded_channel();
 
@@ -586,7 +590,7 @@ mod tests {
                     }
                 }
             });
-            SubscriberBuilder::new(self.clone(), subscriber_input_tx, subscriber_output_rx)
+            Ok(SubscriberBuilder::new(self.clone(), subscriber_input_tx, subscriber_output_rx))
         }
     }
 
@@ -601,7 +605,8 @@ mod tests {
         let read_task = read_task.into_raw(&artifact_client).await;
 
         // Create a subscriber to receive the task status.
-        let subscriber = worker_client.subscriber().await.per_task();
+        let subscriber =
+            worker_client.subscriber(ProofId::new("dummy proof id")).await.unwrap().per_task();
 
         // Submit tasks, single threaded.
         let mut increment_tasks = vec![];

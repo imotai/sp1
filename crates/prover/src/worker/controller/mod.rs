@@ -7,7 +7,9 @@ use opentelemetry::Context;
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
 use sp1_hypercube::ShardProof;
 use sp1_primitives::{io::SP1PublicValues, SP1GlobalContext};
-use sp1_prover_types::{Artifact, ArtifactClient, TaskStatus, TaskType};
+use sp1_prover_types::{
+    network_base_types::ProofMode, Artifact, ArtifactClient, TaskStatus, TaskType,
+};
 use std::sync::Arc;
 use tokio::{
     sync::{mpsc, oneshot},
@@ -49,9 +51,8 @@ where
     fn executor(
         &self,
         elf: Artifact,
-        stdin: Artifact,
+        stdin: Arc<SP1Stdin>,
         common_input: Artifact,
-        opts: Artifact,
         proof_id: ProofId,
         parent_id: Option<TaskId>,
         parent_context: Option<Context>,
@@ -63,7 +64,6 @@ where
             elf,
             stdin,
             common_input,
-            opts,
             proof_id,
             parent_id,
             parent_context,
@@ -80,15 +80,18 @@ where
 
         let elf = inputs[0].clone();
         let stdin_artifact = inputs[1].clone();
-        let opts = inputs[2].clone();
+        let mode_artifact = inputs[2].clone().to_id();
+        let parsed = mode_artifact.parse::<i32>()?;
+        let mode = ProofMode::try_from(parsed)?;
+
+        tracing::info!("mode: {:?}", mode);
 
         // For now, assume no deferred proofs
         let deferred_digest = [0; 8];
-        let num_deffered_proofs = 0usize;
+        let num_deferred_proofs = 0usize;
 
         // Create a setup task and wait for the vk
-        let vk_artifact =
-            self.artifact_client.create_artifact().expect("failed to create vk artifact");
+        let vk_artifact = self.artifact_client.create_artifact()?;
         let setup_request = RawTaskRequest {
             inputs: vec![elf.clone()],
             outputs: vec![vk_artifact.clone()],
@@ -97,20 +100,26 @@ where
             parent_context: parent_context.clone(),
             requester_id: requester_id.clone(),
         };
+
+        // TODO: do setup and start downloading stdin and execute concurrently.
         tracing::trace!("submitting setup task");
         let setup_id = self.worker_client.submit_task(TaskType::SetupVkey, setup_request).await?;
         // Wait for the setup task to finish
-        let subscriber = self.worker_client.subscriber().await.per_task();
+        let subscriber = self.worker_client.subscriber(proof_id.clone()).await?.per_task();
         let status =
             subscriber.wait_task(setup_id).instrument(tracing::debug_span!("setup task")).await?;
         if status != TaskStatus::Succeeded {
             return Err(anyhow::anyhow!("setup task failed"));
         }
         tracing::trace!("setup task succeeded");
-        // Download the vk
-        let vk = self.artifact_client.download::<SP1VerifyingKey>(&vk_artifact).await?;
+        // Download the vk and stdin
+        let (vk, stdin) = tokio::try_join!(
+            self.artifact_client.download::<SP1VerifyingKey>(&vk_artifact),
+            self.artifact_client.download_stdin::<SP1Stdin>(&stdin_artifact),
+        )?;
+        let stdin = Arc::new(stdin);
         // Create the common input
-        let common_input = CommonProverInput { vk, deferred_digest, num_deffered_proofs };
+        let common_input = CommonProverInput { vk, deferred_digest, num_deferred_proofs };
         // Upload the common input
         let common_input_artifact =
             self.artifact_client.create_artifact().expect("failed to create common input artifact");
@@ -120,9 +129,8 @@ where
 
         let executor = self.executor(
             elf,
-            stdin_artifact.clone(),
+            stdin.clone(),
             common_input_artifact,
-            opts,
             proof_id.clone(),
             parent_id,
             parent_context,
@@ -137,7 +145,7 @@ where
             let worker_client = self.worker_client.clone();
             let artifact_client = self.artifact_client.clone();
             async move {
-                let subscriber = worker_client.subscriber().await.per_task();
+                let subscriber = worker_client.subscriber(proof_id).await?.per_task();
                 let mut shard_proofs = Vec::new();
                 while let Some(proof_data) = core_proof_rx.recv().await {
                     let ProofData { task_id, proof } = proof_data;
@@ -162,12 +170,14 @@ where
         // Wait for the proofs to finish
         let shard_proofs = proofs_rx.await?;
 
-        let stdin = self.artifact_client.download::<SP1Stdin>(&stdin_artifact).await?;
-
         let ExecutionOutput { public_value_stream, cycles } = result;
         let public_values = SP1PublicValues::from(&public_value_stream);
-        let proof =
-            SP1CoreProof { proof: SP1CoreProofData(shard_proofs), stdin, public_values, cycles };
+        let proof = SP1CoreProof {
+            proof: SP1CoreProofData(shard_proofs),
+            stdin: stdin.as_ref().clone(),
+            public_values,
+            cycles,
+        };
 
         // Upload the proofs and output
         self.artifact_client.upload(&outputs[0], proof).await?;
