@@ -107,7 +107,7 @@ jobs:
           ~/.sp1/bin/sp1up 
           ~/.sp1/bin/cargo-prove prove --version
 
-      - name: Run cargo test
+      - name: Run end to end prover script
         uses: actions-rs/cargo@v1
         with:
           command: run

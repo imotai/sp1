@@ -130,6 +130,20 @@ pub fn local_gpu_opts() -> LocalProverOpts {
     opts.core_opts.shard_size = 1 << log2_shard_size;
     opts.num_record_workers = 4;
 
+    let gb = 1024.0 * 1024.0 * 1024.0;
+
+    // Get the amount of memory on the GPU.
+    let gpu_memory_gb: usize = (((cuda_memory_info().unwrap().1 as f64) / gb).ceil() as usize) + 4;
+
+    let shard_threshold = if gpu_memory_gb <= 30 {
+        ELEMENT_THRESHOLD - (1 << 27)
+    } else {
+        ELEMENT_THRESHOLD + (1 << 26) + (1 << 25)
+    };
+
+    println!("Shard threshold: {shard_threshold}");
+    opts.core_opts.sharding_threshold.element_threshold = shard_threshold;
+
     opts
 }
 
@@ -255,8 +269,8 @@ impl DerefMut for SP1ProverCleanBuilder {
     }
 }
 
-/// A type alias for [SP1WorkerBuilder] with [CudaSP1ProverComponents].
-pub type SP1CudaWorkerBuilder<A, W> = SP1WorkerBuilder<A, W, CudaSP1ProverComponents>;
+/// A type alias for [SP1WorkerBuilder] with [ProverCleanSP1ProverComponents].
+pub type SP1CudaWorkerBuilder<A, W> = SP1WorkerBuilder<A, W, ProverCleanSP1ProverComponents>;
 
 /// Create a [SP1CudaWorkerBuilder]
 pub fn cuda_worker_builder<A: ArtifactClient, W: WorkerClient>(
@@ -266,9 +280,29 @@ pub fn cuda_worker_builder<A: ArtifactClient, W: WorkerClient>(
 ) -> SP1CudaWorkerBuilder<A, W> {
     let prover_permits = ProverSemaphore::new(1);
 
-    let core_verifier = CudaSP1ProverComponents::core_verifier();
-    let core_air_prover =
-        new_cuda_prover_sumcheck_eval(core_verifier.shard_verifier().clone(), scope.clone());
+    let core_verifier = ProverCleanSP1ProverComponents::core_verifier();
+
+    // Convert bytes to GB.
+    let gb = 1024.0 * 1024.0 * 1024.0;
+
+    // Get the amount of memory on the GPU.
+    let gpu_memory_gb: usize = (((cuda_memory_info().unwrap().1 as f64) / gb).ceil() as usize) + 4;
+    // TODO: Change this to be calculated from SplitOpts, but this requires a refactor in
+    // `sp1-wip`.
+    let num_elts = if gpu_memory_gb <= 30 {
+        ELEMENT_THRESHOLD - (1 << 25)
+    } else {
+        ELEMENT_THRESHOLD + (1 << 26) + (1 << 25)
+    };
+
+    let num_elts = (num_elts as f64).ceil() as usize + (1 << CORE_LOG_STACKING_HEIGHT);
+
+    let core_air_prover = new_prover_clean_prover(
+        core_verifier.clone(),
+        num_elts as usize,
+        CORE_LOG_BLOWUP,
+        scope.clone(),
+    );
     let core_air_prover = Arc::new(core_air_prover);
 
     SP1CudaWorkerBuilder::new(artifact_client, worker_client)

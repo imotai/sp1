@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use clap::{arg, Parser, ValueEnum};
-use csl_cuda::cuda_memory_info;
 use csl_perf::{
     make_measurement, telemetry, ProverBackend, Stage, FIBONACCI_ELF, KECCAK_ELF, LOOP_ELF,
     POSEIDON2_ELF, SHA2_ELF,
@@ -10,7 +9,6 @@ use csl_prover::{local_gpu_opts, SP1CudaProverBuilder, SP1ProverCleanBuilder};
 use csl_tracing::init_tracer;
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
-use sp1_core_executor::ELEMENT_THRESHOLD;
 use sp1_core_machine::io::SP1Stdin;
 
 const RSP_CLIENT_ELF: &[u8] = include_bytes!("../../programs/rsp/elf/rsp-client");
@@ -128,7 +126,7 @@ async fn main() {
 
     let measurement = csl_cuda::spawn(move |t| async move {
         let recursion_cache_size = 5;
-        let mut opts = local_gpu_opts();
+        let opts = local_gpu_opts();
 
         match args.backend {
             ProverBackend::Old => {
@@ -149,20 +147,6 @@ async fn main() {
                     .build()
                     .await;
 
-                let gb = 1024.0 * 1024.0 * 1024.0;
-
-                // Get the amount of memory on the GPU.
-                let gpu_memory_gb: usize =
-                    (((cuda_memory_info().unwrap().1 as f64) / gb).ceil() as usize) + 4;
-
-                let shard_threshold = if gpu_memory_gb <= 30 {
-                    ELEMENT_THRESHOLD - (1 << 27)
-                } else {
-                    ELEMENT_THRESHOLD + (1 << 26) + (1 << 25)
-                };
-
-                println!("Shard threshold: {shard_threshold}");
-                opts.core_opts.sharding_threshold.element_threshold = shard_threshold;
                 let prover = Arc::new(LocalProver::new(sp1_prover_clean, opts));
                 make_measurement(&name, &elf, stdin, stage, prover).await
             }

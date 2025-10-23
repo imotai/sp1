@@ -4,10 +4,10 @@ use clap::Parser;
 use csl_perf::{
     telemetry, Measurement, FIBONACCI_ELF, KECCAK_ELF, LOOP_ELF, POSEIDON2_ELF, SHA2_ELF,
 };
-use csl_prover::{new_cuda_prover_sumcheck_eval, CudaSP1ProverComponents};
+use csl_prover::{local_gpu_opts, new_cuda_prover_sumcheck_eval, CudaSP1ProverComponents};
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
-use sp1_core_executor::{SP1Context, SP1CoreOpts};
+use sp1_core_executor::SP1Context;
 use sp1_core_machine::io::SP1Stdin;
 
 const RSP_CLIENT_ELF: &[u8] = include_bytes!("../../programs/rsp/elf/rsp-client");
@@ -135,8 +135,7 @@ async fn main() {
         tracing::info!("setup time: {:?}", setup_time);
 
         let context = SP1Context::default();
-        let mut opts = SP1CoreOpts::default();
-        opts.shard_size = 1 << 24;
+        let opts = local_gpu_opts().core_opts;
         let time = tokio::time::Instant::now();
         let proof = client.prove_core(&elf, stdin, opts, context).await.unwrap();
         let core_time = time.elapsed();
