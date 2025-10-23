@@ -138,18 +138,16 @@ async fn main() {
     let elf_bytes = elf.to_vec();
     artifact_client.upload(&elf_artifact, elf_bytes).await.expect("failed to upload elf");
 
-    let stdin_artifact = artifact_client.create_artifact().expect("failed to create artifact");
-    artifact_client.upload(&stdin_artifact, stdin).await.expect("failed to upload stdin");
+    let stdin = Arc::new(stdin);
 
-    let opts_artifact = artifact_client.create_artifact().expect("failed to create artifact");
-    artifact_client.upload(&opts_artifact, opts).await.expect("failed to upload opts");
+    let mode_artifact = artifact_client.create_artifact().expect("failed to create artifact");
+    artifact_client.upload(&mode_artifact, opts).await.expect("failed to upload opts");
 
     let executor = SP1CoreExecutor::new(
         splicing_engine,
         elf_artifact,
-        stdin_artifact,
+        stdin,
         common_input,
-        opts_artifact,
         proof_id,
         parent_id,
         parent_context,

@@ -4,7 +4,7 @@ use clap::Parser;
 use csl_perf::{
     telemetry, Measurement, FIBONACCI_ELF, KECCAK_ELF, LOOP_ELF, POSEIDON2_ELF, SHA2_ELF,
 };
-use csl_prover::{local_gpu_opts, new_cuda_prover_sumcheck_eval, CudaSP1ProverComponents};
+use csl_prover::{new_cuda_prover_sumcheck_eval, CudaSP1ProverComponents};
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
 use sp1_core_executor::SP1Context;
@@ -135,9 +135,8 @@ async fn main() {
         tracing::info!("setup time: {:?}", setup_time);
 
         let context = SP1Context::default();
-        let opts = local_gpu_opts().core_opts;
         let time = tokio::time::Instant::now();
-        let proof = client.prove_core(&elf, stdin, opts, context).await.unwrap();
+        let proof = client.prove_core(&elf, stdin, context).await.unwrap();
         let core_time = time.elapsed();
         tracing::info!("core proof time: {:?}", core_time);
 
