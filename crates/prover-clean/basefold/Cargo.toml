@@ -1,0 +1,59 @@
+[package]
+name = "cslpc-basefold"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+# cuslop
+csl-cuda = { workspace = true }
+csl-tracegen = { workspace = true }
+csl-challenger = { workspace = true }
+
+# prover-clean subcrates
+cslpc-utils = { workspace = true }
+cslpc-merkle-tree = { workspace = true }
+
+slop-algebra = { workspace = true }
+slop-alloc = { workspace = true }
+slop-basefold-prover = { workspace = true }
+slop-multilinear = { workspace = true }
+slop-commit = { workspace = true }
+slop-futures = { workspace = true }
+slop-basefold = { workspace = true }
+slop-merkle-tree = { workspace = true }
+slop-tensor = { workspace = true }
+slop-challenger = { workspace = true }
+slop-koala-bear = { workspace = true }
+slop-symmetric = { workspace = true }
+slop-dft = { workspace = true }
+
+# sp1
+sp1-hypercube = { workspace = true }
+
+# misc
+itertools = { workspace = true }
+rand = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+cslpc-tracegen = { workspace = true }
+serial_test = "3.1"
+zstd = "0.13.3"
+sp1-sdk = { workspace = true }
+sp1-recursion-circuit = { workspace = true }
+csl-prover = { workspace = true }
+csl-basefold = { workspace = true }
+cslpc-commit = { workspace = true }
+sp1-recursion-compiler = { workspace = true }
+slop-stacked = { workspace = true }
+slop-poseidon2 = { workspace = true }
+sp1-primitives = { workspace = true }
+futures = { workspace = true }
+
+[lints]
+workspace = true

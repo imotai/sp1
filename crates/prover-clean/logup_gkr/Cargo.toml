@@ -1,0 +1,61 @@
+[package]
+name = "cslpc-logup-gkr"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+# cuslop
+csl-cuda = { workspace = true }
+
+# prover-clean subcrates
+cslpc-utils = { workspace = true }
+cslpc-tracegen = { workspace = true }
+cslpc-zerocheck = { workspace = true }
+
+# slop
+
+
+slop-air = { workspace = true }
+slop-algebra = { workspace = true }
+slop-alloc = { workspace = true }
+slop-commit = { workspace = true }
+slop-tensor = { workspace = true }
+slop-multilinear = { workspace = true }
+slop-sumcheck = { workspace = true }
+slop-challenger = { workspace = true }
+slop-koala-bear = { workspace = true }
+slop-futures = { workspace = true }
+slop-basefold-prover = { workspace = true }
+slop-merkle-tree = { workspace = true }
+slop-bn254 = { workspace = true }
+slop-symmetric = { workspace = true }
+slop-dft = { workspace = true }
+# sp1
+sp1-hypercube = { workspace = true }
+
+# misc
+itertools = { workspace = true }
+rand = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rayon = "1.10.0"
+
+[dev-dependencies]
+serial_test = "3.1"
+zstd = "0.13.3"
+sp1-sdk = { workspace = true}
+sp1-recursion-circuit = { workspace = true }
+
+[[bin]]
+name = "logup_gkr_bench"
+path = "bin/logup_gkr_bench.rs"
+
+[lints]
+workspace = true

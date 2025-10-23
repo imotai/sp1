@@ -26,12 +26,28 @@ members = [
     "crates/tracegen",
     "crates/logup-gkr",
     "crates/cuslop",
-    "crates/prover-clean",
+    "crates/prover-clean/commit",
+    "crates/prover-clean/utils",
+    "crates/prover-clean/prover",
+    "crates/prover-clean/jagged_sumcheck",
+    "crates/prover-clean/merkle_tree",
+    "crates/prover-clean/tracegen",
+    "crates/prover-clean/logup_gkr",
+    "crates/prover-clean/zerocheck",
+    "crates/prover-clean/experimental",
+    "crates/prover-clean/basefold",
 ]
 resolver = "2"
 
 [profile.dev]
 opt-level = 3
+debug = true
+incremental = false
+
+[profile.dev.package.csl-sys]
+debug = false
+
+[profile.dev.package.csl-prover]
 debug = false
 
 [profile.lto]
@@ -60,6 +76,18 @@ csl-logup-gkr = { path = "crates/logup-gkr" }
 csl-prover-clean = { path = "crates/prover-clean" }
 csl-server = { path = "crates/cuslop" }
 csl-perf = { path = "crates/perf" }
+
+# prover-clean subcrates
+cslpc-utils = { path = "crates/prover-clean/utils" }
+cslpc-commit = { path = "crates/prover-clean/commit" }
+cslpc-prover = { path = "crates/prover-clean/prover" }
+cslpc-jagged-sumcheck = { path = "crates/prover-clean/jagged_sumcheck" }
+cslpc-merkle-tree = { path = "crates/prover-clean/merkle_tree" }
+cslpc-tracegen = { path = "crates/prover-clean/tracegen" }
+cslpc-logup-gkr = { path = "crates/prover-clean/logup_gkr" }
+cslpc-zerocheck = { path = "crates/prover-clean/zerocheck" }
+cslpc-experimental = { path = "crates/prover-clean/experimental" }
+cslpc-basefold = { path = "crates/prover-clean/basefold" }
 
 # slop 
 slop-air = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
@@ -90,12 +118,13 @@ sp1-hypercube = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = 
 sp1-primitives = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-prover = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-recursion-circuit = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-recursion-compiler = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-recursion-machine = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-recursion-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-cuda = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-derive = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-sdk = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
+sp1-sdk = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6", features = ["experimental"] }
 
 # # slop local copy
 # slop-air = { path = "../sp1-wip/slop/crates/air" }

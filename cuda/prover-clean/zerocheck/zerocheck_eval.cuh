@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../config.cuh"
-
+#include <stdio.h>
 
 struct Instruction {
     unsigned char opcode;

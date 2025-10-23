@@ -1,12 +1,11 @@
 use std::{sync::Arc, time::Duration};
 
 use clap::ValueEnum;
-use csl_cuda::TaskScope;
-use csl_prover::{local_gpu_opts, SP1CudaProverBuilder};
 use sp1_core_executor::SP1Context;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_prover::utils::generate_nonce;
-use sp1_prover::{local::LocalProver, shapes::DEFAULT_ARITY, SP1CoreProofData};
+use sp1_prover::SP1ProverComponents;
+use sp1_prover::{local::LocalProver, SP1CoreProofData};
 use tokio::time::Instant;
 use tracing::Instrument;
 
@@ -14,6 +13,14 @@ pub use report::{write_measurements_to_csv, Measurement};
 
 mod report;
 pub mod telemetry;
+
+#[derive(ValueEnum, Debug, Clone, Copy)]
+pub enum ProverBackend {
+    /// Use the old prover implementation
+    Old,
+    /// Use the new prover-clean implementation
+    ProverClean,
+}
 
 pub const FIBONACCI_ELF: &[u8] =
     include_bytes!("../../prover/programs/fibonacci/riscv64im-succinct-zkvm-elf");
@@ -35,24 +42,13 @@ pub enum Stage {
     Wrap,
 }
 
-pub async fn make_measurement(
+pub async fn make_measurement<C: SP1ProverComponents>(
     name: &str,
     elf: &[u8],
     stdin: SP1Stdin,
     stage: Stage,
-    t: TaskScope,
+    prover: Arc<LocalProver<C>>,
 ) -> Measurement {
-    let recursion_cache_size = 5;
-    let sp1_prover = SP1CudaProverBuilder::new(t.clone())
-        .normalize_cache_size(recursion_cache_size)
-        .set_max_compose_arity(DEFAULT_ARITY)
-        .without_vk_verification()
-        .build()
-        .await;
-    let opts = local_gpu_opts();
-
-    let prover = Arc::new(LocalProver::new(sp1_prover, opts));
-
     let time = Instant::now();
     let (pk, program, vk) = prover
         .prover()

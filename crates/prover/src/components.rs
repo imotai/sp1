@@ -8,10 +8,15 @@ use csl_jagged::{
 use csl_logup_gkr::LogupGkrCudaProverComponents;
 use csl_tracegen::{CudaTraceGenerator, CudaTracegenAir};
 use csl_zerocheck::ZerocheckEvalProgramProverData;
+use cslpc_merkle_tree::{Poseidon2Bn254CudaProver, Poseidon2KoalaBear16CudaProver, TcsProverClean};
+use cslpc_prover::{
+    CudaShardProver, Ext, Felt, ProverCleanMachineProverComponents, ProverCleanProverComponents,
+};
 use serde::{Deserialize, Serialize};
 use slop_algebra::extension::BinomialExtensionField;
+use slop_basefold::{Poseidon2Bn254FrBasefoldConfig, Poseidon2KoalaBear16BasefoldConfig};
 use slop_challenger::IopCtx;
-use slop_jagged::{DefaultJaggedProver, JaggedProver, JaggedProverComponents};
+use slop_jagged::{DefaultJaggedProver, JaggedProver, JaggedProverComponents, SP1OuterConfig};
 use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_hypercube::{
@@ -19,7 +24,7 @@ use sp1_hypercube::{
     prover::{
         MachineProverComponents, ProvingKey, ShardProver, ShardProverComponents, ZerocheckAir,
     },
-    GkrProverImpl, MachineConfig, ShardVerifier,
+    GkrProverImpl, MachineConfig, SP1CoreJaggedConfig, ShardVerifier,
 };
 use sp1_primitives::{SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_prover::{components::SP1ProverComponents, CompressAir, WrapAir};
@@ -42,6 +47,49 @@ impl SP1ProverComponents for CudaSP1ProverComponents {
         Poseidon2Bn254JaggedCudaProverComponents,
         WrapAir<<SP1OuterGlobalContext as IopCtx>::F>,
     >;
+}
+
+pub struct ProverCleanSP1ProverComponents;
+
+impl SP1ProverComponents for ProverCleanSP1ProverComponents {
+    type CoreComponents =
+        ProverCleanMachineProverComponents<KoalaBearDegree4Duplex, ProverCleanCoreProverComponents>;
+    type RecursionComponents = ProverCleanMachineProverComponents<
+        KoalaBearDegree4Duplex,
+        ProverCleanRecursionProverComponents,
+    >;
+    type WrapComponents =
+        ProverCleanMachineProverComponents<SP1OuterGlobalContext, ProverCleanWrapProverComponents>;
+}
+
+/// Core prover components for prover-clean.
+pub struct ProverCleanCoreProverComponents;
+
+impl ProverCleanProverComponents<KoalaBearDegree4Duplex> for ProverCleanCoreProverComponents {
+    type P = Poseidon2KoalaBear16CudaProver;
+    type BC = Poseidon2KoalaBear16BasefoldConfig;
+    type Air = RiscvAir<KoalaBear>;
+    type C = SP1CoreJaggedConfig;
+}
+
+/// Recursion prover components for prover-clean.
+pub struct ProverCleanRecursionProverComponents;
+
+impl ProverCleanProverComponents<KoalaBearDegree4Duplex> for ProverCleanRecursionProverComponents {
+    type P = Poseidon2KoalaBear16CudaProver;
+    type BC = Poseidon2KoalaBear16BasefoldConfig;
+    type Air = CompressAir<<SP1GlobalContext as IopCtx>::F>;
+    type C = SP1CoreJaggedConfig;
+}
+
+/// Wrap prover comp    onents for prover-clean.
+pub struct ProverCleanWrapProverComponents;
+
+impl ProverCleanProverComponents<SP1OuterGlobalContext> for ProverCleanWrapProverComponents {
+    type P = Poseidon2Bn254CudaProver;
+    type BC = Poseidon2Bn254FrBasefoldConfig<Felt, Ext>;
+    type Air = WrapAir<<SP1OuterGlobalContext as IopCtx>::F>;
+    type C = SP1OuterConfig;
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -99,7 +147,6 @@ where
         pcs_prover,
     }
 }
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct CudaMachineProverComponents<GC, PcsComponents, A>(PhantomData<(GC, A, PcsComponents)>);
 
@@ -121,5 +168,49 @@ where
             .iter()
             .map(|(k, v)| (k.clone(), v.num_real_entries()))
             .collect()
+    }
+}
+
+pub fn new_prover_clean_prover<GC, C, PC>(
+    verifier: sp1_hypercube::MachineVerifier<GC, C, PC::Air>,
+    max_trace_size: usize,
+    log_blowup: usize,
+    scope: TaskScope,
+) -> CudaShardProver<GC, PC>
+where
+    GC: IopCtx<F = KoalaBear, EF = BinomialExtensionField<KoalaBear, 4>>,
+    C: MachineConfig<GC>,
+    PC: ProverCleanProverComponents<GC>,
+    PC::P: TcsProverClean<GC> + Default,
+    PC::Air: CudaTracegenAir<GC::F>
+        + for<'a> BlockAir<SymbolicProverFolder<'a>>
+        + ZerocheckAir<GC::F, GC::EF>
+        + std::fmt::Debug,
+{
+    use cslpc_basefold::ProverCleanFriCudaProver;
+    use slop_basefold::BasefoldVerifier;
+
+    let machine = verifier.machine().clone();
+
+    let log_stacking_height = verifier.log_stacking_height();
+    let max_log_row_count = verifier.max_log_row_count();
+
+    // Create the basefold prover from the verifier's PCS config
+    // TODO: get this straight from the verifier.
+    let basefold_verifier = BasefoldVerifier::<GC>::new(log_blowup, 2);
+
+    let basefold_prover = ProverCleanFriCudaProver::<GC, PC::P, GC::F>::new(
+        PC::P::default(),
+        basefold_verifier.fri_config,
+        log_stacking_height,
+    );
+
+    CudaShardProver {
+        max_log_row_count: max_log_row_count as u32,
+        basefold_prover,
+        max_trace_size,
+        machine,
+        backend: scope,
+        _marker: PhantomData,
     }
 }
