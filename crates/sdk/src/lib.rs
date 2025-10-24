@@ -152,7 +152,7 @@ mod tests {
     //     assert_eq!(stdout, b"Hello, world!\n");
     // }
 
-    // TODO BEFORE RELEASE: remove use of unsound prover when vkey commitments are finally built.
+    // TODO BEFORE RELEASE: remove use of experimental prover when vkey commitments are finally built.
     #[cfg(feature = "experimental")]
     #[tokio::test]
     async fn test_e2e_compressed() {
@@ -176,43 +176,36 @@ mod tests {
         }
     }
 
-    // TODO BEFORE RELEASE: add this back when implemented as well as a similar groth16 test, and
-    // remove use of unsound prover (see above).
-    // #[cfg(feature = "experimental")]
-    // #[tokio::test]
-    // async fn test_e2e_prove_plonk() {
-    //     use crate::CpuProver;
+    // TODO BEFORE RELEASE: remove use of experimental prover (see above).
+    #[cfg(feature = "experimental")]
+    #[tokio::test]
+    async fn test_e2e_plonk() {
+        use crate::{prover::ProveRequest, CpuProver};
 
-    //     utils::setup_logger();
-    //     let client = CpuProver::new_experimental().await;
-    //     let elf = test_artifacts::FIBONACCI_ELF;
-    //     let pk = client.setup(elf).await.unwrap();
-    //     let mut stdin = SP1Stdin::new();
-    //     stdin.write(&10usize);
+        utils::setup_logger();
+        let client = CpuProver::new_experimental().await;
+        let pk = client.setup(test_artifacts::FIBONACCI_ELF).await.unwrap();
+        let mut stdin = SP1Stdin::new();
+        stdin.write(&10usize);
 
-    //     // Generate proof & verify.
-    //     let mut proof = client.prove(&pk, stdin).plonk().await.unwrap();
-    //     client.verify(&proof, &pk.vk).unwrap();
+        let proof = client.prove(&pk, stdin).plonk().await.unwrap();
+        client.verify(&proof, &pk.vk, None).unwrap();
+    }
 
-    //     // Test invalid public values.
-    //     proof.public_values = SP1PublicValues::from(&[255, 4, 84]);
-    //     if client.verify(&proof, &pk.vk).is_ok() {
-    //         panic!("verified proof with invalid public values")
-    //     }
-    // }
+    // TODO BEFORE RELEASE: remove use of experimental prover (see above).
+    #[cfg(feature = "experimental")]
+    #[tokio::test]
+    async fn test_e2e_groth16() {
+        use crate::{prover::ProveRequest, CpuProver};
 
-    // TODO: reimplement the mock prover and revive this test
-    // #[tokio::test]
-    // async fn test_e2e_prove_plonk_mock() {
-    //     utils::setup_logger();
-    //     let client = ProverClient::builder().mock().build().await;
-    //     let elf = test_artifacts::FIBONACCI_ELF;
-    //     let pk = client.setup(elf).await.unwrap();
-    //     let mut stdin = SP1Stdin::new();
-    //     stdin.write(&10usize);
+        utils::setup_logger();
+        let client = CpuProver::new_experimental().await;
+        let elf = test_artifacts::FIBONACCI_ELF;
+        let pk = client.setup(elf).await.unwrap();
+        let mut stdin = SP1Stdin::new();
+        stdin.write(&10usize);
 
-    //     // Generate proof & verify.
-    //     let mut proof = client.prove(&pk, stdin).plonk().await.unwrap();
-    //     client.verify(&proof, &pk.vk).unwrap();
-    // }
+        let proof = client.prove(&pk, stdin).groth16().await.unwrap();
+        client.verify(&proof, &pk.vk, None).unwrap();
+    }
 }

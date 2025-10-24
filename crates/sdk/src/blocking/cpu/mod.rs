@@ -25,7 +25,7 @@ use sp1_prover::{
 };
 
 use crate::blocking::prover::Prover;
-use crate::cpu::CPUProvingKey;
+use crate::cpu::{prove_groth16, prove_plonk, CPUProvingKey};
 use crate::{
     install::try_install_circuit_artifacts, SP1Proof, SP1ProofMode, SP1ProofWithPublicValues,
 };
@@ -152,53 +152,35 @@ impl CpuProver {
 
         // Generate the compressed proof.
         let public_values = proof.public_values.clone();
-        let reduce_proof =
+        let compress_proof =
             crate::blocking::block_on(self.prover.clone().compress(vk, proof, deferred_proofs))?;
         if mode == SP1ProofMode::Compressed {
             return Ok(SP1ProofWithPublicValues::new(
-                SP1Proof::Compressed(Box::new(reduce_proof)),
+                SP1Proof::Compressed(Box::new(compress_proof)),
                 public_values,
                 self.version().to_string(),
             ));
         }
 
-        // Generate the shrink proof.
-        // let compress_proof = self.prover.shrink(reduce_proof, opts)?;
-
-        // Generate the wrap proof.
-        // let outer_proof = self.prover.wrap_bn254(compress_proof, opts)?;
-
-        // Generate the gnark proof.
+        let shrink_proof = crate::blocking::block_on(self.prover.clone().shrink(compress_proof))?;
+        let wrap_proof = crate::blocking::block_on(self.prover.clone().wrap(shrink_proof))?;
         match mode {
             SP1ProofMode::Groth16 => {
-                let _ = crate::blocking::block_on(try_install_circuit_artifacts("groth16"));
-                todo!()
-
-                // let proof = self.prover.wrap_groth16_bn254(outer_proof,
-                // &groth16_bn254_artifacts); Ok(SP1ProofWithPublicValues::new(
-                //     SP1Proof::Groth16(proof),
-                //     public_values,
-                //     self.version().to_string(),
-                // ))
+                let groth16_proof =
+                    crate::blocking::block_on(prove_groth16(&self.prover, wrap_proof));
+                Ok(SP1ProofWithPublicValues::new(
+                    SP1Proof::Groth16(groth16_proof),
+                    public_values,
+                    self.version().to_string(),
+                ))
             }
             SP1ProofMode::Plonk => {
-                let _ = crate::blocking::block_on(try_install_circuit_artifacts("plonk"));
-
-                todo!()
-                // let plonk_bn254_artifacts = if sp1_prover::build::sp1_dev_mode() {
-                //     sp1_prover::build::try_build_plonk_bn254_artifacts_dev(
-                //         &outer_proof.vk,
-                //         &outer_proof.proof,
-                //     )
-                // } else {
-                //     try_install_circuit_artifacts("plonk")
-                // };
-                // let proof = self.prover.wrap_plonk_bn254(outer_proof, &plonk_bn254_artifacts);
-                // Ok(SP1ProofWithPublicValues::new(
-                //     SP1Proof::Plonk(proof),
-                //     public_values,
-                //     self.version().to_string(),
-                // ))
+                let plonk_proof = crate::blocking::block_on(prove_plonk(&self.prover, wrap_proof));
+                Ok(SP1ProofWithPublicValues::new(
+                    SP1Proof::Plonk(plonk_proof),
+                    public_values,
+                    self.version().to_string(),
+                ))
             }
             _ => unreachable!(),
         }

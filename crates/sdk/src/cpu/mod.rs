@@ -12,7 +12,11 @@ use prove::CpuProveBuilder;
 use sp1_core_executor::{ExecutionError, Program, SP1Context};
 use sp1_core_machine::io::SP1Stdin;
 use sp1_hypercube::prover::MachineProvingKey;
-use sp1_primitives::{Elf, SP1GlobalContext};
+use sp1_hypercube::SP1RecursionProof;
+use sp1_primitives::{Elf, SP1GlobalContext, SP1OuterGlobalContext};
+use sp1_prover::build::{
+    try_build_groth16_bn254_artifacts_dev, try_build_plonk_bn254_artifacts_dev,
+};
 use sp1_prover::{
     components::CpuSP1ProverComponents,
     // verify::{verify_groth16_bn254_public_inputs, verify_plonk_bn254_public_inputs},
@@ -25,9 +29,10 @@ use sp1_prover::{
     local::{LocalProver, LocalProverOpts},
     SP1ProverBuilder, SP1VerifyingKey,
 };
+use sp1_prover::{Groth16Bn254Proof, InnerSC, OuterSC, PlonkBn254Proof};
 
+use crate::install::try_install_circuit_artifacts;
 use crate::{
-    install::try_install_circuit_artifacts,
     prover::{Prover, ProvingKey, SendFutureResult},
     SP1Proof, SP1ProofMode, SP1ProofWithPublicValues,
 };
@@ -156,73 +161,96 @@ impl CpuProver {
         context: SP1Context<'static>,
         mode: SP1ProofMode,
     ) -> Result<SP1ProofWithPublicValues, CPUProverError> {
-        // Collect the deferred proofs
-        let deferred_proofs =
-            stdin.proofs.iter().map(|(reduce_proof, _)| reduce_proof.clone()).collect();
+        let core_proof = prove_core(&self.prover, pk, &stdin, context).await?;
+        let public_values = core_proof.public_values.clone();
 
-        let CPUProvingKey { raw: pk, vk, program, .. } = pk;
-
-        // Generate the core proof.
-        let proof: SP1ProofWithMetadata<SP1CoreProofData> =
-            self.prover.clone().prove_core(pk.clone(), program.clone(), stdin, context).await?;
         if mode == SP1ProofMode::Core {
+            let SP1CoreProofData(proof) = core_proof.proof;
             return Ok(SP1ProofWithPublicValues::new(
-                SP1Proof::Core(proof.proof.0),
-                proof.public_values,
-                self.version().to_string(),
-            ));
-        }
-
-        // Generate the compressed proof.
-        let public_values = proof.public_values.clone();
-        let reduce_proof = self.prover.clone().compress(vk, proof, deferred_proofs).await?;
-        if mode == SP1ProofMode::Compressed {
-            return Ok(SP1ProofWithPublicValues::new(
-                SP1Proof::Compressed(Box::new(reduce_proof)),
+                SP1Proof::Core(proof),
                 public_values,
                 self.version().to_string(),
             ));
         }
 
-        // Generate the shrink proof.
-        // let compress_proof = self.prover.shrink(reduce_proof, opts)?;
+        // Generate the compressed proof.
+        let compress_proof = compress_proof(&self.prover, pk, &stdin, core_proof).await?;
+        if mode == SP1ProofMode::Compressed {
+            return Ok(SP1ProofWithPublicValues::new(
+                SP1Proof::Compressed(Box::new(compress_proof)),
+                public_values,
+                self.version().to_string(),
+            ));
+        }
 
-        // Generate the wrap proof.
-        // let outer_proof = self.prover.wrap_bn254(compress_proof, opts)?;
-
-        // Generate the gnark proof.
+        let shrink_proof = self.prover.shrink(compress_proof).await?;
+        let wrap_proof = self.prover.wrap(shrink_proof).await?;
         match mode {
             SP1ProofMode::Groth16 => {
-                let _ = try_install_circuit_artifacts("groth16").await;
-                todo!()
-
-                // let proof = self.prover.wrap_groth16_bn254(outer_proof,
-                // &groth16_bn254_artifacts); Ok(SP1ProofWithPublicValues::new(
-                //     SP1Proof::Groth16(proof),
-                //     public_values,
-                //     self.version().to_string(),
-                // ))
+                let groth16_proof = prove_groth16(&self.prover, wrap_proof).await;
+                Ok(SP1ProofWithPublicValues::new(
+                    SP1Proof::Groth16(groth16_proof),
+                    public_values,
+                    self.version().to_string(),
+                ))
             }
             SP1ProofMode::Plonk => {
-                let _ = try_install_circuit_artifacts("plonk").await;
-
-                todo!()
-                // let plonk_bn254_artifacts = if sp1_prover::build::sp1_dev_mode() {
-                //     sp1_prover::build::try_build_plonk_bn254_artifacts_dev(
-                //         &outer_proof.vk,
-                //         &outer_proof.proof,
-                //     )
-                // } else {
-                //     try_install_circuit_artifacts("plonk")
-                // };
-                // let proof = self.prover.wrap_plonk_bn254(outer_proof, &plonk_bn254_artifacts);
-                // Ok(SP1ProofWithPublicValues::new(
-                //     SP1Proof::Plonk(proof),
-                //     public_values,
-                //     self.version().to_string(),
-                // ))
+                let plonk_proof = prove_plonk(&self.prover, wrap_proof).await;
+                Ok(SP1ProofWithPublicValues::new(
+                    SP1Proof::Plonk(plonk_proof),
+                    public_values,
+                    self.version().to_string(),
+                ))
             }
             _ => unreachable!(),
         }
     }
+}
+
+async fn prove_core(
+    prover: &Arc<LocalProver<CpuSP1ProverComponents>>,
+    pk: &CPUProvingKey,
+    stdin: &SP1Stdin,
+    context: SP1Context<'static>,
+) -> Result<SP1ProofWithMetadata<SP1CoreProofData>, SP1ProverError> {
+    prover.clone().prove_core(pk.raw.clone(), pk.program.clone(), stdin.clone(), context).await
+}
+
+async fn compress_proof(
+    prover: &Arc<LocalProver<CpuSP1ProverComponents>>,
+    pk: &CPUProvingKey,
+    stdin: &SP1Stdin,
+    core_proof: SP1ProofWithMetadata<SP1CoreProofData>,
+) -> Result<SP1RecursionProof<SP1GlobalContext, InnerSC>, SP1ProverError> {
+    let deferred_proofs =
+        stdin.proofs.iter().map(|(reduce_proof, _)| reduce_proof.clone()).collect();
+    prover.clone().compress(&pk.vk, core_proof, deferred_proofs).await
+}
+
+pub(crate) async fn prove_groth16(
+    prover: &LocalProver<CpuSP1ProverComponents>,
+    wrap_proof: SP1RecursionProof<SP1OuterGlobalContext, OuterSC>,
+) -> Groth16Bn254Proof {
+    #[cfg(feature = "experimental")]
+    let artifacts_dir = try_build_groth16_bn254_artifacts_dev(&wrap_proof.vk, &wrap_proof.proof);
+
+    #[cfg(not(feature = "experimental"))]
+    // TODO: Test that this works after v6.0.0 release
+    let artifacts_dir = try_install_circuit_artifacts("groth16").await;
+
+    prover.wrap_groth16_bn254(wrap_proof, &artifacts_dir).await
+}
+
+pub(crate) async fn prove_plonk(
+    prover: &LocalProver<CpuSP1ProverComponents>,
+    wrap_proof: SP1RecursionProof<SP1OuterGlobalContext, OuterSC>,
+) -> PlonkBn254Proof {
+    #[cfg(feature = "experimental")]
+    let artifacts_dir = try_build_plonk_bn254_artifacts_dev(&wrap_proof.vk, &wrap_proof.proof);
+
+    #[cfg(not(feature = "experimental"))]
+    // TODO: Test that this works after v6.0.0 release
+    let artifacts_dir = try_install_circuit_artifacts("plonk").await;
+
+    prover.wrap_plonk_bn254(wrap_proof, &artifacts_dir).await
 }

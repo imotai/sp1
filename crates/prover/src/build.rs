@@ -35,7 +35,10 @@ pub fn try_build_plonk_bn254_artifacts_dev(
     template_proof: &ShardProof<SP1OuterGlobalContext, OuterSC>,
 ) -> PathBuf {
     let build_dir = plonk_bn254_artifacts_dev_dir();
-    println!("[sp1] building plonk bn254 artifacts in development mode");
+    println!(
+        "[sp1] building plonk bn254 artifacts in development mode (build_dir: {})",
+        build_dir.display()
+    );
     build_plonk_bn254_artifacts(template_vk, template_proof, &build_dir);
     build_dir
 }
@@ -46,7 +49,10 @@ pub fn try_build_groth16_bn254_artifacts_dev(
     template_proof: &ShardProof<SP1OuterGlobalContext, OuterSC>,
 ) -> PathBuf {
     let build_dir = groth16_bn254_artifacts_dev_dir();
-    println!("[sp1] building groth16 bn254 artifacts in development mode");
+    println!(
+        "[sp1] building groth16 bn254 artifacts in development mode (build_dir: {})",
+        build_dir.display()
+    );
     build_groth16_bn254_artifacts(template_vk, template_proof, &build_dir);
     build_dir
 }

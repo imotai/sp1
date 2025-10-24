@@ -61,9 +61,7 @@ fn call_docker(args: &[&str], mounts: &[(&str, &str)]) -> Result<()> {
         tracing::error!("stderr: {:?}", stderr);
 
         return Err(anyhow!(
-            "Docker command failed \n stdout: {:?}\n stderr: {:?}",
-            stdout,
-            stderr
+            "Docker command failed \n --- stdout: --- \n{stdout}\n --- stderr: --- \n{stderr}\n"
         ));
     }
     Ok(())
@@ -146,13 +144,21 @@ fn verify(
             "verify",
             "--system",
             system.as_str(),
+            "--data-dir",
             "/circuit",
+            "--proof-path",
             "/proof",
+            "--vkey-hash",
             vkey_hash,
+            "--committed-values-digest",
             committed_values_digest,
+            "--exit-code",
             exit_code,
+            "--proof-nonce",
             proof_nonce,
+            "--vk-root",
             vk_root,
+            "--output-path",
             "/output",
         ],
         &mounts,

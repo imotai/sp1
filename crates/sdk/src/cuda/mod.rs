@@ -10,7 +10,7 @@ pub mod prove;
 use std::sync::Arc;
 
 use crate::{
-    cpu::CpuProver,
+    cpu::{prove_groth16, prove_plonk, CpuProver},
     prover::{BaseProveRequest, Prover, SendFutureResult},
     ProvingKey, SP1Proof, SP1ProofMode, SP1ProofWithPublicValues,
 };
@@ -94,37 +94,24 @@ impl CudaProver {
             ));
         }
 
-        // Generate the shrink proof.
-        let compress_proof = self.prover.shrink(reduce_proof).await?;
-
-        // Generate the wrap proof.
-        let _outer_proof = self.prover.wrap(compress_proof).await?;
-
-        // Generate the gnark proof.
+        let shrink_proof = self.prover.shrink(reduce_proof).await?;
+        let wrap_proof = self.prover.wrap(shrink_proof).await?;
         match mode {
             SP1ProofMode::Groth16 => {
-                let _ = crate::install::try_install_circuit_artifacts("groth16").await;
-
-                todo!()
-
-                // let proof = self.prover.wrap_groth16_bn254(outer_proof,
-                // &groth16_bn254_artifacts); Ok(SP1ProofWithPublicValues::new(
-                //     SP1Proof::Groth16(proof),
-                //     public_values,
-                //     self.version().to_string(),
-                // ))
+                let groth16_proof = prove_groth16(&self.cpu_prover.prover, wrap_proof).await;
+                Ok(SP1ProofWithPublicValues::new(
+                    SP1Proof::Groth16(groth16_proof),
+                    public_values,
+                    self.version().to_string(),
+                ))
             }
             SP1ProofMode::Plonk => {
-                let _ = crate::install::try_install_circuit_artifacts("plonk").await;
-
-                todo!()
-
-                // let proof = self.prover.wrap_plonk_bn254(outer_proof, &plonk_bn254_artifacts);
-                // Ok(SP1ProofWithPublicValues::new(
-                //     SP1Proof::Plonk(proof),
-                //     public_values,
-                //     self.version().to_string(),
-                // ))
+                let plonk_proof = prove_plonk(&self.cpu_prover.prover, wrap_proof).await;
+                Ok(SP1ProofWithPublicValues::new(
+                    SP1Proof::Plonk(plonk_proof),
+                    public_values,
+                    self.version().to_string(),
+                ))
             }
             _ => unreachable!(),
         }

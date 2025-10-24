@@ -216,31 +216,21 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
 
             prover.verify_compressed(proof, vkey).map_err(SP1VerificationError::Recursion)
         }
-        SP1Proof::Plonk(_) => unimplemented!(),
-        // prover
-        //     .verify_plonk_bn254(
-        //         proof,
-        //         vkey,
-        //         &bundle.public_values,
-        //         &if sp1_prover::build::sp1_dev_mode() {
-        //             sp1_prover::build::plonk_bn254_artifacts_dev_dir()
-        //         } else {
-        //             try_install_circuit_artifacts("plonk")
-        //         },
-        //     )
-        //     .map_err(SP1VerificationError::Plonk),
-        SP1Proof::Groth16(_) => unimplemented!(),
-        // prover
-        // .verify_groth16_bn254(
-        //     proof,
-        //     vkey,
-        //     &bundle.public_values,
-        //     &if sp1_prover::build::sp1_dev_mode() {
-        //         sp1_prover::build::groth16_bn254_artifacts_dev_dir()
-        //     } else {
-        //         try_install_circuit_artifacts("groth16")
-        //     },
-        // )
-        // .map_err(SP1VerificationError::Groth16),
+        SP1Proof::Plonk(proof) => prover
+            .verify_plonk_bn254(
+                proof,
+                vkey,
+                &bundle.public_values,
+                &sp1_prover::build::plonk_bn254_artifacts_dev_dir(),
+            )
+            .map_err(SP1VerificationError::Plonk),
+        SP1Proof::Groth16(proof) => prover
+            .verify_groth16_bn254(
+                proof,
+                vkey,
+                &bundle.public_values,
+                &sp1_prover::build::groth16_bn254_artifacts_dev_dir(),
+            )
+            .map_err(SP1VerificationError::Groth16),
     }
 }
