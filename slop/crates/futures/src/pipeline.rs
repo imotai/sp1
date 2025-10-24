@@ -75,6 +75,12 @@ pub trait TaskInput: 'static + Send + Sync {
     fn weight(&self) -> u32;
 }
 
+impl<T: TaskInput, E: Send + Sync + 'static> TaskInput for Result<T, E> {
+    fn weight(&self) -> u32 {
+        self.as_ref().map_or(1, |t| t.weight())
+    }
+}
+
 /// Error returned when a task submission fails.
 ///
 /// This error indicates that the engine has been closed and is no longer accepting new tasks.

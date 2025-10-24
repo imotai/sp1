@@ -18,8 +18,8 @@ use sp1_prover_types::{Artifact, ArtifactClient, ArtifactType};
 use crate::{
     components::CoreProver,
     worker::{
-        cluster_opts, AirProverWorker, CommonProverInput, GlobalMemoryShard, TaskId, TraceData,
-        WorkerClient,
+        cluster_opts, AirProverWorker, CommonProverInput, GlobalMemoryShard, TaskError, TaskId,
+        TaskMetadata, TraceData, WorkerClient,
     },
     CoreSC, InnerSC, SP1ProverComponents,
 };
@@ -66,12 +66,12 @@ impl<A, W> TracingWorker<A, W> {
     }
 }
 
-impl<A, W> AsyncWorker<TracingTask, CoreProveTask> for TracingWorker<A, W>
+impl<A, W> AsyncWorker<TracingTask, Result<CoreProveTask, TaskError>> for TracingWorker<A, W>
 where
     A: ArtifactClient,
     W: WorkerClient,
 {
-    async fn call(&self, input: TracingTask) -> CoreProveTask {
+    async fn call(&self, input: TracingTask) -> Result<CoreProveTask, TaskError> {
         // Save the trace input artifact for later use in the task
         let record_artifact = input.record.clone();
         // Ok to panic because it will send a JoinError.
@@ -80,8 +80,7 @@ where
             self.artifact_client.download_program(&input.elf),
             self.artifact_client.download::<CommonProverInput>(&input.common_input),
             self.artifact_client.download::<TraceData>(&input.record),
-        )
-        .expect("failed to download artifacts");
+        )?;
 
         let (program, record) = tokio::task::spawn_blocking({
             let machine = self.machine.clone();
@@ -178,16 +177,16 @@ where
             }
         })
         .await
-        .expect("failed to trace chunk");
+        .map_err(|e| TaskError::Fatal(e.into()))?;
 
-        CoreProveTask {
+        Ok(CoreProveTask {
             id: input.id,
             program,
             common_input,
             record,
             output: input.output,
             record_artifact,
-        }
+        })
     }
 }
 
@@ -229,9 +228,14 @@ impl<A, P> CoreProverWorker<A, P> {
 }
 
 impl<A: ArtifactClient, P: AirProverWorker<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>>
-    AsyncWorker<CoreProveTask, TaskId> for CoreProverWorker<A, P>
+    AsyncWorker<Result<CoreProveTask, TaskError>, Result<(TaskId, TaskMetadata), TaskError>>
+    for CoreProverWorker<A, P>
 {
-    async fn call(&self, input: CoreProveTask) -> TaskId {
+    async fn call(
+        &self,
+        input: Result<CoreProveTask, TaskError>,
+    ) -> Result<(TaskId, TaskMetadata), TaskError> {
+        let input = input?;
         let CoreProveTask { id, program, common_input, record, output, record_artifact } = input;
         let mut challenger = SP1GlobalContext::default_challenger();
 
@@ -259,20 +263,20 @@ impl<A: ArtifactClient, P: AirProverWorker<SP1GlobalContext, CoreSC, RiscvAir<SP
             .await
             .expect("failed to delete record artifact");
 
-        id
+        // TODO: Add the busy time here.
+        Ok((id, TaskMetadata::default()))
     }
 }
 
 impl<A: ArtifactClient, P: AirProverWorker<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>>
-    AsyncWorker<SetupTask, TaskId> for CoreProverWorker<A, P>
+    AsyncWorker<SetupTask, Result<(TaskId, TaskMetadata), TaskError>> for CoreProverWorker<A, P>
 {
-    async fn call(&self, input: SetupTask) -> TaskId {
+    async fn call(&self, input: SetupTask) -> Result<(TaskId, TaskMetadata), TaskError> {
         let SetupTask { id, elf, output } = input;
 
-        let elf =
-            self.artifact_client.download_program(&elf).await.expect("failed to download elf");
+        let elf = self.artifact_client.download_program(&elf).await?;
 
-        let program = Program::from(&elf).expect("failed to disassemble program");
+        let program = Program::from(&elf)?;
         let program = Arc::new(program);
 
         let permits = self.permits.clone();
@@ -283,14 +287,23 @@ impl<A: ArtifactClient, P: AirProverWorker<SP1GlobalContext, CoreSC, RiscvAir<SP
         self.artifact_client.upload(&output, vk).await.expect("failed to upload vk");
         tracing::info!("Upload completed for artifact {}", output.to_id());
 
-        id
+        // TODO: Add the busy time here.
+        Ok((id, TaskMetadata::default()))
     }
 }
 
-type SetupEngine<A, P> = Arc<AsyncEngine<SetupTask, TaskId, CoreProverWorker<A, P>>>;
+type SetupEngine<A, P> =
+    Arc<AsyncEngine<SetupTask, Result<(TaskId, TaskMetadata), TaskError>, CoreProverWorker<A, P>>>;
 
-type TraceEngine<A, W> = Arc<AsyncEngine<TracingTask, CoreProveTask, TracingWorker<A, W>>>;
-type CoreProveEngine<A, P> = Arc<AsyncEngine<CoreProveTask, TaskId, CoreProverWorker<A, P>>>;
+type TraceEngine<A, W> =
+    Arc<AsyncEngine<TracingTask, Result<CoreProveTask, TaskError>, TracingWorker<A, W>>>;
+type CoreProveEngine<A, P> = Arc<
+    AsyncEngine<
+        Result<CoreProveTask, TaskError>,
+        Result<(TaskId, TaskMetadata), TaskError>,
+        CoreProverWorker<A, P>,
+    >,
+>;
 type SP1CoreEngine<A, W, P> = Chain<TraceEngine<A, W>, CoreProveEngine<A, P>>;
 
 type CoreProverFromComponents<C> = <<C as SP1ProverComponents>::CoreComponents as MachineProverComponents<SP1GlobalContext>>::Prover;
@@ -316,11 +329,14 @@ where
     pub async fn submit_prove_shard(
         &self,
         task: TracingTask,
-    ) -> Result<TaskHandle<TaskId>, SubmitError> {
+    ) -> Result<TaskHandle<Result<(TaskId, TaskMetadata), TaskError>>, SubmitError> {
         self.prove_shard_engine.submit(task).await
     }
 
-    pub async fn submit_setup(&self, task: SetupTask) -> Result<TaskHandle<TaskId>, SubmitError> {
+    pub async fn submit_setup(
+        &self,
+        task: SetupTask,
+    ) -> Result<TaskHandle<Result<(TaskId, TaskMetadata), TaskError>>, SubmitError> {
         self.setup_engine.submit(task).await
     }
 }

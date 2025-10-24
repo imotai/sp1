@@ -22,7 +22,7 @@ use sp1_prover_types::{Artifact, ArtifactClient, TaskType};
 use tokio::{sync::mpsc, task::JoinSet};
 
 use crate::{
-    worker::{ProofId, RawTaskRequest, RequesterId, TaskId, WorkerClient},
+    worker::{ProofId, RawTaskRequest, RequesterId, TaskError, TaskId, WorkerClient},
     SP1VerifyingKey,
 };
 
@@ -150,13 +150,18 @@ where
     A: ArtifactClient,
     W: WorkerClient,
 {
-    pub async fn execute(self) -> anyhow::Result<ExecutionOutput> {
+    pub async fn execute(self) -> Result<ExecutionOutput, TaskError> {
         let elf_bytes = self.artifact_client.download_program(&self.elf).await?;
         let opts = cluster_opts();
         let stdin = self.stdin.clone();
 
         // Get the program from the elf. TODO: handle errors.
-        let program = Arc::new(Program::from(&elf_bytes).unwrap());
+        let program = Arc::new(Program::from(&elf_bytes).map_err(|e| {
+            TaskError::Execution(ExecutionError::Other(format!(
+                "failed to dissassemble program: {}",
+                e
+            )))
+        })?);
 
         // Initialize the touched addresses map.
         let all_touched_addresses = TouchedAddresses::new();

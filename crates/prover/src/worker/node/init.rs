@@ -122,15 +122,15 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                             let proof_id = proof_id.clone();
                             let tx = task_tx.clone();
                             task_set.spawn(async move {
-                                let task_id = handle.await.unwrap();
+                                let task_id = handle.await.unwrap().unwrap();
                                 tx.send((proof_id, task_id, TaskStatus::Succeeded)).ok();
                             });
 
                         }
 
-                        Some((proof_id, id, status)) = task_rx.recv() => {
+                        Some((proof_id, (id, task_metadata), status)) = task_rx.recv() => {
                             assert_eq!(status, TaskStatus::Succeeded);
-                            worker_client.complete_task(proof_id, id, TaskMetadata { gpu_time: None }).await.unwrap();
+                            worker_client.complete_task(proof_id, id, task_metadata).await.unwrap();
                         }
                         else => {
                             break;
@@ -163,14 +163,14 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                             let proof_id = proof_id.clone();
                             let tx = task_tx.clone();
                             task_set.spawn(async move {
-                                let task_id = handle.await.unwrap();
-                                tx.send((proof_id, task_id, TaskStatus::Succeeded)).ok();
+                                let (task_id, task_metadata) = handle.await.unwrap().unwrap();
+                                tx.send((proof_id, (task_id, task_metadata), TaskStatus::Succeeded)).ok();
                             });
                         }
 
-                        Some((proof_id, task_id, status)) = task_rx.recv() => {
+                        Some((proof_id, (task_id, task_metadata), status)) = task_rx.recv() => {
                             assert_eq!(status, TaskStatus::Succeeded);
-                            worker_client.complete_task(proof_id, task_id, TaskMetadata { gpu_time: None }).await.unwrap();
+                            worker_client.complete_task(proof_id, task_id, task_metadata).await.unwrap();
                         }
                         else => {
                             break;

@@ -1,12 +1,15 @@
 use std::sync::Arc;
 
-use slop_futures::pipeline::TaskHandle;
+use slop_futures::pipeline::{SubmitError, TaskHandle};
 use sp1_hypercube::prover::ProverSemaphore;
 use sp1_prover_types::{Artifact, ArtifactClient};
 
 use crate::{
     components::CoreProver,
-    worker::{SP1CoreProver, SP1CoreProverConfig, SetupTask, TaskId, TracingTask, WorkerClient},
+    worker::{
+        SP1CoreProver, SP1CoreProverConfig, SetupTask, TaskError, TaskId, TaskMetadata,
+        TracingTask, WorkerClient,
+    },
     SP1ProverComponents,
 };
 
@@ -42,7 +45,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
         common_input: Artifact,
         record: Artifact,
         output: Artifact,
-    ) -> anyhow::Result<TaskHandle<TaskId>> {
+    ) -> Result<TaskHandle<Result<(TaskId, TaskMetadata), TaskError>>, SubmitError> {
         let handle = self
             .core_prover
             .submit_prove_shard(TracingTask { id, elf, common_input, record, output })
@@ -55,7 +58,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
         id: TaskId,
         elf: Artifact,
         output: Artifact,
-    ) -> anyhow::Result<TaskHandle<TaskId>> {
+    ) -> Result<TaskHandle<Result<(TaskId, TaskMetadata), TaskError>>, SubmitError> {
         let handle = self.core_prover.submit_setup(SetupTask { id, elf, output }).await?;
         Ok(handle)
     }

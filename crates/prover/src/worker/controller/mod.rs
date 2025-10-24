@@ -18,7 +18,7 @@ use tokio::{
 use tracing::Instrument;
 
 use crate::{
-    worker::{ProofId, RawTaskRequest, RequesterId, TaskId, WorkerClient},
+    worker::{ProofId, RawTaskRequest, RequesterId, TaskError, TaskId, WorkerClient},
     CoreSC, SP1CoreProof, SP1CoreProofData, SP1VerifyingKey,
 };
 
@@ -74,15 +74,15 @@ where
         )
     }
 
-    pub async fn run(&self, request: RawTaskRequest) -> anyhow::Result<()> {
+    pub async fn run(&self, request: RawTaskRequest) -> Result<(), TaskError> {
         let RawTaskRequest { inputs, outputs, proof_id, parent_id, parent_context, requester_id } =
             request;
 
         let elf = inputs[0].clone();
         let stdin_artifact = inputs[1].clone();
         let mode_artifact = inputs[2].clone().to_id();
-        let parsed = mode_artifact.parse::<i32>()?;
-        let mode = ProofMode::try_from(parsed)?;
+        let parsed = mode_artifact.parse::<i32>().map_err(|e| TaskError::Fatal(e.into()))?;
+        let mode = ProofMode::try_from(parsed).map_err(|e| TaskError::Fatal(e.into()))?;
 
         tracing::info!("mode: {:?}", mode);
 
@@ -106,10 +106,13 @@ where
         let setup_id = self.worker_client.submit_task(TaskType::SetupVkey, setup_request).await?;
         // Wait for the setup task to finish
         let subscriber = self.worker_client.subscriber(proof_id.clone()).await?.per_task();
-        let status =
-            subscriber.wait_task(setup_id).instrument(tracing::debug_span!("setup task")).await?;
+        let status = subscriber
+            .wait_task(setup_id)
+            .instrument(tracing::debug_span!("setup task"))
+            .await
+            .map_err(|e| TaskError::Fatal(e.into()))?;
         if status != TaskStatus::Succeeded {
-            return Err(anyhow::anyhow!("setup task failed"));
+            return Err(TaskError::Fatal(anyhow::anyhow!("setup task failed")));
         }
         tracing::trace!("setup task succeeded");
         // Download the vk and stdin
@@ -168,7 +171,7 @@ where
         tracing::trace!("executor finished");
 
         // Wait for the proofs to finish
-        let shard_proofs = proofs_rx.await?;
+        let shard_proofs = proofs_rx.await.map_err(|e| TaskError::Fatal(e.into()))?;
 
         let ExecutionOutput { public_value_stream, cycles } = result;
         let public_values = SP1PublicValues::from(&public_value_stream);

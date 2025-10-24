@@ -14,6 +14,7 @@ exclude = ["src/vk_map.bin"]
 sp1-recursion-compiler = { workspace = true }
 sp1-prover-types = { workspace = true }
 # sp1-recursion-core = { workspace = true }
+
 sp1-recursion-circuit = { workspace = true }
 sp1-recursion-machine = { workspace = true }
 sp1-recursion-executor = { workspace = true }
@@ -60,6 +61,8 @@ mti = { workspace = true }
 opentelemetry = { workspace = true }
 dashmap = { workspace = true }
 pin-project = { workspace = true }
+tonic = { workspace = true }
+reqwest = { workspace = true }
 
 [build-dependencies]
 downloader = { workspace = true, features = ["rustls-tls", "verify"] }
