@@ -7,8 +7,10 @@ use anyhow::Result;
 use sp1_core_machine::io::SP1Stdin;
 
 use super::{CPUProverError, CPUProvingKey, CpuProver};
-use crate::blocking::prover::{BaseProveRequest, ProveRequest};
-use crate::SP1ProofWithPublicValues;
+use crate::{
+    blocking::prover::{BaseProveRequest, ProveRequest},
+    SP1ProofWithPublicValues,
+};
 
 /// A builder for proving a program on the CPU.
 ///
@@ -37,7 +39,7 @@ impl<'a> ProveRequest<'a, CpuProver> for CpuProveBuilder<'a> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::blocking::{Elf, SP1Stdin, Prover, ProverClient, ProveRequest};
+    /// use sp1_sdk::blocking::{Elf, ProveRequest, Prover, ProverClient, SP1Stdin};
     ///
     /// let elf = Elf::Static(&[1, 2, 3]);
     /// let stdin = SP1Stdin::new();

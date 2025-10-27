@@ -1,8 +1,7 @@
 use core::fmt;
 use std::{future::Future, sync::Arc};
 
-use anyhow::anyhow;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use futures_util::future::FutureExt;
 use hashbrown::HashMap;
 use mti::prelude::{MagicTypeIdExt, V7};
@@ -10,8 +9,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tracing::Instrument;
 
-use crate::utils::await_blocking;
-use crate::utils::await_scoped_vec;
+use crate::utils::{await_blocking, await_scoped_vec};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ArtifactType {

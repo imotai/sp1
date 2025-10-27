@@ -12,8 +12,7 @@ pub use cpu::{builder::CpuProverBuilder, CpuProver};
 pub use cuda::{builder::CudaProverBuilder, CudaProver};
 pub use env::EnvProver;
 pub use mock::MockProver;
-pub use prover::ProveRequest;
-pub use prover::Prover;
+pub use prover::{ProveRequest, Prover};
 
 pub use crate::{utils, Elf, SP1ProofMode, SP1PublicValues, SP1Stdin};
 

@@ -810,6 +810,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     }
 }
 
+#[derive(Clone)]
 pub struct SP1Verifier {
     pub core: MachineVerifier<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>,
     pub compress: MachineVerifier<SP1GlobalContext, InnerSC, CompressAir<SP1Field>>,

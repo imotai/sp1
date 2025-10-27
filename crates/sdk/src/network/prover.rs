@@ -137,7 +137,7 @@ impl NetworkProver {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::{Elf, Prover, ProverClient, SP1Stdin, ProvingKey};
+    /// use sp1_sdk::{Elf, Prover, ProverClient, ProvingKey, SP1Stdin};
     ///
     /// tokio_test::block_on(async {
     ///     let elf = Elf::Static(&[1, 2, 3]);

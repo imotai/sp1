@@ -500,13 +500,12 @@ where
     ///
     /// ```ignore
     /// let workers = vec![MyWorker::new(); 4];
-    /// let permits = Arc::new(Semaphore::new(10));
-    /// let engine = BlockingEngine::new(workers, permits);
+    /// let engine = BlockingEngine::new(workers, 10);
     /// ```
-    pub fn new(workers: Vec<Worker>, permits: Arc<Semaphore>) -> Self {
+    pub fn new(workers: Vec<Worker>, input_buffer_size: usize) -> Self {
         Self {
             workers: Arc::new(WorkerQueue::new(workers)),
-            task_permits: permits,
+            task_permits: Arc::new(Semaphore::new(input_buffer_size)),
             _marker: PhantomData,
         }
     }
@@ -525,7 +524,7 @@ where
     /// ```
     pub fn single_permit_per_worker(workers: Vec<Worker>) -> Self {
         let num_workers = workers.len();
-        Self::new(workers, Arc::new(Semaphore::new(num_workers)))
+        Self::new(workers, num_workers)
     }
 
     fn spawn(&self, input: Input, permit: OwnedSemaphorePermit) -> TaskHandle<Output> {
@@ -606,7 +605,8 @@ where
 /// An execution engine that manages a pool of workers for CPU-intensive tasks using `rayon`.
 ///
 /// The `RayonEngine` is similar to `BlockinEngine` but designed for synchronous, CPU-intensive
-/// workloads. It executes blocking tasks on a Rayon thread pool to avoid blocking the async runtime.
+/// workloads. It executes blocking tasks on a Rayon thread pool to avoid blocking the async
+/// runtime.
 ///
 /// # Type Parameters
 ///
@@ -786,6 +786,22 @@ where
         Self { first, second }
     }
 
+    /// Get a reference to the first pipeline in the chain.
+    ///
+    /// This is useful for being able to submit tasks to the first pipeline directly, without having
+    /// to go through the second pipeline if there is no need to.
+    pub fn first(&self) -> &First {
+        &self.first
+    }
+
+    /// Get a reference to the second pipeline in the chain.
+    ///
+    /// This is useful for being able to submit tasks to the second pipeline directly, without
+    /// having to go through the first pipeline if there is no need to.
+    pub fn second(&self) -> &Second {
+        &self.second
+    }
+
     fn spawn(&self, first_handle: TaskHandle<First::Output>) -> TaskHandle<Second::Output> {
         let second = self.second.clone();
         let handle = tokio::spawn(
@@ -930,8 +946,7 @@ impl<P: Pipeline> PipelineBuilder<P> {
 
 #[cfg(test)]
 mod tests {
-    use futures::prelude::*;
-    use futures::stream::FuturesOrdered;
+    use futures::{prelude::*, stream::FuturesOrdered};
     use rand::Rng;
     use std::time::Duration;
     use tokio::task::JoinSet;
@@ -1027,8 +1042,7 @@ mod tests {
         let max_summands = 20;
 
         let workers = (0..num_workers).map(|_| SummingWorker).collect();
-        let permits = Arc::new(Semaphore::new(task_queue_length));
-        let engine = Arc::new(BlockingEngine::new(workers, permits));
+        let engine = Arc::new(BlockingEngine::new(workers, task_queue_length));
 
         let mut rng = rand::thread_rng();
         let tasks = (0..num_tasks_spawned)

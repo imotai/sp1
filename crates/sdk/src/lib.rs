@@ -152,7 +152,8 @@ mod tests {
     //     assert_eq!(stdout, b"Hello, world!\n");
     // }
 
-    // TODO BEFORE RELEASE: remove use of experimental prover when vkey commitments are finally built.
+    // TODO BEFORE RELEASE: remove use of experimental prover when vkey commitments are finally
+    // built.
     #[cfg(feature = "experimental")]
     #[tokio::test]
     async fn test_e2e_compressed() {

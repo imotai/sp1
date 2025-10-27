@@ -11,11 +11,14 @@ use anyhow::Result;
 use prove::CpuProveBuilder;
 use sp1_core_executor::{ExecutionError, Program, SP1Context};
 use sp1_core_machine::io::SP1Stdin;
-use sp1_hypercube::prover::MachineProvingKey;
-use sp1_hypercube::SP1RecursionProof;
+use sp1_hypercube::{prover::MachineProvingKey, SP1RecursionProof};
 use sp1_primitives::{Elf, SP1GlobalContext, SP1OuterGlobalContext};
-use sp1_prover::build::{
-    try_build_groth16_bn254_artifacts_dev, try_build_plonk_bn254_artifacts_dev,
+use sp1_prover::{
+    build::{try_build_groth16_bn254_artifacts_dev, try_build_plonk_bn254_artifacts_dev},
+    components::SP1ProverComponents,
+    error::SP1ProverError,
+    local::{LocalProver, LocalProverOpts},
+    Groth16Bn254Proof, InnerSC, OuterSC, PlonkBn254Proof, SP1ProverBuilder, SP1VerifyingKey,
 };
 use sp1_prover::{
     components::CpuSP1ProverComponents,
@@ -23,16 +26,9 @@ use sp1_prover::{
     SP1CoreProofData,
     SP1ProofWithMetadata,
 };
-use sp1_prover::{
-    components::SP1ProverComponents,
-    error::SP1ProverError,
-    local::{LocalProver, LocalProverOpts},
-    SP1ProverBuilder, SP1VerifyingKey,
-};
-use sp1_prover::{Groth16Bn254Proof, InnerSC, OuterSC, PlonkBn254Proof};
 
-use crate::install::try_install_circuit_artifacts;
 use crate::{
+    install::try_install_circuit_artifacts,
     prover::{Prover, ProvingKey, SendFutureResult},
     SP1Proof, SP1ProofMode, SP1ProofWithPublicValues,
 };

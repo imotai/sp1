@@ -1,6 +1,6 @@
 use super::{EnvProver, EnvProvingKey};
 use crate::{
-    blocking::prover::BaseProveRequest, blocking::ProveRequest, blocking::Prover,
+    blocking::{prover::BaseProveRequest, ProveRequest, Prover},
     SP1ProofWithPublicValues,
 };
 use anyhow::Result;

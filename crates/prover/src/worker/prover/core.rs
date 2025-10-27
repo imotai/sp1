@@ -1,5 +1,6 @@
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
+use slop_air::BaseAir;
 use slop_algebra::AbstractField;
 use slop_challenger::IopCtx;
 use slop_futures::pipeline::{
@@ -8,20 +9,26 @@ use slop_futures::pipeline::{
 use sp1_core_executor::{ExecutionRecord, Program};
 use sp1_core_machine::{executor::trace_chunk, riscv::RiscvAir};
 use sp1_hypercube::{
-    prover::{MachineProverComponents, ProverSemaphore},
-    Machine, SP1RecursionProof, ShardProof,
+    air::MachineAir,
+    prover::{CoreProofShape, ProverSemaphore},
+    Machine, MachineVerifier, SP1RecursionProof, ShardProof,
 };
 use sp1_jit::TraceChunk;
 use sp1_primitives::{SP1Field, SP1GlobalContext};
-use sp1_prover_types::{Artifact, ArtifactClient, ArtifactType};
+use sp1_prover_types::{network_base_types::ProofMode, Artifact, ArtifactClient, ArtifactType};
+use sp1_recursion_circuit::shard::RecursiveShardVerifier;
+use sp1_recursion_compiler::config::InnerConfig;
+use sp1_recursion_executor::RecursionProgram;
 
 use crate::{
     components::CoreProver,
+    recursion::{normalize_program_from_input, recursive_verifier},
+    shapes::{SP1NormalizeCache, SP1NormalizeInputShape, SP1RecursionProofShape},
     worker::{
-        cluster_opts, AirProverWorker, CommonProverInput, GlobalMemoryShard, TaskError, TaskId,
-        TaskMetadata, TraceData, WorkerClient,
+        cluster_opts, AirProverWorker, CommonProverInput, GlobalMemoryShard, SP1RecursionProver,
+        TaskError, TaskId, TaskMetadata, TraceData, WorkerClient,
     },
-    CoreSC, InnerSC, SP1ProverComponents,
+    CoreSC, InnerSC, SP1CircuitWitness, SP1ProverComponents, SP1VerifyingKey,
 };
 
 pub struct SetupTask {
@@ -50,19 +57,75 @@ impl TaskInput for TracingTask {
     }
 }
 
+struct NormalizeProgramCompiler {
+    cache: SP1NormalizeCache,
+    recursive_verifier: RecursiveShardVerifier<SP1GlobalContext, RiscvAir<SP1Field>, InnerConfig>,
+    reduce_shape: SP1RecursionProofShape,
+    verifier: MachineVerifier<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>,
+}
+
+impl NormalizeProgramCompiler {
+    pub fn new(
+        cache: SP1NormalizeCache,
+        recursive_verifier: RecursiveShardVerifier<
+            SP1GlobalContext,
+            RiscvAir<SP1Field>,
+            InnerConfig,
+        >,
+
+        reduce_shape: SP1RecursionProofShape,
+        machine_verifier: MachineVerifier<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>,
+    ) -> Self {
+        Self { cache, recursive_verifier, reduce_shape, verifier: machine_verifier }
+    }
+
+    pub fn machine(&self) -> &Machine<SP1Field, RiscvAir<SP1Field>> {
+        self.verifier.machine()
+    }
+
+    pub fn get_program(
+        &self,
+        vk: SP1VerifyingKey,
+        proof_shape: &CoreProofShape<SP1Field, RiscvAir<SP1Field>>,
+    ) -> Arc<RecursionProgram<SP1Field>> {
+        let shape = SP1NormalizeInputShape {
+            proof_shapes: vec![proof_shape.clone()],
+            max_log_row_count: self.verifier.max_log_row_count(),
+            log_blowup: self.verifier.fri_config().log_blowup,
+            log_stacking_height: self.verifier.log_stacking_height() as usize,
+        };
+        if let Some(program) = self.cache.get(&shape) {
+            return program.clone();
+        }
+
+        let input = shape.dummy_input(vk);
+        let mut program = normalize_program_from_input(&self.recursive_verifier, &input);
+        program.shape = Some(self.reduce_shape.shape.clone());
+        let program = Arc::new(program);
+        self.cache.push(shape, program.clone());
+        program
+    }
+}
+
 struct TracingWorker<A, W> {
-    machine: Arc<Machine<SP1Field, RiscvAir<SP1Field>>>,
+    normalize_program_compiler: Arc<NormalizeProgramCompiler>,
     artifact_client: A,
     _worker_client: W,
 }
 
 impl<A, W> TracingWorker<A, W> {
     pub fn new(
-        machine: Arc<Machine<SP1Field, RiscvAir<SP1Field>>>,
+        normalize_program_compiler: Arc<NormalizeProgramCompiler>,
         artifact_client: A,
         worker_client: W,
     ) -> Self {
-        Self { machine, artifact_client, _worker_client: worker_client }
+        Self { normalize_program_compiler, artifact_client, _worker_client: worker_client }
+    }
+}
+
+impl<A, W> TracingWorker<A, W> {
+    pub fn machine(&self) -> &Machine<SP1Field, RiscvAir<SP1Field>> {
+        self.normalize_program_compiler.machine()
     }
 }
 
@@ -83,7 +146,7 @@ where
         )?;
 
         let (program, record) = tokio::task::spawn_blocking({
-            let machine = self.machine.clone();
+            let machine = self.machine().clone();
             move || {
                 let program = Arc::new(Program::from(&elf).expect("failed to disassemble program"));
                 let mut record = match record {
@@ -179,9 +242,31 @@ where
         .await
         .map_err(|e| TaskError::Fatal(e.into()))?;
 
+        // If this is not a Core proof request, spawn a task to get the recursion program.
+        let recursion_program_handle = if common_input.mode != ProofMode::Core {
+            tracing::info!("Spawning a task to get the recursion program");
+            let handle = tokio::task::spawn_blocking({
+                let span = tracing::Span::current();
+                let normalize_program_compiler = self.normalize_program_compiler.clone();
+                let vk = common_input.vk.clone();
+                let shape = shape_from_record(&normalize_program_compiler.verifier, &record)
+                    .ok_or_else(|| {
+                        TaskError::Fatal(anyhow::anyhow!("failed to get shape from record"))
+                    })?;
+                move || {
+                    let _guard = span.enter();
+                    normalize_program_compiler.get_program(vk, &shape)
+                }
+            });
+            Some(handle)
+        } else {
+            None
+        };
+
         Ok(CoreProveTask {
             id: input.id,
             program,
+            recursion_program_handle,
             common_input,
             record,
             output: input.output,
@@ -193,6 +278,7 @@ where
 struct CoreProveTask {
     id: TaskId,
     program: Arc<Program>,
+    recursion_program_handle: Option<tokio::task::JoinHandle<Arc<RecursionProgram<SP1Field>>>>,
     common_input: CommonProverInput,
     record: ExecutionRecord,
     output: Artifact,
@@ -215,28 +301,42 @@ pub struct CoreProveOutput {
     pub proof: SP1CoreShardProof,
 }
 
-struct CoreProverWorker<A, P> {
+struct CoreProverWorker<A, C: SP1ProverComponents> {
     artifact_client: A,
-    core_prover: Arc<P>,
+    core_prover: Arc<CoreProver<C>>,
+    recursion_prover: SP1RecursionProver<A, C>,
     permits: ProverSemaphore,
 }
 
-impl<A, P> CoreProverWorker<A, P> {
-    pub fn new(artifact_client: A, core_prover: Arc<P>, permits: ProverSemaphore) -> Self {
-        Self { artifact_client, core_prover, permits }
+impl<A, C: SP1ProverComponents> CoreProverWorker<A, C> {
+    pub fn new(
+        artifact_client: A,
+        core_prover: Arc<CoreProver<C>>,
+        recursion_prover: SP1RecursionProver<A, C>,
+        permits: ProverSemaphore,
+    ) -> Self {
+        Self { artifact_client, core_prover, recursion_prover, permits }
     }
 }
 
-impl<A: ArtifactClient, P: AirProverWorker<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>>
+impl<A: ArtifactClient, C: SP1ProverComponents>
     AsyncWorker<Result<CoreProveTask, TaskError>, Result<(TaskId, TaskMetadata), TaskError>>
-    for CoreProverWorker<A, P>
+    for CoreProverWorker<A, C>
 {
     async fn call(
         &self,
         input: Result<CoreProveTask, TaskError>,
     ) -> Result<(TaskId, TaskMetadata), TaskError> {
         let input = input?;
-        let CoreProveTask { id, program, common_input, record, output, record_artifact } = input;
+        let CoreProveTask {
+            id,
+            program,
+            recursion_program_handle,
+            common_input,
+            record,
+            output,
+            record_artifact,
+        } = input;
         let mut challenger = SP1GlobalContext::default_challenger();
 
         let permits = self.permits.clone();
@@ -245,17 +345,31 @@ impl<A: ArtifactClient, P: AirProverWorker<SP1GlobalContext, CoreSC, RiscvAir<SP
             .setup_and_prove_shard(
                 program.clone(),
                 record,
-                Some(common_input.vk.vk),
+                Some(common_input.vk.vk.clone()),
                 permits,
                 &mut challenger,
             )
             .await;
-
         // Drop the permit
         drop(permit);
 
-        // Upload the proof
-        self.artifact_client.upload(&output, proof).await.expect("failed to upload proof");
+        if common_input.mode != ProofMode::Core {
+            let program = recursion_program_handle
+                .expect("recursion program handle not found")
+                .await
+                .unwrap();
+            let input = self.recursion_prover.get_normalize_witness(&common_input, &proof, false);
+            let witness = SP1CircuitWitness::Core(input);
+            let _recursion_metadata = self
+                .recursion_prover
+                .submit_prove_shard(program, witness, output)
+                .await?
+                .await
+                .map_err(|e| TaskError::Fatal(e.into()))??;
+        } else {
+            // Upload the proof
+            self.artifact_client.upload(&output, proof).await.expect("failed to upload proof");
+        }
 
         // Remove the record artifact since it is no longer needed
         self.artifact_client
@@ -268,8 +382,8 @@ impl<A: ArtifactClient, P: AirProverWorker<SP1GlobalContext, CoreSC, RiscvAir<SP
     }
 }
 
-impl<A: ArtifactClient, P: AirProverWorker<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>>
-    AsyncWorker<SetupTask, Result<(TaskId, TaskMetadata), TaskError>> for CoreProverWorker<A, P>
+impl<A: ArtifactClient, C: SP1ProverComponents>
+    AsyncWorker<SetupTask, Result<(TaskId, TaskMetadata), TaskError>> for CoreProverWorker<A, C>
 {
     async fn call(&self, input: SetupTask) -> Result<(TaskId, TaskMetadata), TaskError> {
         let SetupTask { id, elf, output } = input;
@@ -306,11 +420,9 @@ type CoreProveEngine<A, P> = Arc<
 >;
 type SP1CoreEngine<A, W, P> = Chain<TraceEngine<A, W>, CoreProveEngine<A, P>>;
 
-type CoreProverFromComponents<C> = <<C as SP1ProverComponents>::CoreComponents as MachineProverComponents<SP1GlobalContext>>::Prover;
-
 pub struct SP1CoreProver<A, W, C: SP1ProverComponents> {
-    prove_shard_engine: Arc<SP1CoreEngine<A, W, CoreProverFromComponents<C>>>,
-    setup_engine: SetupEngine<A, CoreProverFromComponents<C>>,
+    prove_shard_engine: Arc<SP1CoreEngine<A, W, C>>,
+    setup_engine: SetupEngine<A, C>,
 }
 
 impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> Clone for SP1CoreProver<A, W, C> {
@@ -322,10 +434,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> Clone for SP1Co
     }
 }
 
-impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A, W, C>
-where
-    CoreProverFromComponents<C>: AirProverWorker<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>,
-{
+impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A, W, C> {
     pub async fn submit_prove_shard(
         &self,
         task: TracingTask,
@@ -342,6 +451,7 @@ where
 }
 
 /// Configuration for the core prover.
+#[derive(Clone)]
 pub struct SP1CoreProverConfig {
     /// The number of trace executor workers.
     pub num_trace_executor_workers: usize,
@@ -355,6 +465,8 @@ pub struct SP1CoreProverConfig {
     pub num_setup_workers: usize,
     /// The buffer size for the setup.
     pub setup_buffer_size: usize,
+    /// The size of the normalize program cache.
+    pub normalize_program_cache_size: usize,
 }
 
 impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A, W, C> {
@@ -364,15 +476,33 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
         worker_client: W,
         air_prover: Arc<CoreProver<C>>,
         permits: ProverSemaphore,
-        // recursion_air_provers: Vec<Arc<RecursionProver<C>>>,
+        recursion_prover: SP1RecursionProver<A, C>,
     ) -> Self {
         // Initialize the tracing engine
         let core_verifier = C::core_verifier();
-        let machine = Arc::new(core_verifier.machine().clone());
+
+        let normalize_program_cache = SP1NormalizeCache::new(config.normalize_program_cache_size);
+
+        let recursive_core_verifier = recursive_verifier::<SP1GlobalContext, _, CoreSC, InnerConfig>(
+            core_verifier.shard_verifier(),
+        );
+
+        let reduce_shape = recursion_prover.reduce_shape().clone();
+        let normalize_program_compiler = NormalizeProgramCompiler::new(
+            normalize_program_cache,
+            recursive_core_verifier,
+            reduce_shape,
+            core_verifier,
+        );
+        let normalize_program_compiler = Arc::new(normalize_program_compiler);
 
         let trace_workers = (0..config.num_trace_executor_workers)
             .map(|_| {
-                TracingWorker::new(machine.clone(), artifact_client.clone(), worker_client.clone())
+                TracingWorker::new(
+                    normalize_program_compiler.clone(),
+                    artifact_client.clone(),
+                    worker_client.clone(),
+                )
             })
             .collect();
         let trace_engine =
@@ -381,7 +511,12 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
         // Initialize the core prove engine
         let core_prover_workers = (0..config.num_core_prover_workers)
             .map(|_| {
-                CoreProverWorker::new(artifact_client.clone(), air_prover.clone(), permits.clone())
+                CoreProverWorker::new(
+                    artifact_client.clone(),
+                    air_prover.clone(),
+                    recursion_prover.clone(),
+                    permits.clone(),
+                )
             })
             .collect::<Vec<_>>();
         let core_prove_engine =
@@ -390,7 +525,12 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
         // Make the setup engine
         let setup_workers = (0..config.num_setup_workers)
             .map(|_| {
-                CoreProverWorker::new(artifact_client.clone(), air_prover.clone(), permits.clone())
+                CoreProverWorker::new(
+                    artifact_client.clone(),
+                    air_prover.clone(),
+                    recursion_prover.clone(),
+                    permits.clone(),
+                )
             })
             .collect::<Vec<_>>();
         let setup_engine = Arc::new(AsyncEngine::new(setup_workers, config.setup_buffer_size));
@@ -399,4 +539,49 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
 
         Self { prove_shard_engine, setup_engine }
     }
+}
+
+/// Given a record, compute the shape of the resulting shard proof.
+fn shape_from_record(
+    verifier: &MachineVerifier<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>,
+    record: &ExecutionRecord,
+) -> Option<CoreProofShape<SP1Field, RiscvAir<SP1Field>>> {
+    let log_stacking_height = verifier.log_stacking_height() as usize;
+    let max_log_row_count = verifier.max_log_row_count();
+    let airs = verifier.machine().chips();
+    let shard_chips: BTreeSet<_> =
+        airs.iter().filter(|air| air.included(record)).cloned().collect();
+    let preprocessed_multiple = shard_chips
+        .iter()
+        .map(|air| air.preprocessed_width() * air.num_rows(record).unwrap_or_default())
+        .sum::<usize>()
+        .div_ceil(1 << log_stacking_height);
+    let main_multiple = shard_chips
+        .iter()
+        .map(|air| air.width() * air.num_rows(record).unwrap_or_default())
+        .sum::<usize>()
+        .div_ceil(1 << log_stacking_height);
+
+    let main_padding_cols = (main_multiple * (1 << log_stacking_height)
+        - shard_chips
+            .iter()
+            .map(|air| air.width() * air.num_rows(record).unwrap_or_default())
+            .sum::<usize>())
+    .div_ceil(1 << max_log_row_count);
+
+    let preprocessed_padding_cols = (preprocessed_multiple * (1 << log_stacking_height)
+        - shard_chips
+            .iter()
+            .map(|air| air.preprocessed_width() * air.num_rows(record).unwrap_or_default())
+            .sum::<usize>())
+    .div_ceil(1 << max_log_row_count);
+
+    let shard_chips = verifier.machine().smallest_cluster(&shard_chips).cloned()?;
+    Some(CoreProofShape {
+        shard_chips,
+        preprocessed_multiple,
+        main_multiple,
+        preprocessed_padding_cols,
+        main_padding_cols,
+    })
 }

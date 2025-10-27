@@ -84,7 +84,8 @@ impl ProofId {
 
 impl fmt::Display for ProofId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0) // TODO: nicely indicate that it is a proof id. Right now, it messes with the coordinator communication.
+        write!(f, "{}", self.0) // TODO: nicely indicate that it is a proof id. Right now, it messes
+                                // with the coordinator communication.
     }
 }
 
@@ -100,7 +101,8 @@ impl TaskId {
 
 impl fmt::Display for TaskId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0) // TODO: nicely indicate that it is a task id. Right now, it messes with the coordinator communication.
+        write!(f, "{}", self.0) // TODO: nicely indicate that it is a task id. Right now, it messes
+                                // with the coordinator communication.
     }
 }
 
@@ -333,6 +335,10 @@ impl EventStream {
 
     pub fn blocking_recv(&mut self) -> Option<(TaskId, TaskStatus)> {
         self.subscriber_rx.blocking_recv()
+    }
+
+    pub fn close(&mut self) {
+        self.subscriber_rx.close();
     }
 }
 

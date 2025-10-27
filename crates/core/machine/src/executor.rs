@@ -314,7 +314,7 @@ pub enum MachineExecutorError {
 }
 
 /// The output of the machine executor.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionOutput {
     pub public_value_stream: Vec<u8>,
     pub cycles: u64,

@@ -5,37 +5,51 @@ use sp1_hypercube::prover::ProverSemaphore;
 use sp1_prover_types::{Artifact, ArtifactClient};
 
 use crate::{
-    components::CoreProver,
+    components::{CoreProver, RecursionProver},
     worker::{
-        SP1CoreProver, SP1CoreProverConfig, SetupTask, TaskError, TaskId, TaskMetadata,
-        TracingTask, WorkerClient,
+        RawTaskRequest, SP1CoreProver, SP1CoreProverConfig, SP1RecursionProver,
+        SP1RecursionProverConfig, SetupTask, TaskError, TaskId, TaskMetadata, TracingTask,
+        WorkerClient,
     },
     SP1ProverComponents,
 };
 
+#[derive(Clone)]
 pub struct SP1ProverConfig {
     pub core_prover_config: SP1CoreProverConfig,
+    pub recursion_prover_config: SP1RecursionProverConfig,
 }
 
 pub struct SP1ProverEngine<A, W, C: SP1ProverComponents> {
     pub core_prover: SP1CoreProver<A, W, C>,
+    pub recursion_prover: SP1RecursionProver<A, C>,
 }
 
 impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine<A, W, C> {
-    pub fn new(
+    pub async fn new(
         config: SP1ProverConfig,
         artifact_client: A,
         worker_client: W,
         core_prover_and_permits: (Arc<CoreProver<C>>, ProverSemaphore),
+        recursion_prover_and_permits: (Arc<RecursionProver<C>>, ProverSemaphore),
     ) -> Self {
+        let recursion_prover = SP1RecursionProver::new(
+            config.recursion_prover_config,
+            artifact_client.clone(),
+            recursion_prover_and_permits.0,
+            recursion_prover_and_permits.1,
+        )
+        .await;
+
         let core_prover = SP1CoreProver::new(
             config.core_prover_config,
             artifact_client,
             worker_client,
             core_prover_and_permits.0,
             core_prover_and_permits.1,
+            recursion_prover.clone(),
         );
-        Self { core_prover }
+        Self { core_prover, recursion_prover }
     }
 
     pub async fn submit_prove_core_shard(
@@ -61,5 +75,12 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
     ) -> Result<TaskHandle<Result<(TaskId, TaskMetadata), TaskError>>, SubmitError> {
         let handle = self.core_prover.submit_setup(SetupTask { id, elf, output }).await?;
         Ok(handle)
+    }
+
+    pub async fn submit_recursion_reduce(
+        &self,
+        request: RawTaskRequest,
+    ) -> Result<TaskHandle<Result<TaskMetadata, TaskError>>, TaskError> {
+        self.recursion_prover.submit_recursion_reduce(request).await
     }
 }

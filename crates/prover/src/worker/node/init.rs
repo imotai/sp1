@@ -8,27 +8,37 @@ use tokio::{sync::mpsc, task::JoinSet};
 
 use crate::{
     components::{CoreProver, RecursionProver, WrapProver},
-    verify::SP1Verifier,
     worker::{
-        LocalWorkerClient, LocalWorkerClientChannels, RawTaskRequest, SP1LocalNode,
+        LocalWorkerClient, LocalWorkerClientChannels, RawTaskRequest, SP1LocalNode, SP1NodeInner,
         SP1WorkerBuilder, TaskMetadata, WorkerClient,
     },
     SP1ProverComponents,
 };
 
 pub struct SP1LocalNodeBuilder<C: SP1ProverComponents> {
-    worker_builder: SP1WorkerBuilder<InMemoryArtifactClient, LocalWorkerClient, C>,
-    channels: LocalWorkerClientChannels,
+    pub worker_builder: SP1WorkerBuilder<C, InMemoryArtifactClient, LocalWorkerClient>,
+    pub channels: LocalWorkerClientChannels,
 }
 
 impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
+    /// Creates a new local node builder with a default worker client builder.
     pub fn new() -> Self {
+        Self::from_worker_client_builder(SP1WorkerBuilder::new())
+    }
+
+    /// Creates a new local node builder from a worker client builder.
+    ///
+    /// This method can be used to initialize a node from a worker client builder that has already
+    /// been configured with the desired prover components.
+    pub fn from_worker_client_builder(builder: SP1WorkerBuilder<C>) -> Self {
         let artifact_client = InMemoryArtifactClient::new();
         let (worker_client, channels) = LocalWorkerClient::init();
-        let worker_builder = SP1WorkerBuilder::new(artifact_client, worker_client);
+        let worker_builder =
+            builder.with_artifact_client(artifact_client).with_worker_client(worker_client);
         Self { worker_builder, channels }
     }
 
+    /// Sets the core air prover to the worker client builder.
     pub fn with_core_air_prover(
         mut self,
         core_air_prover: Arc<CoreProver<C>>,
@@ -38,6 +48,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         self
     }
 
+    /// Sets the compress air prover to the worker client builder.
     pub fn with_compress_air_prover(
         mut self,
         compress_air_prover: Arc<RecursionProver<C>>,
@@ -48,6 +59,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         self
     }
 
+    ///Sets the shrink air prover to the worker client builder.
     pub fn with_shrink_air_prover(
         mut self,
         shrink_air_prover: Arc<RecursionProver<C>>,
@@ -57,6 +69,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         self
     }
 
+    /// Sets the wrap air prover to the worker client builder.
     pub fn with_wrap_air_prover(
         mut self,
         wrap_air_prover: Arc<WrapProver<C>>,
@@ -66,12 +79,12 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         self
     }
 
-    pub fn build(self) -> anyhow::Result<SP1LocalNode> {
+    pub async fn build(self) -> anyhow::Result<SP1LocalNode> {
         // Destructure the builder.
         let Self { worker_builder, mut channels } = self;
 
         // Build the node.
-        let worker = worker_builder.build()?;
+        let worker = worker_builder.build().await?;
 
         // Spawn tasks to handle all the requests
 
@@ -180,28 +193,43 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
             }
         });
 
-        // Create the verifier
-        let core_verifier = C::core_verifier();
-        let compress_verifier = C::compress_verifier();
-        let shrink_verifier = C::shrink_verifier();
-        let wrap_verifier = C::wrap_verifier();
-        let verifier = SP1Verifier {
-            core: core_verifier,
-            compress: compress_verifier,
-            shrink: shrink_verifier,
-            wrap: wrap_verifier,
-            // TODO: get the actual values
-            recursion_vk_root: Default::default(),
-            // TODO: get the actual values
-            recursion_vk_map: Default::default(),
-            vk_verification: true,
-            shrink_vk: None,
-            wrap_vk: None,
-        };
+        // Spawn the recursion reduce handler
+        tokio::task::spawn({
+            let mut recursion_reduce_rx =
+                channels.task_receivers.remove(&TaskType::RecursionReduce).unwrap();
+            let worker = worker.clone();
+            let worker_client = worker.worker_client().clone();
+            async move {
+                let mut task_set = JoinSet::new();
+                let (task_tx, mut task_rx) = mpsc::unbounded_channel();
+                loop {
+                    tokio::select! {
+                        Some((id, request)) = recursion_reduce_rx.recv() => {
+                            let proof_id = request.proof_id.clone();
+                            let handle = worker.prover_engine().submit_recursion_reduce(request).await.unwrap();
+                            let tx = task_tx.clone();
+                            task_set.spawn(async move {
+                                let task_metadata = handle.await.unwrap().unwrap();
+                                tx.send((proof_id, (id, task_metadata), TaskStatus::Succeeded)).ok();
+                            });
+                        }
 
+                        Some((proof_id, (task_id, task_metadata), status)) = task_rx.recv() => {
+                            assert_eq!(status, TaskStatus::Succeeded);
+                            worker_client.complete_task(proof_id, task_id, task_metadata).await.unwrap();
+                        }
+                        else => {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+        // Get the verifier, artifact client, and worker client from the worker
+        let verifier = worker.verifier().clone();
         let artifact_client = worker.artifact_client().clone();
         let worker_client = worker.worker_client().clone();
-
-        Ok(SP1LocalNode { artifact_client, worker_client, verifier })
+        let inner = Arc::new(SP1NodeInner { artifact_client, worker_client, verifier });
+        Ok(SP1LocalNode { inner })
     }
 }

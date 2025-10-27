@@ -31,7 +31,7 @@ impl<'a, P: Prover> ExecuteRequest<'a, P> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::blocking::{Elf, SP1Stdin, Prover, ProverClient};
+    /// use sp1_sdk::blocking::{Elf, Prover, ProverClient, SP1Stdin};
     ///
     /// let elf = Elf::Static(&[1, 2, 3]);
     /// let stdin = SP1Stdin::new();
@@ -67,7 +67,7 @@ impl<'a, P: Prover> ExecuteRequest<'a, P> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::blocking::{Elf, SP1Stdin, Prover, ProverClient};
+    /// use sp1_sdk::blocking::{Elf, Prover, ProverClient, SP1Stdin};
     ///
     /// let elf = Elf::Static(&[1, 2, 3]);
     /// let stdin = SP1Stdin::new();
@@ -94,7 +94,7 @@ impl<'a, P: Prover> ExecuteRequest<'a, P> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::blocking::{Elf, SP1Stdin, Prover, ProverClient};
+    /// use sp1_sdk::blocking::{Elf, Prover, ProverClient, SP1Stdin};
     ///
     /// let elf = Elf::Static(&[1, 2, 3]);
     /// let stdin = SP1Stdin::new();
@@ -123,7 +123,7 @@ impl<'a, P: Prover> ExecuteRequest<'a, P> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::blocking::{Elf, SP1Stdin, Prover, ProverClient};
+    /// use sp1_sdk::blocking::{Elf, Prover, ProverClient, SP1Stdin};
     ///
     /// let elf = Elf::Static(&[1, 2, 3]);
     /// let stdin = SP1Stdin::new();

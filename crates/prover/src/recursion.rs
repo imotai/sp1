@@ -59,7 +59,7 @@ mod tree;
 pub use components::*;
 pub use tree::*;
 
-type RecursionConfig<C> =
+pub(crate) type RecursionConfig<C> =
     <<C as SP1ProverComponents>::RecursionComponents as MachineProverComponents<
         SP1GlobalContext,
     >>::Config;

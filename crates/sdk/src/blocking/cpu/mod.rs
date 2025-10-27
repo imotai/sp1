@@ -24,10 +24,11 @@ use sp1_prover::{
     SP1ProverBuilder,
 };
 
-use crate::blocking::prover::Prover;
-use crate::cpu::{prove_groth16, prove_plonk, CPUProvingKey};
 use crate::{
-    install::try_install_circuit_artifacts, SP1Proof, SP1ProofMode, SP1ProofWithPublicValues,
+    blocking::prover::Prover,
+    cpu::{prove_groth16, prove_plonk, CPUProvingKey},
+    install::try_install_circuit_artifacts,
+    SP1Proof, SP1ProofMode, SP1ProofWithPublicValues,
 };
 
 use thiserror::Error;

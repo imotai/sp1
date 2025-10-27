@@ -12,13 +12,10 @@ use sp1_core_executor::{
     CompressedMemory, CoreVM, CycleResult, ExecutionError, MinimalExecutor, Program, SP1CoreOpts,
     SplicedMinimalTrace, SplicingVM, SplitOpts, TraceChunkRaw,
 };
-use sp1_core_machine::{
-    executor::{ExecutionOutput, RecordTask},
-    io::SP1Stdin,
-};
-use sp1_hypercube::air::{PROOF_NONCE_NUM_WORDS, PV_DIGEST_NUM_WORDS};
+use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
+use sp1_hypercube::air::{ShardBoundary, ShardRange, PROOF_NONCE_NUM_WORDS, PV_DIGEST_NUM_WORDS};
 use sp1_jit::MinimalTrace;
-use sp1_prover_types::{Artifact, ArtifactClient, TaskType};
+use sp1_prover_types::{network_base_types::ProofMode, Artifact, ArtifactClient, TaskType};
 use tokio::{sync::mpsc, task::JoinSet};
 
 use crate::{
@@ -28,12 +25,18 @@ use crate::{
 
 pub struct ProofData {
     pub task_id: TaskId,
+    pub range: ShardRange,
     pub proof: Artifact,
 }
 
 pub fn cluster_opts() -> SP1CoreOpts {
     let log2_shard_size = 24;
     SP1CoreOpts { shard_size: 1 << log2_shard_size, ..Default::default() }
+}
+
+pub struct SendSpliceTask {
+    chunk: SplicedMinimalTrace<TraceChunkRaw>,
+    range: ShardRange,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -97,6 +100,7 @@ impl ProveShardInputArtifacts {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CommonProverInput {
     pub vk: SP1VerifyingKey,
+    pub mode: ProofMode,
     pub deferred_digest: [u32; 8],
     pub num_deferred_proofs: usize,
 }
@@ -106,6 +110,7 @@ pub struct SP1CoreExecutor<A, W> {
     elf: Artifact,
     stdin: Arc<SP1Stdin>,
     common_input: Artifact,
+    num_deferred_proofs: usize,
     proof_id: ProofId,
     parent_id: Option<TaskId>,
     parent_context: Option<Context>,
@@ -121,6 +126,7 @@ impl<A, W> SP1CoreExecutor<A, W> {
         elf: Artifact,
         stdin: Arc<SP1Stdin>,
         common_input: Artifact,
+        num_deferred_proofs: usize,
         proof_id: ProofId,
         parent_id: Option<TaskId>,
         parent_context: Option<Context>,
@@ -134,6 +140,7 @@ impl<A, W> SP1CoreExecutor<A, W> {
             elf,
             stdin,
             common_input,
+            num_deferred_proofs,
             proof_id,
             parent_id,
             parent_context,
@@ -211,6 +218,7 @@ where
                         chunk,
                         elf_artifact: elf.clone(),
                         common_input_artifact: common_input_artifact.clone(),
+                        num_deferred_proofs: self.num_deferred_proofs,
                         all_touched_addresses: all_touched_addresses.clone(),
                         final_vm_state: final_vm_state.clone(),
                         prove_shard_tx: sender.clone(),
@@ -332,6 +340,7 @@ where
         });
 
         // Spawn the task that creates the proving tasks and submits them to the worker
+        let num_deferred_proofs = self.num_deferred_proofs;
         join_set.spawn({
             let artifact_client = self.artifact_client.clone();
             let worker_client = self.worker_client.clone();
@@ -357,6 +366,22 @@ where
                         finalize_events.last().map(|event| event.addr).unwrap_or(0);
                     let next_init_page_idx = last_init_page_idx;
                     let next_finalize_page_idx = last_finalize_page_idx;
+
+                    // Calculate the range of the shard.
+                    let range = ShardRange {
+                        timestamp_range: (final_state.timestamp, final_state.timestamp),
+                        initialized_address_range: (last_init_addr, next_init_addr),
+                        finalized_address_range: (last_finalize_addr, next_finalize_addr),
+                        initialized_page_index_range: (last_init_page_idx, next_init_page_idx),
+                        finalized_page_index_range: (
+                            last_finalize_page_idx,
+                            next_finalize_page_idx,
+                        ),
+                        deferred_proof_range: (
+                            num_deferred_proofs as u64,
+                            num_deferred_proofs as u64,
+                        ),
+                    };
                     let mem_global_shard = GlobalMemoryShard {
                         final_state,
                         initialize_events,
@@ -407,7 +432,7 @@ where
                         .expect("failed to send task");
 
                     // Send the task data
-                    let proof_data = ProofData { task_id, proof: proof_artifact };
+                    let proof_data = ProofData { task_id, range, proof: proof_artifact };
                     prove_shard_tx.send(proof_data).expect("failed to send task id");
                     tracing::trace!("Submitted memory global shard {counter}");
                     counter += 1;
@@ -561,6 +586,7 @@ pub struct SplicingTask {
     program: Arc<Program>,
     chunk: TraceChunkRaw,
     elf_artifact: Artifact,
+    num_deferred_proofs: usize,
     common_input_artifact: Artifact,
     all_touched_addresses: TouchedAddresses,
     final_vm_state: FinalVmStateLock,
@@ -607,6 +633,7 @@ where
             final_vm_state,
             elf_artifact,
             common_input_artifact,
+            num_deferred_proofs,
             prove_shard_tx,
             proof_id,
             parent_id,
@@ -615,7 +642,7 @@ where
             opts,
         } = input;
 
-        let (splicing_tx, mut splicing_rx) = mpsc::channel::<RecordTask>(1);
+        let (splicing_tx, mut splicing_rx) = mpsc::channel::<SendSpliceTask>(1);
 
         let mut join_set = JoinSet::<Result<(), ExecutionError>>::new();
 
@@ -625,9 +652,10 @@ where
             let artifact_client = self.artifact_client.clone();
 
             async move {
-                while let Some(record) = splicing_rx.recv().await {
+                while let Some(task) = splicing_rx.recv().await {
+                    let SendSpliceTask { chunk, range } = task;
                     let chunk_bytes =
-                        bincode::serialize(&record.chunk).expect("failed to serialize record");
+                        bincode::serialize(&chunk).expect("failed to serialize record");
                     let data = TraceData::Core(chunk_bytes);
                     // Upload the record
                     let record_artifact = artifact_client
@@ -670,7 +698,7 @@ where
                         .expect("failed to send task");
 
                     // Send the task id
-                    let proof_data = ProofData { task_id, proof: proof_artifact };
+                    let proof_data = ProofData { task_id, range, proof: proof_artifact };
                     prove_shard_tx.send(proof_data).expect("failed to send task id");
                 }
 
@@ -686,6 +714,14 @@ where
         let start_num_mem_reads = chunk.num_mem_reads();
 
         let mut last_splice = SplicedMinimalTrace::new_full_trace(chunk.clone());
+            let mut boundary = ShardBoundary {
+                timestamp: vm.core.clk(),
+                initialized_address: 0,
+                finalized_address: 0,
+                initialized_page_index: 0,
+                finalized_page_index: 0,
+                deferred_proof: num_deferred_proofs as u64,
+            };
         loop {
             tracing::debug!("starting new shard at clk: {} at pc: {}", vm.core.clk(), vm.core.pc());
             match vm.execute()? {
@@ -699,6 +735,19 @@ where
                             "shard ended with {} mem reads left ",
                             vm.core.mem_reads.len()
                         );
+                        // Get the end boundary of the shard.
+                        let end = ShardBoundary {
+                            timestamp: vm.core.clk(),
+                            initialized_address: 0,
+                            finalized_address: 0,
+                            initialized_page_index: 0,
+                            finalized_page_index: 0,
+                            deferred_proof: num_deferred_proofs as u64,
+                        };
+                        // Get the range of the shard.
+                        let range = (boundary..end).into();
+                        // Update the boundary to the end of the shard.
+                        boundary = end;
 
                         // Set the last splice clk.
                         last_splice.set_last_clk(vm.core.clk());
@@ -708,9 +757,7 @@ where
                         let splice_to_send = std::mem::replace(&mut last_splice, spliced);
 
                         // TODO: handle errors.
-                        splicing_tx.blocking_send(RecordTask { chunk: splice_to_send }).expect("failed to send splicing task");
-
-                        // Prepare the prove shard task.
+                        splicing_tx.blocking_send(SendSpliceTask { chunk: splice_to_send, range }).expect("failed to send splicing task");
                     } else {
                         tracing::trace!("trace ended at clk: {}", vm.core.clk());
                         tracing::trace!("trace ended at pc: {}", vm.core.pc());
@@ -719,13 +766,24 @@ where
                             "trace ended with {} mem reads left ",
                             vm.core.mem_reads.len()
                         );
+                        // Get the end boundary of the shard.
+                        let end = ShardBoundary {
+                            timestamp: vm.core.clk(),
+                            initialized_address: 0,
+                            finalized_address: 0,
+                            initialized_page_index: 0,
+                            finalized_page_index: 0,
+                            deferred_proof: num_deferred_proofs as u64,
+                        };
+                        // Get the range of the shard.
+                        let range = (boundary..end).into();
 
                         last_splice.set_last_clk(vm.core.clk());
                         last_splice.set_last_mem_reads_idx(
                             start_num_mem_reads as usize - vm.core.mem_reads.len(),
                         );
 
-                        splicing_tx.blocking_send(RecordTask { chunk: last_splice }).expect("failed to send splicing task");
+                        splicing_tx.blocking_send(SendSpliceTask { chunk: last_splice, range }).expect("failed to send splicing task");
 
                         break;
                     }
@@ -734,13 +792,25 @@ where
                     last_splice.set_last_clk(vm.core.clk());
                     last_splice.set_last_mem_reads_idx(chunk.num_mem_reads() as usize);
 
+                    // Get the end boundary of the shard.
+                    let end = ShardBoundary {
+                        timestamp: vm.core.clk(),
+                        initialized_address: 0,
+                        finalized_address: 0,
+                        initialized_page_index: 0,
+                        finalized_page_index: 0,
+                        deferred_proof: num_deferred_proofs as u64,
+                    };
+                    // Get the range of the shard.
+                    let range = (boundary..end).into();
+
                     // Get the last state of the vm execution and set the global final vm state to
                     // this value.
                     let final_state = FinalVmState::new(&vm.core);
                     final_vm_state.set(final_state);
 
                     // Send the last splice.
-                    splicing_tx.blocking_send(RecordTask { chunk: last_splice }).expect("failed to send splicing task");
+                    splicing_tx.blocking_send(SendSpliceTask { chunk: last_splice, range }).expect("failed to send splicing task");
 
                     break;
                 }
@@ -823,6 +893,7 @@ mod tests {
             sender,
             artifact_client,
             worker_client,
+            num_deferred_proofs: 0,
         };
 
         let counter_handle = tokio::task::spawn(async move {

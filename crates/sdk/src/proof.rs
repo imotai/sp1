@@ -216,8 +216,8 @@ impl SP1ProofWithPublicValues {
     /// # Example
     /// ```rust,no_run
     /// use sp1_sdk::{
-    ///     Elf, Prover, ProverClient, SP1ProofMode, SP1ProofWithPublicValues, SP1Stdin,
-    ///     SP1_CIRCUIT_VERSION, ProvingKey
+    ///     Elf, Prover, ProverClient, ProvingKey, SP1ProofMode, SP1ProofWithPublicValues, SP1Stdin,
+    ///     SP1_CIRCUIT_VERSION,
     /// };
     ///
     /// tokio_test::block_on(async {

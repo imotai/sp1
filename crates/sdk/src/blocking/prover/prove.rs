@@ -22,7 +22,7 @@ where
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::blocking::{Elf, SP1ProofMode, SP1Stdin, Prover, ProverClient, ProveRequest};
+    /// use sp1_sdk::blocking::{Elf, ProveRequest, Prover, ProverClient, SP1ProofMode, SP1Stdin};
     ///
     /// let elf = Elf::Static(&[1, 2, 3]);
     /// let stdin = SP1Stdin::new();
@@ -46,7 +46,7 @@ where
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::blocking::{Elf, SP1ProofMode, SP1Stdin, Prover, ProverClient, ProveRequest};
+    /// use sp1_sdk::blocking::{Elf, ProveRequest, Prover, ProverClient, SP1ProofMode, SP1Stdin};
     ///
     /// let elf = Elf::Static(&[1, 2, 3]);
     /// let stdin = SP1Stdin::new();
@@ -71,7 +71,7 @@ where
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::blocking::{Elf, SP1ProofMode, SP1Stdin, Prover, ProverClient, ProveRequest};
+    /// use sp1_sdk::blocking::{Elf, ProveRequest, Prover, ProverClient, SP1ProofMode, SP1Stdin};
     ///
     /// let elf = Elf::Static(&[1, 2, 3]);
     /// let stdin = SP1Stdin::new();
@@ -94,7 +94,7 @@ where
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::blocking::{Elf, SP1ProofMode, SP1Stdin, Prover, ProverClient, ProveRequest};
+    /// use sp1_sdk::blocking::{Elf, ProveRequest, Prover, ProverClient, SP1ProofMode, SP1Stdin};
     ///
     /// let elf = Elf::Static(&[1, 2, 3]);
     /// let stdin = SP1Stdin::new();
@@ -117,7 +117,7 @@ where
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::blocking::{Elf, SP1ProofMode, SP1Stdin, Prover, ProverClient, ProveRequest};
+    /// use sp1_sdk::blocking::{Elf, ProveRequest, Prover, ProverClient, SP1ProofMode, SP1Stdin};
     ///
     /// let elf = Elf::Static(&[1, 2, 3]);
     /// let stdin = SP1Stdin::new();
@@ -140,7 +140,7 @@ where
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::blocking::{Elf, SP1ProofMode, SP1Stdin, Prover, ProverClient, ProveRequest};
+    /// use sp1_sdk::blocking::{Elf, ProveRequest, Prover, ProverClient, SP1ProofMode, SP1Stdin};
     ///
     /// let elf = Elf::Static(&[1, 2, 3]);
     /// let stdin = SP1Stdin::new();
@@ -168,7 +168,7 @@ where
     ///
     /// # Example
     /// ```rust,no_run
-    /// use sp1_sdk::blocking::{Elf, SP1ProofMode, SP1Stdin, Prover, ProverClient, ProveRequest};
+    /// use sp1_sdk::blocking::{Elf, ProveRequest, Prover, ProverClient, SP1ProofMode, SP1Stdin};
     ///
     /// let elf = Elf::Static(&[1, 2, 3]);
     /// let stdin = SP1Stdin::new();

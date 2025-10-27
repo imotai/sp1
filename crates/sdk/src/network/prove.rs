@@ -141,7 +141,7 @@ impl NetworkProveBuilder<'_> {
     ///         .skip_simulation(true) // Skip simulation since the limit is set manually.
     ///         .await
     ///         .unwrap();
-    ///     });
+    /// });
     /// ```
     #[must_use]
     pub fn cycle_limit(mut self, cycle_limit: u64) -> Self {
@@ -176,7 +176,7 @@ impl NetworkProveBuilder<'_> {
     ///         .skip_simulation(true) // Skip simulation since the limit is set manually.
     ///         .await
     ///         .unwrap();
-    ///     });
+    /// });
     /// ```
     #[must_use]
     pub fn gas_limit(mut self, gas_limit: u64) -> Self {
@@ -256,7 +256,8 @@ impl NetworkProveBuilder<'_> {
     ///
     ///     let client = ProverClient::builder().network().build().await;
     ///     let pk = client.setup(elf).await.unwrap();
-    ///     let whitelist = vec![Address::from_str("0x123").unwrap(), Address::from_str("0x456").unwrap()];
+    ///     let whitelist =
+    ///         vec![Address::from_str("0x123").unwrap(), Address::from_str("0x456").unwrap()];
     ///     let proof = client.prove(&pk, stdin).whitelist(Some(whitelist)).await.unwrap();
     /// });
     /// ```
