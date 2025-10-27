@@ -148,6 +148,7 @@ async fn main() {
         elf_artifact,
         stdin,
         common_input,
+        0,
         proof_id,
         parent_id,
         parent_context,

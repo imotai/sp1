@@ -1,10 +1,10 @@
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use clap::Parser;
 use csl_perf::{
-    telemetry, Measurement, FIBONACCI_ELF, KECCAK_ELF, LOOP_ELF, POSEIDON2_ELF, SHA2_ELF,
+    telemetry, Measurement, Stage, FIBONACCI_ELF, KECCAK_ELF, LOOP_ELF, POSEIDON2_ELF, SHA2_ELF,
 };
-use csl_prover::{new_cuda_prover_sumcheck_eval, CudaSP1ProverComponents};
+use csl_prover::cuda_worker_builder;
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
 use sp1_core_executor::SP1Context;
@@ -12,8 +12,8 @@ use sp1_core_machine::io::SP1Stdin;
 
 const RSP_CLIENT_ELF: &[u8] = include_bytes!("../../programs/rsp/elf/rsp-client");
 
-use sp1_hypercube::prover::ProverSemaphore;
-use sp1_prover::{components::CoreProver, worker::SP1LocalNodeBuilder, SP1ProverComponents};
+use sp1_prover::worker::SP1LocalNodeBuilder;
+use sp1_prover_types::network_base_types::ProofMode;
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
 
@@ -36,6 +36,8 @@ struct Args {
     pub task_capacity: usize,
     #[arg(long, default_value = "false")]
     pub telemetry: bool,
+    #[arg(long, default_value = "core")]
+    pub stage: Stage,
 }
 
 fn get_program_and_input(program: String, param: u32) -> (Vec<u8>, SP1Stdin) {
@@ -100,6 +102,14 @@ fn get_program_and_input(program: String, param: u32) -> (Vec<u8>, SP1Stdin) {
     (program, stdin)
 }
 
+fn proof_mode_from_stage(stage: Stage) -> ProofMode {
+    match stage {
+        Stage::Core => ProofMode::Core,
+        Stage::Compress => ProofMode::Compressed,
+        _ => panic!("invalid stage provided: {stage:?}"),
+    }
+}
+
 #[tokio::main]
 #[allow(clippy::field_reassign_with_default)]
 async fn main() {
@@ -118,40 +128,47 @@ async fn main() {
 
     // Initialize the AirProver and permits
     let measurement = csl_cuda::spawn(move |t| async move {
-        let core_verifier = CudaSP1ProverComponents::core_verifier();
-        let core_air_prover: CoreProver<CudaSP1ProverComponents> =
-            new_cuda_prover_sumcheck_eval(core_verifier.shard_verifier().clone(), t.clone());
-        let core_air_prover = Arc::new(core_air_prover);
-        let permits = ProverSemaphore::new(1);
+        let client =
+            SP1LocalNodeBuilder::from_worker_client_builder(cuda_worker_builder(t.clone()))
+                .build()
+                .await
+                .unwrap();
 
-        let client = SP1LocalNodeBuilder::<CudaSP1ProverComponents>::new()
-            .with_core_air_prover(core_air_prover, permits)
-            .build()
-            .unwrap();
+        let time = tokio::time::Instant::now();
+        let context = SP1Context::default();
+        let (_, _, report) = client.execute(&elf, stdin.clone(), context.clone()).await.unwrap();
+        let execute_time = time.elapsed();
+        let cycles = report.total_instruction_count() as usize;
+        tracing::info!("execute time: {:?}", execute_time);
 
         let time = tokio::time::Instant::now();
         let vk = client.setup(&elf).await.unwrap();
         let setup_time = time.elapsed();
         tracing::info!("setup time: {:?}", setup_time);
 
-        let context = SP1Context::default();
         let time = tokio::time::Instant::now();
-        let proof = client.prove_core(&elf, stdin, context).await.unwrap();
-        let core_time = time.elapsed();
-        tracing::info!("core proof time: {:?}", core_time);
 
-        let cycles = proof.cycles as usize;
-        let num_shards = proof.proof.0.len();
+        let mode = proof_mode_from_stage(args.stage);
+
+        tracing::info!("proving with mode: {mode:?}");
+        let proof = client.prove_with_mode(&elf, stdin, context, mode).await.unwrap();
+        let proof_time = time.elapsed();
+        tracing::info!("proof time: {:?}", proof_time);
+
+        // let cycles = proof.cycles as usize;
+        // let num_shards = proof.proof.0.len();
 
         // Verify the proof
-        client.verifier().verify(&proof.proof, &vk).unwrap();
+        client.verify(&vk, &proof).unwrap();
+
+        let num_shards = proof.num_shards().unwrap();
 
         Measurement {
             name: args.program,
             cycles,
             num_shards,
-            core_time,
-            compress_time: Duration::ZERO,
+            core_time: execute_time,
+            compress_time: proof_time,
             shrink_time: Duration::ZERO,
             wrap_time: Duration::ZERO,
         }
