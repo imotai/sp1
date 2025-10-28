@@ -2,24 +2,25 @@
 //!
 //! A trait that each prover variant must implement.
 
-use std::{
-    borrow::Borrow,
-    fmt,
-    future::{Future, IntoFuture},
-    sync::Arc,
-};
-
 use crate::StatusCode;
 use anyhow::Result;
 use itertools::Itertools;
+use num_bigint::BigUint;
 use slop_algebra::PrimeField32;
 use sp1_core_machine::io::SP1Stdin;
-use sp1_hypercube::{air::PublicValues, MachineVerifierConfigError};
+use sp1_hypercube::{air::PublicValues, MachineVerifierConfigError, PROOF_MAX_NUM_PVS};
 use sp1_primitives::{types::Elf, SP1GlobalContext};
 use sp1_prover::{
     components::{CpuSP1ProverComponents, SP1ProverComponents},
     local::LocalProver,
     CoreSC, InnerSC, SP1CoreProofData, SP1Prover, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
+};
+use std::str::FromStr;
+use std::{
+    borrow::Borrow,
+    fmt,
+    future::{Future, IntoFuture},
+    sync::Arc,
 };
 use thiserror::Error;
 
@@ -157,6 +158,16 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
 
     match &bundle.proof {
         SP1Proof::Core(proof) => {
+            if proof.is_empty() {
+                return Err(SP1VerificationError::Core(
+                    sp1_hypercube::MachineVerifierError::EmptyProof,
+                ));
+            }
+
+            if proof.last().unwrap().public_values.len() != PROOF_MAX_NUM_PVS {
+                return Err(SP1VerificationError::InvalidPublicValues);
+            }
+
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 proof.last().unwrap().public_values.as_slice().borrow();
 
@@ -189,6 +200,10 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
                 .map_err(SP1VerificationError::Core)
         }
         SP1Proof::Compressed(proof) => {
+            if proof.proof.public_values.len() != PROOF_MAX_NUM_PVS {
+                return Err(SP1VerificationError::InvalidPublicValues);
+            }
+
             let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
                 proof.proof.public_values.as_slice().borrow();
 
@@ -216,21 +231,46 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
 
             prover.verify_compressed(proof, vkey).map_err(SP1VerificationError::Recursion)
         }
-        SP1Proof::Plonk(proof) => prover
-            .verify_plonk_bn254(
-                proof,
-                vkey,
-                &bundle.public_values,
-                &sp1_prover::build::plonk_bn254_artifacts_dev_dir(),
-            )
-            .map_err(SP1VerificationError::Plonk),
-        SP1Proof::Groth16(proof) => prover
-            .verify_groth16_bn254(
-                proof,
-                vkey,
-                &bundle.public_values,
-                &sp1_prover::build::groth16_bn254_artifacts_dev_dir(),
-            )
-            .map_err(SP1VerificationError::Groth16),
+        SP1Proof::Plonk(proof) => {
+            let exit_code = BigUint::from_str(&proof.public_inputs[2])
+                .map_err(|e| SP1VerificationError::Plonk(anyhow::anyhow!(e)))?;
+
+            let exit_code_u32 =
+                u32::try_from(&exit_code).map_err(|_| SP1VerificationError::InvalidPublicValues)?;
+
+            if !status_code.is_accepted_code(exit_code_u32) {
+                return Err(SP1VerificationError::UnexpectedExitCode(exit_code_u32));
+            }
+
+            prover
+                .verify_plonk_bn254(
+                    proof,
+                    vkey,
+                    &bundle.public_values,
+                    &sp1_prover::build::plonk_bn254_artifacts_dev_dir(),
+                )
+                .map_err(SP1VerificationError::Plonk)
+        }
+
+        SP1Proof::Groth16(proof) => {
+            let exit_code = BigUint::from_str(&proof.public_inputs[2])
+                .map_err(|e| SP1VerificationError::Plonk(anyhow::anyhow!(e)))?;
+
+            let exit_code_u32 =
+                u32::try_from(&exit_code).map_err(|_| SP1VerificationError::InvalidPublicValues)?;
+
+            if !status_code.is_accepted_code(exit_code_u32) {
+                return Err(SP1VerificationError::UnexpectedExitCode(exit_code_u32));
+            }
+
+            prover
+                .verify_groth16_bn254(
+                    proof,
+                    vkey,
+                    &bundle.public_values,
+                    &sp1_prover::build::groth16_bn254_artifacts_dev_dir(),
+                )
+                .map_err(SP1VerificationError::Groth16)
+        }
     }
 }

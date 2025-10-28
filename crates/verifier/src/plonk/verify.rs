@@ -3,6 +3,7 @@ use bn::{arith::U256, AffineG1, Fr};
 use core::hash::Hasher;
 
 use crate::{
+    constants::PLONK_CLAIMED_VALUES_COUNT,
     error::Error,
     plonk::{kzg::BatchOpeningProof, transcript::Transcript},
 };
@@ -51,7 +52,11 @@ pub(crate) fn verify_plonk_algebraic(
     public_inputs: &[Fr],
 ) -> Result<(), PlonkError> {
     // Check if the number of BSB22 commitments matches the number of Qcp in the verifying key
-    if proof.bsb22_commitments.len() != vk.qcp.len() {
+    if proof.bsb22_commitments.len() != vk.qcp.len()
+        || proof.bsb22_commitments.len() != vk.commitment_constraint_indexes.len()
+        || proof.batched_proof.claimed_values.len()
+            != PLONK_CLAIMED_VALUES_COUNT + proof.bsb22_commitments.len()
+    {
         return Err(PlonkError::Bsb22CommitmentMismatch);
     }
 
@@ -65,7 +70,7 @@ pub(crate) fn verify_plonk_algebraic(
     let mut fs = Transcript::new(Some(
         [GAMMA.to_string(), BETA.to_string(), ALPHA.to_string(), ZETA.to_string(), U.to_string()]
             .to_vec(),
-    ))?;
+    ));
 
     // Bind public data to the transcript
     bind_public_data(&mut fs, GAMMA, vk, public_inputs)?;
@@ -111,6 +116,9 @@ pub(crate) fn verify_plonk_algebraic(
     for _ in 0..public_inputs.len() {
         let mut temp = zeta;
         temp -= accw;
+        if temp.is_zero() {
+            return Err(PlonkError::InverseNotFound);
+        }
         dens.push(temp);
         accw *= vk.generator;
     }
@@ -132,7 +140,7 @@ pub(crate) fn verify_plonk_algebraic(
     }
 
     // Handle BSB22 commitments
-    let mut hash_to_field = crate::plonk::hash_to_field::WrappedHashToField::new(b"BSB22-Plonk")?;
+    let mut hash_to_field = crate::plonk::hash_to_field::WrappedHashToField::new(b"BSB22-Plonk");
 
     for i in 0..vk.commitment_constraint_indexes.len() {
         hash_to_field.write(&g1_to_bytes(&proof.bsb22_commitments[i])?);
@@ -147,6 +155,9 @@ pub(crate) fn verify_plonk_algebraic(
         let w_pow_i = vk.generator.pow(exponent);
         let mut den = zeta;
         den -= w_pow_i;
+        if den.is_zero() {
+            return Err(PlonkError::InverseNotFound);
+        }
         let mut lagrange = zh_zeta;
         lagrange *= w_pow_i;
         lagrange /= den;
@@ -390,6 +401,7 @@ fn batch_inversion_and_mul(v: &mut [Fr], coeff: &Fr) {
         prod.push(tmp);
     }
 
+    // This doesn't panic, as the above loop skips `f == 0`.
     tmp = tmp.inverse().unwrap();
 
     tmp *= *coeff;

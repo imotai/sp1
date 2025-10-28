@@ -18,6 +18,7 @@ where
     GC::F: TwoAdicField,
 {
     pub fn new(log_blowup: usize, num_expected_commitments: usize) -> Self {
+        assert_ne!(num_expected_commitments, 0, "commitment must exist");
         Self {
             fri_config: crate::FriConfig::auto(log_blowup, 84),
             tcs: MerkleTreeTcs::default(),
@@ -197,7 +198,7 @@ where
             // The check is similar to the one for `first_poly`.
             let i = i + 1;
             if expected_eval != (GC::EF::one() - *point[i]) * poly[0] + *point[i] * poly[1] {
-                println!("failed in round {}", i);
+                println!("failed in round {i}");
                 return Err(BaseFoldVerifierError::Sumcheck);
             }
 

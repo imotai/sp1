@@ -5448,6 +5448,7 @@ dependencies = [
  "indicatif",
  "itertools 0.13.0",
  "k256",
+ "num-bigint 0.4.6",
  "prost",
  "reqwest",
  "reqwest-middleware",
@@ -5485,6 +5486,7 @@ dependencies = [
  "bincode",
  "blake3",
  "cfg-if",
+ "dirs",
  "hex",
  "lazy_static",
  "rstest 0.25.0",
@@ -5500,6 +5502,7 @@ dependencies = [
  "substrate-bn-succinct",
  "test-artifacts",
  "thiserror 2.0.17",
+ "tokio",
 ]
 
 [[package]]

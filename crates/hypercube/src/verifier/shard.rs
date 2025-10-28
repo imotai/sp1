@@ -22,7 +22,7 @@ use thiserror::Error;
 use crate::{
     air::MachineAir, prover::CoreProofShape, Chip, ChipOpenedValues, LogUpEvaluations,
     LogUpGkrVerifier, LogupGkrVerificationError, Machine, VerifierConstraintFolder,
-    VerifierPublicValuesConstraintFolder,
+    VerifierPublicValuesConstraintFolder, PROOF_MAX_NUM_PVS,
 };
 
 use super::{MachineConfig, MachineVerifyingKey, ShardOpenedValues, ShardProof};
@@ -453,15 +453,24 @@ where
 
         let max_log_row_count = self.jagged_pcs_verifier.max_log_row_count;
 
-        if public_values.len() < self.machine.num_pv_elts() {
+        if public_values.len() != PROOF_MAX_NUM_PVS
+            || public_values.len() < self.machine.num_pv_elts()
+        {
             tracing::error!("invalid public values length: {}", public_values.len());
             return Err(ShardVerifierError::InvalidPublicValues);
         }
 
+        if public_values[self.machine.num_pv_elts()..].iter().any(|v| *v != GC::F::zero()) {
+            return Err(ShardVerifierError::InvalidPublicValues);
+        }
+
         // Observe the public values.
-        challenger.observe_slice(&public_values[0..self.machine.num_pv_elts()]);
+        challenger.observe_slice(public_values);
         // Observe the main commitment.
         challenger.observe(*main_commitment);
+        // Observe the number of chips.
+        let shard_chips_len = shard_chips.len();
+        challenger.observe(GC::F::from_canonical_usize(shard_chips_len));
 
         let mut heights: BTreeMap<String, GC::F> = BTreeMap::new();
         for (name, chip_values) in opened_values.chips.iter() {
@@ -472,6 +481,10 @@ where
                 chip_values.degree.iter().fold(GC::F::zero(), |acc, &x| x + GC::F::two() * acc);
             heights.insert(name.clone(), acc);
             challenger.observe(acc);
+            challenger.observe(GC::F::from_canonical_usize(name.len()));
+            for byte in name.as_bytes() {
+                challenger.observe(GC::F::from_canonical_u8(*byte));
+            }
         }
 
         for (chip, dimensions) in vk.preprocessed_chip_information.iter() {
@@ -491,6 +504,14 @@ where
             .filter(|chip| shard_chips.contains(&chip.name()))
             .cloned()
             .collect::<BTreeSet<_>>();
+
+        if shard_chips.len() != shard_chips_len {
+            return Err(ShardVerifierError::InvalidShape);
+        }
+
+        if !self.machine().shape().chip_clusters.contains(&shard_chips) {
+            return Err(ShardVerifierError::InvalidShape);
+        }
 
         let max_interaction_arity = shard_chips
             .iter()

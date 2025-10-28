@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use itertools::izip;
-use slop_algebra::{extension::BinomialExtensionField, AbstractField};
+use slop_algebra::AbstractField;
 use slop_jagged::{JaggedLittlePolynomialVerifierParams, JaggedSumcheckEvalProof};
 use slop_multilinear::{Mle, MleEval, Point};
 use slop_sumcheck::PartialSumcheckProof;
@@ -35,6 +35,7 @@ pub struct JaggedPcsProofVariable<Proof, Digest> {
     pub column_counts: Vec<Vec<usize>>,
     pub row_counts: Vec<Vec<Felt<SP1Field>>>,
     pub original_commitments: Vec<Digest>,
+    pub expected_eval: Ext<SP1Field, SP1ExtensionField>,
 }
 
 #[derive(Clone)]
@@ -63,6 +64,7 @@ impl<SC: SP1FieldConfigVariable<C>, C: CircuitConfig> RecursiveJaggedPcsVerifier
             params,
             column_counts,
             original_commitments,
+            expected_eval,
             ..
         } = proof;
         let num_col_variables = (params.col_prefix_sums.len() - 1).next_power_of_two().ilog2();
@@ -138,8 +140,7 @@ impl<SC: SP1FieldConfigVariable<C>, C: CircuitConfig> RecursiveJaggedPcsVerifier
         builder.cycle_tracker_v2_exit();
 
         // Compute the expected evaluation of the dense trace polynomial.
-        let expected_eval: SymbolicExt<SP1Field, BinomialExtensionField<SP1Field, 4>> =
-            sumcheck_proof.point_and_eval.1 / jagged_eval;
+        builder.assert_ext_eq(jagged_eval * *expected_eval, sumcheck_proof.point_and_eval.1);
 
         // Verify the evaluation proof.
         let evaluation_point = sumcheck_proof.point_and_eval.0.clone();
@@ -148,7 +149,7 @@ impl<SC: SP1FieldConfigVariable<C>, C: CircuitConfig> RecursiveJaggedPcsVerifier
             original_commitments,
             &evaluation_point,
             pcs_proof,
-            expected_eval,
+            SymbolicExt::from(*expected_eval),
             challenger,
         );
         prefix_sum_felts

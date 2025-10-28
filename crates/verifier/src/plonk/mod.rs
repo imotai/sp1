@@ -57,7 +57,7 @@ impl PlonkVerifier {
         sp1_vkey_hash: &str,
         plonk_vk: &[u8],
     ) -> Result<(), PlonkError> {
-        if proof.len() < VK_HASH_PREFIX_LENGTH + 32 + 32 {
+        if proof.len() < VK_HASH_PREFIX_LENGTH + 32 + 32 + 32 {
             return Err(PlonkError::GeneralError(Error::InvalidData));
         }
 
@@ -83,13 +83,22 @@ impl PlonkVerifier {
         let vk_root = proof[VK_HASH_PREFIX_LENGTH + 32..VK_HASH_PREFIX_LENGTH + 64]
             .try_into()
             .map_err(|_| PlonkError::GeneralError(Error::InvalidData))?;
+        let proof_nonce = proof[VK_HASH_PREFIX_LENGTH + 64..VK_HASH_PREFIX_LENGTH + 96]
+            .try_into()
+            .map_err(|_| PlonkError::GeneralError(Error::InvalidData))?;
 
         // First, check if the public values hashed with SHA2 match the expected public values.
         // If not, try hashing with Blake3. If both fail, return an error. We perform the checks
         // sequentially to avoid calculating both hashes unless necessary.
         if Self::verify_gnark_proof(
-            &proof[VK_HASH_PREFIX_LENGTH + 64..],
-            &[sp1_vkey_hash, hash_public_inputs(sp1_public_inputs), exit_code, vk_root],
+            &proof[VK_HASH_PREFIX_LENGTH + 96..],
+            &[
+                sp1_vkey_hash,
+                hash_public_inputs(sp1_public_inputs),
+                exit_code,
+                vk_root,
+                proof_nonce,
+            ],
             plonk_vk,
         )
         .is_ok()
@@ -98,12 +107,13 @@ impl PlonkVerifier {
         }
 
         Self::verify_gnark_proof(
-            &proof[VK_HASH_PREFIX_LENGTH + 64..],
+            &proof[VK_HASH_PREFIX_LENGTH + 96..],
             &[
                 sp1_vkey_hash,
                 hash_public_inputs_with_fn(sp1_public_inputs, blake3_hash),
                 exit_code,
                 vk_root,
+                proof_nonce,
             ],
             plonk_vk,
         )
@@ -130,11 +140,15 @@ impl PlonkVerifier {
         public_inputs: &[[u8; 32]],
         plonk_vk: &[u8],
     ) -> Result<(), PlonkError> {
-        let plonk_vk = load_plonk_verifying_key_from_bytes(plonk_vk).unwrap();
-        let proof = load_plonk_proof_from_bytes(proof, plonk_vk.qcp.len()).unwrap();
+        let plonk_vk = load_plonk_verifying_key_from_bytes(plonk_vk)?;
+        let proof = load_plonk_proof_from_bytes(proof, plonk_vk.qcp.len())?;
 
-        let public_inputs =
-            public_inputs.iter().map(|input| Fr::from_slice(input).unwrap()).collect::<Vec<_>>();
+        let public_inputs = public_inputs
+            .iter()
+            .map(|input| Fr::from_slice(input))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| PlonkError::GeneralError(crate::plonk::Error::Field(e)))?;
+
         verify_plonk_algebraic(&plonk_vk, &proof, &public_inputs)
     }
 }

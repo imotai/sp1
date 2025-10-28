@@ -37,5 +37,5 @@ pub use groth16::ark_converter::*;
 pub use plonk::{error::PlonkError, PlonkVerifier};
 mod plonk;
 
-// #[cfg(test)]
-// mod tests;
+#[cfg(test)]
+mod tests;

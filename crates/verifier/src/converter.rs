@@ -17,18 +17,23 @@ pub(crate) fn deserialize_with_flags(buf: &[u8]) -> Result<(Fq, CompressedPointF
     };
 
     let m_data = buf[0] & MASK;
+    // Here, the possible values for `m_data` is `0, 64, 128, 192`. If `m_data == 0`, it doesn't
+    // match any possible compressed point flags shown in `CompressedPointFlag`, so return error.
+    if m_data == 0 {
+        return Err(Error::InvalidPoint);
+    }
     if m_data == u8::from(CompressedPointFlag::Infinity) {
         // Checks if the first byte is zero after masking AND the rest of the bytes are zero.
         if buf[0] & !MASK == 0 && buf[1..].iter().all(|&b| b == 0) {
-            return Err(Error::InvalidPoint);
+            return Ok((Fq::zero(), CompressedPointFlag::Infinity));
         }
-        Ok((Fq::zero(), CompressedPointFlag::Infinity))
+        Err(Error::InvalidPoint)
     } else {
         let mut x_bytes: [u8; 32] = [0u8; 32];
         x_bytes.copy_from_slice(buf);
         x_bytes[0] &= !MASK;
 
-        let x = Fq::from_be_bytes_mod_order(&x_bytes).expect("Failed to convert x bytes to Fq");
+        let x = Fq::from_be_bytes_mod_order(&x_bytes).map_err(Error::Field)?;
 
         Ok((x, m_data.into()))
     }
@@ -86,7 +91,7 @@ pub(crate) fn unchecked_compressed_x_to_g2_point(buf: &[u8]) -> Result<AffineG2,
     let x = Fq2::new(x0, x1);
 
     if flag == CompressedPointFlag::Infinity {
-        return Ok(AffineG2::one());
+        return Ok(AffineG2::zero());
     }
 
     let (y, neg_y) = AffineG2::get_ys_from_x_unchecked(x).ok_or(Error::InvalidPoint)?;

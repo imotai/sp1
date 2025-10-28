@@ -41,7 +41,7 @@ pub fn write_syscall<E: ExecutorConfig>(
     let bytes = (0..nbytes).map(|i| rt.byte::<E>(write_buf + i)).collect::<Vec<u8>>();
     let slice = bytes.as_slice();
     if fd == 1 {
-        let s = core::str::from_utf8(slice).unwrap();
+        let s: &str = &String::from_utf8_lossy(slice);
         match parse_cycle_tracker_command(s) {
             Some(command) => handle_cycle_tracker_command(rt, command),
             None => {
@@ -67,7 +67,7 @@ pub fn write_syscall<E: ExecutorConfig>(
             }
         }
     } else if fd == 2 {
-        let s = core::str::from_utf8(slice).unwrap();
+        let s: &str = &String::from_utf8_lossy(slice);
         let flush_s = update_io_buf(rt, fd as u32, s);
         if !flush_s.is_empty() {
             match rt.io_options.stderr {

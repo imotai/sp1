@@ -133,11 +133,12 @@ impl<GC> Verifier<GC>
 where
     GC: IopCtx,
 {
-    pub const fn new(
+    pub fn new(
         merkle_verifier: MerkleTreeTcs<GC>,
         config: WhirProofShape<GC::F>,
         num_expected_commitments: usize,
     ) -> Self {
+        assert_ne!(num_expected_commitments, 0, "commitment must exist");
         Self { merkle_verifier, config, num_expected_commitments }
     }
 
@@ -176,7 +177,7 @@ where
             ));
         }
 
-        println!("Round areas: {:?}", round_areas);
+        println!("Round areas: {round_areas:?}");
 
         for (merkle_proof, area) in proof.merkle_proofs[0].iter().zip_eq(round_areas.iter()) {
             if merkle_proof.proof.width << self.config.starting_interleaved_log_height != *area {

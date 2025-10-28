@@ -29,14 +29,14 @@ pub(crate) unsafe fn write(ctx: &mut impl SyscallContext, arg1: u64, arg2: u64) 
 
     let slice = bytes.as_slice();
     if fd == 1 {
-        let s = core::str::from_utf8(slice).unwrap();
+        let s: &str = &String::from_utf8_lossy(slice);
         for line in s.lines() {
             eprintln!("stdout: {line}");
         }
 
         return None;
     } else if fd == 2 {
-        let s = core::str::from_utf8(slice).unwrap();
+        let s: &str = &String::from_utf8_lossy(slice);
         for line in s.lines() {
             eprintln!("stderr: {line}");
         }

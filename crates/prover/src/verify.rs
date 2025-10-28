@@ -8,6 +8,7 @@ use slop_algebra::{AbstractField, PrimeField, PrimeField64};
 use slop_challenger::IopCtx;
 use sp1_core_executor::{subproof::SubproofVerifier, SP1RecursionProof};
 use sp1_core_machine::riscv::{RiscvAir, MAX_LOG_NUMBER_OF_SHARDS};
+use sp1_hypercube::PROOF_MAX_NUM_PVS;
 use sp1_hypercube::{
     air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
     MachineVerifier, MachineVerifierConfigError, MachineVerifierError, MachineVerifyingKey,
@@ -80,6 +81,15 @@ impl SP1VerifierRef<'_> {
 
         if proof.0.is_empty() {
             return Err(MachineVerifierError::EmptyProof);
+        }
+
+        // Assert that all the shard proofs have correct public values length.
+        for shard_proof in proof.0.iter() {
+            if shard_proof.public_values.len() != PROOF_MAX_NUM_PVS {
+                return Err(MachineVerifierError::InvalidPublicValues(
+                    "invalid public values length",
+                ));
+            }
         }
 
         // Assert that the `is_first_execution_shard` flag is boolean and is set to one only for a
@@ -458,6 +468,11 @@ impl SP1VerifierRef<'_> {
         let mut challenger = self.compress.challenger();
         compress_vk.observe_into(&mut challenger);
 
+        // Check the public values length.
+        if proof.public_values.len() != PROOF_MAX_NUM_PVS {
+            return Err(MachineVerifierError::InvalidPublicValues("invalid public values length"));
+        }
+
         // Verify the shard proof.
         self.compress
             .verify_shard(compress_vk, proof, &mut challenger)
@@ -506,10 +521,22 @@ impl SP1VerifierRef<'_> {
         proof: &SP1RecursionProof<SP1GlobalContext, SP1CoreJaggedConfig>,
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, CoreSC>> {
-        let SP1RecursionProof { vk: _, proof } = proof;
+        if self.shrink_vk.is_none() {
+            return Err(MachineVerifierError::UninitializedVerificationKey);
+        }
         let shrink_vk = self.shrink_vk.as_ref().unwrap();
+        if proof.vk != *shrink_vk {
+            return Err(MachineVerifierError::InvalidVerificationKey);
+        }
+
+        let SP1RecursionProof { vk: _, proof } = proof;
         let mut challenger = self.shrink.challenger();
         shrink_vk.observe_into(&mut challenger);
+
+        // Check the public values length.
+        if proof.public_values.len() != PROOF_MAX_NUM_PVS {
+            return Err(MachineVerifierError::InvalidPublicValues("invalid public values length"));
+        }
 
         // Verify the shard proof.
         self.shrink
@@ -558,10 +585,22 @@ impl SP1VerifierRef<'_> {
         proof: &SP1RecursionProof<SP1OuterGlobalContext, SP1OuterConfig>,
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerifierConfigError<SP1OuterGlobalContext, OuterSC>> {
-        let SP1RecursionProof { vk: _, proof } = proof;
+        if self.wrap_vk.is_none() {
+            return Err(MachineVerifierError::UninitializedVerificationKey);
+        }
         let wrap_vk = self.wrap_vk.as_ref().unwrap();
+        if proof.vk != *wrap_vk {
+            return Err(MachineVerifierError::InvalidVerificationKey);
+        }
+
+        let SP1RecursionProof { vk: _, proof } = proof;
         let mut challenger = self.wrap.challenger();
         wrap_vk.observe_into(&mut challenger);
+
+        // Check the public values length.
+        if proof.public_values.len() != PROOF_MAX_NUM_PVS {
+            return Err(MachineVerifierError::InvalidPublicValues("invalid public values length"));
+        }
 
         // Verify the shard proof.
         self.wrap
@@ -680,10 +719,7 @@ pub fn verify_plonk_bn254_public_inputs(
         return Err(PlonkVerificationError::InvalidVerificationKey.into());
     }
 
-    let public_values_hash = public_values.hash_bn254();
-    if public_values_hash != expected_public_values_hash {
-        return Err(PlonkVerificationError::InvalidPublicValues.into());
-    }
+    verify_public_values(public_values, expected_public_values_hash)?;
 
     Ok(())
 }
@@ -703,10 +739,6 @@ pub fn verify_groth16_bn254_public_inputs(
         return Err(Groth16VerificationError::InvalidVerificationKey.into());
     }
 
-    let public_values_hash = public_values.hash_bn254();
-    if public_values_hash != expected_public_values_hash {
-        return Err(Groth16VerificationError::InvalidPublicValues.into());
-    }
     verify_public_values(public_values, expected_public_values_hash)?;
 
     Ok(())

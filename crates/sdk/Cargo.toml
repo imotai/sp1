@@ -57,6 +57,7 @@ alloy-primitives = { workspace = true, features = [
   "serde",
 ], optional = true }
 backoff = { workspace = true, features = ["tokio"], optional = true }
+num-bigint = { workspace = true }
 
 # TEE Dependencies
 k256 = { workspace = true, features = ["serde"] } # Signing

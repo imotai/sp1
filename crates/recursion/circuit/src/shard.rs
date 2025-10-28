@@ -178,14 +178,28 @@ where
         }
 
         // Observe the public values.
-        for value in public_values[0..self.machine.num_pv_elts()].iter() {
+        for value in public_values.iter() {
             challenger.observe(builder, *value);
         }
+
+        for value in public_values[self.machine.num_pv_elts()..].iter() {
+            builder.assert_felt_eq(value, GC::F::zero());
+        }
+
         // Observe the main commitment.
         challenger.observe(builder, *main_commitment);
+        let num_chips: Felt<GC::F> = builder.eval(GC::F::from_canonical_usize(shard_chips.len()));
+        // Observe the number of chips.
+        challenger.observe(builder, num_chips);
 
-        for height in height_felts_map.values() {
+        for (name, height) in height_felts_map.iter() {
             challenger.observe(builder, *height);
+            let mut inputs: Vec<Felt<GC::F>> = vec![];
+            inputs.push(builder.eval(GC::F::from_canonical_usize(name.len())));
+            for byte in name.as_bytes() {
+                inputs.push(builder.eval(GC::F::from_canonical_u8(*byte)));
+            }
+            challenger.observe_slice(builder, inputs);
         }
 
         for (chip, dimensions) in vk.preprocessed_chip_information.iter() {

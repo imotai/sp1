@@ -132,6 +132,10 @@ impl Elf {
             eyre::bail!("no executable (PF_X) segments found");
         }
 
+        if instructions.is_empty() || instructions.len() > (1 << 22) {
+            eyre::bail!("invalid number of instructions");
+        }
+
         Ok(Elf::new(
             instructions,
             entry,

@@ -87,6 +87,7 @@ where
             .read(builder);
         let original_commitments =
             self.merkle_tree_commitments.clone().into_iter().collect::<Vec<_>>().read(builder);
+        let expected_eval = self.expected_eval.read(builder);
 
         JaggedPcsProofVariable {
             pcs_proof,
@@ -96,6 +97,7 @@ where
             column_counts,
             row_counts,
             original_commitments,
+            expected_eval,
         }
     }
 
@@ -111,5 +113,6 @@ where
             .collect::<Vec<_>>()
             .write(witness);
         self.merkle_tree_commitments.write(witness);
+        self.expected_eval.write(witness);
     }
 }

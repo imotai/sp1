@@ -663,17 +663,23 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
         );
 
         // Observe the public values.
-        challenger.observe_slice(&public_values[0..self.num_pv_elts()]);
+        challenger.observe_slice(&public_values);
 
         // Commit to the traces.
         let (main_commit, main_data) =
             self.commit_traces(&traces).instrument(tracing::debug_span!("commit traces")).await;
         // Observe the commitments.
         challenger.observe(main_commit);
+        // Observe the number of chips.
+        challenger.observe(GC::F::from_canonical_usize(shard_chips.len()));
 
         for chips in shard_chips.iter() {
             let num_real_entries = traces.get(&chips.air.name()).unwrap().num_real_entries();
             challenger.observe(GC::F::from_canonical_usize(num_real_entries));
+            challenger.observe(GC::F::from_canonical_usize(chips.air.name().len()));
+            for byte in chips.air.name().as_bytes() {
+                challenger.observe(GC::F::from_canonical_u8(*byte));
+            }
         }
 
         let max_interaction_arity = shard_chips

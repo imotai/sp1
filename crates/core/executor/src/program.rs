@@ -49,6 +49,9 @@ impl Program {
     /// Create a new [Program].
     #[must_use]
     pub fn new(instructions: Vec<Instruction>, pc_start_abs: u64, pc_base: u64) -> Self {
+        assert!(!instructions.is_empty(), "empty program not supported");
+        assert!(instructions.len() <= (1 << 22), "program has too many instructions");
+
         Self {
             instructions,
             instructions_encoded: None,
@@ -70,12 +73,24 @@ impl Program {
         // Decode the bytes as an ELF.
         let elf = Elf::decode(input)?;
 
-        assert!(elf.pc_base != 0, "elf with pc_base == 0 is not supported");
-        assert!(elf.pc_base % 4 == 0, "elf with pc_base not a multiple of 4 is not supported");
+        if elf.pc_base < 32 {
+            eyre::bail!("elf with pc_base < 32 is not supported");
+        }
+        if elf.pc_base % 4 != 0 {
+            eyre::bail!("elf with pc_base not a multiple of 4 is not supported");
+        }
 
         // Transpile the RV64IM instructions.
         let instruction_pair = transpile(&elf.instructions);
-        let (instructions, instructions_encoded) = instruction_pair.into_iter().unzip();
+        let (instructions, instructions_encoded): (Vec<Instruction>, Vec<u32>) =
+            instruction_pair.into_iter().unzip();
+
+        if instructions.is_empty() {
+            eyre::bail!("empty elf not supported");
+        }
+        if instructions.len() > (1 << 22) {
+            eyre::bail!("elf has too many instructions");
+        }
 
         // Return the program.
         Ok(Program {
@@ -117,16 +132,6 @@ impl Program {
         let idx = ((pc - self.pc_base) / 4) as usize;
         self.instructions.get(idx)
     }
-
-    // /// Returns `self.pc_start - self.pc_base`, that is, the relative `pc_start`.
-    // #[must_use]
-    // pub fn pc_start_rel_u32(&self) -> u32 {
-    //     self.pc_start_abs
-    //         .checked_sub(self.pc_base)
-    //         .expect("expected pc_base <= pc_start")
-    //         .try_into()
-    //         .expect("pc_start_rel should fit in `u32")
-    // }
 }
 
 impl<F: PrimeField32> MachineProgram<F> for Program {

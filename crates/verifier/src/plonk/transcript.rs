@@ -24,7 +24,7 @@ pub(crate) struct Transcript {
 
 impl Transcript {
     /// Creates a new transcript.
-    pub(crate) fn new(challenges_id: Option<Vec<String>>) -> Result<Self, PlonkError> {
+    pub(crate) fn new(challenges_id: Option<Vec<String>>) -> Self {
         let h = Sha256::new();
 
         if let Some(challenges_id) = challenges_id {
@@ -41,9 +41,9 @@ impl Transcript {
                 );
             }
 
-            Ok(Transcript { h, challenges, previous_challenge: None })
+            Transcript { h, challenges, previous_challenge: None }
         } else {
-            Ok(Transcript { h, challenges: BTreeMap::new(), previous_challenge: None })
+            Transcript { h, challenges: BTreeMap::new(), previous_challenge: None }
         }
     }
 

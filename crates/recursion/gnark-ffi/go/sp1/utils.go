@@ -50,6 +50,7 @@ func NewSP1PlonkBn254Proof(proof *plonk.Proof, witnessInput WitnessInput) Proof 
 	var encodedProofBuf bytes.Buffer
 	writeUint256(&encodedProofBuf, parseBig(witnessInput.ExitCode))
 	writeUint256(&encodedProofBuf, parseBig(witnessInput.VkRoot))
+	writeUint256(&encodedProofBuf, parseBig(witnessInput.ProofNonce))
 	encodedProofBuf.Write(encodedProof)
 
 	return Proof{
@@ -79,6 +80,7 @@ func NewSP1Groth16Proof(proof *groth16.Proof, witnessInput WitnessInput) Proof {
 	var encodedProofBuf bytes.Buffer
 	writeUint256(&encodedProofBuf, parseBig(witnessInput.ExitCode))
 	writeUint256(&encodedProofBuf, parseBig(witnessInput.VkRoot))
+	writeUint256(&encodedProofBuf, parseBig(witnessInput.ProofNonce))
 	encodedProofBuf.Write(encodedProof)
 
 	return Proof{

@@ -36,6 +36,26 @@ func VerifyPlonk(verifyCmdDataDir string, verifyCmdProof string, verifyCmdVkeyHa
 	vk := plonk.NewVerifyingKey(ecc.BN254)
 	vk.ReadFrom(vkFile)
 
+	if len(verifyCmdVkeyHash) > 100 {
+		panic("vkey hash string is too long")
+	}
+
+	if len(verifyCmdCommittedValuesDigest) > 100 {
+		panic("committed values digest string is too long")
+	}
+
+	if len(verifyCmdExitCode) > 100 {
+		panic("exit code string is too long")
+	}
+
+	if len(verifyCmdVkRoot) > 100 {
+		panic("vkey root string is too long")
+	}
+
+	if len(verifyCmdProofNonce) > 100 {
+		panic("proof nonce string is too long")
+	}
+
 	// Compute the public witness.
 	circuit := Circuit{
 		Vars:                  []frontend.Variable{},
@@ -84,6 +104,26 @@ func VerifyGroth16(verifyCmdDataDir string, verifyCmdProof string, verifyCmdVkey
 	}
 	vk := groth16.NewVerifyingKey(ecc.BN254)
 	vk.ReadFrom(vkFile)
+
+	if len(verifyCmdVkeyHash) > 100 {
+		panic("vkey hash string is too long")
+	}
+
+	if len(verifyCmdCommittedValuesDigest) > 100 {
+		panic("committed values digest string is too long")
+	}
+
+	if len(verifyCmdExitCode) > 100 {
+		panic("exit code string is too long")
+	}
+
+	if len(verifyCmdVkRoot) > 100 {
+		panic("vkey root string is too long")
+	}
+
+	if len(verifyCmdProofNonce) > 100 {
+		panic("proof nonce string is too long")
+	}
 
 	// Compute the public witness.
 	circuit := Circuit{

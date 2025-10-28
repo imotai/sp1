@@ -50,7 +50,7 @@ impl Groth16Verifier {
         sp1_vkey_hash: &str,
         groth16_vk: &[u8],
     ) -> Result<(), Groth16Error> {
-        if proof.len() < VK_HASH_PREFIX_LENGTH + 32 + 32 {
+        if proof.len() < VK_HASH_PREFIX_LENGTH + 32 + 32 + 32 {
             return Err(Groth16Error::GeneralError(Error::InvalidData));
         }
 
@@ -78,11 +78,21 @@ impl Groth16Verifier {
             .try_into()
             .map_err(|_| Groth16Error::GeneralError(Error::InvalidData))?;
 
+        let proof_nonce = proof[VK_HASH_PREFIX_LENGTH + 64..VK_HASH_PREFIX_LENGTH + 96]
+            .try_into()
+            .map_err(|_| Groth16Error::GeneralError(Error::InvalidData))?;
+
         // It is computationally infeasible to find two distinct inputs, one processed with
         // SHA256 and the other with Blake3, that yield the same hash value.
         if Self::verify_gnark_proof(
-            &proof[VK_HASH_PREFIX_LENGTH + 64..],
-            &[sp1_vkey_hash, hash_public_inputs(sp1_public_inputs), exit_code, vk_root],
+            &proof[VK_HASH_PREFIX_LENGTH + 96..],
+            &[
+                sp1_vkey_hash,
+                hash_public_inputs(sp1_public_inputs),
+                exit_code,
+                vk_root,
+                proof_nonce,
+            ],
             groth16_vk,
         )
         .is_ok()
@@ -91,12 +101,13 @@ impl Groth16Verifier {
         }
 
         Self::verify_gnark_proof(
-            &proof[VK_HASH_PREFIX_LENGTH + 64..],
+            &proof[VK_HASH_PREFIX_LENGTH + 96..],
             &[
                 sp1_vkey_hash,
                 hash_public_inputs_with_fn(sp1_public_inputs, blake3_hash),
                 exit_code,
                 vk_root,
+                proof_nonce,
             ],
             groth16_vk,
         )
@@ -131,8 +142,12 @@ impl Groth16Verifier {
         let proof = load_groth16_proof_from_bytes(proof)?;
         let groth16_vk = load_groth16_verifying_key_from_bytes(groth16_vk)?;
 
-        let public_inputs =
-            public_inputs.iter().map(|input| Fr::from_slice(input).unwrap()).collect::<Vec<_>>();
+        let public_inputs = public_inputs
+            .iter()
+            .map(|input| Fr::from_slice(input))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| Groth16Error::GeneralError(crate::groth16::Error::Field(e)))?;
+
         verify_groth16_algebraic(&groth16_vk, &proof, &public_inputs)
     }
 }

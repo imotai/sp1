@@ -48,6 +48,9 @@ pub enum MachineVerifierError<EF, PcsError> {
     /// Invalid verification key.
     #[error("invalid verification key")]
     InvalidVerificationKey,
+    /// Verification key not initialized.
+    #[error("verification key not initialized")]
+    UninitializedVerificationKey,
     /// Empty proof.
     #[error("empty proof")]
     EmptyProof,

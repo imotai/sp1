@@ -50,7 +50,7 @@ impl StatusCode {
     /// Check if the status code is equal to the given value.
     #[must_use]
     pub const fn is_accepted_code(&self, code: u32) -> bool {
-        self.0 == Self::ANY.0 || self.0 == code
+        (code == 0 || code == 1) && (self.0 == Self::ANY.0 || self.0 == code)
     }
 }
 

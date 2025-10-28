@@ -24,10 +24,6 @@ pub fn dummy_query_proof(
     log_blowup: usize,
     num_queries: usize,
 ) -> Vec<MerkleTreeOpeningAndProof<SP1GlobalContext>> {
-    // The outer Vec is an iteration over the commit-phase rounds, of which there should be
-    // `log_max_height-1` (perhaps there's an off-by-one error here). The TensorCsOpening is
-    // laid out so that the tensor shape is [num_queries, 8 (degree of extension field*folding
-    // parameter)].
     (0..log_max_height)
         .map(|i| {
             let openings = Tensor::<SP1Field, _>::zeros_in([num_queries, 4 * 2], CpuBackend);
@@ -141,6 +137,7 @@ pub fn dummy_pcs_proof(
         sumcheck_proof: partial_sumcheck_proof,
         merkle_tree_commitments: vec![dummy_hash(); NUM_SP1_COMMITMENTS].into_iter().collect(),
         row_counts_and_column_counts,
+        expected_eval: InnerChallenge::zero(),
     }
 }
 

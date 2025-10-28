@@ -20,7 +20,7 @@ pub struct Poseidon2KoalaBearConfig<const STATE_WIDTH: usize = 16>;
 pub type KoalaPerm =
     Poseidon2<KoalaBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixKoalaBear, 16, 3>;
 
-#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+#[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug, Default)]
 pub struct KoalaBearDegree4Duplex;
 
 pub const KOALA_BEAR_DIGEST_SIZE: usize = 8;

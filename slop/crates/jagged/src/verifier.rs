@@ -23,6 +23,7 @@ pub struct JaggedPcsProof<GC: IopCtx, C: JaggedConfig<GC>> {
     pub params: JaggedLittlePolynomialVerifierParams<GC::F>,
     pub row_counts_and_column_counts: Rounds<Vec<(usize, usize)>>,
     pub merkle_tree_commitments: Rounds<GC::Digest>,
+    pub expected_eval: GC::EF,
 }
 
 #[derive(Debug, Clone)]
@@ -77,6 +78,7 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
             params,
             row_counts_and_column_counts,
             merkle_tree_commitments: original_commitments,
+            expected_eval,
         } = proof;
 
         let (row_counts, column_counts): (Vec<Vec<usize>>, Vec<Vec<usize>>) =
@@ -234,6 +236,10 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
             })
             .collect();
 
+        if usize_prefix_sums.is_empty() {
+            return Err(JaggedPcsVerifierError::IncorrectShape);
+        }
+
         usize_prefix_sums
             .push(*usize_prefix_sums.last().unwrap() + *usize_column_heights.last().unwrap());
 
@@ -323,8 +329,10 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
         )
         .map_err(|_| JaggedPcsVerifierError::JaggedEvalProofVerificationFailed)?;
 
-        // Compute the expected evaluation of the dense trace polynomial.
-        let expected_eval = sumcheck_proof.point_and_eval.1 / jagged_eval;
+        // Check the expected evaluation of the dense trace polynomial.
+        if *expected_eval * jagged_eval != sumcheck_proof.point_and_eval.1 {
+            return Err(JaggedPcsVerifierError::JaggedEvalProofVerificationFailed);
+        }
 
         let mut total_areas = round_areas.clone();
         for (prev_area, (num_added_evals, _)) in
@@ -340,7 +348,7 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
                 proof.merkle_tree_commitments.as_slice(),
                 &total_areas,
                 evaluation_point,
-                expected_eval,
+                *expected_eval,
                 pcs_proof,
                 challenger,
             )

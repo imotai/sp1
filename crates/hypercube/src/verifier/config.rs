@@ -60,7 +60,7 @@ pub struct ChipDimensions<T> {
 }
 
 /// A verifying key.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct MachineVerifyingKey<C: IopCtx, SC: MachineConfig<C>> {
     /// The start pc of the program.
     pub pc_start: [C::F; 3],

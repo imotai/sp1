@@ -368,6 +368,7 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
             params: params.into_verifier_params(),
             row_counts_and_column_counts,
             merkle_tree_commitments: original_commitments,
+            expected_eval: component_poly_evals[0][0],
         })
     }
 }
