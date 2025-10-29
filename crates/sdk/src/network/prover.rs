@@ -435,11 +435,7 @@ impl NetworkProver {
             }
             let remaining_timeout = timeout.map(|t| {
                 let elapsed = start_time.elapsed();
-                if elapsed < t {
-                    t - elapsed
-                } else {
-                    Duration::from_secs(0)
-                }
+                t.checked_sub(elapsed).unwrap_or(Duration::from_secs(0))
             });
 
             let (maybe_proof, fulfillment_status) =

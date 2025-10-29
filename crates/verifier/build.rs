@@ -1,5 +1,4 @@
-use std::fs;
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
 pub const SP1_CIRCUIT_VERSION: &str = include_str!("../../SP1_VERSION");
 

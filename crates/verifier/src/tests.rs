@@ -1,9 +1,10 @@
 use crate::{error::Error, Groth16Error, PlonkError};
 use rstest::rstest;
 use serial_test::serial;
-use sp1_sdk::CpuProver;
-use sp1_sdk::{install::try_install_circuit_artifacts, HashableKey, SP1Stdin};
-use sp1_sdk::{Elf, ProveRequest, Prover, ProvingKey};
+use sp1_sdk::{
+    install::try_install_circuit_artifacts, CpuProver, Elf, HashableKey, ProveRequest, Prover,
+    ProvingKey, SP1Stdin,
+};
 use test_artifacts::{
     FIBONACCI_BLAKE3_ELF, FIBONACCI_ELF, GROTH16_BLAKE3_ELF, GROTH16_ELF, PLONK_BLAKE3_ELF,
     PLONK_ELF,

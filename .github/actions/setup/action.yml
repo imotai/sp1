@@ -107,7 +107,7 @@ runs:
     - name: Ensure nightly is installed
       shell: bash
       run: |
-        rustup toolchain install nightly
+        rustup toolchain install nightly --component clippy,rustfmt
 
 
     - name: Ensure stable clippy and rustfmt is installed

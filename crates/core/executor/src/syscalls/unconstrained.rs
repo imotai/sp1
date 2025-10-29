@@ -20,13 +20,13 @@ pub fn enter_unconstrained_syscall<E: ExecutorConfig>(
     assert!(!E::UNCONSTRAINED, "Unconstrained block is already active.");
 
     // Save the state of the runtime before unconstrained execution.
-    ctx.rt.unconstrained_state = Box::new(ForkState {
+    *ctx.rt.unconstrained_state = ForkState {
         global_clk: ctx.rt.state.global_clk,
         clk: ctx.rt.state.clk,
         pc: ctx.rt.state.pc,
         memory_diff: Memory::default(),
         page_prots_diff: HashMap::new(),
-    });
+    };
 
     // Write `1` to `x5` to indicate that unconstrained execution is active, and advance the PC.
     ctx.rt.rw_cpu::<Unconstrained>(crate::Register::X5, 1);
@@ -59,7 +59,7 @@ pub fn enter_unconstrained_syscall<E: ExecutorConfig>(
         ctx.rt.state.page_prots.insert(addr, value);
     }
 
-    ctx.rt.unconstrained_state = Box::new(ForkState::default());
+    *ctx.rt.unconstrained_state = ForkState::default();
     Some(0)
 }
 

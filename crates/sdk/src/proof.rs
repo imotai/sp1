@@ -2,6 +2,7 @@
 //!
 //! A library of types and functions for SP1 proofs.
 #![allow(missing_docs)]
+#![allow(clippy::double_parens)] // For some reason we need this to use EnumTryAs
 
 use std::{
     fmt::{self, Debug, Display, Formatter},

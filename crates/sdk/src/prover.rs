@@ -15,11 +15,11 @@ use sp1_prover::{
     local::LocalProver,
     CoreSC, InnerSC, SP1CoreProofData, SP1Prover, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
 };
-use std::str::FromStr;
 use std::{
     borrow::Borrow,
     fmt,
     future::{Future, IntoFuture},
+    str::FromStr,
     sync::Arc,
 };
 use thiserror::Error;

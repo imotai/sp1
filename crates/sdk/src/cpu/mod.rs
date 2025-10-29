@@ -28,7 +28,6 @@ use sp1_prover::{
 };
 
 use crate::{
-    install::try_install_circuit_artifacts,
     prover::{Prover, ProvingKey, SendFutureResult},
     SP1Proof, SP1ProofMode, SP1ProofWithPublicValues,
 };
@@ -232,7 +231,7 @@ pub(crate) async fn prove_groth16(
 
     #[cfg(not(feature = "experimental"))]
     // TODO: Test that this works after v6.0.0 release
-    let artifacts_dir = try_install_circuit_artifacts("groth16").await;
+    let artifacts_dir = crate::install::try_install_circuit_artifacts("groth16").await;
 
     prover.wrap_groth16_bn254(wrap_proof, &artifacts_dir).await
 }
@@ -246,7 +245,7 @@ pub(crate) async fn prove_plonk(
 
     #[cfg(not(feature = "experimental"))]
     // TODO: Test that this works after v6.0.0 release
-    let artifacts_dir = try_install_circuit_artifacts("plonk").await;
+    let artifacts_dir = crate::install::try_install_circuit_artifacts("plonk").await;
 
     prover.wrap_plonk_bn254(wrap_proof, &artifacts_dir).await
 }

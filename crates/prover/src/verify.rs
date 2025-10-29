@@ -8,11 +8,10 @@ use slop_algebra::{AbstractField, PrimeField, PrimeField64};
 use slop_challenger::IopCtx;
 use sp1_core_executor::{subproof::SubproofVerifier, SP1RecursionProof};
 use sp1_core_machine::riscv::{RiscvAir, MAX_LOG_NUMBER_OF_SHARDS};
-use sp1_hypercube::PROOF_MAX_NUM_PVS;
 use sp1_hypercube::{
     air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
     MachineVerifier, MachineVerifierConfigError, MachineVerifierError, MachineVerifyingKey,
-    SP1CoreJaggedConfig, SP1OuterConfig,
+    SP1CoreJaggedConfig, SP1OuterConfig, PROOF_MAX_NUM_PVS,
 };
 use sp1_primitives::{
     io::{blake3_hash, SP1PublicValues},

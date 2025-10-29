@@ -103,6 +103,7 @@ mod tests {
     async fn test_spawn() {
         let (tx, rx) = oneshot::channel();
         spawn(move || {
+            let tx = tx;
             panic!("test");
             tx.send(()).unwrap();
         });

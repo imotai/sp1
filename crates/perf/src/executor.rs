@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 // use sp1_sdk::{self, SP1Stdin};
 // use sp1_hypercube::SP1ProverOpts;
 // use sp1_stark::SP1ProverOpts;
-use clap::{command, Parser};
+use clap::Parser;
 use sp1_core_executor::{
     CompressedMemory, CycleResult, Executor, ExecutorMode, MinimalExecutor, Program, SP1CoreOpts,
     Simple, SplicedMinimalTrace, SplicingVM, Trace, TracingVM,
