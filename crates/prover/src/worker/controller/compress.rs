@@ -309,10 +309,21 @@ impl CompressTree {
 
         let mut num_core_proofs_completed = 0;
         let mut num_core_proofs: Option<usize> = None;
+        let mut last_core_proof = None;
         loop {
             tokio::select! {
                 Some(num_proofs) = rx.recv() => {
                     num_core_proofs = Some(num_proofs);
+                    // If all core proofs have been completed, set the full range to the max range
+                    // and send the last core proof to the proof queue.
+                    if num_core_proofs_completed == num_proofs {
+                        full_range = Some(max_range.clone().into());
+                        // Send the last core proof to the proof queue if it hasn't been sent yet
+                        // by the core proof event stream receive task below.
+                        if let Some(proof) = last_core_proof.take() {
+                            proof_tx.send(proof).map_err(|_| TaskError::Fatal(anyhow::anyhow!("Compress tree panicked")))?;
+                        }
+                    }
                 }
                 Some(proof) = proof_rx.recv() => {
                     // Mark that this is a completed task.
@@ -402,17 +413,33 @@ impl CompressTree {
                         if end > max_range.end {
                            max_range.end = end;
                         }
-                        // Send the proof to the proof queue.
-                        proof_tx.send(normalize_proof).map_err(|_| TaskError::Fatal(anyhow::anyhow!("Compress tree panicked")))?;
+                        // Set it as the last core proof and take the previous one.
+                        let previous_core_proof = last_core_proof.take();
+                        last_core_proof = Some(normalize_proof);
+                        // Send the previous core proof to the proof queue, this is safe to do since
+                        // we know it's not the last one.
+                        if let Some(proof) = previous_core_proof {
+                            // Send the proof to the proof queue.
+                            proof_tx.send(proof).map_err(|_| TaskError::Fatal(anyhow::anyhow!("Compress tree panicked")))?;
+                        }
+
                         // Mark this as a pending task for the compress tree.
                         pending_tasks += 1;
+                        // Increment the number of completed core proofs.
                         num_core_proofs_completed +=1;
+                        // If all core proofs have been completed, set the full range to the max
+                        // range and send the last core proof to the proof queue.
                         if let Some(num_core_proofs) = num_core_proofs  {
                             if num_core_proofs_completed == num_core_proofs {
                                 full_range = Some(max_range.clone().into());
+                                // Send the last core proof to the proof queue.
+                                let last_core_proof = last_core_proof.take().unwrap();
+                                proof_tx.send(last_core_proof).map_err(|_| TaskError::Fatal(anyhow::anyhow!("Compress tree panicked")))?;
+                                // Close the core proofs event stream.
                                 core_proofs_event_stream.close();
                             }
                         }
+
                 }
                 else => {
                     break;
