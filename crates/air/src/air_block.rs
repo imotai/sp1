@@ -429,29 +429,29 @@ impl<'a> BlockAir<SymbolicProverFolder<'a>> for GlobalChip {
 
                 // Constrain that `(x, y)` is a valid point on the curve.
                 let y2 = y.square();
-                let x3_2x_26z5 = SepticCurve::<SymbolicExprF>::curve_formula(x);
-                builder.assert_septic_ext_eq(y2, x3_2x_26z5);
+                let x3_45x_41z3 = SepticCurve::<SymbolicExprF>::curve_formula(x);
+                builder.assert_septic_ext_eq(y2, x3_45x_41z3);
 
-                // Constrain that `0 <= y6_value < (p - 1) / 2 = 2^30 - 2^26`.
-                // Decompose `y6_value` into 30 bits, and then constrain that the top 4 bits cannot be all
-                // 1. To do this, check that the sum of the top 4 bits is not equal to 4, which can
+                // Constrain that `0 <= y6_value < (p - 1) / 2 = 2^30 - 2^23`.
+                // Decompose `y6_value` into 30 bits, and then constrain that the top 7 bits cannot be all
+                // 1. To do this, check that the sum of the top 7 bits is not equal to 7, which can
                 // be done by providing an inverse.
                 let mut y6_value = SymbolicExprF::zero();
-                let mut top_4_bits = SymbolicExprF::zero();
+                let mut top_7_bits = SymbolicExprF::zero();
                 for i in 0..30 {
                     builder.assert_bool(local.interaction.y6_bit_decomp[i]);
                     y6_value = y6_value
                         + local.interaction.y6_bit_decomp[i]
                             * SymbolicExprF::from_canonical_u32(1 << i);
-                    if i >= 26 {
-                        top_4_bits = top_4_bits + local.interaction.y6_bit_decomp[i];
+                    if i >= 23 {
+                        top_7_bits = top_7_bits + local.interaction.y6_bit_decomp[i];
                     }
                 }
-                // If `is_real` is true, check that `top_4_bits - 4` is non-zero, by checking
+                // If `is_real` is true, check that `top_7_bits - 7` is non-zero, by checking
                 // `range_check_witness` is an inverse of it.
                 builder.when(local.is_real).assert_eq(
                     local.interaction.range_check_witness
-                        * (top_4_bits - SymbolicExprF::from_canonical_u8(4)),
+                        * (top_7_bits - SymbolicExprF::from_canonical_u8(7)),
                     SymbolicExprF::one(),
                 );
 
@@ -462,7 +462,7 @@ impl<'a> BlockAir<SymbolicProverFolder<'a>> for GlobalChip {
                 builder.when(local.is_receive).assert_eq(y.0[6], SymbolicExprF::one() + y6_value);
                 builder.when(local.is_send).assert_eq(
                     y.0[6],
-                    SymbolicExprF::from_canonical_u32((1 << 30) - (1 << 26) + 1) + y6_value,
+                    SymbolicExprF::from_canonical_u32((1 << 30) - (1 << 23) + 1) + y6_value,
                 );
             }
             11 => {

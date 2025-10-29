@@ -408,8 +408,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
 
         let sumcheck_poly = generate_jagged_sumcheck_poly(all_mles, eq_z_col, eq_z_row);
 
-        // TODO: why are component_poly_evals unused?
-        let (sumcheck_proof, _component_poly_evals) =
+        let (sumcheck_proof, component_poly_evals) =
             jagged_sumcheck(sumcheck_poly, challenger, sumcheck_claim)
                 .instrument(tracing::debug_span!("jagged sumcheck"))
                 .await;
@@ -509,6 +508,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
             params: params.into_verifier_params(),
             row_counts_and_column_counts,
             merkle_tree_commitments: original_commitments,
+            expected_eval: component_poly_evals[0],
         })
     }
 
@@ -552,7 +552,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
         let shard_chips = self.machine().smallest_cluster(&shard_chips).unwrap();
 
         // Observe the public values.
-        challenger.observe_slice(&public_values[0..self.num_pv_elts()]);
+        challenger.observe_slice(&public_values);
 
         let locked_preprocessed_data = traces.preprocessed_data.lock().await;
         let traces = &locked_preprocessed_data.preprocessed_traces;
@@ -565,10 +565,15 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
             .await;
         // Observe the commitments.
         <GC::Challenger as CanObserve<GC::Digest>>::observe(challenger, main_commit);
+        challenger.observe(GC::F::from_canonical_usize(shard_chips.len()));
 
-        for chip_height in traces.dense().main_table_index.values() {
+        for (chip_name, chip_height) in traces.dense().main_table_index.iter() {
             let chip_height = chip_height.poly_size;
             challenger.observe(GC::F::from_canonical_usize(chip_height));
+            challenger.observe(GC::F::from_canonical_usize(chip_name.len()));
+            for byte in chip_name.as_bytes() {
+                challenger.observe(GC::F::from_canonical_u8(*byte));
+            }
         }
 
         let max_interaction_arity = shard_chips
