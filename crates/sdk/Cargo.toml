@@ -108,6 +108,8 @@ network = [
   "dep:tonic",
   "dep:backoff",
   "dep:zstd",
+  "dep:aws-sdk-kms",
+  "dep:aws-config",
 ]
 tee-2fa = []
 reserved-capacity = ["network"]
