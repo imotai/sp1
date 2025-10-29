@@ -23,6 +23,7 @@ use crate::{
     SP1VerifyingKey,
 };
 
+#[derive(Debug)]
 pub struct ProofData {
     pub task_id: TaskId,
     pub range: ShardRange,

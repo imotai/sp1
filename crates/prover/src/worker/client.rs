@@ -132,7 +132,7 @@ pub struct RawTaskRequest {
     pub requester_id: RequesterId,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct TaskMetadata {
     pub gpu_time: Option<u64>,
 }

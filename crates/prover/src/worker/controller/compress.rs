@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    sync::{Arc, Mutex},
+};
 
 use futures::future::try_join_all;
 use hashbrown::HashMap;
@@ -11,7 +14,10 @@ use sp1_hypercube::{
 use sp1_primitives::SP1GlobalContext;
 use sp1_prover_types::{Artifact, ArtifactClient, ArtifactId, ArtifactType, TaskStatus, TaskType};
 use sp1_recursion_circuit::machine::SP1ShapedWitnessValues;
-use tokio::sync::{mpsc, oneshot};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task::JoinSet,
+};
 
 use crate::{
     worker::{ProofData, ProofId, ReduceTaskRequest, RequesterId, TaskError, TaskId, WorkerClient},
@@ -217,6 +223,12 @@ impl CompressTree {
         pending_tasks: usize,
         full_range: &Option<ShardRange>,
     ) -> bool {
+        tracing::info!(
+            "Checking if complete: Pending tasks: {:?}, map is empty: {:?}, full range: {:?}",
+            pending_tasks,
+            self.map.is_empty(),
+            full_range.as_ref().is_some_and(|full| range == full)
+        );
         (pending_tasks == 0)
             && self.map.is_empty()
             && full_range.as_ref().is_some_and(|full| range == full)
@@ -259,8 +271,7 @@ impl CompressTree {
         // Create a subscriber for core proof tasks.
         let (core_proofs_subscriber, mut core_proofs_event_stream) =
             worker_client.subscriber(proof_id.clone()).await?.stream();
-        let mut core_subscrber = Some(core_proofs_subscriber);
-        let mut core_proof_map = HashMap::<TaskId, RecursionProof>::new();
+        let core_proof_map = Arc::new(Mutex::new(HashMap::<TaskId, RecursionProof>::new()));
         // Keep track of the full range of proofs.
         let mut full_range: Option<ShardRange> = None;
         // Keep track of the max range of proofs that have been processed.
@@ -274,8 +285,35 @@ impl CompressTree {
             worker_client.subscriber(proof_id.clone()).await?.stream();
         let mut proof_map = HashMap::<TaskId, RecursionProof>::new();
 
+        let mut join_set = JoinSet::<Result<(), TaskError>>::new();
+
+        // Spawn a task to process the incoming core proofs and subscribe to them.
+        let (tx, mut rx) = mpsc::channel(1);
+        join_set.spawn({
+            let core_proof_map = core_proof_map.clone();
+            async move {
+                let mut num_core_proofs = 0;
+                while let Some(proof_data) = core_proofs_rx.recv().await {
+                    core_proofs_subscriber
+                        .subscribe(proof_data.task_id.clone())
+                        .map_err(|e| TaskError::Fatal(e.into()))?;
+                    let proof =
+                        RecursionProof { shard_range: proof_data.range, proof: proof_data.proof };
+                    core_proof_map.lock().unwrap().insert(proof_data.task_id, proof);
+                    num_core_proofs += 1;
+                }
+                tx.send(num_core_proofs).await.ok();
+                Ok(())
+            }
+        });
+
+        let mut num_core_proofs_completed = 0;
+        let mut num_core_proofs: Option<usize> = None;
         loop {
             tokio::select! {
+                Some(num_proofs) = rx.recv() => {
+                    num_core_proofs = Some(num_proofs);
+                }
                 Some(proof) = proof_rx.recv() => {
                     // Mark that this is a completed task.
                     pending_tasks -= 1;
@@ -350,14 +388,12 @@ impl CompressTree {
                     proof_tx.send(proof).map_err(|_| TaskError::Fatal(anyhow::anyhow!("Compress tree panicked")))?;
                 }
 
-                maybe_core_proof_status = core_proofs_event_stream.recv() => {
-                    if let Some((task_id, TaskStatus::Succeeded)) = maybe_core_proof_status {
+               Some((task_id, status)) = core_proofs_event_stream.recv() => {
+                        if status != TaskStatus::Succeeded {
+                            return Err(TaskError::Fatal(anyhow::anyhow!("Core proof task {} failed", task_id)));
+                        }
                         // Download the proof
-                        let normalize_proof = core_proof_map.remove(&task_id).ok_or_else(|| TaskError::Fatal(anyhow::anyhow!("Task {} not found in core proof map", task_id)))?;
-                        // let proof = artifact_client.download::<SP1RecursionProof<SP1GlobalContext, InnerSC>>(&normalize_proof.proof).await?;
-                        // let pv : &RecursionPublicValues<SP1Field>= proof.proof.public_values.as_slice().borrow();
-                        // let shard_range = pv.range();
-                        // Update the max range.
+                        let normalize_proof = core_proof_map.lock().unwrap().remove(&task_id).ok_or_else(|| TaskError::Fatal(anyhow::anyhow!("Task {} not found in core proof map", task_id)))?;
                         let shard_range = &normalize_proof.shard_range;
                         let (start, end) = (shard_range.start(), shard_range.end());
                         if start < max_range.start {
@@ -370,23 +406,13 @@ impl CompressTree {
                         proof_tx.send(normalize_proof).map_err(|_| TaskError::Fatal(anyhow::anyhow!("Compress tree panicked")))?;
                         // Mark this as a pending task for the compress tree.
                         pending_tasks += 1;
-                    }
-                    else {
-                        // If all core proofs have been processed, set the full range to the max range.
-                        full_range = Some(max_range.clone().into());
-                        core_proofs_event_stream.close();
-                    }
-                }
-                maybe_proof_data  = core_proofs_rx.recv() => {
-                    if let Some(proof_data) = maybe_proof_data {
-                        let subscriber = core_subscrber.as_ref().unwrap();
-                        subscriber.subscribe(proof_data.task_id.clone()).map_err(|e| TaskError::Fatal(e.into()))?;
-                        let proof = RecursionProof { shard_range: proof_data.range, proof: proof_data.proof };
-                        core_proof_map.insert(proof_data.task_id, proof);
-                    }
-                    else {
-                        core_subscrber.take();
-                    }
+                        num_core_proofs_completed +=1;
+                        if let Some(num_core_proofs) = num_core_proofs  {
+                            if num_core_proofs_completed == num_core_proofs {
+                                full_range = Some(max_range.clone().into());
+                                core_proofs_event_stream.close();
+                            }
+                        }
                 }
                 else => {
                     break;

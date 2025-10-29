@@ -176,8 +176,17 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                             let proof_id = proof_id.clone();
                             let tx = task_tx.clone();
                             task_set.spawn(async move {
-                                let (task_id, task_metadata) = handle.await.unwrap().unwrap();
-                                tx.send((proof_id, (task_id, task_metadata), TaskStatus::Succeeded)).ok();
+                                match handle.await {
+                                    Ok(Ok((task_id, task_metadata))) => {
+                                        tx.send((proof_id, (task_id, task_metadata), TaskStatus::Succeeded)).ok();
+                                    }
+                                    Ok(Err(e)) => {
+                                        tracing::error!("Failed to prove core shard: {:?}", e);
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Panicked in prove core shard: {:?}", e);
+                                    }
+                                }
                             });
                         }
 
@@ -209,8 +218,17 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                             let handle = worker.prover_engine().submit_recursion_reduce(request).await.unwrap();
                             let tx = task_tx.clone();
                             task_set.spawn(async move {
-                                let task_metadata = handle.await.unwrap().unwrap();
-                                tx.send((proof_id, (id, task_metadata), TaskStatus::Succeeded)).ok();
+                                match handle.await {
+                                    Ok(Ok(task_metadata)) => {
+                                        tx.send((proof_id, (id, task_metadata), TaskStatus::Succeeded)).ok();
+                                    }
+                                    Ok(Err(e)) => {
+                                        tracing::error!("Failed to reduce recursion: {:?}", e);
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Panicked in reduce recursion: {:?}", e);
+                                    }
+                                }
                             });
                         }
 
