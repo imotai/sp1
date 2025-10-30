@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
 
 use csl_air::{air_block::BlockAir, SymbolicProverFolder};
-use csl_cuda::TaskScope;
+use csl_cuda::{TaskScope, ToDevice};
 use csl_jagged::{
     Poseidon2Bn254JaggedCudaProverComponents, Poseidon2KoalaBearJaggedCudaProverComponents,
 };
@@ -171,7 +171,7 @@ where
     }
 }
 
-pub fn new_prover_clean_prover<GC, C, PC>(
+pub async fn new_prover_clean_prover<GC, C, PC>(
     verifier: sp1_hypercube::MachineVerifier<GC, C, PC::Air>,
     max_trace_size: usize,
     log_blowup: usize,
@@ -205,7 +205,17 @@ where
         log_stacking_height,
     );
 
+    let mut all_interactions = BTreeMap::new();
+
+    for chip in machine.chips().iter() {
+        let host_interactions = cslpc_logup_gkr::Interactions::new(chip.sends(), chip.receives());
+        let device_interactions =
+            cslpc_logup_gkr::Interactions::to_device_in(&host_interactions, &scope).await.unwrap();
+        all_interactions.insert(chip.name().to_string(), Arc::new(device_interactions));
+    }
+
     CudaShardProver {
+        all_interactions,
         max_log_row_count: max_log_row_count as u32,
         basefold_prover,
         max_trace_size,

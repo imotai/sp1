@@ -15,12 +15,6 @@ const RSP_CLIENT_ELF: &[u8] = include_bytes!("../../programs/rsp/elf/rsp-client"
 // const RSP_CLIENT_INPUT: &[u8] = include_bytes!("../rsp/input/21000000.bin");
 
 use sp1_prover::{local::LocalProver, shapes::DEFAULT_ARITY};
-#[cfg(not(target_env = "msvc"))]
-use tikv_jemallocator::Jemalloc;
-
-#[cfg(not(target_env = "msvc"))]
-#[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -141,6 +135,7 @@ async fn main() {
             }
             ProverBackend::ProverClean => {
                 let sp1_prover_clean = SP1ProverCleanBuilder::new(t.clone())
+                    .await
                     .normalize_cache_size(recursion_cache_size)
                     .set_max_compose_arity(DEFAULT_ARITY)
                     .without_vk_verification()

@@ -577,7 +577,7 @@ where
     A: ZerocheckAir<Felt, Ext> + for<'a> BlockAir<SymbolicProverFolder<'a>>,
     C: FieldChallenger<Felt>,
 {
-    let data_input_heights = trace_mle.column_heights.clone();
+    let data_input_heights = &trace_mle.column_heights;
     let initial_heights = trace_mle
         .dense_data
         .main_table_index
@@ -598,6 +598,7 @@ where
     let num_chips = chips.len();
 
     let mut padded_row_adjustment = vec![Ext::zero(); num_chips];
+
     for (i, chip) in chips.iter().enumerate() {
         let prep_len = chip.preprocessed_width();
         let main_len = chip.width();

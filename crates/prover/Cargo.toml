@@ -17,6 +17,7 @@ csl-logup-gkr = { workspace = true }
 
 # prover-clean
 cslpc-prover = { workspace = true }
+cslpc-logup-gkr = { workspace = true }
 cslpc-basefold = { workspace = true }
 cslpc-merkle-tree = { workspace = true }
 cslpc-tracegen = { workspace = true }

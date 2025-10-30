@@ -134,11 +134,8 @@ pub fn local_gpu_opts() -> LocalProverOpts {
     // Get the amount of memory on the GPU.
     let gpu_memory_gb: usize = (((cuda_memory_info().unwrap().1 as f64) / gb).ceil() as usize) + 4;
 
-    let shard_threshold = if gpu_memory_gb <= 30 {
-        ELEMENT_THRESHOLD - (1 << 27)
-    } else {
-        ELEMENT_THRESHOLD + (1 << 26) + (1 << 25)
-    };
+    let shard_threshold =
+        if gpu_memory_gb <= 30 { ELEMENT_THRESHOLD - (1 << 27) } else { ELEMENT_THRESHOLD };
 
     println!("Shard threshold: {shard_threshold}");
     opts.core_opts.sharding_threshold.element_threshold = shard_threshold;
@@ -151,7 +148,7 @@ pub struct SP1ProverCleanBuilder {
 }
 
 impl SP1ProverCleanBuilder {
-    pub fn new(scope: TaskScope) -> Self {
+    pub async fn new(scope: TaskScope) -> Self {
         // Convert bytes to GB.
         let gb = 1024.0 * 1024.0 * 1024.0;
 
@@ -173,11 +170,8 @@ impl SP1ProverCleanBuilder {
 
         // TODO: Change this to be calculated from SplitOpts, but this requires a refactor in
         // `sp1-wip`.
-        let num_elts = if gpu_memory_gb <= 30 {
-            ELEMENT_THRESHOLD - (1 << 25)
-        } else {
-            ELEMENT_THRESHOLD + (1 << 26) + (1 << 25)
-        };
+        let num_elts =
+            if gpu_memory_gb <= 30 { ELEMENT_THRESHOLD - (1 << 25) } else { ELEMENT_THRESHOLD };
 
         let num_elts = (num_elts as f64).ceil() as usize + (1 << CORE_LOG_STACKING_HEIGHT);
 
@@ -187,7 +181,8 @@ impl SP1ProverCleanBuilder {
             num_elts as usize,
             CORE_LOG_BLOWUP,
             scope.clone(),
-        );
+        )
+        .await;
 
         // TODO: tune this more precisely and make it a constant.
         let recursion_verifier = ProverCleanSP1ProverComponents::compress_verifier();
@@ -196,7 +191,8 @@ impl SP1ProverCleanBuilder {
             RECURSION_TRACE_ALLOCATION,
             RECURSION_LOG_BLOWUP,
             scope.clone(),
-        );
+        )
+        .await;
 
         let shrink_verifier = ProverCleanSP1ProverComponents::shrink_verifier();
         let shrink_prover = new_prover_clean_prover(
@@ -204,7 +200,8 @@ impl SP1ProverCleanBuilder {
             SHRINK_TRACE_ALLOCATION,
             SHRINK_LOG_BLOWUP,
             scope.clone(),
-        );
+        )
+        .await;
 
         let wrap_verifier = ProverCleanSP1ProverComponents::wrap_verifier();
         let wrap_prover = new_prover_clean_prover(
@@ -212,7 +209,8 @@ impl SP1ProverCleanBuilder {
             WRAP_TRACE_ALLOCATION,
             WRAP_LOG_BLOWUP,
             scope.clone(),
-        );
+        )
+        .await;
 
         if cpu_memory_gb <= 20 {
             num_prover_workers = 1;

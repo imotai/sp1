@@ -4,6 +4,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     ops::Deref,
+    sync::Arc,
 };
 
 use csl_cuda::{TaskScope, ToDevice};
@@ -30,6 +31,7 @@ mod sumcheck;
 mod tracegen;
 mod utils;
 
+pub use interactions::Interactions;
 pub use utils::*;
 
 pub use sumcheck::{
@@ -173,6 +175,7 @@ pub async fn prove_gkr_circuit<'a, C: FieldChallenger<Felt>>(
 /// End-to-end proves lookups for a given trace.
 pub async fn prove_logup_gkr<A: MachineAir<Felt>, C: MultilinearPcsChallenger<Felt>>(
     chips: &BTreeSet<Chip<Felt, A>>,
+    all_interactions: BTreeMap<String, Arc<Interactions<Felt, TaskScope>>>,
     jagged_trace_data: &JaggedTraceMle<Felt, TaskScope>,
     num_row_variables: u32,
     alpha: Ext,
@@ -187,6 +190,7 @@ pub async fn prove_logup_gkr<A: MachineAir<Felt>, C: MultilinearPcsChallenger<Fe
     // Run the GKR circuit and get the output.
     let (output, circuit) = generate_gkr_circuit(
         chips,
+        all_interactions,
         jagged_trace_data,
         num_row_variables,
         alpha,
@@ -233,18 +237,18 @@ pub async fn prove_logup_gkr<A: MachineAir<Felt>, C: MultilinearPcsChallenger<Fe
     // Get the evaluations for each chip at the evaluation point of the last round.
     // We accomplish this by doing jagged fix last variable on the evaluation point.
     let eval_point = eval_point.last_k(num_row_variables as usize);
-    let chip_evaluations = round_batch_evaluations(&eval_point, jagged_trace_data).await;
-    let [preprocessed, main] = chip_evaluations.rounds.try_into().unwrap();
+    let host_evaluations = round_batch_evaluations(&eval_point, jagged_trace_data).await;
+    let [preprocessed, main] = host_evaluations.rounds.try_into().unwrap();
 
     let mut chip_evaluations = BTreeMap::new();
 
     let mut preprocessed_so_far = 0;
 
-    for (chip, main_evals) in chips.iter().zip_eq(main.iter()) {
+    for (chip, main_evals) in chips.iter().zip_eq(main.into_iter()) {
         let openings = ChipEvaluation {
-            main_trace_evaluations: main_evals.to_host().await.unwrap(),
+            main_trace_evaluations: main_evals,
             preprocessed_trace_evaluations: if chip.preprocessed_width() != 0 {
-                let res = Some(preprocessed[preprocessed_so_far].to_host().await.unwrap());
+                let res = Some(preprocessed[preprocessed_so_far].clone());
                 preprocessed_so_far += 1;
                 res
             } else {
@@ -571,9 +575,18 @@ mod tests {
                 .unwrap();
 
             let shard_chips = machine.smallest_cluster(&shard_chips).unwrap();
+
+            let mut all_interactions = BTreeMap::new();
+            for chip in shard_chips.iter() {
+                let interactions = Interactions::new(chip.sends(), chip.receives());
+                let device_interactions = interactions.to_device_in(&scope).await.unwrap();
+                all_interactions.insert(chip.name(), Arc::new(device_interactions));
+            }
+
             let mut prover_challenger = challenger.clone();
             let proof = super::prove_logup_gkr(
                 shard_chips,
+                all_interactions,
                 &jagged_trace_data,
                 CORE_MAX_LOG_ROW_COUNT,
                 alpha,

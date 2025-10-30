@@ -40,3 +40,6 @@ core_proof.bin
 # clangd
 .cache
 compile_commands.json
+
+# logging files
+*.log

@@ -37,6 +37,7 @@ itertools = { workspace = true }
 rand = { workspace = true }
 tokio = { workspace = true }
 thiserror = "1.0"
+tracing = { workspace = true }
 
 [dev-dependencies]
 serial_test = "3.1"

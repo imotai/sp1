@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use csl_sys::{
     mle::{
         partial_geq_koala_bear, partial_lagrange_koala_bear, partial_lagrange_koala_bear_extension,
@@ -75,6 +77,32 @@ where
         }
         eq
     }
+}
+
+pub async fn partial_lagrange<F: Field>(point: Arc<Point<F, TaskScope>>) -> Tensor<F, TaskScope>
+where
+    TaskScope: PartialLagrangeKernel<F>,
+{
+    let dimension = point.dimension();
+    let num_elements = 1 << dimension;
+    let mut eq = point.backend().uninit_mle(1, num_elements);
+    unsafe {
+        eq.assume_init();
+        let block_dim = 256;
+        let grid_dim = ((1 << dimension) as u32).div_ceil(block_dim);
+        let args = args!(eq.as_mut_ptr(), point.as_ptr(), dimension);
+        point
+            .backend()
+            .launch_kernel(
+                <TaskScope as PartialLagrangeKernel<F>>::partial_lagrange_kernel(),
+                grid_dim,
+                block_dim,
+                &args,
+                0,
+            )
+            .unwrap();
+    }
+    eq
 }
 
 impl<F: Field> ZeroEvalBackend<F> for TaskScope {

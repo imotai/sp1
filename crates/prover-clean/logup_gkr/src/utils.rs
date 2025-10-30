@@ -3,6 +3,7 @@ use csl_cuda::ToDevice;
 use slop_alloc::ToHost;
 use slop_alloc::{Backend, CpuBackend, HasBackend};
 use slop_tensor::Tensor;
+use std::collections::BTreeSet;
 use std::{collections::BTreeMap, iter::once};
 
 use slop_algebra::AbstractField;
@@ -36,7 +37,9 @@ pub struct GkrLayerGeneric<Layer: DenseData<B>, B: Backend = TaskScope> {
 #[allow(clippy::type_complexity)]
 pub struct GkrInputData<'a> {
     /// Interactions per chip, on host.
-    pub interactions: BTreeMap<String, Arc<Interactions<Felt, CpuBackend>>>,
+    pub all_interactions: BTreeMap<String, Arc<Interactions<Felt, TaskScope>>>,
+
+    pub chip_set: BTreeSet<String>,
     /// The jagged traces.
     pub jagged_trace_data: &'a JaggedTraceMle<Felt, TaskScope>,
     /// Some randomness used to initialize the denominators

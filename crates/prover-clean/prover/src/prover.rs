@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::iter::once;
 use std::{marker::PhantomData, sync::Arc};
 use tokio::sync::Mutex;
@@ -6,12 +6,12 @@ use tokio::sync::Mutex;
 use csl_air::air_block::BlockAir;
 use csl_air::SymbolicProverFolder;
 use csl_basefold::{BasefoldCudaProverComponents, DeviceGrindingChallenger};
-use csl_cuda::{TaskScope, ToDevice};
+use csl_cuda::{partial_lagrange, TaskScope, ToDevice};
 use csl_jagged::JaggedAssistSumAsPolyGPUImpl;
 use csl_tracegen::CudaTracegenAir;
 use cslpc_basefold::{ProverCleanFriCudaProver, ProverCleanStackedPcsProverData};
 use cslpc_jagged_sumcheck::{generate_jagged_sumcheck_poly, jagged_sumcheck};
-use cslpc_logup_gkr::prove_logup_gkr;
+use cslpc_logup_gkr::{prove_logup_gkr, Interactions};
 use cslpc_merkle_tree::{SingleLayerMerkleTreeProverError, TcsProverClean};
 use cslpc_tracegen::{full_tracegen, main_tracegen, CudaShardProverData};
 use cslpc_utils::{Ext, Felt, JaggedTraceMle};
@@ -27,7 +27,6 @@ use slop_jagged::{
 };
 use slop_multilinear::{Evaluations, Mle, MleEval, MultilinearPcsVerifier, Point};
 use slop_stacked::StackedPcsProof;
-use slop_tensor::Tensor;
 use sp1_hypercube::prover::ZerocheckAir;
 use sp1_hypercube::{
     air::{MachineAir, MachineProgram},
@@ -54,6 +53,7 @@ pub struct CudaShardProver<GC: IopCtx, PC: ProverCleanProverComponents<GC>> {
     pub machine: Machine<GC::F, PC::Air>,
     pub max_trace_size: usize,
     pub backend: TaskScope,
+    pub all_interactions: BTreeMap<String, Arc<Interactions<GC::F, TaskScope>>>,
     pub _marker: PhantomData<GC>,
 }
 
@@ -264,39 +264,25 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
 
         // todo: remove this assert, it's kinda useless
         assert!(total_preprocessed_size == jagged_trace_mle.dense().preprocessed_offset);
+        let lagrange = Mle::new(partial_lagrange(Arc::new(device_point)).await);
 
-        let main_stacked_size = jagged_trace_mle.dense().main_size() / stacking_height;
-        let total_main_size = stacking_height * main_stacked_size;
-        let mut preprocessed_buffer =
-            Buffer::with_capacity_in(total_preprocessed_size, backend.clone());
-        unsafe {
-            preprocessed_buffer.set_len(total_preprocessed_size);
-        }
-        let dst_slice = &mut preprocessed_buffer[..];
-        let src_slice = &jagged_trace_mle.dense().dense[0..total_preprocessed_size];
-        unsafe {
-            dst_slice.copy_from_slice(src_slice, backend).unwrap();
-        }
-        let preprocessed_tensor = Tensor::from(preprocessed_buffer);
-        let preprocessed_tensor =
-            preprocessed_tensor.reshape([preprocessed_stacked_size, stacking_height]);
-        let preprocessed_mle = Mle::new(preprocessed_tensor);
+        let main_virtual_tensor =
+            jagged_trace_mle.dense().main_virtual_tensor(log_stacking_height as u32);
 
-        let mut main_buffer = Buffer::with_capacity_in(total_main_size, backend.clone());
-        unsafe {
-            main_buffer.set_len(total_main_size);
-        }
-        let dst_slice = &mut main_buffer[..];
-        let src_slice = &jagged_trace_mle.dense().dense[total_preprocessed_size..];
-        unsafe {
-            dst_slice.copy_from_slice(src_slice, backend).unwrap();
-        }
-        let main_tensor = Tensor::from(main_buffer);
-        let main_tensor = main_tensor.reshape([main_stacked_size, stacking_height]);
-        let main_mle = Mle::new(main_tensor);
+        let preprocessed_virtual_tensor =
+            jagged_trace_mle.dense().preprocessed_virtual_tensor(log_stacking_height as u32);
 
-        let (preprocessed_evaluations, main_evaluations) =
-            tokio::join!(preprocessed_mle.eval_at(&device_point), main_mle.eval_at(&device_point));
+        let preprocessed_evaluations = MleEval::new(csl_cuda::dot_along_dim_view(
+            preprocessed_virtual_tensor,
+            lagrange.guts().as_view(),
+            1,
+        ));
+
+        let main_evaluations = MleEval::new(csl_cuda::dot_along_dim_view(
+            main_virtual_tensor,
+            lagrange.guts().as_view(),
+            1,
+        ));
 
         let preprocessed_evaluations =
             Evaluations { round_evaluations: vec![preprocessed_evaluations] };
@@ -594,6 +580,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
 
         let logup_gkr_proof = prove_logup_gkr(
             shard_chips,
+            self.all_interactions.clone(),
             traces,
             self.max_log_row_count,
             alpha,
@@ -697,6 +684,7 @@ mod tests {
     use slop_basefold::{BasefoldVerifier, Poseidon2KoalaBear16BasefoldConfig};
     use slop_jagged::JaggedPcsVerifier;
     use slop_multilinear::MultilinearPcsChallenger;
+    use slop_tensor::Tensor;
     use sp1_core_machine::riscv::RiscvAir;
     use sp1_hypercube::SP1CoreJaggedConfig;
 
@@ -737,8 +725,18 @@ mod tests {
                 LOG_STACKING_HEIGHT,
             );
 
+            let mut all_interactions = BTreeMap::new();
+
+            for chip in machine.chips().iter() {
+                let host_interactions = Interactions::new(chip.sends(), chip.receives());
+                let device_interactions =
+                    Interactions::to_device_in(&host_interactions, &scope).await.unwrap();
+                all_interactions.insert(chip.name().to_string(), Arc::new(device_interactions));
+            }
+
             let shard_prover: CudaShardProver<TestGC, ProverCleanTestProverComponentsImpl> =
                 CudaShardProver {
+                    all_interactions,
                     max_log_row_count: CORE_MAX_LOG_ROW_COUNT,
                     basefold_prover,
                     max_trace_size: CORE_MAX_TRACE_SIZE as usize,
@@ -762,11 +760,23 @@ mod tests {
 
             let prover_data = Rounds::from_iter([&preprocessed_prover_data, &main_prover_data]);
 
+            let mut new_evaluation_claims = Vec::new();
+
+            for round_evals in evaluation_claims.iter() {
+                let mut round_claims = Vec::new();
+                for eval in round_evals.iter() {
+                    let host_eval = eval.to_device_in(&scope).await.unwrap();
+                    round_claims.push(host_eval);
+                }
+                let evals = Evaluations::new(round_claims);
+                new_evaluation_claims.push(evals);
+            }
+
             let mut prover_challenger = challenger.clone();
             let proof = shard_prover
                 .prove_trusted_evaluations(
                     eval_point.clone(),
-                    evaluation_claims.clone(),
+                    new_evaluation_claims.into_iter().collect(),
                     jagged_trace_data.as_ref(),
                     prover_data,
                     &mut prover_challenger,

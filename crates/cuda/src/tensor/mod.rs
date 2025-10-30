@@ -3,6 +3,7 @@ pub mod reduce;
 mod sum;
 pub mod transpose;
 
+pub use dot::dot_along_dim_view;
 use slop_alloc::{mem::CopyError, Backend, CopyIntoBackend, CopyToBackend, CpuBackend, HasBackend};
 use slop_tensor::Tensor;
 

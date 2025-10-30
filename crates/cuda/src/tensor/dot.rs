@@ -10,7 +10,7 @@ use csl_sys::{
 };
 use slop_algebra::extension::BinomialExtensionField;
 use slop_koala_bear::KoalaBear;
-use slop_tensor::{DotBackend, Tensor};
+use slop_tensor::{DotBackend, Tensor, TensorView};
 
 use crate::{args, reduce::partial_sum_reduction_into, DeviceCopy, TaskScope};
 
@@ -24,6 +24,71 @@ pub unsafe trait DotKernel<T: DeviceCopy, U: DeviceCopy>: DeviceSumKernel<U> {
     fn dot_along_short_dimension_kernel() -> KernelPtr;
 }
 
+pub fn dot_along_dim_view<'a, T: DeviceCopy, U: DeviceCopy>(
+    src: TensorView<'a, T, TaskScope>,
+    scalars: TensorView<'a, U, TaskScope>,
+    dim: usize,
+) -> Tensor<U, TaskScope>
+where
+    TaskScope: DotKernel<T, U>,
+{
+    let mut sizes = src.sizes().to_vec();
+    sizes.remove(dim);
+    let mut dst = Tensor::with_sizes_in(sizes, src.backend().clone());
+    assert_eq!(src.sizes().len(), 2, "Dot product only supported for 2D tensors",);
+    let max_scalar_dim = *scalars.sizes().iter().max().unwrap();
+    assert_eq!(max_scalar_dim, scalars.total_len(), "The scalar tensor must be a 1D tensor");
+    match dim {
+        dim if dim == src.sizes().len() - 1 => {
+            let height = src.sizes()[dim];
+            let width = src.total_len() / height;
+
+            let null_ptr = std::ptr::null::<std::ffi::c_void>();
+            let partial_args = args!(null_ptr, src.as_ptr(), scalars.as_ptr(), width, height);
+            const BLOCK_SIZE: usize = 256;
+            const INTIAL_STRIDE: usize = 4;
+            dst.storage.write_bytes(0, dst.total_len() * std::mem::size_of::<U>()).unwrap();
+            unsafe {
+                partial_sum_reduction_into::<U, BLOCK_SIZE, INTIAL_STRIDE, 5>(
+                    dst.as_view_mut(),
+                    TaskScope::partial_dot_kernel_last_dim(),
+                    partial_args,
+                    0,
+                    src.shape(),
+                    dim,
+                    src.backend(),
+                );
+            }
+        }
+        0 => {
+            let height = src.sizes()[1];
+            let width = src.total_len() / height;
+
+            const BLOCK_SIZE: usize = 256;
+            let args = args!(dst.as_mut_ptr(), src.as_ptr(), scalars.as_ptr(), width, height);
+            let grid_dim = height.div_ceil(BLOCK_SIZE);
+            unsafe {
+                dst.assume_init();
+                src.backend()
+                    .launch_kernel(
+                        TaskScope::dot_along_short_dimension_kernel(),
+                        grid_dim,
+                        BLOCK_SIZE,
+                        &args,
+                        0,
+                    )
+                    .unwrap();
+            }
+        }
+        _ => panic!(
+            "Dot product is not supported along dimension {} for tensor of sizes {:?}",
+            dim,
+            src.sizes()
+        ),
+    }
+    dst
+}
+
 impl<T: DeviceCopy, U: DeviceCopy> DotBackend<T, U> for TaskScope
 where
     TaskScope: DotKernel<T, U>,
@@ -33,61 +98,7 @@ where
         scalars: &Tensor<U, Self>,
         dim: usize,
     ) -> Tensor<U, Self> {
-        let mut sizes = src.sizes().to_vec();
-        sizes.remove(dim);
-        let mut dst = Tensor::with_sizes_in(sizes, src.backend().clone());
-        assert_eq!(src.sizes().len(), 2, "Dot product only supported for 2D tensors",);
-        let max_scalar_dim = *scalars.sizes().iter().max().unwrap();
-        assert_eq!(max_scalar_dim, scalars.total_len(), "The scalar tensor must be a 1D tensor");
-        match dim {
-            dim if dim == src.sizes().len() - 1 => {
-                let height = src.sizes()[dim];
-                let width = src.total_len() / height;
-
-                let null_ptr = std::ptr::null::<std::ffi::c_void>();
-                let partial_args = args!(null_ptr, src.as_ptr(), scalars.as_ptr(), width, height);
-                const BLOCK_SIZE: usize = 256;
-                const INTIAL_STRIDE: usize = 4;
-                dst.storage.write_bytes(0, dst.total_len() * std::mem::size_of::<U>()).unwrap();
-                unsafe {
-                    partial_sum_reduction_into::<U, BLOCK_SIZE, INTIAL_STRIDE, 5>(
-                        dst.as_view_mut(),
-                        TaskScope::partial_dot_kernel_last_dim(),
-                        partial_args,
-                        0,
-                        src.shape(),
-                        dim,
-                        src.backend(),
-                    );
-                }
-            }
-            0 => {
-                let height = src.sizes()[1];
-                let width = src.total_len() / height;
-
-                const BLOCK_SIZE: usize = 256;
-                let args = args!(dst.as_mut_ptr(), src.as_ptr(), scalars.as_ptr(), width, height);
-                let grid_dim = height.div_ceil(BLOCK_SIZE);
-                unsafe {
-                    dst.assume_init();
-                    src.backend()
-                        .launch_kernel(
-                            Self::dot_along_short_dimension_kernel(),
-                            grid_dim,
-                            BLOCK_SIZE,
-                            &args,
-                            0,
-                        )
-                        .unwrap();
-                }
-            }
-            _ => panic!(
-                "Dot product is not supported along dimension {} for tensor of sizes {:?}",
-                dim,
-                src.sizes()
-            ),
-        }
-        dst
+        dot_along_dim_view(src.as_view(), scalars.as_view(), dim)
     }
 }
 
