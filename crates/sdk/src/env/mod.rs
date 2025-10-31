@@ -26,6 +26,7 @@ use std::sync::Arc;
 /// A prover that can execute programs and generate proofs with a different implementation based on
 /// the value of the `SP1_PROVER` environment variable.
 #[derive(Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum EnvProver {
     /// A mock prover that does not prove anything.
     Mock(MockProver),

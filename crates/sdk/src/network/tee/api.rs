@@ -1,7 +1,9 @@
-use crate::{network::utils::sign_raw, SP1Stdin};
+use crate::{
+    network::{signer::NetworkSigner, utils::sign_raw},
+    SP1Stdin,
+};
 use alloy_primitives::{Address, Signature as AlloySignature};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 use k256::ecdsa::Signature;
 
@@ -11,7 +13,7 @@ pub struct TEERequest {
     /// The network request id.
     pub id: [u8; 32],
     /// The program to execute.
-    pub program: Arc<Vec<u8>>,
+    pub program: Vec<u8>,
     /// The cycle limit for the program.
     pub cycle_limit: u64,
     /// The stdin for the program.
@@ -22,16 +24,16 @@ pub struct TEERequest {
 
 impl TEERequest {
     /// The selector for the TEE verifier.
-    pub(crate) fn new(
-        signer: &k256::ecdsa::SigningKey,
+    pub(crate) async fn new(
+        signer: &NetworkSigner,
         id: [u8; 32],
-        program: Arc<Vec<u8>>,
+        program: Vec<u8>,
         stdin: SP1Stdin,
         cycle_limit: u64,
-    ) -> Self {
-        let k256_signature = sign_raw(&id, signer);
+    ) -> Result<Self, anyhow::Error> {
+        let signature = sign_raw(&id, signer).await?;
 
-        Self { id, program, cycle_limit, stdin, signature: AlloySignature::from(k256_signature) }
+        Ok(Self { id, program, cycle_limit, stdin, signature })
     }
 }
 
@@ -61,7 +63,7 @@ impl TEEResponse {
         // The length of the version bytes, panics if the length is greater than 255.
         let version_bytes_len: u8 = version_bytes.len().try_into().unwrap();
 
-        // Push the selector
+        // Push the selector.
         bytes.extend_from_slice(&Self::selector());
         // Push v.
         bytes.extend_from_slice(&self.recovery_id.to_be_bytes());

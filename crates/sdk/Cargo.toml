@@ -52,6 +52,12 @@ sp1-primitives = { workspace = true }
 sp1-prover-types = { workspace = true, optional = true }
 itertools = { workspace = true }
 tonic = { workspace = true, features = ["tls", "tls-roots"], optional = true }
+aws-config = { workspace = true, optional = true }
+aws-sdk-kms = { workspace = true, optional = true }
+rustls = { workspace = true, features = ["ring"], optional = true }
+alloy-signer = { workspace = true, optional = true }
+alloy-signer-aws = { workspace = true, optional = true }
+alloy-signer-local = { workspace = true, optional = true }
 alloy-primitives = { workspace = true, features = [
   "k256",
   "serde",
@@ -70,12 +76,18 @@ tokio-test = { workspace = true }
 rstest = { workspace = true }
 
 [features]
-default = ["network", "reserved-capacity"]
+default = []
 native-gnark = ["sp1-prover/native-gnark"]
 # TODO: Once alloy has a 1.* release, we can likely remove this feature flag, as there will be less 
 # dependency resolution issues.
 network = [
   "dep:prost",
+  "dep:aws-config",
+  "dep:aws-sdk-kms",
+  "dep:rustls",
+  "dep:alloy-signer",
+  "dep:alloy-signer-aws",
+  "dep:alloy-signer-local",
   "dep:alloy-primitives",
   "dep:reqwest",
   "dep:twirp",

@@ -14,17 +14,11 @@ use sp1_core_machine::io::SP1Stdin;
 use sp1_hypercube::{prover::MachineProvingKey, SP1RecursionProof};
 use sp1_primitives::{Elf, SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_prover::{
-    build::{try_build_groth16_bn254_artifacts_dev, try_build_plonk_bn254_artifacts_dev},
-    components::SP1ProverComponents,
+    components::{CpuSP1ProverComponents, SP1ProverComponents},
     error::SP1ProverError,
     local::{LocalProver, LocalProverOpts},
-    Groth16Bn254Proof, InnerSC, OuterSC, PlonkBn254Proof, SP1ProverBuilder, SP1VerifyingKey,
-};
-use sp1_prover::{
-    components::CpuSP1ProverComponents,
-    // verify::{verify_groth16_bn254_public_inputs, verify_plonk_bn254_public_inputs},
-    SP1CoreProofData,
-    SP1ProofWithMetadata,
+    Groth16Bn254Proof, InnerSC, OuterSC, PlonkBn254Proof, SP1CoreProofData, SP1ProofWithMetadata,
+    SP1ProverBuilder, SP1VerifyingKey,
 };
 
 use crate::{
@@ -227,7 +221,8 @@ pub(crate) async fn prove_groth16(
     wrap_proof: SP1RecursionProof<SP1OuterGlobalContext, OuterSC>,
 ) -> Groth16Bn254Proof {
     #[cfg(feature = "experimental")]
-    let artifacts_dir = try_build_groth16_bn254_artifacts_dev(&wrap_proof.vk, &wrap_proof.proof);
+    let artifacts_dir =
+        sp1_prover::build::try_build_groth16_bn254_artifacts_dev(&wrap_proof.vk, &wrap_proof.proof);
 
     #[cfg(not(feature = "experimental"))]
     // TODO: Test that this works after v6.0.0 release
@@ -241,7 +236,8 @@ pub(crate) async fn prove_plonk(
     wrap_proof: SP1RecursionProof<SP1OuterGlobalContext, OuterSC>,
 ) -> PlonkBn254Proof {
     #[cfg(feature = "experimental")]
-    let artifacts_dir = try_build_plonk_bn254_artifacts_dev(&wrap_proof.vk, &wrap_proof.proof);
+    let artifacts_dir =
+        sp1_prover::build::try_build_plonk_bn254_artifacts_dev(&wrap_proof.vk, &wrap_proof.proof);
 
     #[cfg(not(feature = "experimental"))]
     // TODO: Test that this works after v6.0.0 release

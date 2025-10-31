@@ -5,7 +5,7 @@
 use crate::{cpu::builder::CpuProverBuilder, cuda::builder::CudaProverBuilder, env::EnvProver};
 
 #[cfg(feature = "network")]
-use crate::network::builder::NetworkProverBuilder;
+use crate::network::{builder::NetworkProverBuilder, NetworkMode};
 
 /// An entrypoint for interacting with the prover for the SP1 RISC-V zkVM.
 ///
@@ -109,6 +109,33 @@ impl ProverClientBuilder {
     #[cfg(feature = "network")]
     #[must_use]
     pub fn network(&self) -> NetworkProverBuilder {
-        NetworkProverBuilder { private_key: None, rpc_url: None, tee_signers: None }
+        NetworkProverBuilder::new()
+    }
+
+    /// Builds a [`NetworkProver`] specifically for proving on the network with a specified mode.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// use sp1_sdk::{network::NetworkMode, Elf, ProveRequest, Prover, ProverClient, SP1Stdin};
+    ///
+    /// tokio_test::block_on(async {
+    ///     let elf = Elf::Static(&[1, 2, 3]);
+    ///     let stdin = SP1Stdin::new();
+    ///
+    ///     let prover = ProverClient::builder().network_for(NetworkMode::Mainnet).build().await;
+    ///     let pk = prover.setup(elf).await.unwrap();
+    ///     let proof = prover.prove(&pk, stdin).compressed().await.unwrap();
+    /// });
+    /// ```
+    #[cfg(feature = "network")]
+    #[must_use]
+    pub fn network_for(&self, mode: NetworkMode) -> NetworkProverBuilder {
+        NetworkProverBuilder {
+            private_key: None,
+            signer: None,
+            rpc_url: None,
+            tee_signers: None,
+            network_mode: Some(mode),
+        }
     }
 }
