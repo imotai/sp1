@@ -134,6 +134,10 @@ pub fn local_gpu_opts() -> LocalProverOpts {
     // Get the amount of memory on the GPU.
     let gpu_memory_gb: usize = (((cuda_memory_info().unwrap().1 as f64) / gb).ceil() as usize) + 4;
 
+    if gpu_memory_gb < 24 {
+        panic!("Unsupported GPU memory: {gpu_memory_gb}, must be at least 24GB");
+    }
+
     let shard_threshold =
         if gpu_memory_gb <= 30 { ELEMENT_THRESHOLD - (1 << 27) } else { ELEMENT_THRESHOLD };
 
@@ -268,21 +272,11 @@ impl DerefMut for SP1ProverCleanBuilder {
 
 /// Create a [SP1CudaWorkerBuilder]
 pub fn cuda_worker_builder(scope: TaskScope) -> SP1WorkerBuilder<CudaSP1ProverComponents> {
-    // Convert bytes to GB.
-    let gb = 1024.0 * 1024.0 * 1024.0;
-
-    // // Get the amount of memory on CPU.
-    // let cpu_memory_gb: usize =
-    //     ((sysinfo::System::new_all().total_memory() as f64) / gb).ceil() as usize;
-
-    // Get the amount of memory on the GPU.
-    let gpu_memory_gb: usize = (((cuda_memory_info().unwrap().1 as f64) / gb).ceil() as usize) + 4;
-
+    // Create a prover permits, assuming a single proof happens at a time.
     let prover_permits = ProverSemaphore::new(1);
 
-    if gpu_memory_gb < 24 {
-        panic!("Unsupported GPU memory: {gpu_memory_gb}, must be at least 24GB");
-    }
+    // Get the core options.
+    let opts = local_gpu_opts().core_opts;
 
     let core_verifier = CudaSP1ProverComponents::core_verifier();
     let core_air_prover = Arc::new(new_cuda_prover_sumcheck_eval(
@@ -305,6 +299,7 @@ pub fn cuda_worker_builder(scope: TaskScope) -> SP1WorkerBuilder<CudaSP1ProverCo
     //     new_cuda_prover_sumcheck_eval(wrap_verifier.shard_verifier().clone(), scope.clone());
 
     SP1WorkerBuilder::new()
+        .with_core_opts(opts)
         .with_core_air_prover(core_air_prover, prover_permits.clone())
         .with_compress_air_prover(recursion_air_prover, prover_permits)
 }

@@ -164,7 +164,7 @@ jobs:
         with:
           command: run
           toolchain: stable
-          args: --release -p csl-perf --bin node -- --program local-fibonacci --param 20000000 --stage compress
+          args: --release -p csl-perf --bin node -- --program local-rsp --param 21000001 --stage compress
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1

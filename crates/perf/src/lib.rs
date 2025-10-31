@@ -32,7 +32,7 @@ pub const LOOP_ELF: &[u8] =
     include_bytes!("../../prover/programs/loop/riscv64im-succinct-zkvm-elf");
 pub const POSEIDON2_ELF: &[u8] =
     include_bytes!("../../prover/programs/poseidon2/riscv64im-succinct-zkvm-elf");
-pub const RSP_ELF: &[u8] = include_bytes!("../../prover/programs/rsp/riscv64im-succinct-zkvm-elf");
+pub const RSP_ELF: &[u8] = include_bytes!("../programs/rsp/elf/rsp-client");
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
 pub enum Stage {
@@ -92,8 +92,8 @@ pub async fn make_measurement<C: SP1ProverComponents>(
             name: name.to_string(),
             cycles,
             num_shards,
-            core_time,
-            compress_time: Duration::ZERO,
+            core_time: Some(core_time),
+            compress_time: None,
             shrink_time: Duration::ZERO,
             wrap_time: Duration::ZERO,
         };
@@ -114,8 +114,8 @@ pub async fn make_measurement<C: SP1ProverComponents>(
             name: name.to_string(),
             cycles,
             num_shards,
-            core_time,
-            compress_time,
+            core_time: Some(core_time),
+            compress_time: Some(compress_time),
             shrink_time: Duration::ZERO,
             wrap_time: Duration::ZERO,
         };
@@ -138,8 +138,8 @@ pub async fn make_measurement<C: SP1ProverComponents>(
             name: name.to_string(),
             cycles,
             num_shards,
-            core_time,
-            compress_time,
+            core_time: Some(core_time),
+            compress_time: Some(compress_time),
             shrink_time,
             wrap_time: Duration::ZERO,
         };
@@ -157,9 +157,71 @@ pub async fn make_measurement<C: SP1ProverComponents>(
         name: name.to_string(),
         cycles,
         num_shards,
-        core_time,
-        compress_time,
+        core_time: Some(core_time),
+        compress_time: Some(compress_time),
         shrink_time,
         wrap_time,
     }
+}
+
+pub fn get_program_and_input(program: String, param: u32) -> (Vec<u8>, SP1Stdin) {
+    // If the program elf is local, load it.
+    if let Some(program_path) = program.strip_prefix("local-") {
+        if program_path == "fibonacci" {
+            let mut stdin = SP1Stdin::new();
+            let n = param;
+            stdin.write(&n);
+            return (FIBONACCI_ELF.to_vec(), stdin);
+        } else if program_path == "loop" {
+            let mut stdin = SP1Stdin::new();
+            let n = param as usize;
+            stdin.write(&n);
+            return (LOOP_ELF.to_vec(), stdin);
+        } else if program_path == "sha2" {
+            let mut stdin = SP1Stdin::new();
+            stdin.write_vec(vec![0u8; param as usize]);
+            return (SHA2_ELF.to_vec(), stdin);
+        } else if program_path == "keccak" {
+            let mut stdin = SP1Stdin::new();
+            stdin.write_vec(vec![0u8; param as usize]);
+            return (KECCAK_ELF.to_vec(), stdin);
+        } else if program_path == "poseidon2" {
+            let mut stdin = SP1Stdin::new();
+            let n = param as usize;
+            stdin.write(&n);
+            return (POSEIDON2_ELF.to_vec(), stdin);
+        } else if program_path == "rsp" {
+            let mut stdin = SP1Stdin::new();
+            let client_input_path = format!("crates/perf/programs/rsp/input/{param}.bin");
+            let client_input = std::fs::read(client_input_path).unwrap();
+            stdin.write_vec(client_input);
+            return (RSP_ELF.to_vec(), stdin);
+        } else {
+            panic!("invalid program path provided: {program}");
+        }
+    }
+
+    // Otherwise, assume it's a program from the s3 bucket.
+    // Download files from S3
+    let s3_path = program;
+    std::process::Command::new("aws")
+        .args(["s3", "cp", &format!("s3://sp1-testing-suite/{s3_path}/program.bin"), "program.bin"])
+        .output()
+        .unwrap();
+    std::process::Command::new("aws")
+        .args(["s3", "cp", &format!("s3://sp1-testing-suite/{s3_path}/stdin.bin"), "stdin.bin"])
+        .output()
+        .unwrap();
+
+    let program_path = "program.bin";
+    let stdin_path = "stdin.bin";
+    let program = std::fs::read(program_path).unwrap();
+    let stdin = std::fs::read(stdin_path).unwrap();
+    let stdin: SP1Stdin = bincode::deserialize(&stdin).unwrap();
+
+    // // remove the files
+    // std::fs::remove_file(program_path).unwrap();
+    // std::fs::remove_file(stdin_path).unwrap();
+
+    (program, stdin)
 }

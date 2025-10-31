@@ -7,8 +7,8 @@ pub struct Measurement {
     pub name: String,
     pub cycles: usize,
     pub num_shards: usize,
-    pub core_time: Duration,
-    pub compress_time: Duration,
+    pub core_time: Option<Duration>,
+    pub compress_time: Option<Duration>,
     pub shrink_time: Duration,
     pub wrap_time: Duration,
 }
@@ -48,14 +48,21 @@ impl Measurement {
     fn to_csv_record(
         &self,
     ) -> (String, usize, usize, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64) {
-        let total_core_compress_time = self.core_time + self.compress_time;
+        let total_core_compress_time =
+            self.core_time.unwrap_or(Duration::ZERO) + self.compress_time.unwrap_or(Duration::ZERO);
         let total_time = total_core_compress_time + self.shrink_time + self.wrap_time;
-        let core_khz = (self.cycles as f64 / (self.core_time.as_secs_f64() * 1e3)).round();
-        let compress_khz =
-            (self.cycles as f64 / (total_core_compress_time.as_secs_f64() * 1e3)).round();
+        let core_khz = self
+            .core_time
+            .map(|t| (self.cycles as f64 / (t.as_secs_f64() * 1e3)).round())
+            .unwrap_or(f64::NAN);
+        let compress_khz = self
+            .compress_time
+            .map(|t| (self.cycles as f64 / (t.as_secs_f64() * 1e3)).round())
+            .unwrap_or(f64::NAN);
         let khz = (self.cycles as f64 / (total_time.as_secs_f64() * 1e3)).round();
-        let compress_fraction =
-            (self.compress_time.as_secs_f64() / total_time.as_secs_f64()) * 100.0;
+        let compress_fraction = (self.compress_time.unwrap_or(Duration::ZERO).as_secs_f64()
+            / total_time.as_secs_f64())
+            * 100.0;
 
         (
             self.name.clone(),
@@ -64,8 +71,8 @@ impl Measurement {
             core_khz,
             compress_khz,
             khz,
-            self.core_time.as_secs_f64(),
-            self.compress_time.as_secs_f64(),
+            self.core_time.unwrap_or(Duration::ZERO).as_secs_f64(),
+            self.compress_time.unwrap_or(Duration::ZERO).as_secs_f64(),
             self.shrink_time.as_secs_f64(),
             self.wrap_time.as_secs_f64(),
             total_core_compress_time.as_secs_f64(),

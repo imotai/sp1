@@ -1,25 +1,15 @@
 use std::sync::Arc;
 
 use clap::Parser;
-use csl_perf::{telemetry, FIBONACCI_ELF, KECCAK_ELF, LOOP_ELF, POSEIDON2_ELF, SHA2_ELF};
+use csl_perf::{get_program_and_input, telemetry};
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
 use sp1_core_executor::SP1CoreOpts;
-use sp1_core_machine::io::SP1Stdin;
-
-const RSP_CLIENT_ELF: &[u8] = include_bytes!("../../programs/rsp/elf/rsp-client");
-
 use sp1_prover::worker::{
     ProofId, RequesterId, SP1CoreExecutor, SplicingEngine, SplicingWorker, TrivialWorkerClient,
 };
 use sp1_prover_types::{ArtifactClient, InMemoryArtifactClient};
-#[cfg(not(target_env = "msvc"))]
-use tikv_jemallocator::Jemalloc;
 use tokio::sync::mpsc;
-
-#[cfg(not(target_env = "msvc"))]
-#[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -36,68 +26,6 @@ struct Args {
     pub task_capacity: usize,
     #[arg(long, default_value = "false")]
     pub telemetry: bool,
-}
-
-fn get_program_and_input(program: String, param: u32) -> (Vec<u8>, SP1Stdin) {
-    // If the program elf is local, load it.
-    if let Some(program_path) = program.strip_prefix("local-") {
-        if program_path == "fibonacci" {
-            let mut stdin = SP1Stdin::new();
-            let n = param;
-            stdin.write(&n);
-            return (FIBONACCI_ELF.to_vec(), stdin);
-        } else if program_path == "loop" {
-            let mut stdin = SP1Stdin::new();
-            let n = param as usize;
-            stdin.write(&n);
-            return (LOOP_ELF.to_vec(), stdin);
-        } else if program_path == "sha2" {
-            let mut stdin = SP1Stdin::new();
-            stdin.write_vec(vec![0u8; param as usize]);
-            return (SHA2_ELF.to_vec(), stdin);
-        } else if program_path == "keccak" {
-            let mut stdin = SP1Stdin::new();
-            stdin.write_vec(vec![0u8; param as usize]);
-            return (KECCAK_ELF.to_vec(), stdin);
-        } else if program_path == "poseidon2" {
-            let mut stdin = SP1Stdin::new();
-            let n = param as usize;
-            stdin.write(&n);
-            return (POSEIDON2_ELF.to_vec(), stdin);
-        } else if program_path == "rsp" {
-            let mut stdin = SP1Stdin::new();
-            let client_input_path = format!("crates/perf/programs/rsp/input/{param}.bin");
-            let client_input = std::fs::read(client_input_path).unwrap();
-            stdin.write_vec(client_input);
-            return (RSP_CLIENT_ELF.to_vec(), stdin);
-        } else {
-            panic!("invalid program path provided: {program}");
-        }
-    }
-
-    // Otherwise, assume it's a program from the s3 bucket.
-    // Download files from S3
-    let s3_path = program;
-    std::process::Command::new("aws")
-        .args(["s3", "cp", &format!("s3://sp1-testing-suite/{s3_path}/program.bin"), "program.bin"])
-        .output()
-        .unwrap();
-    std::process::Command::new("aws")
-        .args(["s3", "cp", &format!("s3://sp1-testing-suite/{s3_path}/stdin.bin"), "stdin.bin"])
-        .output()
-        .unwrap();
-
-    let program_path = "program.bin";
-    let stdin_path = "stdin.bin";
-    let program = std::fs::read(program_path).unwrap();
-    let stdin = std::fs::read(stdin_path).unwrap();
-    let stdin: SP1Stdin = bincode::deserialize(&stdin).unwrap();
-
-    // // remove the files
-    // std::fs::remove_file(program_path).unwrap();
-    // std::fs::remove_file(stdin_path).unwrap();
-
-    (program, stdin)
 }
 
 #[tokio::main]
@@ -143,11 +71,13 @@ async fn main() {
     let mode_artifact = artifact_client.create_artifact().expect("failed to create artifact");
     artifact_client.upload(&mode_artifact, opts).await.expect("failed to upload opts");
 
+    let opts = SP1CoreOpts::default();
     let executor = SP1CoreExecutor::new(
         splicing_engine,
         elf_artifact,
         stdin,
         common_input,
+        opts,
         0,
         proof_id,
         parent_id,
