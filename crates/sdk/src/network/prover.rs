@@ -652,10 +652,11 @@ impl NetworkProver {
             // If 2FA is enabled, spawn a task to get the tee proof.
             // Note: We only support one type of TEE proof for now.
             let handle = if tee_2fa {
+                let elf_vec = pk.elf.to_vec();
                 let request = super::tee::api::TEERequest::new(
                     &self.client.signer,
                     *request_id,
-                    pk.elf.as_ref().to_vec(),
+                    elf_vec,
                     stdin.clone(),
                     cycle_limit.unwrap_or_else(|| {
                         super::utils::get_default_cycle_limit_for_mode(self.network_mode)
