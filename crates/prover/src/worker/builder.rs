@@ -1,13 +1,14 @@
 use std::{env, sync::Arc};
 
-use sp1_hypercube::prover::ProverSemaphore;
+use sp1_core_executor::SP1CoreOpts;
+use sp1_hypercube::prover::{CpuShardProver, ProverSemaphore};
 use sp1_prover_types::ArtifactClient;
 
 use crate::{
     components::{CoreProver, RecursionProver, WrapProver},
     verify::SP1Verifier,
     worker::{SP1Controller, SP1ProverEngine, SP1Worker, SP1WorkerConfig, WorkerClient},
-    SP1ProverComponents,
+    CpuSP1ProverComponents, SP1ProverComponents,
 };
 
 pub struct SP1WorkerBuilder<C: SP1ProverComponents, A = (), W = ()> {
@@ -99,6 +100,7 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
 }
 
 impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
+    #[must_use]
     pub fn with_core_air_prover(
         mut self,
         core_air_prover: Arc<CoreProver<C>>,
@@ -108,6 +110,7 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
         self
     }
 
+    #[must_use]
     pub fn with_compress_air_prover(
         mut self,
         compress_air_prover: Arc<RecursionProver<C>>,
@@ -117,6 +120,7 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
         self
     }
 
+    #[must_use]
     pub fn with_shrink_air_prover(
         mut self,
         shrink_air_prover: Arc<RecursionProver<C>>,
@@ -126,12 +130,29 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
         self
     }
 
+    #[must_use]
     pub fn with_wrap_air_prover(
         mut self,
         wrap_air_prover: Arc<WrapProver<C>>,
         permit: ProverSemaphore,
     ) -> Self {
         self.wrap_air_prover_and_permits = Some((wrap_air_prover, permit));
+        self
+    }
+
+    #[must_use]
+    pub fn with_core_opts(self, opts: SP1CoreOpts) -> Self {
+        self.with_config(|config| config.controller_config.opts = opts)
+    }
+
+    #[must_use]
+    pub fn core_opts(&self) -> &SP1CoreOpts {
+        &self.config.controller_config.opts
+    }
+
+    #[must_use]
+    pub fn with_config(mut self, f: impl FnOnce(&mut SP1WorkerConfig)) -> Self {
+        f(&mut self.config);
         self
     }
 
@@ -156,6 +177,7 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
             artifact_client.ok_or(anyhow::anyhow!("Artifact client is required"))?;
         let worker_client = worker_client.ok_or(anyhow::anyhow!("Worker client is required"))?;
 
+        let opts = config.controller_config.opts.clone();
         let controller = SP1Controller::new(
             config.controller_config,
             artifact_client.clone(),
@@ -171,6 +193,7 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
 
         let prover_engine = SP1ProverEngine::new(
             config.prover_config,
+            opts,
             artifact_client.clone(),
             worker_client.clone(),
             core_air_prover_and_permits,
@@ -200,4 +223,33 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
 
         Ok(SP1Worker::new(controller, prover_engine, verifier))
     }
+}
+
+/// Create a [SP1CudaWorkerBuilder]
+pub fn cpu_worker_builder() -> SP1WorkerBuilder<CpuSP1ProverComponents> {
+    // Create a prover permits, assuming a single proof happens at a time.
+    let prover_permits = ProverSemaphore::new(1);
+
+    // Get the core options.
+    let opts = SP1CoreOpts::default();
+
+    let core_verifier = CpuSP1ProverComponents::core_verifier();
+    let core_air_prover = Arc::new(CpuShardProver::new(core_verifier.shard_verifier().clone()));
+
+    let recursion_verifier = CpuSP1ProverComponents::compress_verifier();
+    let recursion_air_prover =
+        Arc::new(CpuShardProver::new(recursion_verifier.shard_verifier().clone()));
+
+    // let shrink_verifier = CudaSP1ProverComponents::shrink_verifier();
+    // let shrink_prover =
+    //     new_cuda_prover_sumcheck_eval(shrink_verifier.shard_verifier().clone(), scope.clone());
+
+    // let wrap_verifier = CudaSP1ProverComponents::wrap_verifier();
+    // let wrap_prover =
+    //     new_cuda_prover_sumcheck_eval(wrap_verifier.shard_verifier().clone(), scope.clone());
+
+    SP1WorkerBuilder::new()
+        .with_core_opts(opts)
+        .with_core_air_prover(core_air_prover, prover_permits.clone())
+        .with_compress_air_prover(recursion_air_prover, prover_permits)
 }

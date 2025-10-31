@@ -59,7 +59,6 @@ static_assertions = { workspace = true }
 rand = { workspace = true }
 mti = { workspace = true }
 opentelemetry = { workspace = true }
-dashmap = { workspace = true }
 pin-project = { workspace = true }
 tonic = { workspace = true }
 reqwest = { workspace = true }

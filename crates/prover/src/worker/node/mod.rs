@@ -3,8 +3,10 @@ mod init;
 use std::sync::Arc;
 
 pub use init::*;
+use mti::prelude::{MagicTypeIdExt, V7};
 use sp1_core_executor::{
     CompressedMemory, ExecutionReport, GasEstimatingVM, MinimalExecutor, Program, SP1Context,
+    SP1CoreOpts,
 };
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::io::SP1PublicValues;
@@ -17,8 +19,7 @@ use tracing::{instrument, Instrument};
 use crate::{
     verify::SP1Verifier,
     worker::{
-        cluster_opts, LocalWorkerClient, ProofId, RawTaskRequest, RequesterId, SP1WorkerProof,
-        WorkerClient,
+        LocalWorkerClient, ProofId, RawTaskRequest, RequesterId, SP1WorkerProof, WorkerClient,
     },
     SP1CoreProof, SP1VerifyingKey,
 };
@@ -27,6 +28,7 @@ pub(crate) struct SP1NodeInner {
     artifact_client: InMemoryArtifactClient,
     worker_client: LocalWorkerClient,
     verifier: SP1Verifier,
+    opts: SP1CoreOpts,
 }
 
 pub struct SP1LocalNode {
@@ -77,10 +79,13 @@ impl SP1LocalNode {
 
         let mut touched_addresses = CompressedMemory::new();
 
-        let opts = cluster_opts();
         for chunk in chunks {
-            let mut gas_estimating_vm =
-                GasEstimatingVM::new(&chunk, program.clone(), &mut touched_addresses, opts.clone());
+            let mut gas_estimating_vm = GasEstimatingVM::new(
+                &chunk,
+                program.clone(),
+                &mut touched_addresses,
+                self.inner.opts.clone(),
+            );
             let report = gas_estimating_vm.execute().unwrap();
             accumulated_report += report;
         }
@@ -174,8 +179,9 @@ impl SP1LocalNode {
     ) -> anyhow::Result<SP1WorkerProof> {
         // Create a request for the controller task.
 
-        let proof_id = ProofId::new("core_proof");
-        let requester_id = RequesterId::new("local node");
+        let proof_id = ProofId::new("proof".create_type_id::<V7>().to_string());
+        let pid = std::process::id();
+        let requester_id = RequesterId::new(format!("local-node-{pid}"));
 
         let elf_artifact = self.inner.artifact_client.create_artifact()?;
         self.inner.artifact_client.upload_program(&elf_artifact, elf.to_vec()).await?;
@@ -241,5 +247,58 @@ impl SP1LocalNode {
                 .verify_compressed(proof, vk)
                 .map_err(|e| anyhow::anyhow!("failed to verify compressed proof:{:?}", e)),
         }
+    }
+}
+
+#[cfg(all(test, feature = "experimental"))]
+mod tests {
+    use serial_test::serial;
+    use sp1_core_machine::utils::setup_logger;
+
+    use crate::worker::cpu_worker_builder;
+
+    use super::*;
+
+    #[tokio::test]
+    #[serial]
+    async fn test_e2e_node() -> anyhow::Result<()> {
+        setup_logger();
+
+        let elf = test_artifacts::FIBONACCI_ELF;
+        let stdin = SP1Stdin::default();
+        let mode = ProofMode::Core;
+
+        let client = SP1LocalNodeBuilder::from_worker_client_builder(cpu_worker_builder())
+            .build()
+            .await
+            .unwrap();
+
+        let time = tokio::time::Instant::now();
+        let context = SP1Context::default();
+        let (_, _, report) = client.execute(&elf, stdin.clone(), context.clone()).await.unwrap();
+        let execute_time = time.elapsed();
+        let cycles = report.total_instruction_count() as usize;
+        tracing::info!(
+            "execute time: {:?}, cycles: {}, gas: {:?}",
+            execute_time,
+            cycles,
+            report.gas
+        );
+
+        let time = tokio::time::Instant::now();
+        let vk = client.setup(&elf).await.unwrap();
+        let setup_time = time.elapsed();
+        tracing::info!("setup time: {:?}", setup_time);
+
+        let time = tokio::time::Instant::now();
+
+        tracing::info!("proving with mode: {mode:?}");
+        let proof = client.prove_with_mode(&elf, stdin, context, mode).await.unwrap();
+        let proof_time = time.elapsed();
+        tracing::info!("proof time: {:?}", proof_time);
+        // Verify the proof
+        client.verify(&vk, &proof).unwrap();
+
+        Ok(())
     }
 }

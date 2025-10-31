@@ -6,9 +6,8 @@ use std::{
     task::Poll,
 };
 
-use dashmap::DashMap;
 use futures::{prelude::*, stream::FuturesOrdered};
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use mti::prelude::{MagicTypeIdExt, V7};
 use opentelemetry::Context;
 use serde::{Deserialize, Serialize};
@@ -17,13 +16,15 @@ use sp1_prover_types::{
 };
 use thiserror::Error;
 use tokio::{
-    sync::{mpsc, oneshot, watch},
-    task::{AbortHandle, JoinSet},
+    sync::{mpsc, watch, RwLock},
+    task::AbortHandle,
 };
 
 mod local;
 
 pub use local::*;
+
+use crate::worker::TaskError;
 
 pub trait WorkerClient: Send + Sync + Clone + 'static {
     fn submit_task(
@@ -161,12 +162,15 @@ impl<W> SubscriberBuilder<W> {
     }
 }
 
+type TaskSubscriberDb =
+    Arc<RwLock<HashMap<TaskId, (watch::Sender<TaskStatus>, watch::Receiver<TaskStatus>)>>>;
+
 // TODO: maybe traitify this struct to allow more flexibility in implementations.
 #[derive(Clone)]
 #[allow(clippy::type_complexity)]
 pub struct TaskSubscriber<W> {
     client: W,
-    request_map: Arc<DashMap<TaskId, (watch::Sender<TaskStatus>, watch::Receiver<TaskStatus>)>>,
+    request_map: TaskSubscriberDb,
     subscriber_tx: mpsc::UnboundedSender<TaskId>,
     abort_handle: AbortHandle,
 }
@@ -182,10 +186,10 @@ impl<W> TaskSubscriber<W> {
     pub fn new(builder: SubscriberBuilder<W>) -> Self {
         let SubscriberBuilder { client, subscriber_tx, mut subscriber_rx, .. } = builder;
         // Create stores to map all incoming status requests and subscribers.
-        let request_map = Arc::new(DashMap::<
+        let request_map = Arc::new(RwLock::new(HashMap::<
             TaskId,
             (watch::Sender<TaskStatus>, watch::Receiver<TaskStatus>),
-        >::new());
+        >::new()));
         // Spawn a blocking task to update the status map when new statuses are received.
         let handle = tokio::task::spawn({
             let request_map = request_map.clone();
@@ -193,8 +197,9 @@ impl<W> TaskSubscriber<W> {
                 while let Some((task_id, status)) = subscriber_rx.recv().await {
                     // Send an update to the request map.
                     let (sender, _) = request_map
+                        .read()
+                        .await
                         .get(&task_id)
-                        .as_deref()
                         .cloned()
                         .expect("task should be in request map");
                     // Send the status to the requester, it's ok if the receiver is dropped.
@@ -217,80 +222,37 @@ impl<W> TaskSubscriber<W> {
     /// Wait for a task to complete.
     ///
     /// This function will return a `WaitTask` that can be used to wait for the task to complete.
-    pub fn wait_task(&self, task_id: TaskId) -> WaitTask {
+    pub async fn wait_task(&self, task_id: TaskId) -> Result<TaskStatus, TaskError> {
         self.request_map
+            .write()
+            .await
             .entry(task_id.clone())
             .or_insert_with(|| watch::channel(TaskStatus::UnspecifiedStatus));
 
-        // Create a oneshot channel to receive the task status.
-        let (tx, rx) = oneshot::channel();
-        // Spawn the task to wait for the status update. We spawn it into a join set so that it will
-        // abort if the returned future is dropped.
-        let mut set = JoinSet::new();
+        let (_, mut watch) = self
+            .request_map
+            .read()
+            .await
+            .get(&task_id)
+            .cloned()
+            .ok_or(TaskError::Fatal(anyhow::anyhow!("task does not exist")))?;
 
-        let (_, mut watch) =
-            self.request_map.get(&task_id).as_deref().cloned().expect("task does not exist");
-        set.spawn(async move {
-            watch.mark_changed();
-            while let Ok(()) = watch.changed().await {
-                let v = *watch.borrow();
-                if matches!(v, TaskStatus::FailedFatal | TaskStatus::Succeeded) {
-                    tx.send(v).ok();
-                    return;
-                }
-            }
-        });
         // Send the task id to the inner subscriber.
-        // TODO: handle errors.
-        self.subscriber_tx
-            .send(task_id.clone())
-            .expect("failed to send task id to inner subscriber");
+        self.subscriber_tx.send(task_id.clone()).map_err(|e| {
+            TaskError::Fatal(anyhow::anyhow!("failed to send task id to inner subscriber: {e}"))
+        })?;
 
-        WaitTask { task_id, rx, set }
-    }
-}
-
-#[derive(Debug, Error)]
-#[error("subscriber for task {0} closed")]
-pub struct WaitTaskError(TaskId);
-
-#[derive(Debug, Error)]
-pub enum TryWaitTaskError {
-    #[error("task still pending")]
-    Empty,
-    #[error("subscriber for task closed")]
-    Closed,
-}
-
-pub struct WaitTask {
-    task_id: TaskId,
-    rx: oneshot::Receiver<TaskStatus>,
-    set: JoinSet<()>,
-}
-
-impl WaitTask {
-    pub fn blocking_wait(self) -> Result<TaskStatus, WaitTaskError> {
-        self.rx.blocking_recv().map_err(|_| WaitTaskError(self.task_id.clone()))
-    }
-
-    pub fn try_wait(&mut self) -> Result<TaskStatus, TryWaitTaskError> {
-        self.rx.try_recv().map_err(|err| match err {
-            oneshot::error::TryRecvError::Empty => TryWaitTaskError::Empty,
-            oneshot::error::TryRecvError::Closed => TryWaitTaskError::Closed,
-        })
-    }
-
-    pub fn abort(&mut self) {
-        self.set.abort_all();
-    }
-}
-
-impl Future for WaitTask {
-    type Output = Result<TaskStatus, WaitTaskError>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
-        let rx = Pin::new(&mut self.rx);
-        rx.poll(cx).map(|res| res.map_err(|_| WaitTaskError(self.task_id.to_owned())))
+        watch.mark_changed();
+        while let Ok(()) = watch.changed().await {
+            let v = *watch.borrow();
+            if matches!(
+                v,
+                TaskStatus::FailedFatal | TaskStatus::FailedRetryable | TaskStatus::Succeeded
+            ) {
+                return Ok(v);
+            }
+        }
+        Err(TaskError::Fatal(anyhow::anyhow!("task status lost for task {task_id}")))
     }
 }
 
@@ -451,7 +413,7 @@ mod tests {
     #[allow(clippy::type_complexity)]
     pub struct TestWorkerClient {
         input_tx: mpsc::UnboundedSender<(TaskId, RawTaskRequest)>,
-        db: Arc<DashMap<TaskId, (watch::Sender<TaskStatus>, watch::Receiver<TaskStatus>)>>,
+        db: TaskSubscriberDb,
     }
 
     #[derive(Serialize, Deserialize, Clone, Copy)]
@@ -502,10 +464,10 @@ mod tests {
     impl TestWorkerClient {
         fn new(artifact_client: impl ArtifactClient) -> Self {
             let (tx, mut rx) = mpsc::unbounded_channel();
-            let db = Arc::new(DashMap::<
+            let db = Arc::new(RwLock::new(HashMap::<
                 TaskId,
                 (watch::Sender<TaskStatus>, watch::Receiver<TaskStatus>),
-            >::new());
+            >::new()));
 
             tokio::task::spawn({
                 let db = db.clone();
@@ -517,14 +479,14 @@ mod tests {
                             TestTaskKind::Increment => {
                                 counter += 1;
                                 let (tx, _) =
-                                    db.get(&id).as_deref().cloned().expect("task does not exist");
+                                    db.read().await.get(&id).cloned().expect("task does not exist");
                                 tx.send(TaskStatus::Succeeded).unwrap();
                             }
                             TestTaskKind::Read => {
                                 let out_artifact = output.unwrap();
                                 artifact_client.upload(&out_artifact, counter).await.unwrap();
                                 let (tx, _) =
-                                    db.get(&id).as_deref().cloned().expect("task does not exist");
+                                    db.read().await.get(&id).cloned().expect("task does not exist");
                                 tx.send(TaskStatus::Succeeded).unwrap();
                             }
                         }
@@ -545,7 +507,7 @@ mod tests {
             let task_id = TaskId::new("task".create_type_id::<V7>().to_string());
             // Add the task to the db.
             let (tx, rx) = watch::channel(TaskStatus::Pending);
-            self.db.insert(task_id.clone(), (tx, rx));
+            self.db.write().await.insert(task_id.clone(), (tx, rx));
             self.input_tx.send((task_id.clone(), task)).unwrap();
             Ok(task_id)
         }
@@ -582,12 +544,16 @@ mod tests {
                         let output_tx = output_tx.clone();
                         tokio::task::spawn(async move {
                             let (_, mut rx) =
-                                db.get(&id).as_deref().cloned().expect("task does not exist");
+                                db.read().await.get(&id).cloned().expect("task does not exist");
                             rx.mark_changed();
                             while let Ok(()) = rx.changed().await {
                                 let value = *rx.borrow();
-                                if matches!(value, TaskStatus::FailedFatal | TaskStatus::Succeeded)
-                                {
+                                if matches!(
+                                    value,
+                                    TaskStatus::FailedFatal
+                                        | TaskStatus::FailedRetryable
+                                        | TaskStatus::Succeeded
+                                ) {
                                     output_tx.send((id, value)).ok();
                                     return;
                                 }

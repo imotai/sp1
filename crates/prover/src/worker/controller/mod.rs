@@ -1,9 +1,12 @@
 mod compress;
 mod core;
+mod tasks;
 
 pub use compress::*;
 pub use core::*;
+
 use opentelemetry::Context;
+use sp1_core_executor::SP1CoreOpts;
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
 use sp1_hypercube::{air::PublicValues, ShardProof};
 use sp1_primitives::{io::SP1PublicValues, SP1GlobalContext};
@@ -24,12 +27,14 @@ use crate::{
 
 #[derive(Clone)]
 pub struct SP1ControllerConfig {
+    pub opts: SP1CoreOpts,
     pub num_splicing_workers: usize,
     pub splicing_buffer_size: usize,
     pub max_reduce_arity: usize,
 }
 
 pub struct SP1Controller<A, W> {
+    opts: SP1CoreOpts,
     splicing_engine: Arc<SplicingEngine<A, W>>,
     max_reduce_arity: usize,
     pub(crate) artifact_client: A,
@@ -50,6 +55,7 @@ where
         let reduce_batch_size = config.max_reduce_arity;
 
         Self {
+            opts: config.opts,
             splicing_engine,
             max_reduce_arity: reduce_batch_size,
             artifact_client,
@@ -74,6 +80,7 @@ where
             elf,
             stdin,
             common_input,
+            self.opts.clone(),
             num_deferred_proofs,
             proof_id,
             parent_id,
@@ -105,11 +112,14 @@ where
                 while let Some(proof_data) = core_proof_rx.recv().await {
                     let ProofData { task_id, proof, .. } = proof_data;
                     // Wait for the task to finish
-                    let status = subscriber
-                        .wait_task(task_id.clone())
-                        .await
-                        .map_err(|e| TaskError::Fatal(e.into()))?;
-                    assert_eq!(status, TaskStatus::Succeeded);
+                    let status = subscriber.wait_task(task_id.clone()).await?;
+                    if status != TaskStatus::Succeeded {
+                        tracing::error!("core proof task failed: {:?}", task_id);
+                        return Err(TaskError::Fatal(anyhow::anyhow!(
+                            "core proof task failed: {:?}",
+                            task_id
+                        )));
+                    }
                     // Download the proof
                     let proof = artifact_client
                         .download::<ShardProof<SP1GlobalContext, CoreSC>>(&proof)

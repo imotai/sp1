@@ -3,7 +3,7 @@ use std::{future::Future, sync::Arc};
 
 use anyhow::{anyhow, Result};
 use futures_util::future::FutureExt;
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use mti::prelude::{MagicTypeIdExt, V7};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -46,6 +46,12 @@ impl Artifact {
 impl From<String> for Artifact {
     fn from(value: String) -> Self {
         Self(value)
+    }
+}
+
+impl fmt::Display for Artifact {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Artifact({})", self.0)
     }
 }
 
@@ -289,6 +295,7 @@ pub trait ArtifactClient: Send + Sync + Clone + 'static {
 #[derive(Clone)]
 pub struct InMemoryArtifactClient {
     artifacts: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    refs: Arc<Mutex<HashMap<String, HashSet<String>>>>,
 }
 
 impl fmt::Debug for InMemoryArtifactClient {
@@ -299,7 +306,10 @@ impl fmt::Debug for InMemoryArtifactClient {
 
 impl InMemoryArtifactClient {
     pub fn new() -> Self {
-        Self { artifacts: Arc::new(Mutex::new(HashMap::new())) }
+        Self {
+            artifacts: Arc::new(Mutex::new(HashMap::new())),
+            refs: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 }
 
@@ -356,5 +366,34 @@ impl ArtifactClient for InMemoryArtifactClient {
             artifact_map.remove(artifact.id());
         }
         Ok(())
+    }
+
+    async fn add_ref(&self, artifact: &impl ArtifactId, task_id: &str) -> Result<()> {
+        self.refs
+            .lock()
+            .await
+            .entry(artifact.id().to_string())
+            .or_default()
+            .insert(task_id.to_string());
+        Ok(())
+    }
+
+    async fn remove_ref(
+        &self,
+        artifact: &impl ArtifactId,
+        artifact_type: ArtifactType,
+        task_id: &str,
+    ) -> Result<bool> {
+        let mut ref_count = 0;
+        self.refs.lock().await.entry(artifact.id().to_string()).and_modify(|refs| {
+            refs.remove(task_id);
+            ref_count = refs.len();
+        });
+        if ref_count == 0 {
+            self.refs.lock().await.remove(artifact.id());
+            self.delete(artifact, artifact_type).await?;
+            return Ok(true);
+        }
+        Ok(false)
     }
 }

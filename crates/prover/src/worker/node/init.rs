@@ -59,7 +59,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         self
     }
 
-    ///Sets the shrink air prover to the worker client builder.
+    /// Sets the shrink air prover to the worker client builder.
     pub fn with_shrink_air_prover(
         mut self,
         shrink_air_prover: Arc<RecursionProver<C>>,
@@ -82,11 +82,14 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
     pub async fn build(self) -> anyhow::Result<SP1LocalNode> {
         // Destructure the builder.
         let Self { worker_builder, mut channels } = self;
+        // Get the core options from the worker builder.
+        let opts = worker_builder.core_opts().clone();
 
         // Build the node.
         let worker = worker_builder.build().await?;
 
-        // Spawn tasks to handle all the requests
+        // Spawn tasks to handle all the requests. We must spawn a handler for each task type to
+        // avoid blocking the main thread by not having processed the input channel.
 
         // Spawn the controller handler
         tokio::task::spawn({
@@ -170,9 +173,24 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                             let elf = inputs[0].clone();
                             let common_input = inputs[1].clone();
                             let record = inputs[2].clone();
+                            let deferred_marker_task = inputs[3].clone();
                             let output = outputs[0].clone();
+                            let deferred_output = outputs[1].clone();
 
-                            let handle = worker.prover_engine().submit_prove_core_shard(id, elf, common_input, record, output).await.unwrap();
+                            let handle = worker
+                                .prover_engine()
+                                .submit_prove_core_shard(
+                                    id,
+                                    proof_id.clone(),
+                                    elf,
+                                    common_input,
+                                    record,
+                                    output,
+                                    deferred_marker_task,
+                                    deferred_output,
+                                )
+                                .await
+                                .unwrap();
                             let proof_id = proof_id.clone();
                             let tx = task_tx.clone();
                             task_set.spawn(async move {
@@ -243,11 +261,43 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                 }
             }
         });
+
+        tokio::task::spawn({
+            let mut recursion_deferred_rx =
+                channels.task_receivers.remove(&TaskType::RecursionDeferred).unwrap();
+            async move { while let Some((_task_id, _request)) = recursion_deferred_rx.recv().await {} }
+        });
+
+        tokio::task::spawn({
+            let mut marker_deferred_task_rx =
+                channels.task_receivers.remove(&TaskType::MarkerDeferredRecord).unwrap();
+            async move { while let Some((_task_id, _request)) = marker_deferred_task_rx.recv().await {} }
+        });
+
+        // Spawn the shrink wrap handler
+        tokio::task::spawn({
+            let mut shrink_wrap_rx = channels.task_receivers.remove(&TaskType::ShrinkWrap).unwrap();
+            async move { while let Some((_task_id, _request)) = shrink_wrap_rx.recv().await {} }
+        });
+
+        // Spawn the plonk wrap handler
+        tokio::task::spawn({
+            let mut plonk_wrap_rx = channels.task_receivers.remove(&TaskType::PlonkWrap).unwrap();
+            async move { while let Some((_task_id, _request)) = plonk_wrap_rx.recv().await {} }
+        });
+
+        // Spawn the groth16 wrap handler
+        tokio::task::spawn({
+            let mut groth16_wrap_rx =
+                channels.task_receivers.remove(&TaskType::Groth16Wrap).unwrap();
+            async move { while let Some((_task_id, _request)) = groth16_wrap_rx.recv().await {} }
+        });
+
         // Get the verifier, artifact client, and worker client from the worker
         let verifier = worker.verifier().clone();
         let artifact_client = worker.artifact_client().clone();
         let worker_client = worker.worker_client().clone();
-        let inner = Arc::new(SP1NodeInner { artifact_client, worker_client, verifier });
+        let inner = Arc::new(SP1NodeInner { artifact_client, worker_client, verifier, opts });
         Ok(SP1LocalNode { inner })
     }
 }

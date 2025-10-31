@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use slop_futures::pipeline::{SubmitError, TaskHandle};
+use sp1_core_executor::SP1CoreOpts;
 use sp1_hypercube::prover::ProverSemaphore;
 use sp1_prover_types::{Artifact, ArtifactClient};
 
 use crate::{
     components::{CoreProver, RecursionProver},
     worker::{
-        RawTaskRequest, SP1CoreProver, SP1CoreProverConfig, SP1RecursionProver,
+        ProofId, RawTaskRequest, SP1CoreProver, SP1CoreProverConfig, SP1RecursionProver,
         SP1RecursionProverConfig, SetupTask, TaskError, TaskId, TaskMetadata, TracingTask,
         WorkerClient,
     },
@@ -28,6 +29,7 @@ pub struct SP1ProverEngine<A, W, C: SP1ProverComponents> {
 impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine<A, W, C> {
     pub async fn new(
         config: SP1ProverConfig,
+        opts: SP1CoreOpts,
         artifact_client: A,
         worker_client: W,
         core_prover_and_permits: (Arc<CoreProver<C>>, ProverSemaphore),
@@ -43,6 +45,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
 
         let core_prover = SP1CoreProver::new(
             config.core_prover_config,
+            opts,
             artifact_client,
             worker_client,
             core_prover_and_permits.0,
@@ -54,15 +57,27 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
 
     pub async fn submit_prove_core_shard(
         &self,
-        id: TaskId,
+        task_id: TaskId,
+        proof_id: ProofId,
         elf: Artifact,
         common_input: Artifact,
         record: Artifact,
         output: Artifact,
+        deferred_marker_task: Artifact,
+        deferred_output: Artifact,
     ) -> Result<TaskHandle<Result<(TaskId, TaskMetadata), TaskError>>, SubmitError> {
         let handle = self
             .core_prover
-            .submit_prove_shard(TracingTask { id, elf, common_input, record, output })
+            .submit_prove_shard(TracingTask {
+                task_id,
+                proof_id,
+                elf,
+                common_input,
+                record,
+                output,
+                deferred_marker_task,
+                deferred_output,
+            })
             .await?;
         Ok(handle)
     }

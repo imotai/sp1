@@ -14,6 +14,7 @@ pub mod worker {
 pub use worker::*;
 
 mod utils;
+pub use utils::*;
 
 #[rustfmt::skip]
 pub mod network_base_types;

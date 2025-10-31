@@ -760,6 +760,20 @@ impl ShardRange {
             deferred_proof: self.deferred_proof_range.1,
         }
     }
+
+    /// Returns the shard range for deferred precompile shards.
+    #[must_use]
+    #[inline]
+    pub fn deferred() -> Self {
+        Self {
+            timestamp_range: (1, 1),
+            initialized_address_range: (0, 0),
+            finalized_address_range: (0, 0),
+            initialized_page_index_range: (0, 0),
+            finalized_page_index_range: (0, 0),
+            deferred_proof_range: (0, 0),
+        }
+    }
 }
 
 impl core::fmt::Display for ShardRange {

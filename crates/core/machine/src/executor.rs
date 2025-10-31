@@ -149,7 +149,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
                         let RecordTask { chunk } = task;
                         tracing::trace!("tracing chunk with worker: {}", i);
 
-                        // Assume a record is 4Gb for now.
+                        // Assume a record is 2Gb for now.
                         let permit = permitting.acquire(2 * 1024 * 1024 * 1024).await.unwrap();
 
                         let program = program.clone();
@@ -173,7 +173,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
                             // events.
                             last_record_tx.send((record, registers)).await.unwrap();
                         } else {
-                            tracing::trace!("defferring record");
+                            tracing::trace!("deferring record");
 
                             let deferred_records = {
                                 let mut deferred = deferred.lock().unwrap();
@@ -467,7 +467,7 @@ fn defer(
 
     // See if any deferred shards are ready to be committed to.
     let deferred_records = deferred.split(done, record, can_pack_global_memory, split_opts);
-    tracing::trace!("split deffered into {} records", deferred_records.len());
+    tracing::trace!("split deferred into {} records", deferred_records.len());
 
     deferred_records
 }

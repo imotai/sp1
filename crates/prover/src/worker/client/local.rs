@@ -1,16 +1,18 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use dashmap::DashMap;
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use mti::prelude::{MagicTypeIdExt, V7};
 use sp1_prover_types::{ProofRequestStatus, TaskStatus, TaskType};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, watch, RwLock};
 
 use crate::worker::{
     ProofId, RawTaskRequest, SubscriberBuilder, TaskId, TaskMetadata, WorkerClient,
 };
 
-type LocalDb = Arc<DashMap<TaskId, (watch::Sender<TaskStatus>, watch::Receiver<TaskStatus>)>>;
+type LocalDb =
+    Arc<RwLock<HashMap<TaskId, (watch::Sender<TaskStatus>, watch::Receiver<TaskStatus>)>>>;
+
+type ProofIndex = Arc<RwLock<HashMap<ProofId, HashSet<TaskId>>>>;
 
 pub struct LocalWorkerClientChannels {
     pub task_receivers: BTreeMap<TaskType, mpsc::Receiver<(TaskId, RawTaskRequest)>>,
@@ -18,6 +20,7 @@ pub struct LocalWorkerClientChannels {
 
 pub struct LocalWorkerClientInner {
     db: LocalDb,
+    proof_index: ProofIndex,
     input_task_queues: HashMap<TaskType, mpsc::Sender<(TaskId, RawTaskRequest)>>,
 }
 
@@ -86,7 +89,9 @@ impl LocalWorkerClientInner {
             task_queues.insert(task_type, task_inputs.remove(&task_type).unwrap());
         }
 
-        let inner = Self { db: Arc::new(DashMap::new()), input_task_queues: task_queues };
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let proof_index = Arc::new(RwLock::new(HashMap::new()));
+        let inner = Self { db, proof_index, input_task_queues: task_queues };
         (inner, LocalWorkerClientChannels { task_receivers: task_outputs })
     }
 }
@@ -114,14 +119,22 @@ impl WorkerClient for LocalWorkerClient {
     async fn submit_task(&self, kind: TaskType, task: RawTaskRequest) -> anyhow::Result<TaskId> {
         tracing::info!("submitting task of kind {kind:?}");
         let task_id = LocalWorkerClientInner::create_id();
+        // Add the task to the proof index.
+        self.inner
+            .proof_index
+            .write()
+            .await
+            .entry(task.proof_id.clone())
+            .or_insert_with(HashSet::new)
+            .insert(task_id.clone());
         // Create a db entry for the task.
         let (tx, rx) = watch::channel(TaskStatus::Pending);
-        self.inner.db.insert(task_id.clone(), (tx, rx));
+        self.inner.db.write().await.insert(task_id.clone(), (tx, rx));
         // Send the task to the input queue.
         self.inner.input_task_queues[&kind]
             .send((task_id.clone(), task))
             .await
-            .map_err(|_| anyhow::anyhow!("failed to send task of kind {:?} to queue", kind))?;
+            .map_err(|e| anyhow::anyhow!("failed to send task of kind {:?} to queue: {e}", kind))?;
         Ok(task_id)
     }
 
@@ -135,8 +148,9 @@ impl WorkerClient for LocalWorkerClient {
         let (status_tx, _) = self
             .inner
             .db
+            .read()
+            .await
             .get(&task_id)
-            .as_deref()
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("task does not exist"))?;
 
@@ -148,11 +162,23 @@ impl WorkerClient for LocalWorkerClient {
 
     async fn complete_proof(
         &self,
-        _proof_id: ProofId,
+        proof_id: ProofId,
         _task_id: Option<TaskId>,
         _status: ProofRequestStatus,
     ) -> anyhow::Result<()> {
-        unimplemented!("Not used for local worker client");
+        // Remove the proof from the proof index.
+        let tasks = self
+            .inner
+            .proof_index
+            .write()
+            .await
+            .remove(&proof_id)
+            .ok_or_else(|| anyhow::anyhow!("proof does not exist for id {proof_id}"))?;
+        // Prune the db for all tasks that are related to this proof and clean them up.
+        for task_id in tasks {
+            self.inner.db.write().await.remove(&task_id);
+        }
+        Ok(())
     }
 
     async fn subscriber(&self, _proof_id: ProofId) -> anyhow::Result<SubscriberBuilder<Self>> {
@@ -169,11 +195,16 @@ impl WorkerClient for LocalWorkerClient {
                     let output_tx = output_tx.clone();
                     tokio::task::spawn(async move {
                         let (_, mut rx) =
-                            db.get(&id).as_deref().cloned().expect("task does not exist");
+                            db.read().await.get(&id).cloned().expect("task does not exist");
                         rx.mark_changed();
                         while let Ok(()) = rx.changed().await {
                             let value = *rx.borrow();
-                            if matches!(value, TaskStatus::FailedFatal | TaskStatus::Succeeded) {
+                            if matches!(
+                                value,
+                                TaskStatus::FailedFatal
+                                    | TaskStatus::FailedRetryable
+                                    | TaskStatus::Succeeded
+                            ) {
                                 output_tx.send((id, value)).ok();
                                 return;
                             }

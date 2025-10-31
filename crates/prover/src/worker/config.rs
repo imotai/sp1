@@ -1,5 +1,7 @@
 use std::env;
 
+use sp1_core_executor::SP1CoreOpts;
+
 use crate::worker::{
     SP1ControllerConfig, SP1CoreProverConfig, SP1ProverConfig, SP1RecursionProverConfig,
 };
@@ -29,8 +31,15 @@ impl Default for SP1WorkerConfig {
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(DEFAULT_MAX_REDUCE_ARITY);
-        let controller_config =
-            SP1ControllerConfig { num_splicing_workers, splicing_buffer_size, max_reduce_arity };
+
+        // Use default core options as a starting point.
+        let opts = SP1CoreOpts::default();
+        let controller_config = SP1ControllerConfig {
+            opts,
+            num_splicing_workers,
+            splicing_buffer_size,
+            max_reduce_arity,
+        };
 
         // Build the core prover config.
         let num_trace_executor_workers = env::var("SP1_WORKER_NUM_TRACE_EXECUTOR_WORKERS")
