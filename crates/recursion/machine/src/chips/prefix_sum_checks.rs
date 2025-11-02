@@ -1,22 +1,22 @@
 use crate::builder::SP1RecursionAirBuilder;
 use core::borrow::Borrow;
-use itertools::Itertools;
 use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::{
     air::{BinomialExtension, MachineAir},
     next_multiple_of_32, pad_rows_fixed,
 };
+
 use sp1_primitives::SP1Field;
 use sp1_recursion_executor::{
     Address, Block, ExecutionRecord, Instruction, PrefixSumChecksEvent, PrefixSumChecksInstr,
     RecursionProgram,
 };
 
-use std::borrow::BorrowMut;
-use tracing::instrument;
+use std::{borrow::BorrowMut, mem::MaybeUninit};
 
 pub const NUM_PREFIX_SUM_CHECKS_COLS: usize = core::mem::size_of::<PrefixSumChecksCols<u8>>();
 pub const NUM_PREFIX_SUM_CHECKS_PREPROCESSED_COLS: usize =
@@ -157,53 +157,57 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
         Some(next_multiple_of_32(events.len(), height))
     }
 
-    #[instrument(name = "generate prefix sum checks trace", level = "debug", skip_all, fields(rows = input.prefix_sum_checks_events.len()))]
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord<F>,
         _: &mut ExecutionRecord<F>,
-    ) -> RowMajorMatrix<F> {
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         assert!(
             std::any::TypeId::of::<F>() == std::any::TypeId::of::<SP1Field>(),
-            "generate_trace only supports SP1Field field"
+            "generate_trace_into only supports SP1Field"
         );
+        let padded_nb_rows = <PrefixSumChecksChip as MachineAir<F>>::num_rows(self, input).unwrap();
+        let events = unsafe {
+            std::mem::transmute::<&Vec<PrefixSumChecksEvent<F>>, &Vec<PrefixSumChecksEvent<SP1Field>>>(
+                &input.prefix_sum_checks_events,
+            )
+        };
+        let num_event_rows = events.len();
 
-        let mut rows: Vec<[SP1Field; NUM_PREFIX_SUM_CHECKS_COLS]> =
-            input
-                .prefix_sum_checks_events
-                .iter()
-                .map(|event| {
-                    let bb_event = unsafe {
-                        std::mem::transmute::<
-                            &PrefixSumChecksEvent<F>,
-                            &PrefixSumChecksEvent<SP1Field>,
-                        >(event)
-                    };
-                    let mut row = [SP1Field::zero(); NUM_PREFIX_SUM_CHECKS_COLS];
-                    let cols: &mut PrefixSumChecksCols<SP1Field> = row.as_mut_slice().borrow_mut();
-                    cols.x1 = bb_event.x1;
-                    cols.x2 = bb_event.x2;
-                    cols.acc = bb_event.acc;
-                    cols.new_acc = bb_event.new_acc;
-                    cols.felt_acc = bb_event.field_acc;
-                    cols.felt_new_acc = bb_event.new_field_acc;
-                    row
-                })
-                .collect_vec();
+        unsafe {
+            let padding_start = num_event_rows * NUM_PREFIX_SUM_CHECKS_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_PREFIX_SUM_CHECKS_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
 
-        // Pad the trace to a power of two.
-        let height = input.program.shape.as_ref().and_then(|shape| shape.height(self));
-        pad_rows_fixed(&mut rows, || [SP1Field::zero(); NUM_PREFIX_SUM_CHECKS_COLS], height);
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * NUM_PREFIX_SUM_CHECKS_COLS)
+        };
 
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(
-            unsafe {
-                std::mem::transmute::<Vec<SP1Field>, Vec<F>>(
-                    rows.into_iter().flatten().collect::<Vec<SP1Field>>(),
-                )
-            },
-            NUM_PREFIX_SUM_CHECKS_COLS,
-        )
+        // Generate the trace rows & corresponding records for each chunk of events in parallel.
+        let populate_len = events.len() * NUM_PREFIX_SUM_CHECKS_COLS;
+        values[..populate_len]
+            .par_chunks_mut(NUM_PREFIX_SUM_CHECKS_COLS)
+            .zip_eq(events)
+            .for_each(|(row, vals)| {
+                let bb_event = unsafe {
+                                    std::mem::transmute::<
+                                        &PrefixSumChecksEvent<SP1Field>,
+                                        &PrefixSumChecksEvent<F>,
+                                    >(vals)
+                                };
+                let cols: &mut PrefixSumChecksCols<_> = row.borrow_mut();
+                cols.x1 = bb_event.x1;
+                cols.x2 = bb_event.x2;
+                cols.acc = bb_event.acc;
+                cols.new_acc = bb_event.new_acc;
+                cols.felt_acc = bb_event.field_acc;
+                cols.felt_new_acc = bb_event.new_field_acc;
+            });
     }
 
     fn included(&self, _: &Self::Record) -> bool {

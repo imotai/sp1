@@ -6,10 +6,13 @@ use sp1_derive::AlignedBorrow;
 use sp1_hypercube::{air::MachineAir, pad_rows_fixed};
 use sp1_primitives::SP1Field;
 use sp1_recursion_executor::{
-    CommitPublicValuesEvent, CommitPublicValuesInstr, ExecutionRecord, Instruction,
-    RecursionProgram, RecursionPublicValues, DIGEST_SIZE, RECURSIVE_PROOF_NUM_PV_ELTS,
+    CommitPublicValuesInstr, ExecutionRecord, Instruction, RecursionProgram, RecursionPublicValues,
+    DIGEST_SIZE, RECURSIVE_PROOF_NUM_PV_ELTS,
 };
-use std::borrow::{Borrow, BorrowMut};
+use std::{
+    borrow::{Borrow, BorrowMut},
+    mem::MaybeUninit,
+};
 
 use super::mem::MemoryAccessColsChips;
 use crate::chips::mem::MemoryAccessCols;
@@ -130,57 +133,37 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
         Some(trace)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord<F>,
         _: &mut ExecutionRecord<F>,
-    ) -> RowMajorMatrix<F> {
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         assert_eq!(
             std::any::TypeId::of::<F>(),
             std::any::TypeId::of::<SP1Field>(),
-            "generate_trace only supports SP1Field field"
+            "generate_trace_into only supports SP1Field"
         );
+        let padded_nb_rows = <PublicValuesChip as MachineAir<F>>::num_rows(self, input).unwrap();
 
-        if input.commit_pv_hash_events.len() != 1 {
-            tracing::warn!("Expected exactly one CommitPVHash event.");
+        unsafe {
+            let padding_size = padded_nb_rows * NUM_PUBLIC_VALUES_COLS;
+            core::ptr::write_bytes(buffer.as_mut_ptr(), 0, padding_size);
         }
 
-        let mut rows: Vec<[SP1Field; NUM_PUBLIC_VALUES_COLS]> = Vec::new();
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, padded_nb_rows * NUM_PUBLIC_VALUES_COLS)
+        };
 
-        // We only take 1 commit pv hash instruction, since our air only checks for one public
-        // values hash.
         for event in input.commit_pv_hash_events.iter().take(1) {
-            let bb_event = unsafe {
-                std::mem::transmute::<&CommitPublicValuesEvent<F>, &CommitPublicValuesEvent<SP1Field>>(
-                    event,
-                )
-            };
-
-            for element in bb_event.public_values.digest.iter() {
-                let mut row = [SP1Field::zero(); NUM_PUBLIC_VALUES_COLS];
-                let cols: &mut PublicValuesCols<SP1Field> = row.as_mut_slice().borrow_mut();
-
+            for (idx, element) in event.public_values.digest.iter().enumerate() {
+                let start = idx * NUM_PUBLIC_VALUES_COLS;
+                let end = (idx + 1) * NUM_PUBLIC_VALUES_COLS;
+                let cols: &mut PublicValuesCols<F> = values[start..end].borrow_mut();
                 cols.pv_element = *element;
-                rows.push(row);
             }
         }
-
-        // Pad the trace to 8 rows.
-        pad_rows_fixed(
-            &mut rows,
-            || [SP1Field::zero(); NUM_PUBLIC_VALUES_COLS],
-            self.num_rows(input),
-        );
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(
-            unsafe {
-                std::mem::transmute::<Vec<SP1Field>, Vec<F>>(
-                    rows.into_iter().flatten().collect::<Vec<SP1Field>>(),
-                )
-            },
-            NUM_PUBLIC_VALUES_COLS,
-        )
     }
 
     fn included(&self, _record: &Self::Record) -> bool {

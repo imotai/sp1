@@ -1,6 +1,6 @@
 use core::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 use std::{fmt::Debug, marker::PhantomData};
 
@@ -15,8 +15,10 @@ use itertools::Itertools;
 use num::{BigUint, Zero};
 use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
-use slop_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
+use slop_matrix::Matrix;
+use slop_maybe_rayon::prelude::{
+    IndexedParallelIterator, ParallelIterator, ParallelSlice, ParallelSliceMut,
+};
 use sp1_core_executor::{
     events::{
         ByteLookupEvent, ByteRecord, EllipticCurveAddEvent, FieldOperation, MemoryRecordEnum,
@@ -37,12 +39,9 @@ use sp1_hypercube::{
 };
 use sp1_primitives::consts::{PROT_READ, PROT_WRITE};
 
-use crate::{
-    operations::field::{
-        field_den::FieldDenCols, field_inner_product::FieldInnerProductCols, field_op::FieldOpCols,
-        range::FieldLtCols,
-    },
-    utils::pad_rows_fixed,
+use crate::operations::field::{
+    field_den::FieldDenCols, field_inner_product::FieldInnerProductCols, field_op::FieldOpCols,
+    range::FieldLtCols,
 };
 
 pub const NUM_ED_ADD_COLS: usize = size_of::<EdAddAssignCols<u8>>();
@@ -136,24 +135,38 @@ impl<F: PrimeField32, E: EllipticCurve + EdwardsParameters> MachineAir<F> for Ed
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
-        _: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        _output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows = <EdAddAssignChip<E> as MachineAir<F>>::num_rows(self, input).unwrap();
         let events = input.get_precompile_events(SyscallCode::ED_ADD);
+        let num_event_rows = events.len();
 
-        let mut rows = events
-            .par_iter()
-            .map(|(_, event)| {
+        unsafe {
+            let padding_start = num_event_rows * NUM_ED_ADD_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_ED_ADD_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * NUM_ED_ADD_COLS)
+        };
+
+        values.par_chunks_mut(NUM_ED_ADD_COLS).enumerate().for_each(|(idx, row)| {
+            if idx < events.len() {
+                let (_, event) = &events[idx];
                 let event = if let PrecompileEvent::EdAdd(event) = event {
                     event
                 } else {
                     unreachable!();
                 };
-
-                let mut row = [F::zero(); NUM_ED_ADD_COLS];
-                let cols: &mut EdAddAssignCols<F> = row.as_mut_slice().borrow_mut();
+                let cols: &mut EdAddAssignCols<F> = row.borrow_mut();
                 let mut blu = Vec::new();
                 self.event_to_row(
                     event,
@@ -161,31 +174,28 @@ impl<F: PrimeField32, E: EllipticCurve + EdwardsParameters> MachineAir<F> for Ed
                     input.public_values.is_untrusted_programs_enabled,
                     &mut blu,
                 );
-                row
-            })
-            .collect::<Vec<_>>();
+            }
+        });
 
-        pad_rows_fixed(
-            &mut rows,
-            || {
-                let mut row = [F::zero(); NUM_ED_ADD_COLS];
-                let cols: &mut EdAddAssignCols<F> = row.as_mut_slice().borrow_mut();
-                let zero = BigUint::zero();
-                Self::populate_field_ops(
-                    &mut vec![],
-                    cols,
-                    zero.clone(),
-                    zero.clone(),
-                    zero.clone(),
-                    zero,
-                );
-                row
-            },
-            input.fixed_log2_rows::<F, _>(self),
-        );
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_ED_ADD_COLS)
+        for idx in num_event_rows..padded_nb_rows {
+            let row_start = idx * NUM_ED_ADD_COLS;
+            let row = unsafe {
+                core::slice::from_raw_parts_mut(
+                    buffer[row_start..].as_mut_ptr() as *mut F,
+                    NUM_ED_ADD_COLS,
+                )
+            };
+            let cols: &mut EdAddAssignCols<F> = row.borrow_mut();
+            let zero = BigUint::zero();
+            Self::populate_field_ops(
+                &mut vec![],
+                cols,
+                zero.clone(),
+                zero.clone(),
+                zero.clone(),
+                zero,
+            );
+        }
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
@@ -288,6 +298,9 @@ impl<E: EllipticCurve + EdwardsParameters> EdAddAssignChip<E> {
                 &event.page_prot_records.write_page_prot_records.get(1).copied(),
                 page_prot_enabled,
             );
+        } else {
+            cols.read_slice_page_prot_access = AddressSlicePageProtOperation::default();
+            cols.write_slice_page_prot_access = AddressSlicePageProtOperation::default();
         }
     }
 }

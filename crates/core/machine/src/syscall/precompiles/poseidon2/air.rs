@@ -5,14 +5,15 @@ use crate::{
         AddrAddOperation, AddressSlicePageProtOperation, SP1FieldWordRangeChecker,
         SyscallAddrOperation,
     },
-    utils::{next_multiple_of_32, zeroed_f_vec},
+    utils::next_multiple_of_32,
 };
 use hashbrown::HashMap;
 use itertools::Itertools;
-use rayon::iter::{ParallelBridge, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, ParallelBridge, ParallelIterator};
 use slop_air::{Air, AirBuilder, BaseAir, PairBuilder};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
+use slop_maybe_rayon::prelude::ParallelSliceMut;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemoryRecordEnum, PrecompileEvent},
     syscalls::SyscallCode,
@@ -27,7 +28,7 @@ use sp1_hypercube::{
 use sp1_primitives::consts::{PROT_READ, PROT_WRITE};
 use std::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 
 /// The number of columns in Poseidon2Cols.
@@ -96,19 +97,35 @@ impl<F: PrimeField32> MachineAir<F> for Poseidon2Chip {
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         _: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         // Generate the trace rows & corresponding records for each event.
         let events = input.get_precompile_events(SyscallCode::POSEIDON2);
+        let num_event_rows = events.len();
         let chunk_size = std::cmp::max(events.len() / num_cpus::get(), 1);
         let padded_nb_rows = <Poseidon2Chip as MachineAir<F>>::num_rows(self, input).unwrap();
-        let mut values = zeroed_f_vec(padded_nb_rows * NUM_COLS);
 
-        values.chunks_mut(chunk_size * NUM_COLS).enumerate().par_bridge().for_each(|(i, rows)| {
+        unsafe {
+            let padding_start = num_event_rows * NUM_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values =
+            unsafe { core::slice::from_raw_parts_mut(buffer_ptr, padded_nb_rows * NUM_COLS) };
+
+        values.par_chunks_mut(chunk_size * NUM_COLS).enumerate().for_each(|(i, rows)| {
             rows.chunks_mut(NUM_COLS).enumerate().for_each(|(j, row)| {
+                unsafe {
+                    core::ptr::write_bytes(row.as_mut_ptr(), 0, NUM_COLS);
+                }
                 let idx = i * chunk_size + j;
                 let cols: &mut Poseidon2Cols2<F> = row.borrow_mut();
 
@@ -202,6 +219,9 @@ impl<F: PrimeField32> MachineAir<F> for Poseidon2Chip {
                             &event.page_prot_records.get(1).copied(),
                             input.public_values.is_untrusted_programs_enabled,
                         );
+                    } else {
+                        cols.address_slice_page_prot_access =
+                            AddressSlicePageProtOperation::default();
                     }
                 } else {
                     // Populate with dummy Poseidon2 operation for padding rows.
@@ -214,9 +234,6 @@ impl<F: PrimeField32> MachineAir<F> for Poseidon2Chip {
                 }
             });
         });
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, NUM_COLS)
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {

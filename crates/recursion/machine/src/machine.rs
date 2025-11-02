@@ -4,8 +4,6 @@ use slop_algebra::{extension::BinomiallyExtendable, PrimeField32};
 use sp1_hypercube::{air::MachineAir, Chip, Machine, MachineShape, PROOF_MAX_NUM_PVS};
 use sp1_recursion_executor::{ExecutionRecord, RecursionAirEventCount, RecursionProgram, D};
 
-use strum::{EnumDiscriminants, EnumIter};
-
 use crate::chips::{
     alu_base::{BaseAluChip, NUM_BASE_ALU_ENTRIES_PER_ROW},
     alu_ext::{ExtAluChip, NUM_EXT_ALU_ENTRIES_PER_ROW},
@@ -20,6 +18,8 @@ use crate::chips::{
     public_values::{PublicValuesChip, PUB_VALUES_LOG_HEIGHT},
     select::SelectChip,
 };
+use std::mem::MaybeUninit;
+use strum::{EnumDiscriminants, EnumIter};
 
 #[derive(sp1_derive::MachineAir, EnumDiscriminants, Clone)]
 #[execution_record_path = "ExecutionRecord<F>"]

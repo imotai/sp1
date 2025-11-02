@@ -1,7 +1,7 @@
 use core::borrow::Borrow;
 use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, PrecompileEvent},
     syscalls::SyscallCode,
@@ -10,7 +10,7 @@ use sp1_core_executor::{
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::air::{InteractionScope, MachineAir};
 use sp1_primitives::consts::{PROT_EXEC, PROT_READ, PROT_WRITE};
-use std::borrow::BorrowMut;
+use std::{borrow::BorrowMut, mem::MaybeUninit};
 
 use crate::{air::SP1CoreAirBuilder, memory::PageProtAccessCols, utils::next_multiple_of_32};
 
@@ -77,28 +77,42 @@ impl<F: PrimeField32> MachineAir<F> for MProtectChip {
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
-        let mut rows = Vec::new();
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows = <MProtectChip as MachineAir<F>>::num_rows(self, input).unwrap();
         let mut blu_events = Vec::new();
 
         let mprotect_events = input.get_precompile_events(SyscallCode::MPROTECT);
+        let num_event_rows = mprotect_events.len();
         if input.public_values.is_untrusted_programs_enabled == 0 {
             assert!(
                 mprotect_events.is_empty(),
                 "Page protect is disabled, but mprotect events are present"
             );
         }
-        for (_, event) in mprotect_events.iter() {
+
+        unsafe {
+            let padding_start = num_event_rows * NUM_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values =
+            unsafe { core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * NUM_COLS) };
+
+        values.chunks_mut(NUM_COLS).enumerate().for_each(|(idx, row)| {
+            let event = &mprotect_events[idx].1;
             let event =
                 if let PrecompileEvent::Mprotect(event) = event { event } else { unreachable!() };
 
-            let mut row = [F::zero(); NUM_COLS];
-            let cols: &mut MProtectCols<F> = row.as_mut_slice().borrow_mut();
-
+            let cols: &mut MProtectCols<F> = row.borrow_mut();
             // Set clock
             assert!(event.local_page_prot_access.len() == 1);
             let clk = event.local_page_prot_access[0].final_page_prot_access.timestamp;
@@ -146,25 +160,10 @@ impl<F: PrimeField32> MachineAir<F> for MProtectChip {
             );
 
             cols.is_real = F::one();
-
-            rows.push(row);
-        }
-
-        let nb_rows = rows.len();
-        let mut padded_nb_rows = nb_rows.next_multiple_of(32);
-        if padded_nb_rows == 2 || padded_nb_rows == 1 {
-            padded_nb_rows = 4;
-        }
-        for _ in nb_rows..padded_nb_rows {
-            let row = [F::zero(); NUM_COLS];
-            rows.push(row);
-        }
+        });
 
         // Add byte lookup events to output
         output.add_byte_lookup_events(blu_events);
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_COLS)
     }
 
     fn included(&self, shard: &Self::Record) -> bool {

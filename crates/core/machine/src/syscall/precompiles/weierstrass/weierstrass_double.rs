@@ -16,7 +16,7 @@ use itertools::Itertools;
 use num::{BigUint, One, Zero};
 use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{
@@ -37,7 +37,7 @@ use sp1_hypercube::{
     Word,
 };
 use sp1_primitives::consts::{PROT_READ, PROT_WRITE};
-use std::{fmt::Debug, marker::PhantomData};
+use std::{fmt::Debug, marker::PhantomData, mem::MaybeUninit};
 
 pub const fn num_weierstrass_double_cols<P: FieldParameters + NumWords>() -> usize {
     size_of::<WeierstrassDoubleAssignCols<u8, P>>()
@@ -238,12 +238,14 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         }
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
-        _: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
-        // collects the events based on the curve type.
+        _output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows =
+            <WeierstrassDoubleAssignChip<E> as MachineAir<F>>::num_rows(self, input).unwrap();
         let events = match E::CURVE_TYPE {
             CurveType::Secp256k1 => input.get_precompile_events(SyscallCode::SECP256K1_DOUBLE),
             CurveType::Secp256r1 => input.get_precompile_events(SyscallCode::SECP256R1_DOUBLE),
@@ -252,13 +254,21 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
             _ => panic!("Unsupported curve"),
         };
 
+        let num_event_rows = events.len();
         let num_cols = num_weierstrass_double_cols::<E::BaseField>();
-        let num_rows = input
-            .fixed_log2_rows::<F, _>(self)
-            .map(|x| 1 << x)
-            .unwrap_or(std::cmp::max(events.len().next_multiple_of(32), 4));
-        let mut values = zeroed_f_vec(num_rows * num_cols);
         let chunk_size = 64;
+
+        unsafe {
+            let padding_start = num_event_rows * num_cols;
+            let padding_size = (padded_nb_rows - num_event_rows) * num_cols;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values =
+            unsafe { core::slice::from_raw_parts_mut(buffer_ptr, padded_nb_rows * num_cols) };
 
         let num_words_field_element = E::BaseField::NB_LIMBS / 8;
         let mut dummy_row = zeroed_f_vec(num_cols);
@@ -302,9 +312,6 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                 }
             });
         });
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, num_weierstrass_double_cols::<E::BaseField>())
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -367,6 +374,8 @@ impl<E: EllipticCurve + WeierstrassParameters> WeierstrassDoubleAssignChip<E> {
                 &event.write_slice_page_prot_access.get(1).copied(),
                 page_prot_enabled,
             );
+        } else {
+            cols.write_slice_page_prot_access = AddressSlicePageProtOperation::default();
         }
     }
 }

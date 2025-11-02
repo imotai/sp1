@@ -1,17 +1,17 @@
 use core::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 
 use crate::{
     air::{SP1CoreAirBuilder, SP1Operation, WordAirBuilder},
     operations::{IsZeroOperation, IsZeroOperationInput},
     program::InstructionCols,
-    utils::{next_multiple_of_32, pad_rows_fixed},
+    utils::next_multiple_of_32,
 };
 use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use sp1_core_executor::{ExecutionRecord, InstructionType, Opcode, Program};
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::{
@@ -72,17 +72,35 @@ impl<F: PrimeField32> MachineAir<F> for InstructionDecodeChip {
         // Do nothing since this chip has no dependencies.
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         _output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
-        // Generate the trace rows for each event.
-        let mut rows = Vec::new();
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows =
+            <InstructionDecodeChip as MachineAir<F>>::num_rows(self, input).unwrap();
+        let num_event_rows = input.instruction_decode_events.len();
 
-        for event in input.instruction_decode_events.iter() {
-            let mut row = [F::zero(); NUM_INSTRUCTION_DECODE_COLS];
-            let cols: &mut InstructionDecodeCols<F> = row.as_mut_slice().borrow_mut();
+        unsafe {
+            let padding_start = num_event_rows * NUM_INSTRUCTION_DECODE_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_INSTRUCTION_DECODE_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(
+                buffer_ptr,
+                num_event_rows * NUM_INSTRUCTION_DECODE_COLS,
+            )
+        };
+
+        values.chunks_mut(NUM_INSTRUCTION_DECODE_COLS).enumerate().for_each(|(idx, row)| {
+            let cols: &mut InstructionDecodeCols<F> = row.borrow_mut();
+            let event = &input.instruction_decode_events[idx];
 
             let instruction = event.instruction;
             cols.instruction.populate(&instruction);
@@ -157,21 +175,7 @@ impl<F: PrimeField32> MachineAir<F> for InstructionDecodeChip {
             }
 
             cols.multiplicity = F::from_canonical_usize(event.multiplicity);
-
-            rows.push(row);
-        }
-
-        // Pad the trace to a power of two depending on the proof shape in `input`.
-        pad_rows_fixed(
-            &mut rows,
-            || [F::zero(); NUM_INSTRUCTION_DECODE_COLS],
-            input.fixed_log2_rows::<F, _>(self),
-        );
-
-        RowMajorMatrix::new(
-            rows.into_iter().flatten().collect::<Vec<_>>(),
-            NUM_INSTRUCTION_DECODE_COLS,
-        )
+        });
     }
 
     fn included(&self, shard: &Self::Record) -> bool {

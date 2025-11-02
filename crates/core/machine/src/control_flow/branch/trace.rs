@@ -1,17 +1,16 @@
-use std::borrow::BorrowMut;
+use std::{borrow::BorrowMut, mem::MaybeUninit};
 
 use hashbrown::HashMap;
 use itertools::Itertools;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use slop_algebra::PrimeField32;
-use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{
     events::{BranchEvent, ByteLookupEvent, ByteRecord},
     ExecutionRecord, Opcode, Program,
 };
 use sp1_hypercube::air::MachineAir;
 
-use crate::utils::{next_multiple_of_32, zeroed_f_vec};
+use crate::utils::next_multiple_of_32;
 
 use super::{BranchChip, BranchColumns, NUM_BRANCH_COLS};
 
@@ -30,40 +29,71 @@ impl<F: PrimeField32> MachineAir<F> for BranchChip {
         Some(nb_rows)
     }
 
-    fn generate_trace(
-        &self,
-        input: &ExecutionRecord,
-        output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+    fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
         let chunk_size = std::cmp::max((input.branch_events.len()) / num_cpus::get(), 1);
-        let padded_nb_rows = <BranchChip as MachineAir<F>>::num_rows(self, input).unwrap();
-        let mut values = zeroed_f_vec(padded_nb_rows * NUM_BRANCH_COLS);
 
-        let blu_events = values
-            .chunks_mut(chunk_size * NUM_BRANCH_COLS)
-            .enumerate()
+        let blu_batches = input
+            .branch_events
+            .chunks(chunk_size)
             .par_bridge()
-            .map(|(i, rows)| {
+            .map(|events| {
                 let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
-                rows.chunks_mut(NUM_BRANCH_COLS).enumerate().for_each(|(j, row)| {
-                    let idx = i * chunk_size + j;
-                    let cols: &mut BranchColumns<F> = row.borrow_mut();
+                events.iter().for_each(|event| {
+                    let mut row = [F::zero(); NUM_BRANCH_COLS];
+                    let cols: &mut BranchColumns<F> = row.as_mut_slice().borrow_mut();
 
-                    if idx < input.branch_events.len() {
-                        let event = &input.branch_events[idx];
-                        self.event_to_row(&event.0, cols, &mut blu);
-                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-                        cols.adapter.populate(&mut blu, event.1);
-                    }
+                    self.event_to_row(&event.0, cols, &mut blu);
+                    cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                    cols.adapter.populate(&mut blu, event.1);
                 });
                 blu
             })
             .collect::<Vec<_>>();
 
-        output.add_byte_lookup_events_from_maps(blu_events.iter().collect_vec());
+        output.add_byte_lookup_events_from_maps(blu_batches.iter().collect_vec());
+    }
 
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, NUM_BRANCH_COLS)
+    fn generate_trace_into(
+        &self,
+        input: &ExecutionRecord,
+        _output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        // Generate the rows for the trace.
+        let chunk_size = std::cmp::max(input.branch_events.len() / num_cpus::get(), 1);
+        let padded_nb_rows = <BranchChip as MachineAir<F>>::num_rows(self, input).unwrap();
+
+        let num_event_rows = input.branch_events.len();
+
+        unsafe {
+            let padding_start = num_event_rows * NUM_BRANCH_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_BRANCH_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * NUM_BRANCH_COLS)
+        };
+
+        values.chunks_mut(chunk_size * NUM_BRANCH_COLS).enumerate().par_bridge().for_each(
+            |(i, rows)| {
+                let mut blu = Vec::new();
+                rows.chunks_mut(NUM_BRANCH_COLS).enumerate().for_each(|(j, row)| {
+                    let idx = i * chunk_size + j;
+                    let cols: &mut BranchColumns<F> = row.borrow_mut();
+
+                    if idx < input.branch_events.len() {
+                        let event = input.branch_events[idx];
+                        self.event_to_row(&event.0, cols, &mut blu);
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                        cols.adapter.populate(&mut blu, event.1);
+                    }
+                });
+            },
+        );
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -81,7 +111,7 @@ impl BranchChip {
         &self,
         event: &BranchEvent,
         cols: &mut BranchColumns<F>,
-        blu: &mut HashMap<ByteLookupEvent, usize>,
+        blu: &mut impl ByteRecord,
     ) {
         cols.is_beq = F::from_bool(matches!(event.opcode, Opcode::BEQ));
         cols.is_bne = F::from_bool(matches!(event.opcode, Opcode::BNE));
@@ -126,6 +156,8 @@ impl BranchChip {
 
         if branching {
             cols.is_branching = F::one();
+        } else {
+            cols.is_branching = F::zero();
         }
     }
 }

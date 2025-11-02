@@ -1,15 +1,16 @@
 use hashbrown::HashMap;
 use itertools::Itertools;
 use slop_algebra::PrimeField32;
-use slop_matrix::dense::RowMajorMatrix;
-use slop_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
+use slop_maybe_rayon::prelude::{
+    IndexedParallelIterator, ParallelIterator, ParallelSlice, ParallelSliceMut,
+};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemoryRecordEnum, PrecompileEvent, ShaExtendEvent},
     syscalls::SyscallCode,
     ByteOpcode, ExecutionRecord, Program,
 };
 use sp1_hypercube::air::MachineAir;
-use std::borrow::BorrowMut;
+use std::{borrow::BorrowMut, mem::MaybeUninit};
 
 use crate::utils::next_multiple_of_32;
 
@@ -32,31 +33,40 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendChip {
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         _: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
-        let rows = Vec::new();
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows = <ShaExtendChip as MachineAir<F>>::num_rows(self, input).unwrap();
+        let events = input.get_precompile_events(SyscallCode::SHA_EXTEND);
 
-        let mut new_byte_lookup_events = Vec::new();
-        let mut wrapped_rows = Some(rows);
-        for (_, event) in input.get_precompile_events(SyscallCode::SHA_EXTEND).iter() {
+        let num_event_rows = events.len() * 48;
+
+        unsafe {
+            let padding_start = num_event_rows * NUM_SHA_EXTEND_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_SHA_EXTEND_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * NUM_SHA_EXTEND_COLS)
+        };
+
+        values.par_chunks_mut(NUM_SHA_EXTEND_COLS * 48).enumerate().for_each(|(idx, row)| {
+            let mut blu = Vec::new();
+            let event = &events[idx].1;
             let event =
                 if let PrecompileEvent::ShaExtend(event) = event { event } else { unreachable!() };
-            self.event_to_rows(event, &mut wrapped_rows, &mut new_byte_lookup_events);
-        }
-
-        let mut rows = wrapped_rows.unwrap();
-        let nb_rows = rows.len();
-        let padded_nb_rows = nb_rows.next_multiple_of(32);
-        for _ in nb_rows..padded_nb_rows {
-            let row = [F::zero(); NUM_SHA_EXTEND_COLS];
-            rows.push(row);
-        }
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_SHA_EXTEND_COLS)
+            unsafe {
+                core::ptr::write_bytes(row.as_mut_ptr(), 0, NUM_SHA_EXTEND_COLS * 48);
+            }
+            self.event_to_rows(event, row, &mut blu);
+        });
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
@@ -67,13 +77,14 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendChip {
             .par_chunks(chunk_size)
             .map(|events| {
                 let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
+                let mut row = vec![F::zero(); NUM_SHA_EXTEND_COLS * 48];
                 events.iter().for_each(|(_, event)| {
                     let event = if let PrecompileEvent::ShaExtend(event) = event {
                         event
                     } else {
                         unreachable!()
                     };
-                    self.event_to_rows::<F>(event, &mut None, &mut blu);
+                    self.event_to_rows::<F>(event, &mut row, &mut blu);
                 });
                 blu
             })
@@ -95,15 +106,16 @@ impl ShaExtendChip {
     fn event_to_rows<F: PrimeField32>(
         &self,
         event: &ShaExtendEvent,
-        rows: &mut Option<Vec<[F; NUM_SHA_EXTEND_COLS]>>,
+        rows: &mut [F],
         blu: &mut impl ByteRecord,
     ) {
         // Extend now begins one cycle after the actual syscall itself, therefore need to use
         // a bumped clk.
         let bumped_clk = event.clk + 1;
         for j in 0..48usize {
-            let mut row = [F::zero(); NUM_SHA_EXTEND_COLS];
-            let cols: &mut ShaExtendCols<F> = row.as_mut_slice().borrow_mut();
+            let start = j * NUM_SHA_EXTEND_COLS;
+            let end = (j + 1) * NUM_SHA_EXTEND_COLS;
+            let cols: &mut ShaExtendCols<F> = rows[start..end].borrow_mut();
             cols.is_real = F::one();
             let i = j as u64 + 16;
             cols.i = F::from_canonical_u64(i);
@@ -171,10 +183,6 @@ impl ShaExtendChip {
                 b: j as u8,
                 c: 48,
             });
-
-            if rows.as_ref().is_some() {
-                rows.as_mut().unwrap().push(row);
-            }
         }
     }
 }

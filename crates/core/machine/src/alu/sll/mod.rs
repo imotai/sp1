@@ -1,14 +1,14 @@
 use core::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 
 use hashbrown::HashMap;
 use itertools::Itertools;
 use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, Field, PrimeField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
-use slop_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
+use slop_matrix::Matrix;
+use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
     ALUTypeRecord, ByteOpcode, ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
@@ -24,7 +24,7 @@ use crate::{
     },
     air::{SP1CoreAirBuilder, SP1Operation},
     operations::{U16MSBOperation, U16MSBOperationInput},
-    utils::{next_multiple_of_32, pad_rows_fixed},
+    utils::next_multiple_of_32,
 };
 
 /// The number of main trace columns for `ShiftLeft`.
@@ -102,41 +102,30 @@ impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
         Some(nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
-        _: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        _output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         // Generate the trace rows for each event.
-        let mut rows: Vec<[F; NUM_SHIFT_LEFT_COLS]> = vec![];
-        let shift_left_events = input.shift_left_events.clone();
-        for event in shift_left_events.iter() {
-            let mut row = [F::zero(); NUM_SHIFT_LEFT_COLS];
-            let cols: &mut ShiftLeftCols<F> = row.as_mut_slice().borrow_mut();
-            let mut blu = Vec::new();
-            cols.adapter.populate(&mut blu, event.1);
-            self.event_to_row(&event.0, &event.1, cols, &mut blu);
-            cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-            rows.push(row);
+        let padded_nb_rows = <ShiftLeft as MachineAir<F>>::num_rows(self, input).unwrap();
+        let nb_rows = input.shift_left_events.len();
+        let chunk_size = std::cmp::max((padded_nb_rows + 1) / num_cpus::get(), 1);
+
+        unsafe {
+            let padding_start = nb_rows * NUM_SHIFT_LEFT_COLS;
+            let padding_size = (padded_nb_rows - nb_rows) * NUM_SHIFT_LEFT_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
         }
 
-        // Pad the trace to a power of two depending on the proof shape in `input`.
-        pad_rows_fixed(
-            &mut rows,
-            || [F::zero(); NUM_SHIFT_LEFT_COLS],
-            input.fixed_log2_rows::<F, _>(self),
-        );
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, padded_nb_rows * NUM_SHIFT_LEFT_COLS)
+        };
 
-        assert_eq!(rows.len(), <ShiftLeft as MachineAir<F>>::num_rows(self, input).unwrap());
-
-        // Convert the trace to a row major matrix.
-        let mut trace = RowMajorMatrix::new(
-            rows.into_iter().flatten().collect::<Vec<_>>(),
-            NUM_SHIFT_LEFT_COLS,
-        );
-
-        // Create the template for the padded rows. These are fake rows that don't fail on some
-        // sanity checks.
         let padded_row_template = {
             let mut row = [F::zero(); NUM_SHIFT_LEFT_COLS];
             let cols: &mut ShiftLeftCols<F> = row.as_mut_slice().borrow_mut();
@@ -145,12 +134,25 @@ impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
             cols.v_0123 = F::one();
             row
         };
-        debug_assert!(padded_row_template.len() == NUM_SHIFT_LEFT_COLS);
-        for i in input.shift_left_events.len() * NUM_SHIFT_LEFT_COLS..trace.values.len() {
-            trace.values[i] = padded_row_template[i % NUM_SHIFT_LEFT_COLS];
-        }
 
-        trace
+        values.chunks_mut(chunk_size * NUM_SHIFT_LEFT_COLS).enumerate().par_bridge().for_each(
+            |(i, rows)| {
+                rows.chunks_mut(NUM_SHIFT_LEFT_COLS).enumerate().for_each(|(j, row)| {
+                    let idx = i * chunk_size + j;
+                    let cols: &mut ShiftLeftCols<F> = row.borrow_mut();
+
+                    if idx < nb_rows {
+                        let mut blu = Vec::new();
+                        let event = &input.shift_left_events[idx];
+                        cols.adapter.populate(&mut blu, event.1);
+                        self.event_to_row(&event.0, &event.1, cols, &mut blu);
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                    } else {
+                        row.copy_from_slice(&padded_row_template);
+                    }
+                });
+            },
+        );
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
@@ -199,6 +201,8 @@ impl ShiftLeft {
             let sllw_val = ((event.b as i64) << (c & 0x1f)) as u32;
             let sllw_limbs = u32_to_u16_limbs(sllw_val);
             cols.sllw_msb.populate_msb(blu, sllw_limbs[1]);
+        } else {
+            cols.sllw_msb.msb = F::zero();
         }
 
         cols.a = Word::from(event.a);

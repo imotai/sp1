@@ -1,13 +1,12 @@
-use std::borrow::BorrowMut;
+use std::mem::MaybeUninit;
 
-use crate::utils::zeroed_f_vec;
 use slop_algebra::PrimeField32;
 use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{events::ByteRecord, ByteOpcode, ExecutionRecord, Program};
 use sp1_hypercube::air::MachineAir;
 
 use super::{
-    columns::{RangeMultCols, NUM_RANGE_MULT_COLS, NUM_RANGE_PREPROCESSED_COLS},
+    columns::{NUM_RANGE_MULT_COLS, NUM_RANGE_PREPROCESSED_COLS},
     RangeChip,
 };
 
@@ -63,24 +62,26 @@ impl<F: PrimeField32> MachineAir<F> for RangeChip<F> {
         }
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         _output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
-        let mut trace =
-            RowMajorMatrix::new(zeroed_f_vec(NUM_RANGE_MULT_COLS * NUM_ROWS), NUM_RANGE_MULT_COLS);
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values =
+            unsafe { core::slice::from_raw_parts_mut(buffer_ptr, NUM_RANGE_MULT_COLS * NUM_ROWS) };
+        unsafe {
+            core::ptr::write_bytes(values.as_mut_ptr(), 0, NUM_RANGE_MULT_COLS * NUM_ROWS);
+        }
 
         for (lookup, mult) in input.byte_lookups.iter() {
             if lookup.opcode != ByteOpcode::Range {
                 continue;
             }
             let row = (lookup.a as usize) + (1 << lookup.b);
-            let cols: &mut RangeMultCols<F> = trace.row_mut(row).borrow_mut();
-            cols.multiplicity += F::from_canonical_usize(*mult);
+            values[row] = F::from_canonical_usize(*mult);
         }
-
-        trace
     }
 
     fn included(&self, _shard: &Self::Record) -> bool {

@@ -8,11 +8,11 @@ use sp1_hypercube::{
     operations::poseidon2::{trace::populate_perm, WIDTH},
 };
 use sp1_primitives::SP1Field;
-use sp1_recursion_executor::{
-    ExecutionRecord, Instruction, Poseidon2Instr, Poseidon2Io, RecursionProgram,
+use sp1_recursion_executor::{ExecutionRecord, Instruction, Poseidon2Instr, RecursionProgram};
+use std::{
+    borrow::BorrowMut,
+    mem::{size_of, MaybeUninit},
 };
-use std::{borrow::BorrowMut, mem::size_of};
-use tracing::instrument;
 
 use super::{columns::preprocessed::Poseidon2PreprocessedColsWide, Poseidon2WideChip};
 use crate::chips::mem::MemoryAccessCols;
@@ -39,49 +39,45 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
         Some(next_multiple_of_32(events.len(), height))
     }
 
-    #[instrument(name = "generate poseidon2 wide trace", level = "debug", skip_all, fields(rows = input.poseidon2_events.len()))]
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord<F>,
-        _output: &mut ExecutionRecord<F>,
-    ) -> RowMajorMatrix<F> {
+        _: &mut ExecutionRecord<F>,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         assert_eq!(
             std::any::TypeId::of::<F>(),
             std::any::TypeId::of::<SP1Field>(),
-            "generate_trace only supports SP1Field field"
+            "generate_trace_into only supports SP1Field field"
         );
 
-        let events = unsafe {
-            std::mem::transmute::<&Vec<Poseidon2Io<F>>, &Vec<Poseidon2Io<SP1Field>>>(
-                &input.poseidon2_events,
-            )
-        };
         let padded_nb_rows = self.num_rows(input).unwrap();
         let num_columns = <Self as BaseAir<SP1Field>>::width(self);
-        let mut values = vec![SP1Field::zero(); padded_nb_rows * num_columns];
 
-        let populate_len = input.poseidon2_events.len() * num_columns;
-        let (values_pop, values_dummy) = values.split_at_mut(populate_len);
+        let events = &input.poseidon2_events;
+        let num_event_rows = events.len();
 
-        join(
-            || {
-                values_pop.par_chunks_mut(num_columns).zip_eq(events).for_each(|(row, &event)| {
-                    populate_perm::<SP1Field, DEGREE>(event.input, Some(event.output), row);
-                })
-            },
-            || {
-                let mut dummy_row = vec![SP1Field::zero(); num_columns];
-                populate_perm::<SP1Field, DEGREE>([SP1Field::zero(); WIDTH], None, &mut dummy_row);
-                values_dummy
-                    .par_chunks_mut(num_columns)
-                    .for_each(|row| row.copy_from_slice(&dummy_row))
-            },
-        );
+        unsafe {
+            let padding_start = num_event_rows * num_columns;
+            let padding_size = (padded_nb_rows - num_event_rows) * num_columns;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
 
-        RowMajorMatrix::new(
-            unsafe { std::mem::transmute::<Vec<SP1Field>, Vec<F>>(values) },
-            num_columns,
-        )
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values =
+            unsafe { core::slice::from_raw_parts_mut(buffer_ptr, padded_nb_rows * num_columns) };
+
+        // Generate the trace rows & corresponding records for each chunk of events in parallel.
+        values.par_chunks_mut(num_columns).enumerate().for_each(|(idx, row)| {
+            if idx < events.len() {
+                let event = events[idx];
+                populate_perm::<F, DEGREE>(event.input, Some(event.output), row);
+            } else {
+                populate_perm::<F, DEGREE>([F::zero(); WIDTH], None, row);
+            }
+        });
     }
 
     fn included(&self, _record: &Self::Record) -> bool {

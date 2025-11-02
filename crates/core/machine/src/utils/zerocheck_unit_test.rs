@@ -48,6 +48,15 @@ impl<F: PrimeField32> MachineAir<F> for MinimalAddChip {
         Some(input.len().next_multiple_of(32))
     }
 
+    fn generate_trace_into(
+        &self,
+        _input: &Self::Record,
+        _output: &mut Self::Record,
+        _buffer: &mut [std::mem::MaybeUninit<F>],
+    ) {
+        unimplemented!();
+    }
+
     fn generate_trace(
         &self,
         input: &Vec<(u32, u32, u32)>,

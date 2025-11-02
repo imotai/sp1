@@ -1,4 +1,7 @@
-use std::{borrow::Borrow, mem::transmute};
+use std::{
+    borrow::Borrow,
+    mem::{transmute, MaybeUninit},
+};
 
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelBridge,
@@ -7,7 +10,7 @@ use rayon::iter::{
 use rayon_scan::ScanParallelIterator;
 use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::PrimeField32;
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, GlobalInteractionEvent},
     ExecutionRecord, Program,
@@ -23,7 +26,7 @@ use std::borrow::BorrowMut;
 
 use crate::{
     operations::{GlobalAccumulationOperation, GlobalInteractionOperation},
-    utils::{indices_arr, next_multiple_of_32, zeroed_f_vec},
+    utils::{indices_arr, next_multiple_of_32},
 };
 use sp1_derive::AlignedBorrow;
 
@@ -109,14 +112,22 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(&self, input: &Self::Record, output: &mut Self::Record) -> RowMajorMatrix<F> {
+    fn generate_trace_into(
+        &self,
+        input: &ExecutionRecord,
+        output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         let events = &input.global_interaction_events;
 
         let nb_rows = events.len();
         let padded_nb_rows = <GlobalChip as MachineAir<F>>::num_rows(self, input).unwrap();
-        let mut values = zeroed_f_vec(padded_nb_rows * NUM_GLOBAL_COLS);
         let chunk_size = std::cmp::max(nb_rows / num_cpus::get(), 0) + 1;
 
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, padded_nb_rows * NUM_GLOBAL_COLS)
+        };
         let mut chunks = values[..nb_rows * NUM_GLOBAL_COLS]
             .chunks_mut(chunk_size * NUM_GLOBAL_COLS)
             .collect::<Vec<_>>();
@@ -140,7 +151,9 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
                     cols.is_real = F::one();
                     if event.is_receive {
                         cols.is_receive = F::one();
+                        cols.is_send = F::zero();
                     } else {
+                        cols.is_receive = F::zero();
                         cols.is_send = F::one();
                     }
                     cols.message_0_16bit_limb =
@@ -180,6 +193,11 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
             |(i, rows)| {
                 rows.chunks_mut(NUM_GLOBAL_COLS).enumerate().for_each(|(j, row)| {
                     let idx = i * chunk_size + j;
+                    if idx >= nb_rows {
+                        unsafe {
+                            core::ptr::write_bytes(row.as_mut_ptr(), 0, NUM_GLOBAL_COLS);
+                        }
+                    }
                     let cols: &mut GlobalCols<F> = row.borrow_mut();
                     if idx < nb_rows {
                         cols.accumulation.populate_real(
@@ -194,8 +212,6 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
                 });
             },
         );
-
-        RowMajorMatrix::new(values, NUM_GLOBAL_COLS)
     }
 
     fn included(&self, _: &Self::Record) -> bool {

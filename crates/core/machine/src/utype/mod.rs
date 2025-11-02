@@ -3,7 +3,7 @@ use itertools::Itertools;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
@@ -14,7 +14,7 @@ use sp1_hypercube::{air::MachineAir, Word};
 use sp1_primitives::consts::WORD_SIZE;
 use std::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 
 use crate::{
@@ -24,7 +24,7 @@ use crate::{
     },
     air::{SP1CoreAirBuilder, SP1Operation},
     operations::{AddOperation, AddOperationInput},
-    utils::{next_multiple_of_32, zeroed_f_vec},
+    utils::next_multiple_of_32,
 };
 
 #[derive(Default)]
@@ -171,14 +171,27 @@ impl<F: PrimeField32> MachineAir<F> for UTypeChip {
         Some(nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
-        let chunk_size = std::cmp::max((input.utype_events.len()) / num_cpus::get(), 1);
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         let padded_nb_rows = <UTypeChip as MachineAir<F>>::num_rows(self, input).unwrap();
-        let mut values = zeroed_f_vec(padded_nb_rows * NUM_UTYPE_COLS);
+        let chunk_size = std::cmp::max((input.utype_events.len()) / num_cpus::get(), 1);
+        let num_event_rows = input.utype_events.len();
+
+        unsafe {
+            let padding_start = num_event_rows * NUM_UTYPE_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_UTYPE_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values =
+            unsafe { core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * NUM_UTYPE_COLS) };
 
         let blu_events = values
             .chunks_mut(chunk_size * NUM_UTYPE_COLS)
@@ -200,6 +213,9 @@ impl<F: PrimeField32> MachineAir<F> for UTypeChip {
                             cols.addend[1] = F::from_canonical_u16((a >> 16) as u16);
                             cols.addend[2] = F::from_canonical_u16((a >> 32) as u16);
                             cols.add_operation.populate(&mut blu, a, event.b);
+                        } else {
+                            cols.addend = [F::zero(), F::zero(), F::zero()];
+                            cols.add_operation.value = Word::from(0u64);
                         }
                         cols.state.populate(&mut blu, event.clk, event.pc);
                         cols.adapter.populate(&mut blu, *record);
@@ -210,9 +226,6 @@ impl<F: PrimeField32> MachineAir<F> for UTypeChip {
             .collect::<Vec<_>>();
 
         output.add_byte_lookup_events_from_maps(blu_events.iter().collect_vec());
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, NUM_UTYPE_COLS)
     }
 
     fn included(&self, shard: &Self::Record) -> bool {

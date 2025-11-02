@@ -67,6 +67,8 @@ impl<F: PrimeField32> ALUTypeReader<F> {
         self.imm_c = F::from_bool(imm_c);
         if imm_c {
             self.op_c_memory.prev_value = self.op_c;
+            self.op_c_memory.access_timestamp.diff_low_limb = F::zero();
+            self.op_c_memory.access_timestamp.prev_low = F::zero();
         } else {
             self.op_c_memory.populate(record.c.unwrap(), blu_events);
         }

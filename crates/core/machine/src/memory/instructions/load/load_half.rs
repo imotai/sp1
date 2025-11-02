@@ -6,14 +6,14 @@ use crate::{
     air::{SP1CoreAirBuilder, SP1Operation},
     memory::MemoryAccessCols,
     operations::{AddressOperation, AddressOperationInput, U16MSBOperation, U16MSBOperationInput},
-    utils::{next_multiple_of_32, zeroed_f_vec},
+    utils::next_multiple_of_32,
 };
 use hashbrown::HashMap;
 use itertools::Itertools;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent, MemoryAccessPosition},
     ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
@@ -26,7 +26,7 @@ use sp1_hypercube::{
 use sp1_primitives::consts::{u64_to_u16_limbs, PROT_READ};
 use std::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 
 #[derive(Default)]
@@ -92,14 +92,28 @@ impl<F: PrimeField32> MachineAir<F> for LoadHalfChip {
         Some(nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         let chunk_size = std::cmp::max((input.memory_load_half_events.len()) / num_cpus::get(), 1);
         let padded_nb_rows = <LoadHalfChip as MachineAir<F>>::num_rows(self, input).unwrap();
-        let mut values = zeroed_f_vec(padded_nb_rows * NUM_LOAD_HALF_COLUMNS);
+        let num_event_rows = input.memory_load_half_events.len();
+
+        unsafe {
+            let padding_start = num_event_rows * NUM_LOAD_HALF_COLUMNS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_LOAD_HALF_COLUMNS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, padded_nb_rows * NUM_LOAD_HALF_COLUMNS)
+        };
 
         let blu_events = values
             .chunks_mut(chunk_size * NUM_LOAD_HALF_COLUMNS)
@@ -126,9 +140,6 @@ impl<F: PrimeField32> MachineAir<F> for LoadHalfChip {
             .collect::<Vec<_>>();
 
         output.add_byte_lookup_events_from_maps(blu_events.iter().collect_vec());
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, NUM_LOAD_HALF_COLUMNS)
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -163,9 +174,12 @@ impl LoadHalfChip {
 
         if event.opcode == Opcode::LH {
             cols.is_lh = F::one();
+            cols.is_lhu = F::zero();
             cols.msb.populate_msb(blu, limb);
         } else {
+            cols.is_lh = F::zero();
             cols.is_lhu = F::one();
+            cols.msb.msb = F::zero();
         }
     }
 }

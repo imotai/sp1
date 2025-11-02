@@ -1,13 +1,13 @@
 use core::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 use std::collections::HashMap;
 
 use crate::{
     air::ProgramAirBuilder,
     program::InstructionCols,
-    utils::{next_multiple_of_32, pad_rows_fixed, zeroed_f_vec},
+    utils::{next_multiple_of_32, zeroed_f_vec},
 };
 use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::PrimeField32;
@@ -115,11 +115,12 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
         // Do nothing since this chip has no dependencies.
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         _output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         // Generate the trace rows for each event.
 
         // Collect the number of times each instruction is called from the cpu events.
@@ -235,30 +236,37 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
         // protected and will never intersect with the address space for untrusted
         // instructions.
 
-        let mut rows = input
-            .program
-            .instructions
-            .clone()
-            .into_iter()
-            .enumerate()
-            .map(|(i, _)| {
-                let pc = input.program.pc_base + i as u64 * 4;
-                let mut row = [F::zero(); NUM_PROGRAM_MULT_COLS];
-                let cols: &mut ProgramMultiplicityCols<F> = row.as_mut_slice().borrow_mut();
-                cols.multiplicity =
-                    F::from_canonical_usize(*instruction_counts.get(&pc).unwrap_or(&0));
-                row
-            })
-            .collect::<Vec<_>>();
+        let padded_nb_rows = <ProgramChip as MachineAir<F>>::num_rows(self, input).unwrap();
+        let nb_instructions = input.program.instructions.len();
 
-        // Pad the trace to a power of two depending on the proof shape in `input`.
-        pad_rows_fixed(
-            &mut rows,
-            || [F::zero(); NUM_PROGRAM_MULT_COLS],
-            input.fixed_log2_rows::<F, _>(self),
+        unsafe {
+            let padding_start = nb_instructions * NUM_PROGRAM_MULT_COLS;
+            let padding_size = (padded_nb_rows - nb_instructions) * NUM_PROGRAM_MULT_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, nb_instructions * NUM_PROGRAM_MULT_COLS)
+        };
+
+        let chunk_size = std::cmp::max(nb_instructions / num_cpus::get(), 1);
+
+        values.chunks_mut(chunk_size * NUM_PROGRAM_MULT_COLS).enumerate().par_bridge().for_each(
+            |(i, rows)| {
+                rows.chunks_mut(NUM_PROGRAM_MULT_COLS).enumerate().for_each(|(j, row)| {
+                    let idx = i * chunk_size + j;
+                    if idx < nb_instructions {
+                        let pc = input.program.pc_base + idx as u64 * 4;
+                        let cols: &mut ProgramMultiplicityCols<F> = row.borrow_mut();
+                        cols.multiplicity =
+                            F::from_canonical_usize(*instruction_counts.get(&pc).unwrap_or(&0));
+                    }
+                });
+            },
         );
-
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_PROGRAM_MULT_COLS)
     }
 
     fn included(&self, _: &Self::Record) -> bool {

@@ -72,6 +72,8 @@ impl<F: Field> LtOperationSigned<F> {
             self.c_msb.populate_msb(record, c_comp[3]);
             self.result.populate_unsigned(record, a_u64, b_u64 ^ (1 << 63), c_u64 ^ (1 << 63));
         } else {
+            self.b_msb.msb = F::zero();
+            self.c_msb.msb = F::zero();
             self.result.populate_unsigned(record, a_u64, b_u64, c_u64);
         }
     }
@@ -154,6 +156,11 @@ impl<F: Field> LtOperationUnsigned<F> {
         b_u64: u64,
         c_u64: u64,
     ) {
+        self.comparison_limbs[0] = F::zero();
+        self.comparison_limbs[1] = F::zero();
+        self.not_eq_inv = F::zero();
+        self.u16_flags = [F::zero(), F::zero(), F::zero(), F::zero()];
+
         let a_limbs = u64_to_u16_limbs(a_u64);
         let b_limbs = u64_to_u16_limbs(b_u64);
         let c_limbs = u64_to_u16_limbs(c_u64);

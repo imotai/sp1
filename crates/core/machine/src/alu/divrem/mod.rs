@@ -1,12 +1,12 @@
 use core::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 use std::num::Wrapping;
 
 use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     get_msb, get_quotient_and_remainder, is_signed_64bit_operation, is_signed_word_operation,
@@ -29,7 +29,7 @@ use crate::{
         LtOperationUnsignedInput, MulOperation, MulOperationInput, U16MSBOperation,
         U16MSBOperationInput,
     },
-    utils::{next_multiple_of_32, pad_rows_fixed},
+    utils::next_multiple_of_32,
 };
 
 /// The number of main trace columns for `DivRemChip`.
@@ -206,15 +206,22 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
         Some(nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         // Generate the trace rows for each event.
-        let mut rows: Vec<[F; NUM_DIVREM_COLS]> = vec![];
+        let padded_nb_rows = <DivRemChip as MachineAir<F>>::num_rows(self, input).unwrap();
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, padded_nb_rows * NUM_DIVREM_COLS)
+        };
+
         let divrem_events = input.divrem_events.clone();
-        for event_record in divrem_events.iter() {
+        for (row_idx, event_record) in divrem_events.iter().enumerate() {
             let event = event_record.0;
             let r_record = event_record.1;
 
@@ -229,8 +236,15 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                     || event.opcode == Opcode::REMUW
             );
 
-            let mut row = [F::zero(); NUM_DIVREM_COLS];
-            let cols: &mut DivRemCols<F> = row.as_mut_slice().borrow_mut();
+            let row_start = row_idx * NUM_DIVREM_COLS;
+            let row = &mut values[row_start..row_start + NUM_DIVREM_COLS];
+
+            // Zero-initialize the row here.
+            unsafe {
+                core::ptr::write_bytes(row.as_mut_ptr(), 0, NUM_DIVREM_COLS);
+            }
+
+            let cols: &mut DivRemCols<F> = row.borrow_mut();
 
             {
                 let mut blu = vec![];
@@ -501,22 +515,7 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                     output.add_u16_range_checks(&c_times_quotient_u16);
                 }
             }
-
-            rows.push(row);
         }
-
-        // Pad the trace to a power of two depending on the proof shape in `input`.
-        pad_rows_fixed(
-            &mut rows,
-            || [F::zero(); NUM_DIVREM_COLS],
-            input.fixed_log2_rows::<F, _>(self),
-        );
-
-        assert_eq!(rows.len(), <DivRemChip as MachineAir<F>>::num_rows(self, input).unwrap());
-
-        // Convert the trace to a row major matrix.
-        let mut trace =
-            RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_DIVREM_COLS);
 
         // Create the template for the padded rows. These are fake rows that don't fail on some
         // sanity checks.
@@ -535,12 +534,12 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
 
             row
         };
-        debug_assert!(padded_row_template.len() == NUM_DIVREM_COLS);
-        for i in input.divrem_events.len() * NUM_DIVREM_COLS..trace.values.len() {
-            trace.values[i] = padded_row_template[i % NUM_DIVREM_COLS];
-        }
 
-        trace
+        debug_assert!(padded_row_template.len() == NUM_DIVREM_COLS);
+        for row_idx in input.divrem_events.len()..padded_nb_rows {
+            let row_start = row_idx * NUM_DIVREM_COLS;
+            values[row_start..row_start + NUM_DIVREM_COLS].copy_from_slice(&padded_row_template);
+        }
     }
 
     fn included(&self, shard: &Self::Record) -> bool {

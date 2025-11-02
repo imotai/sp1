@@ -1,15 +1,13 @@
+use super::ShaCompressControlChip;
 use crate::{
     air::SP1CoreAirBuilder,
     operations::{AddrAddOperation, AddressSlicePageProtOperation, SyscallAddrOperation},
-    utils::next_multiple_of_32,
+    utils::{next_multiple_of_32, u32_to_half_word},
 };
-
-use super::ShaCompressControlChip;
-use crate::utils::u32_to_half_word;
 use core::borrow::Borrow;
 use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use sp1_core_executor::{
     events::{ByteRecord, PrecompileEvent},
     syscalls::SyscallCode,
@@ -21,7 +19,7 @@ use sp1_hypercube::{
     InteractionKind, Word,
 };
 use sp1_primitives::consts::{PROT_READ, PROT_WRITE};
-use std::{borrow::BorrowMut, iter::once};
+use std::{borrow::BorrowMut, iter::once, mem::MaybeUninit};
 
 impl ShaCompressControlChip {
     pub const fn new() -> Self {
@@ -74,21 +72,43 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressControlChip {
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
-        let mut rows = Vec::new();
-        let mut blu_events = vec![];
-        for (_, event) in input.get_precompile_events(SyscallCode::SHA_COMPRESS).iter() {
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows =
+            <ShaCompressControlChip as MachineAir<F>>::num_rows(self, input).unwrap();
+        let events = input.get_precompile_events(SyscallCode::SHA_COMPRESS);
+        let num_event_rows = events.len();
+
+        unsafe {
+            let padding_start = num_event_rows * NUM_SHA_COMPRESS_CONTROL_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_SHA_COMPRESS_CONTROL_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(
+                buffer_ptr,
+                num_event_rows * NUM_SHA_COMPRESS_CONTROL_COLS,
+            )
+        };
+
+        let mut blu_events = Vec::new();
+
+        values.chunks_mut(NUM_SHA_COMPRESS_CONTROL_COLS).enumerate().for_each(|(idx, row)| {
+            let event = &events[idx].1;
             let event = if let PrecompileEvent::ShaCompress(event) = event {
                 event
             } else {
                 unreachable!()
             };
-            let mut row = [F::zero(); NUM_SHA_COMPRESS_CONTROL_COLS];
-            let cols: &mut ShaCompressControlCols<F> = row.as_mut_slice().borrow_mut();
+            let cols: &mut ShaCompressControlCols<F> = row.borrow_mut();
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
             // `w_ptr` has 64 words, so 512 bytes - but only 256 bytes are actually used.
@@ -143,24 +163,14 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressControlChip {
                     &event.page_prot_access.h_write_page_prot_records.get(1).copied(),
                     input.public_values.is_untrusted_programs_enabled,
                 );
+            } else {
+                cols.h_read_page_prot_access = AddressSlicePageProtOperation::default();
+                cols.w_read_page_prot_access = AddressSlicePageProtOperation::default();
+                cols.h_write_page_prot_access = AddressSlicePageProtOperation::default();
             }
+        });
 
-            rows.push(row);
-        }
-
-        let nb_rows = rows.len();
-        let padded_nb_rows = nb_rows.next_multiple_of(32);
-        for _ in nb_rows..padded_nb_rows {
-            let row = [F::zero(); NUM_SHA_COMPRESS_CONTROL_COLS];
-            rows.push(row);
-        }
         output.add_byte_lookup_events(blu_events);
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(
-            rows.into_iter().flatten().collect::<Vec<_>>(),
-            NUM_SHA_COMPRESS_CONTROL_COLS,
-        )
     }
 
     fn included(&self, shard: &Self::Record) -> bool {

@@ -1,12 +1,12 @@
 use core::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 use hashbrown::HashMap;
 use itertools::Itertools;
 use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, Field, PrimeField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
@@ -23,7 +23,7 @@ use crate::{
     },
     air::{SP1CoreAirBuilder, SP1Operation},
     operations::{U16MSBOperation, U16MSBOperationInput},
-    utils::{next_multiple_of_32, zeroed_f_vec},
+    utils::next_multiple_of_32,
 };
 
 /// The number of main trace columns for `ShiftRightChip`.
@@ -112,16 +112,29 @@ impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
         Some(nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
-        _: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        _output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         // Generate the trace rows for each event.
         let nb_rows = input.shift_right_events.len();
         let padded_nb_rows = <ShiftRightChip as MachineAir<F>>::num_rows(self, input).unwrap();
-        let mut values = zeroed_f_vec(padded_nb_rows * NUM_SHIFT_RIGHT_COLS);
         let chunk_size = std::cmp::max((nb_rows + 1) / num_cpus::get(), 1);
+
+        unsafe {
+            let padding_start = nb_rows * NUM_SHIFT_RIGHT_COLS;
+            let padding_size = (padded_nb_rows - nb_rows) * NUM_SHIFT_RIGHT_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, padded_nb_rows * NUM_SHIFT_RIGHT_COLS)
+        };
 
         values.chunks_mut(chunk_size * NUM_SHIFT_RIGHT_COLS).enumerate().par_bridge().for_each(
             |(i, rows)| {
@@ -147,9 +160,6 @@ impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
                 });
             },
         );
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, NUM_SHIFT_RIGHT_COLS)
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
@@ -211,9 +221,10 @@ impl ShiftRightChip {
 
         if event.opcode == Opcode::SRA {
             cols.b_msb.populate_msb(blu, b[3]);
-        }
-        if event.opcode == Opcode::SRAW {
+        } else if event.opcode == Opcode::SRAW {
             cols.b_msb.populate_msb(blu, b[1]);
+        } else {
+            cols.b_msb.msb = F::zero();
         }
         cols.sra_msb_v0123 = cols.b_msb.msb * cols.v_0123;
 
@@ -224,6 +235,8 @@ impl ShiftRightChip {
             b[2] = 0;
             b[3] = 0;
             cols.srw_msb.populate_msb(blu, u64_to_u16_limbs(event.a)[1]);
+        } else {
+            cols.srw_msb.msb = F::zero();
         }
 
         let bit_shift = (c & 0xF) as u8;

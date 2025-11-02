@@ -1,12 +1,12 @@
 use std::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 
-use crate::utils::{next_multiple_of_32, zeroed_f_vec};
+use crate::utils::next_multiple_of_32;
 use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use slop_maybe_rayon::prelude::{
     IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
@@ -131,22 +131,34 @@ impl<F: PrimeField32> MachineAir<F> for PageProtLocalChip {
         output.global_interaction_events.extend(events);
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
-        input: &Self::Record,
-        _output: &mut Self::Record,
-    ) -> RowMajorMatrix<F> {
+        input: &ExecutionRecord,
+        _output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         // Generate the trace rows for each event.
-        let events = input.get_local_page_prot_events();
-        let events = events.collect::<Vec<_>>();
+        let events = input.get_local_page_prot_events().collect::<Vec<_>>();
 
         if input.public_values.is_untrusted_programs_enabled == 0 {
             assert!(events.is_empty());
         }
         let nb_rows = nb_rows(events.len());
         let padded_nb_rows = <PageProtLocalChip as MachineAir<F>>::num_rows(self, input).unwrap();
-        let mut values = zeroed_f_vec(padded_nb_rows * NUM_PAGE_PROT_LOCAL_INIT_COLS);
         let chunk_size = std::cmp::max(nb_rows / num_cpus::get(), 0) + 1;
+
+        unsafe {
+            let padding_start = nb_rows * NUM_PAGE_PROT_LOCAL_INIT_COLS;
+            let padding_size = (padded_nb_rows - nb_rows) * NUM_PAGE_PROT_LOCAL_INIT_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, nb_rows * NUM_PAGE_PROT_LOCAL_INIT_COLS)
+        };
 
         let mut chunks = values[..nb_rows * NUM_PAGE_PROT_LOCAL_INIT_COLS]
             .chunks_mut(chunk_size * NUM_PAGE_PROT_LOCAL_INIT_COLS)
@@ -187,9 +199,6 @@ impl<F: PrimeField32> MachineAir<F> for PageProtLocalChip {
                 }
             });
         });
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, NUM_PAGE_PROT_LOCAL_INIT_COLS)
     }
 
     fn included(&self, shard: &Self::Record) -> bool {

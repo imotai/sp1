@@ -1,17 +1,14 @@
 use std::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 
-use crate::{
-    air::SP1CoreAirBuilder,
-    utils::{next_multiple_of_32, zeroed_f_vec},
-};
+use crate::{air::SP1CoreAirBuilder, utils::next_multiple_of_32};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, Field, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord},
     ByteOpcode, ExecutionRecord, Program, PC_INC,
@@ -93,14 +90,29 @@ impl<F: PrimeField32> MachineAir<F> for StateBumpChip {
         Some(next_multiple_of_32(nb_rows, size_log2))
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &Self::Record,
         _output: &mut Self::Record,
-    ) -> RowMajorMatrix<F> {
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         let chunk_size = 1;
         let padded_nb_rows = <StateBumpChip as MachineAir<F>>::num_rows(self, input).unwrap();
-        let mut values = zeroed_f_vec(padded_nb_rows * NUM_STATE_BUMP_COLS);
+
+        let num_event_rows = input.bump_state_events.len();
+
+        unsafe {
+            let padding_start = num_event_rows * NUM_STATE_BUMP_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_STATE_BUMP_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * NUM_STATE_BUMP_COLS)
+        };
 
         values.chunks_mut(chunk_size * NUM_STATE_BUMP_COLS).enumerate().for_each(|(i, rows)| {
             rows.chunks_mut(NUM_STATE_BUMP_COLS).enumerate().for_each(|(j, row)| {
@@ -147,14 +159,13 @@ impl<F: PrimeField32> MachineAir<F> for StateBumpChip {
 
                     if (next_clk >> 24) != (clk >> 24) {
                         cols.is_clk = F::one();
+                    } else {
+                        cols.is_clk = F::zero();
                     }
                     cols.is_real = F::one();
                 }
             });
         });
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, NUM_STATE_BUMP_COLS)
     }
 
     fn included(&self, shard: &Self::Record) -> bool {

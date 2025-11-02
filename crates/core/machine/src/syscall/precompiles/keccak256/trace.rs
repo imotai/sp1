@@ -1,8 +1,8 @@
-use std::borrow::BorrowMut;
+use std::{borrow::BorrowMut, mem::MaybeUninit};
 
 use slop_algebra::PrimeField32;
 use slop_keccak_air::{generate_trace_rows, NUM_KECCAK_COLS, NUM_ROUNDS};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{ByteLookupEvent, KeccakPermuteEvent, PrecompileEvent, SyscallEvent},
@@ -59,17 +59,30 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteChip {
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
-        _: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        _output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows = <KeccakPermuteChip as MachineAir<F>>::num_rows(self, input).unwrap();
         let events = input.get_precompile_events(SyscallCode::KECCAK_PERMUTE);
         let num_events = events.len();
-        let num_rows = (num_events * NUM_ROUNDS).next_multiple_of(32);
         let chunk_size = 8;
-        let values = vec![0u32; num_rows * NUM_KECCAK_MEM_COLS];
-        let mut values = unsafe { std::mem::transmute::<Vec<u32>, Vec<F>>(values) };
+        let num_event_rows = events.len() * NUM_ROUNDS;
+
+        unsafe {
+            let padding_start = num_event_rows * NUM_KECCAK_MEM_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_KECCAK_MEM_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, padded_nb_rows * NUM_KECCAK_MEM_COLS)
+        };
 
         let dummy_keccak_rows = generate_trace_rows::<F>(vec![[0; STATE_SIZE]]);
         let mut dummy_chunk = Vec::new();
@@ -101,9 +114,6 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteChip {
                     },
                 );
             });
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, NUM_KECCAK_MEM_COLS)
     }
 
     fn included(&self, shard: &Self::Record) -> bool {

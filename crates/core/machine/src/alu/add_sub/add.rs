@@ -1,13 +1,13 @@
 use core::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 
 use hashbrown::HashMap;
 use itertools::Itertools;
 use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
@@ -23,7 +23,7 @@ use crate::{
     },
     air::{SP1CoreAirBuilder, SP1Operation},
     operations::{AddOperation, AddOperationInput},
-    utils::{next_multiple_of_32, zeroed_f_vec},
+    utils::next_multiple_of_32,
 };
 
 /// The number of main trace columns for `AddChip`.
@@ -65,15 +65,29 @@ impl<F: PrimeField32> MachineAir<F> for AddChip {
         Some(nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
-        _: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        _output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         // Generate the rows for the trace.
         let chunk_size = std::cmp::max(input.add_events.len() / num_cpus::get(), 1);
         let padded_nb_rows = <AddChip as MachineAir<F>>::num_rows(self, input).unwrap();
-        let mut values = zeroed_f_vec(padded_nb_rows * NUM_ADD_COLS);
+
+        let num_event_rows = input.add_events.len();
+
+        unsafe {
+            let padding_start = num_event_rows * NUM_ADD_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_ADD_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values =
+            unsafe { core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * NUM_ADD_COLS) };
 
         values.chunks_mut(chunk_size * NUM_ADD_COLS).enumerate().par_bridge().for_each(
             |(i, rows)| {
@@ -91,9 +105,6 @@ impl<F: PrimeField32> MachineAir<F> for AddChip {
                 });
             },
         );
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, NUM_ADD_COLS)
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {

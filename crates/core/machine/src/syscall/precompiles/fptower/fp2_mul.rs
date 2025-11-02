@@ -1,20 +1,20 @@
 use std::{
     borrow::{Borrow, BorrowMut},
     marker::PhantomData,
+    mem::{size_of, MaybeUninit},
 };
 
 use crate::{
     air::SP1CoreAirBuilder,
     memory::MemoryAccessColsU8,
     operations::{AddrAddOperation, AddressSlicePageProtOperation, SyscallAddrOperation},
-    utils::zeroed_f_vec,
 };
 use generic_array::GenericArray;
 use itertools::Itertools;
 use num::{BigUint, Zero};
 use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, FieldOperation, MemoryRecordEnum, PrecompileEvent},
     syscalls::SyscallCode,
@@ -33,12 +33,11 @@ use sp1_primitives::{
     consts::{PROT_READ, PROT_WRITE},
     polynomial::Polynomial,
 };
-use std::mem::size_of;
 use typenum::Unsigned;
 
 use crate::{
     operations::field::{field_op::FieldOpCols, range::FieldLtCols},
-    utils::{limbs_to_words, next_multiple_of_32, pad_rows_fixed, words_to_bytes_le_vec},
+    utils::{limbs_to_words, next_multiple_of_32, words_to_bytes_le_vec},
 };
 
 pub const fn num_fp2_mul_cols<P: FieldParameters + NumWords>() -> usize {
@@ -161,24 +160,44 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2MulAssignChip<P> {
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(&self, input: &Self::Record, output: &mut Self::Record) -> RowMajorMatrix<F> {
+    fn generate_trace_into(
+        &self,
+        input: &ExecutionRecord,
+        output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows = <Fp2MulAssignChip<P> as MachineAir<F>>::num_rows(self, input).unwrap();
+
         let events = match P::FIELD_TYPE {
             FieldType::Bn254 => input.get_precompile_events(SyscallCode::BN254_FP2_MUL),
             FieldType::Bls12381 => input.get_precompile_events(SyscallCode::BLS12381_FP2_MUL),
         };
 
-        let mut rows = Vec::new();
+        let num_event_rows = events.len();
+        let cols = num_fp2_mul_cols::<P>();
+
+        unsafe {
+            let padding_start = num_event_rows * cols;
+            let padding_size = (padded_nb_rows - num_event_rows) * cols;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe { core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * cols) };
+
         let mut new_byte_lookup_events = Vec::new();
 
-        for (_, event) in events {
+        values.chunks_mut(cols).enumerate().for_each(|(idx, row)| {
+            let cols: &mut Fp2MulAssignCols<F, P> = row.borrow_mut();
+            let event = &events[idx].1;
+
             let event = match (P::FIELD_TYPE, event) {
                 (FieldType::Bn254, PrecompileEvent::Bn254Fp2Mul(event)) => event,
                 (FieldType::Bls12381, PrecompileEvent::Bls12381Fp2Mul(event)) => event,
                 _ => unreachable!(),
             };
-
-            let mut row = zeroed_f_vec(num_fp2_mul_cols::<P>());
-            let cols: &mut Fp2MulAssignCols<F, P> = row.as_mut_slice().borrow_mut();
 
             let p = &event.x;
             let q = &event.y;
@@ -227,34 +246,30 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2MulAssignChip<P> {
                     &event.page_prot_records.write_page_prot_records.get(1).copied(),
                     input.public_values.is_untrusted_programs_enabled,
                 );
+            } else {
+                cols.read_slice_page_prot_access = AddressSlicePageProtOperation::default();
+                cols.write_slice_page_prot_access = AddressSlicePageProtOperation::default();
             }
+        });
 
-            rows.push(row);
+        for idx in num_event_rows..padded_nb_rows {
+            let row_start = idx * cols;
+            let row = unsafe {
+                core::slice::from_raw_parts_mut(buffer[row_start..].as_mut_ptr() as *mut F, cols)
+            };
+            let cols: &mut Fp2MulAssignCols<F, P> = row.borrow_mut();
+            let zero = BigUint::zero();
+            Self::populate_field_ops(
+                &mut vec![],
+                cols,
+                zero.clone(),
+                zero.clone(),
+                zero.clone(),
+                zero,
+            );
         }
 
         output.add_byte_lookup_events(new_byte_lookup_events);
-
-        pad_rows_fixed(
-            &mut rows,
-            || {
-                let mut row = zeroed_f_vec(num_fp2_mul_cols::<P>());
-                let cols: &mut Fp2MulAssignCols<F, P> = row.as_mut_slice().borrow_mut();
-                let zero = BigUint::zero();
-                Self::populate_field_ops(
-                    &mut vec![],
-                    cols,
-                    zero.clone(),
-                    zero.clone(),
-                    zero.clone(),
-                    zero,
-                );
-                row
-            },
-            input.fixed_log2_rows::<F, _>(self),
-        );
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), num_fp2_mul_cols::<P>())
     }
 
     fn included(&self, shard: &Self::Record) -> bool {

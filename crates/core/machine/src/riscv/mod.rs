@@ -4,17 +4,6 @@ use strum::IntoEnumIterator;
 use core::fmt;
 use std::collections::BTreeSet;
 
-use hashbrown::HashMap;
-use itertools::Itertools;
-use slop_algebra::PrimeField32;
-use sp1_core_executor::{ExecutionRecord, RiscvAirId};
-use sp1_curves::weierstrass::{bls12_381::Bls12381BaseField, bn254::Bn254BaseField};
-use sp1_hypercube::{
-    air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
-    Chip, Machine, MachineShape,
-};
-use strum::{EnumDiscriminants, EnumIter};
-
 use crate::{
     adapter::bump::StateBumpChip,
     control_flow::{BranchChip, JalChip, JalrChip},
@@ -40,6 +29,17 @@ use crate::{
     },
     utype::UTypeChip,
 };
+use hashbrown::HashMap;
+use itertools::Itertools;
+use slop_algebra::PrimeField32;
+use sp1_core_executor::{ExecutionRecord, RiscvAirId};
+use sp1_curves::weierstrass::{bls12_381::Bls12381BaseField, bn254::Bn254BaseField};
+use sp1_hypercube::{
+    air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
+    Chip, Machine, MachineShape,
+};
+use std::mem::MaybeUninit;
+use strum::{EnumDiscriminants, EnumIter};
 
 /// A module for importing all the different RISC-V chips.
 pub(crate) mod riscv_chips {

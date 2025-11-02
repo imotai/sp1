@@ -6,14 +6,14 @@ use crate::{
 };
 use core::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 use generic_array::GenericArray;
 use itertools::Itertools;
 use num::{BigUint, One, Zero};
 use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use sp1_core_executor::{
     events::{
         ByteLookupEvent, ByteRecord, EdDecompressEvent, FieldOperation, MemoryRecordEnum,
@@ -38,9 +38,8 @@ use sp1_primitives::consts::{PROT_READ, PROT_WRITE};
 use std::marker::PhantomData;
 use typenum::U32;
 
-use crate::{
-    operations::field::{field_op::FieldOpCols, field_sqrt::FieldSqrtCols, range::FieldLtCols},
-    utils::pad_rows_fixed,
+use crate::operations::field::{
+    field_op::FieldOpCols, field_sqrt::FieldSqrtCols, range::FieldLtCols,
 };
 
 pub const NUM_ED_DECOMPRESS_COLS: usize = size_of::<EdDecompressCols<u8>>();
@@ -124,6 +123,9 @@ impl<F: PrimeField32> EdDecompressCols<F> {
                 &event.page_prot_records.write_page_prot_records.get(1).copied(),
                 record.public_values.is_untrusted_programs_enabled,
             );
+        } else {
+            self.read_slice_page_prot_access = AddressSlicePageProtOperation::default();
+            self.write_slice_page_prot_access = AddressSlicePageProtOperation::default();
         }
 
         let y = &BigUint::from_bytes_le(&event.y_bytes);
@@ -328,40 +330,52 @@ impl<F: PrimeField32, E: EdwardsParameters> MachineAir<F> for EdDecompressChip<E
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
-        let mut rows = Vec::new();
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows = <EdDecompressChip<E> as MachineAir<F>>::num_rows(self, input).unwrap();
         let events = input.get_precompile_events(SyscallCode::ED_DECOMPRESS);
+        let num_event_rows = events.len();
 
-        for (_, event) in events {
+        unsafe {
+            let padding_start = num_event_rows * NUM_ED_DECOMPRESS_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_ED_DECOMPRESS_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * NUM_ED_DECOMPRESS_COLS)
+        };
+
+        values.chunks_mut(NUM_ED_DECOMPRESS_COLS).enumerate().for_each(|(idx, row)| {
+            let (_, event) = &events[idx];
             let event = if let PrecompileEvent::EdDecompress(event) = event {
                 event
             } else {
                 unreachable!();
             };
-            let mut row = [F::zero(); NUM_ED_DECOMPRESS_COLS];
-            let cols: &mut EdDecompressCols<F> = row.as_mut_slice().borrow_mut();
+            let cols: &mut EdDecompressCols<F> = row.borrow_mut();
             cols.populate::<E::BaseField, E>(event.clone(), output);
+        });
 
-            rows.push(row);
+        for idx in num_event_rows..padded_nb_rows {
+            let row_start = idx * NUM_ED_DECOMPRESS_COLS;
+            let row = unsafe {
+                core::slice::from_raw_parts_mut(
+                    buffer[row_start..].as_mut_ptr() as *mut F,
+                    NUM_ED_DECOMPRESS_COLS,
+                )
+            };
+            let cols: &mut EdDecompressCols<F> = row.borrow_mut();
+            let zero = BigUint::zero();
+            cols.populate_field_ops::<E>(&mut vec![], &zero);
         }
-
-        pad_rows_fixed(
-            &mut rows,
-            || {
-                let mut row = [F::zero(); NUM_ED_DECOMPRESS_COLS];
-                let cols: &mut EdDecompressCols<F> = row.as_mut_slice().borrow_mut();
-                let zero = BigUint::zero();
-                cols.populate_field_ops::<E>(&mut vec![], &zero);
-                row
-            },
-            input.fixed_log2_rows::<F, _>(self),
-        );
-
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_ED_DECOMPRESS_COLS)
     }
 
     fn included(&self, shard: &Self::Record) -> bool {

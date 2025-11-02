@@ -7,7 +7,7 @@ use crate::{
 use core::borrow::Borrow;
 use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use sp1_core_executor::{
     events::{ByteRecord, PrecompileEvent},
     syscalls::SyscallCode,
@@ -19,7 +19,7 @@ use sp1_hypercube::{
     InteractionKind, Word,
 };
 use sp1_primitives::consts::{PROT_READ, PROT_WRITE};
-use std::{borrow::BorrowMut, iter::once};
+use std::{borrow::BorrowMut, iter::once, mem::MaybeUninit};
 
 impl ShaExtendControlChip {
     pub const fn new() -> Self {
@@ -66,18 +66,41 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
-        let mut blu_events = vec![];
-        let mut rows = Vec::new();
-        for (_, event) in input.get_precompile_events(SyscallCode::SHA_EXTEND).iter() {
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows =
+            <ShaExtendControlChip as MachineAir<F>>::num_rows(self, input).unwrap();
+        let events = input.get_precompile_events(SyscallCode::SHA_EXTEND);
+        let num_event_rows = events.len();
+
+        unsafe {
+            let padding_start = num_event_rows * NUM_SHA_EXTEND_CONTROL_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_SHA_EXTEND_CONTROL_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(
+                buffer_ptr,
+                num_event_rows * NUM_SHA_EXTEND_CONTROL_COLS,
+            )
+        };
+
+        let mut blu_events = Vec::new();
+
+        values.chunks_mut(NUM_SHA_EXTEND_CONTROL_COLS).enumerate().for_each(|(idx, row)| {
+            let event = &events[idx].1;
             let event =
                 if let PrecompileEvent::ShaExtend(event) = event { event } else { unreachable!() };
-            let mut row = [F::zero(); NUM_SHA_EXTEND_CONTROL_COLS];
-            let cols: &mut ShaExtendControlCols<F> = row.as_mut_slice().borrow_mut();
+
+            let cols: &mut ShaExtendControlCols<F> = row.borrow_mut();
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
             // This precompile accesses 64 words, which is 512 bytes.
@@ -88,7 +111,8 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
             cols.w_17th_addr.populate(&mut blu_events, event.w_ptr, 16 * 8);
             // Address of 64th element of W, last written element
             cols.w_64th_addr.populate(&mut blu_events, event.w_ptr, 63 * 8);
-            // Constsrain page prot access for initial 16 elements of W, read only
+            cols.is_real = F::one();
+            // Constrain page prot access for initial 16 elements of W, read only
             if input.public_values.is_untrusted_programs_enabled == 1 {
                 cols.initial_page_prot_access.populate(
                     &mut blu_events,
@@ -111,25 +135,13 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
                     &event.page_prot_records.extension_page_prot_records.get(1).copied(),
                     input.public_values.is_untrusted_programs_enabled,
                 );
+            } else {
+                cols.initial_page_prot_access = AddressSlicePageProtOperation::default();
+                cols.extension_page_prot_access = AddressSlicePageProtOperation::default();
             }
-            cols.is_real = F::one();
-            rows.push(row);
-        }
+        });
 
         output.add_byte_lookup_events(blu_events);
-
-        let nb_rows = rows.len();
-        let padded_nb_rows = nb_rows.next_multiple_of(32);
-        for _ in nb_rows..padded_nb_rows {
-            let row = [F::zero(); NUM_SHA_EXTEND_CONTROL_COLS];
-            rows.push(row);
-        }
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(
-            rows.into_iter().flatten().collect::<Vec<_>>(),
-            NUM_SHA_EXTEND_CONTROL_COLS,
-        )
     }
 
     fn included(&self, shard: &Self::Record) -> bool {

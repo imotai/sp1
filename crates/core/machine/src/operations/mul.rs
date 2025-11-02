@@ -77,6 +77,8 @@ impl<F: Field> MulOperation<F> {
 
         if is_mulw {
             self.product_msb.populate_msb(record, limbs[1]);
+        } else {
+            self.product_msb.msb = F::zero();
         }
 
         let mut b = b_word.to_vec();
@@ -96,12 +98,16 @@ impl<F: Field> MulOperation<F> {
             if (is_mulh || is_mulhsu) && b_msb == 1 {
                 self.b_sign_extend = F::one();
                 b.resize(LONG_WORD_BYTE_SIZE, BYTE_MASK);
+            } else {
+                self.b_sign_extend = F::zero();
             }
 
             // If c is signed and it is negative, sign extend c.
             if is_mulh && c_msb == 1 {
                 self.c_sign_extend = F::one();
                 c.resize(LONG_WORD_BYTE_SIZE, BYTE_MASK);
+            } else {
+                self.c_sign_extend = F::zero();
             }
 
             // Insert the MSB lookup events.

@@ -8,9 +8,7 @@ use crate::{
         },
         AddrAddOperation, AddressSlicePageProtOperation, SyscallAddrOperation,
     },
-    utils::{
-        bytes_to_words_le_vec, limbs_to_words, next_multiple_of_32, pad_rows_fixed, zeroed_f_vec,
-    },
+    utils::{bytes_to_words_le_vec, limbs_to_words, next_multiple_of_32},
 };
 use core::{
     borrow::{Borrow, BorrowMut},
@@ -21,7 +19,7 @@ use itertools::Itertools;
 use num::{BigUint, One, Zero};
 use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use sp1_core_executor::{
     events::{ByteRecord, FieldOperation, MemoryReadRecord, MemoryRecordEnum, PrecompileEvent},
     syscalls::SyscallCode,
@@ -44,7 +42,7 @@ use sp1_primitives::{
     consts::{PROT_READ, PROT_WRITE},
     polynomial::Polynomial,
 };
-use std::{fmt::Debug, marker::PhantomData};
+use std::{fmt::Debug, marker::PhantomData, mem::MaybeUninit};
 use typenum::Unsigned;
 
 pub const fn num_weierstrass_decompress_cols<P: FieldParameters + NumWords>() -> usize {
@@ -186,11 +184,14 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
-        output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        _output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows =
+            <WeierstrassDecompressChip<E> as MachineAir<F>>::num_rows(self, input).unwrap();
         let events = match E::CURVE_TYPE {
             CurveType::Secp256k1 => input.get_precompile_events(SyscallCode::SECP256K1_DECOMPRESS),
             CurveType::Secp256r1 => input.get_precompile_events(SyscallCode::SECP256R1_DECOMPRESS),
@@ -198,26 +199,37 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
             _ => panic!("Unsupported curve"),
         };
 
-        let mut rows = Vec::new();
-        let weierstrass_width = num_weierstrass_decompress_cols::<E::BaseField>();
-        let width = BaseAir::<F>::width(self);
-        let num_limbs = <E::BaseField as NumLimbs>::Limbs::USIZE;
+        let num_event_rows = events.len();
+        let num_cols = num_weierstrass_decompress_cols::<E::BaseField>();
 
         let mut new_byte_lookup_events = Vec::new();
 
+        unsafe {
+            let padding_start = num_event_rows * num_cols;
+            let padding_size = (padded_nb_rows - num_event_rows) * num_cols;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values =
+            unsafe { core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * num_cols) };
+
+        let weierstrass_width = num_weierstrass_decompress_cols::<E::BaseField>();
+        let width = BaseAir::<F>::width(self);
+        let num_limbs = <E::BaseField as NumLimbs>::Limbs::USIZE;
         let modulus = E::BaseField::modulus();
 
-        for (_, event) in events {
+        values.chunks_mut(num_cols).enumerate().for_each(|(idx, row)| {
+            let cols: &mut WeierstrassDecompressCols<F, E::BaseField> = row.borrow_mut();
+            let event = &events[idx].1;
             let event = match (E::CURVE_TYPE, event) {
                 (CurveType::Secp256k1, PrecompileEvent::Secp256k1Decompress(event)) => event,
                 (CurveType::Secp256r1, PrecompileEvent::Secp256r1Decompress(event)) => event,
                 (CurveType::Bls12381, PrecompileEvent::Bls12381Decompress(event)) => event,
                 _ => panic!("Unsupported curve"),
             };
-
-            let mut row = zeroed_f_vec(width);
-            let cols: &mut WeierstrassDecompressCols<F, E::BaseField> =
-                row[0..weierstrass_width].borrow_mut();
 
             cols.is_real = F::from_bool(true);
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
@@ -267,6 +279,9 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                     &event.page_prot_records.write_page_prot_records.get(1).copied(),
                     input.public_values.is_untrusted_programs_enabled,
                 );
+            } else {
+                cols.read_slice_page_prot_access = AddressSlicePageProtOperation::default();
+                cols.write_slice_page_prot_access = AddressSlicePageProtOperation::default();
             }
 
             if matches!(self.sign_rule, SignChoiceRule::Lexicographic) {
@@ -301,42 +316,35 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
                     );
                 }
             }
+        });
 
-            rows.push(row);
+        for row in num_event_rows..padded_nb_rows {
+            let row_start = row * num_cols;
+            let row = unsafe {
+                core::slice::from_raw_parts_mut(
+                    buffer[row_start..row_start + weierstrass_width].as_mut_ptr() as *mut F,
+                    num_cols,
+                )
+            };
+            let cols: &mut WeierstrassDecompressCols<F, E::BaseField> = row.borrow_mut();
+            // take X of the generator as a dummy value to make sure Y^2 = X^3 + b holds
+            let dummy_value = E::generator().0;
+            let dummy_bytes = dummy_value.to_bytes_le();
+            let words = bytes_to_words_le_vec(&dummy_bytes);
+            let mut blu = vec![];
+            for i in 0..cols.x_access.len() {
+                cols.x_access[i].populate(
+                    MemoryRecordEnum::Read(MemoryReadRecord {
+                        prev_timestamp: 0,
+                        value: words[i],
+                        timestamp: 1,
+                        prev_page_prot_record: None,
+                    }),
+                    &mut blu,
+                );
+            }
+            Self::populate_field_ops(&mut vec![], cols, dummy_value);
         }
-        output.add_byte_lookup_events(new_byte_lookup_events);
-
-        pad_rows_fixed(
-            &mut rows,
-            || {
-                let mut blu = vec![];
-                let mut row = zeroed_f_vec(width);
-                let cols: &mut WeierstrassDecompressCols<F, E::BaseField> =
-                    row.as_mut_slice()[0..weierstrass_width].borrow_mut();
-
-                // take X of the generator as a dummy value to make sure Y^2 = X^3 + b holds
-                let dummy_value = E::generator().0;
-                let dummy_bytes = dummy_value.to_bytes_le();
-                let words = bytes_to_words_le_vec(&dummy_bytes);
-                for i in 0..cols.x_access.len() {
-                    cols.x_access[i].populate(
-                        MemoryRecordEnum::Read(MemoryReadRecord {
-                            prev_timestamp: 0,
-                            value: words[i],
-                            timestamp: 1,
-                            prev_page_prot_record: None,
-                        }),
-                        &mut blu,
-                    );
-                }
-
-                Self::populate_field_ops(&mut vec![], cols, dummy_value);
-                row
-            },
-            input.fixed_log2_rows::<F, _>(self),
-        );
-
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), width)
     }
 
     fn included(&self, shard: &Self::Record) -> bool {

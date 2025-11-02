@@ -2,7 +2,7 @@ use hashbrown::HashMap;
 use itertools::Itertools;
 use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use slop_maybe_rayon::prelude::{
     IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
@@ -16,13 +16,12 @@ use sp1_core_executor::{
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::air::MachineAir;
 use sp1_primitives::consts::{PROT_EXEC, PROT_READ, PROT_WRITE};
-use std::borrow::{Borrow, BorrowMut};
-
-use crate::{
-    air::SP1CoreAirBuilder,
-    operations::PageProtOperation,
-    utils::{next_multiple_of_32, zeroed_f_vec},
+use std::{
+    borrow::{Borrow, BorrowMut},
+    mem::MaybeUninit,
 };
+
+use crate::{air::SP1CoreAirBuilder, operations::PageProtOperation, utils::next_multiple_of_32};
 
 // Used to ensure address is aligned to page, clears out lowest 3 bits
 const BITMASK_CLEAR_LOWEST_THREE_BITS: u64 = 0xFFFFFFFFFFFFFFF8;
@@ -102,11 +101,12 @@ impl<F: PrimeField32> MachineAir<F> for PageProtChip {
         Some(next_multiple_of_32(nb_rows, size_log2))
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         let mut events = vec![];
 
         if input.public_values.is_untrusted_programs_enabled == 1 {
@@ -173,7 +173,19 @@ impl<F: PrimeField32> MachineAir<F> for PageProtChip {
 
         let nb_rows = nb_rows(events.len());
         let padded_nb_rows = <PageProtChip as MachineAir<F>>::num_rows(self, input).unwrap();
-        let mut values = zeroed_f_vec(padded_nb_rows * NUM_PAGE_PROT_COLS);
+
+        unsafe {
+            let padding_start = nb_rows * NUM_PAGE_PROT_COLS;
+            let padding_size = (padded_nb_rows - nb_rows) * NUM_PAGE_PROT_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values =
+            unsafe { core::slice::from_raw_parts_mut(buffer_ptr, nb_rows * NUM_PAGE_PROT_COLS) };
+
         let chunk_size = std::cmp::max(nb_rows / num_cpus::get(), 0) + 1;
 
         let mut chunks = values[..nb_rows * NUM_PAGE_PROT_COLS]
@@ -187,6 +199,9 @@ impl<F: PrimeField32> MachineAir<F> for PageProtChip {
                 let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
 
                 rows.chunks_mut(NUM_PAGE_PROT_COLS).enumerate().for_each(|(j, row)| {
+                    unsafe {
+                        core::ptr::write_bytes(row.as_mut_ptr(), 0, NUM_PAGE_PROT_COLS);
+                    }
                     let idx = (i * chunk_size + j) * NUM_PAGE_PROT_ENTRIES_PER_ROW;
                     let cols: &mut PageProtCols<F> = row.borrow_mut();
 
@@ -203,9 +218,6 @@ impl<F: PrimeField32> MachineAir<F> for PageProtChip {
             .collect::<Vec<_>>();
 
         output.add_byte_lookup_events_from_maps(blu_events.iter().collect_vec());
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, NUM_PAGE_PROT_COLS)
     }
 
     fn included(&self, shard: &Self::Record) -> bool {

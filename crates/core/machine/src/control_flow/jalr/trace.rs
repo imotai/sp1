@@ -1,17 +1,16 @@
-use std::borrow::BorrowMut;
+use std::{borrow::BorrowMut, mem::MaybeUninit};
 
 use hashbrown::HashMap;
 use itertools::Itertools;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use slop_algebra::PrimeField32;
-use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, JumpEvent},
     ExecutionRecord, Program,
 };
-use sp1_hypercube::air::MachineAir;
+use sp1_hypercube::{air::MachineAir, Word};
 
-use crate::utils::{next_multiple_of_32, zeroed_f_vec};
+use crate::utils::next_multiple_of_32;
 
 use super::{JalrChip, JalrColumns, NUM_JALR_COLS};
 
@@ -30,14 +29,27 @@ impl<F: PrimeField32> MachineAir<F> for JalrChip {
         Some(nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         let chunk_size = std::cmp::max((input.jalr_events.len()) / num_cpus::get(), 1);
         let padded_nb_rows = <JalrChip as MachineAir<F>>::num_rows(self, input).unwrap();
-        let mut values = zeroed_f_vec(padded_nb_rows * NUM_JALR_COLS);
+        let num_event_rows = input.jalr_events.len();
+
+        unsafe {
+            let padding_start = num_event_rows * NUM_JALR_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_JALR_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values =
+            unsafe { core::slice::from_raw_parts_mut(buffer_ptr, padded_nb_rows * NUM_JALR_COLS) };
 
         let blu_events = values
             .chunks_mut(chunk_size * NUM_JALR_COLS)
@@ -61,9 +73,6 @@ impl<F: PrimeField32> MachineAir<F> for JalrChip {
             .collect::<Vec<_>>();
 
         output.add_byte_lookup_events_from_maps(blu_events.iter().collect_vec());
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, NUM_JALR_COLS)
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -84,7 +93,6 @@ impl JalrChip {
         cols: &mut JalrColumns<F>,
         blu: &mut HashMap<ByteLookupEvent, usize>,
     ) {
-        // `event.c` is unused, since we ought to use a `JalrEvent` rather than a `JumpEvent`.
         cols.is_real = F::one();
         cols.op_a_value = event.a.into();
         let low_limb = (event.b.wrapping_add(imm) & 0xFFFF) as u16;
@@ -92,6 +100,8 @@ impl JalrChip {
         cols.add_operation.populate(blu, event.b, imm);
         if !event.op_a_0 {
             cols.op_a_operation.populate(blu, event.pc, 4);
+        } else {
+            cols.op_a_operation.value = Word::from(0u64);
         }
     }
 }

@@ -1,10 +1,11 @@
-use std::borrow::BorrowMut;
+use std::{borrow::BorrowMut, mem::MaybeUninit};
 
 use hashbrown::HashMap;
 use itertools::Itertools;
 use slop_algebra::PrimeField32;
-use slop_matrix::dense::RowMajorMatrix;
-use slop_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
+use slop_maybe_rayon::prelude::{
+    IndexedParallelIterator, ParallelIterator, ParallelSlice, ParallelSliceMut,
+};
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemoryRecordEnum, PrecompileEvent, ShaCompressEvent},
     syscalls::SyscallCode,
@@ -16,7 +17,7 @@ use super::{
     columns::{ShaCompressCols, NUM_SHA_COMPRESS_COLS},
     ShaCompressChip, SHA_COMPRESS_K,
 };
-use crate::utils::{next_multiple_of_32, pad_rows_fixed, u32_to_half_word};
+use crate::utils::{next_multiple_of_32, u32_to_half_word};
 
 impl<F: PrimeField32> MachineAir<F> for ShaCompressChip {
     type Record = ExecutionRecord;
@@ -35,37 +36,58 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressChip {
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         _: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
-        let rows = Vec::new();
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows = <ShaCompressChip as MachineAir<F>>::num_rows(self, input).unwrap();
+        let events = input.get_precompile_events(SyscallCode::SHA_COMPRESS);
+        let num_event_rows = events.len() * 80;
 
-        let mut wrapped_rows = Some(rows);
-        for (_, event) in input.get_precompile_events(SyscallCode::SHA_COMPRESS) {
+        unsafe {
+            let padding_start = num_event_rows * NUM_SHA_COMPRESS_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_SHA_COMPRESS_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * NUM_SHA_COMPRESS_COLS)
+        };
+
+        let compress_area = NUM_SHA_COMPRESS_COLS * 80;
+
+        values.par_chunks_mut(compress_area).enumerate().for_each(|(idx, row)| {
+            let mut blu = Vec::new();
+            let event = &events[idx].1;
             let event = if let PrecompileEvent::ShaCompress(event) = event {
                 event
             } else {
                 unreachable!()
             };
-            self.event_to_rows(event, &mut wrapped_rows, &mut Vec::new());
-        }
-        let mut rows = wrapped_rows.unwrap();
-
-        let num_real_rows = rows.len();
-
-        pad_rows_fixed(
-            &mut rows,
-            || [F::zero(); NUM_SHA_COMPRESS_COLS],
-            input.fixed_log2_rows::<F, _>(self),
-        );
+            unsafe {
+                core::ptr::write_bytes(row.as_mut_ptr(), 0, compress_area);
+            }
+            self.event_to_rows(event, row, &mut blu);
+        });
 
         // Set the octet_num and octet columns for the padded rows.
         let mut octet_num = 0;
         let mut octet = 0;
-        for row in rows[num_real_rows..].iter_mut() {
-            let cols: &mut ShaCompressCols<F> = row.as_mut_slice().borrow_mut();
+        for row in num_event_rows..padded_nb_rows {
+            let row_start = row * NUM_SHA_COMPRESS_COLS;
+            let row = unsafe {
+                core::slice::from_raw_parts_mut(
+                    buffer[row_start..].as_mut_ptr() as *mut F,
+                    NUM_SHA_COMPRESS_COLS,
+                )
+            };
+
+            let cols: &mut ShaCompressCols<F> = row.borrow_mut();
             cols.octet_num[octet_num] = F::one();
             cols.octet[octet] = F::one();
             cols.index = F::from_canonical_u32((8 * octet_num + octet) as u32);
@@ -82,9 +104,6 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressChip {
                 octet_num = (octet_num + 1) % 10;
             }
         }
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_SHA_COMPRESS_COLS)
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
@@ -95,13 +114,14 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressChip {
             .par_chunks(chunk_size)
             .map(|events| {
                 let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
+                let mut row = vec![F::zero(); NUM_SHA_COMPRESS_COLS * 80];
                 events.iter().for_each(|(_, event)| {
                     let event = if let PrecompileEvent::ShaCompress(event) = event {
                         event
                     } else {
                         unreachable!()
                     };
-                    self.event_to_rows::<F>(event, &mut None, &mut blu);
+                    self.event_to_rows::<F>(event, &mut row, &mut blu);
                 });
                 blu
             })
@@ -123,7 +143,7 @@ impl ShaCompressChip {
     fn event_to_rows<F: PrimeField32>(
         &self,
         event: &ShaCompressEvent,
-        rows: &mut Option<Vec<[F; NUM_SHA_COMPRESS_COLS]>>,
+        rows: &mut [F],
         blu: &mut impl ByteRecord,
     ) {
         let og_h = event.h;
@@ -132,8 +152,9 @@ impl ShaCompressChip {
 
         // Load a, b, c, d, e, f, g, h.
         for j in 0..8usize {
-            let mut row = [F::zero(); NUM_SHA_COMPRESS_COLS];
-            let cols: &mut ShaCompressCols<F> = row.as_mut_slice().borrow_mut();
+            let start = j * NUM_SHA_COMPRESS_COLS;
+            let end = (j + 1) * NUM_SHA_COMPRESS_COLS;
+            let cols: &mut ShaCompressCols<F> = rows[start..end].borrow_mut();
 
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
@@ -170,9 +191,6 @@ impl ShaCompressChip {
             cols.index = F::from_canonical_u32(j as u32);
 
             cols.is_real = F::one();
-            if rows.as_ref().is_some() {
-                rows.as_mut().unwrap().push(row);
-            }
         }
 
         // Performs the compress operation.
@@ -181,8 +199,9 @@ impl ShaCompressChip {
             if j.is_multiple_of(8) {
                 octet_num_idx += 1;
             }
-            let mut row = [F::zero(); NUM_SHA_COMPRESS_COLS];
-            let cols: &mut ShaCompressCols<F> = row.as_mut_slice().borrow_mut();
+            let start = (j + 8) * NUM_SHA_COMPRESS_COLS;
+            let end = (j + 9) * NUM_SHA_COMPRESS_COLS;
+            let cols: &mut ShaCompressCols<F> = rows[start..end].borrow_mut();
 
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
@@ -266,10 +285,6 @@ impl ShaCompressChip {
             h_array[0] = temp1_add_temp2;
 
             cols.is_real = F::one();
-
-            if rows.as_ref().is_some() {
-                rows.as_mut().unwrap().push(row);
-            }
         }
 
         let mut v: [u32; 8] = (0..8).map(|i| h_array[i]).collect::<Vec<_>>().try_into().unwrap();
@@ -277,8 +292,9 @@ impl ShaCompressChip {
         octet_num_idx += 1;
         // Store a, b, c, d, e, f, g, h.
         for j in 0..8usize {
-            let mut row = [F::zero(); NUM_SHA_COMPRESS_COLS];
-            let cols: &mut ShaCompressCols<F> = row.as_mut_slice().borrow_mut();
+            let start = (j + 8 + 64) * NUM_SHA_COMPRESS_COLS;
+            let end = (j + 9 + 64) * NUM_SHA_COMPRESS_COLS;
+            let cols: &mut ShaCompressCols<F> = rows[start..end].borrow_mut();
 
             cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
@@ -328,10 +344,6 @@ impl ShaCompressChip {
             };
 
             cols.is_real = F::one();
-
-            if rows.as_ref().is_some() {
-                rows.as_mut().unwrap().push(row);
-            }
         }
     }
 }

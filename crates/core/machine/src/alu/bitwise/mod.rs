@@ -1,21 +1,3 @@
-use core::{
-    borrow::{Borrow, BorrowMut},
-    mem::size_of,
-};
-
-use hashbrown::HashMap;
-use itertools::Itertools;
-use slop_air::{Air, BaseAir};
-use slop_algebra::{AbstractField, PrimeField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
-use slop_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
-use sp1_core_executor::{
-    events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ByteOpcode, ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
-};
-use sp1_derive::AlignedBorrow;
-use sp1_hypercube::air::MachineAir;
-
 use crate::{
     adapter::{
         register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
@@ -23,8 +5,28 @@ use crate::{
     },
     air::{SP1CoreAirBuilder, SP1Operation},
     operations::{BitwiseU16Operation, BitwiseU16OperationInput},
-    utils::{next_multiple_of_32, pad_rows_fixed},
+    utils::next_multiple_of_32,
 };
+use core::{
+    borrow::{Borrow, BorrowMut},
+    mem::{size_of, MaybeUninit},
+};
+use hashbrown::HashMap;
+use itertools::Itertools;
+use rayon::{
+    iter::{IndexedParallelIterator, IntoParallelRefIterator},
+    slice::ParallelSliceMut,
+};
+use slop_air::{Air, BaseAir};
+use slop_algebra::{AbstractField, PrimeField, PrimeField32};
+use slop_matrix::Matrix;
+use slop_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
+use sp1_core_executor::{
+    events::{AluEvent, ByteLookupEvent, ByteRecord},
+    ByteOpcode, ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
+};
+use sp1_derive::AlignedBorrow;
+use sp1_hypercube::air::MachineAir;
 
 /// The number of main trace columns for `BitwiseChip`.
 pub const NUM_BITWISE_COLS: usize = size_of::<BitwiseCols<u8>>();
@@ -71,37 +73,39 @@ impl<F: PrimeField32> MachineAir<F> for BitwiseChip {
         Some(nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
-        _: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
-        let mut rows = input
-            .bitwise_events
-            .par_iter()
-            .map(|event| {
-                let mut row = [F::zero(); NUM_BITWISE_COLS];
-                let cols: &mut BitwiseCols<F> = row.as_mut_slice().borrow_mut();
+        _output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows = <BitwiseChip as MachineAir<F>>::num_rows(self, input).unwrap();
+        let nb_rows = input.bitwise_events.len();
+
+        unsafe {
+            let padding_start = nb_rows * NUM_BITWISE_COLS;
+            let padding_size = (padded_nb_rows - nb_rows) * NUM_BITWISE_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, padded_nb_rows * NUM_BITWISE_COLS)
+        };
+
+        values[..nb_rows * NUM_BITWISE_COLS]
+            .par_chunks_exact_mut(NUM_BITWISE_COLS)
+            .zip(input.bitwise_events.par_iter())
+            .for_each(|(row, event)| {
+                let cols: &mut BitwiseCols<F> = row.borrow_mut();
+
                 let mut blu = Vec::new();
                 cols.adapter.populate(&mut blu, event.1);
                 self.event_to_row(&event.0, cols, &mut blu);
                 cols.state.populate(&mut blu, event.0.clk, event.0.pc);
-
-                row
-            })
-            .collect::<Vec<_>>();
-
-        // Pad the trace to a power of two.
-        pad_rows_fixed(
-            &mut rows,
-            || [F::zero(); NUM_BITWISE_COLS],
-            input.fixed_log2_rows::<F, _>(self),
-        );
-
-        assert_eq!(rows.len(), <BitwiseChip as MachineAir<F>>::num_rows(self, input).unwrap());
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_BITWISE_COLS)
+            });
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {

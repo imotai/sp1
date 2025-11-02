@@ -1,19 +1,17 @@
 use core::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 
 use crate::{
-    air::SP1CoreAirBuilder,
-    memory::MemoryAccessCols,
-    program::InstructionCols,
-    utils::{next_multiple_of_32, pad_rows_fixed},
+    air::SP1CoreAirBuilder, memory::MemoryAccessCols, program::InstructionCols,
+    utils::next_multiple_of_32,
 };
 use hashbrown::HashMap;
 use itertools::Itertools;
 use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, Field, PrimeField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, InstructionFetchEvent, MemoryAccessPosition},
     ByteOpcode, ExecutionRecord, MemoryAccessRecord, Opcode, Program,
@@ -169,43 +167,48 @@ impl<F: PrimeField32> MachineAir<F> for InstructionFetchChip {
         output.add_byte_lookup_events_from_maps(blu_batches.iter().collect_vec());
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         _output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
-        // Generate the trace rows for each event.
-        let mut rows = Vec::new();
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows =
+            <InstructionFetchChip as MachineAir<F>>::num_rows(self, input).unwrap();
+        let num_event_rows = input.instruction_fetch_events.len();
 
-        let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
-        for event in input.instruction_fetch_events.iter() {
-            let (event, memory_access) = event;
-
-            let mut row = [F::zero(); NUM_INSTRUCTION_FETCH_COLS];
-            let cols: &mut InstructionFetchCols<F> = row.as_mut_slice().borrow_mut();
-
-            let (mem_access, encoded) = memory_access.untrusted_instruction.unwrap();
-            assert_eq!(encoded, event.encoded_instruction);
-            assert!(mem_access.current_record().timestamp == event.clk);
-
-            cols.memory_access.populate(mem_access, &mut blu);
-
-            self.event_to_row(event, memory_access, cols);
-
-            rows.push(row);
+        unsafe {
+            let padding_start = num_event_rows * NUM_INSTRUCTION_FETCH_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_INSTRUCTION_FETCH_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
         }
 
-        // Pad the trace to a power of two depending on the proof shape in `input`.
-        pad_rows_fixed(
-            &mut rows,
-            || [F::zero(); NUM_INSTRUCTION_FETCH_COLS],
-            input.fixed_log2_rows::<F, _>(self),
-        );
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * NUM_INSTRUCTION_FETCH_COLS)
+        };
 
-        RowMajorMatrix::new(
-            rows.into_iter().flatten().collect::<Vec<_>>(),
-            NUM_INSTRUCTION_FETCH_COLS,
-        )
+        let chunk_size = std::cmp::max(input.instruction_fetch_events.len() / num_cpus::get(), 1);
+
+        values.chunks_mut(chunk_size * NUM_INSTRUCTION_FETCH_COLS).enumerate().for_each(
+            |(i, rows)| {
+                rows.chunks_mut(NUM_INSTRUCTION_FETCH_COLS).enumerate().for_each(|(j, row)| {
+                    let idx = i * chunk_size + j;
+                    let cols: &mut InstructionFetchCols<F> = row.borrow_mut();
+                    let (event, memory_access) = &input.instruction_fetch_events[idx];
+
+                    let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
+                    let (mem_access, encoded) = memory_access.untrusted_instruction.unwrap();
+                    assert_eq!(encoded, event.encoded_instruction);
+                    assert!(mem_access.current_record().timestamp == event.clk);
+
+                    cols.memory_access.populate(mem_access, &mut blu);
+                    self.event_to_row(event, memory_access, cols);
+                });
+            },
+        );
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -327,8 +330,6 @@ where
         );
     }
 }
-
-impl InstructionFetchChip {}
 
 #[cfg(test)]
 mod tests {

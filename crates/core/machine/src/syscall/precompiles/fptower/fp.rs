@@ -1,7 +1,7 @@
 use std::{
     borrow::{Borrow, BorrowMut},
     marker::PhantomData,
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 
 use crate::{
@@ -11,14 +11,14 @@ use crate::{
         field::range::FieldLtCols, AddrAddOperation, AddressSlicePageProtOperation,
         SyscallAddrOperation,
     },
-    utils::{limbs_to_words, next_multiple_of_32, zeroed_f_vec},
+    utils::{limbs_to_words, next_multiple_of_32},
 };
 use generic_array::GenericArray;
 use itertools::Itertools;
 use num::{BigUint, Zero};
 use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, FieldOperation, MemoryRecordEnum, PrecompileEvent},
     syscalls::SyscallCode,
@@ -38,10 +38,7 @@ use sp1_primitives::{
     polynomial::Polynomial,
 };
 
-use crate::{
-    operations::field::field_op::FieldOpCols,
-    utils::{pad_rows_fixed, words_to_bytes_le_vec},
-};
+use crate::{operations::field::field_op::FieldOpCols, utils::words_to_bytes_le_vec};
 
 pub const fn num_fp_cols<P: FpOpField>() -> usize {
     size_of::<FpOpCols<u8, P>>()
@@ -115,28 +112,44 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(&self, input: &Self::Record, output: &mut Self::Record) -> RowMajorMatrix<F> {
-        // All the fp events for a given curve are coalesce to the curve's Add operation.  Only
-        // retrieve precompile events for that operation.
-        // TODO:  Fix this.
+    fn generate_trace_into(
+        &self,
+        input: &ExecutionRecord,
+        output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows = <FpOpChip<P> as MachineAir<F>>::num_rows(self, input).unwrap();
 
         let events = match P::FIELD_TYPE {
-            FieldType::Bn254 => input.get_precompile_events(SyscallCode::BN254_FP_ADD).iter(),
-            FieldType::Bls12381 => input.get_precompile_events(SyscallCode::BLS12381_FP_ADD).iter(),
+            FieldType::Bn254 => input.get_precompile_events(SyscallCode::BN254_FP_ADD),
+            FieldType::Bls12381 => input.get_precompile_events(SyscallCode::BLS12381_FP_ADD),
         };
 
-        let mut rows = Vec::new();
+        let num_event_rows = events.len();
         let mut new_byte_lookup_events = Vec::new();
 
-        for (_, event) in events {
+        unsafe {
+            let padding_start = num_event_rows * num_fp_cols::<P>();
+            let padding_size = (padded_nb_rows - num_event_rows) * num_fp_cols::<P>();
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * num_fp_cols::<P>())
+        };
+
+        values.chunks_exact_mut(num_fp_cols::<P>()).enumerate().for_each(|(idx, row)| {
+            let (_, event) = &events[idx];
             let event = match (P::FIELD_TYPE, event) {
                 (FieldType::Bn254, PrecompileEvent::Bn254Fp(event)) => event,
                 (FieldType::Bls12381, PrecompileEvent::Bls12381Fp(event)) => event,
                 _ => unreachable!(),
             };
 
-            let mut row = zeroed_f_vec(num_fp_cols::<P>());
-            let cols: &mut FpOpCols<F, P> = row.as_mut_slice().borrow_mut();
+            let cols: &mut FpOpCols<F, P> = row.borrow_mut();
 
             let p = BigUint::from_bytes_le(&words_to_bytes_le_vec(&event.x));
             let q = BigUint::from_bytes_le(&words_to_bytes_le_vec(&event.y));
@@ -186,34 +199,28 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
                     &event.page_prot_records.write_page_prot_records.get(1).copied(),
                     input.public_values.is_untrusted_programs_enabled,
                 );
+            } else {
+                cols.read_slice_page_prot_access = AddressSlicePageProtOperation::default();
+                cols.write_slice_page_prot_access = AddressSlicePageProtOperation::default();
             }
-
-            rows.push(row);
-        }
+        });
 
         output.add_byte_lookup_events(new_byte_lookup_events);
 
-        pad_rows_fixed(
-            &mut rows,
-            || {
-                let mut row = zeroed_f_vec(num_fp_cols::<P>());
-                let cols: &mut FpOpCols<F, P> = row.as_mut_slice().borrow_mut();
-                let zero = BigUint::zero();
-                cols.is_add = F::from_canonical_u8(1);
-                Self::populate_field_ops(
-                    &mut vec![],
-                    cols,
-                    zero.clone(),
-                    zero,
-                    FieldOperation::Add,
-                );
-                row
-            },
-            input.fixed_log2_rows::<F, _>(self),
-        );
+        for idx in num_event_rows..padded_nb_rows {
+            let row_start = idx * num_fp_cols::<P>();
+            let row = unsafe {
+                core::slice::from_raw_parts_mut(
+                    buffer[row_start..].as_mut_ptr() as *mut F,
+                    num_fp_cols::<P>(),
+                )
+            };
 
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), num_fp_cols::<P>())
+            let cols: &mut FpOpCols<F, P> = row.borrow_mut();
+            let zero = BigUint::zero();
+            cols.is_add = F::from_canonical_u8(1);
+            Self::populate_field_ops(&mut vec![], cols, zero.clone(), zero, FieldOperation::Add);
+        }
     }
 
     fn included(&self, shard: &Self::Record) -> bool {

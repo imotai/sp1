@@ -1,3 +1,5 @@
+use std::mem::MaybeUninit;
+
 use crate::{septic_digest::SepticDigest, MachineRecord};
 use slop_air::BaseAir;
 use slop_algebra::Field;
@@ -35,12 +37,31 @@ pub trait MachineAir<F: Field>: BaseAir<F> + 'static + Send + Sync {
     /// - `input` is the execution record containing the events to be written to the trace.
     /// - `output` is the execution record containing events that the `MachineAir` can add to the
     ///   record such as byte lookup requests.
-    fn generate_trace(&self, input: &Self::Record, output: &mut Self::Record) -> RowMajorMatrix<F>;
+    fn generate_trace(&self, input: &Self::Record, output: &mut Self::Record) -> RowMajorMatrix<F> {
+        let padded_nb_rows = self.num_rows(input).unwrap();
+        let num_columns = <Self as BaseAir<F>>::width(self);
+        let mut values: Vec<F> = Vec::with_capacity(padded_nb_rows * num_columns);
+        self.generate_trace_into(input, output, values.spare_capacity_mut());
+
+        unsafe {
+            values.set_len(padded_nb_rows * num_columns);
+        }
+
+        RowMajorMatrix::new(values, num_columns)
+    }
 
     /// Generate the dependencies for a given execution record.
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
         self.generate_trace(input, output);
     }
+
+    /// Generate the trace into a slice of `MaybeUninit<F>`.
+    fn generate_trace_into(
+        &self,
+        input: &Self::Record,
+        output: &mut Self::Record,
+        buffer: &mut [MaybeUninit<F>],
+    );
 
     /// Whether this execution record contains events for this air.
     fn included(&self, shard: &Self::Record) -> bool;

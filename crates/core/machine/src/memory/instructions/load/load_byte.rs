@@ -4,7 +4,7 @@ use sp1_derive::AlignedBorrow;
 use sp1_hypercube::{air::BaseAirBuilder, Word};
 use std::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 
 use crate::{
@@ -15,13 +15,12 @@ use crate::{
     air::{SP1CoreAirBuilder, SP1Operation},
     memory::MemoryAccessCols,
     operations::{AddressOperation, AddressOperationInput},
-    utils::{next_multiple_of_32, zeroed_f_vec},
+    utils::next_multiple_of_32,
 };
 use hashbrown::HashMap;
 use itertools::Itertools;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use slop_algebra::{AbstractField, Field, PrimeField32};
-use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent, MemoryAccessPosition},
     ByteOpcode, ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
@@ -98,14 +97,28 @@ impl<F: PrimeField32> MachineAir<F> for LoadByteChip {
         Some(nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         let chunk_size = std::cmp::max((input.memory_load_byte_events.len()) / num_cpus::get(), 1);
         let padded_nb_rows = <LoadByteChip as MachineAir<F>>::num_rows(self, input).unwrap();
-        let mut values = zeroed_f_vec(padded_nb_rows * NUM_LOAD_BYTE_COLUMNS);
+        let num_event_rows = input.memory_load_byte_events.len();
+
+        unsafe {
+            let padding_start = num_event_rows * NUM_LOAD_BYTE_COLUMNS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_LOAD_BYTE_COLUMNS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, padded_nb_rows * NUM_LOAD_BYTE_COLUMNS)
+        };
 
         let blu_events = values
             .chunks_mut(chunk_size * NUM_LOAD_BYTE_COLUMNS)
@@ -132,9 +145,6 @@ impl<F: PrimeField32> MachineAir<F> for LoadByteChip {
             .collect::<Vec<_>>();
 
         output.add_byte_lookup_events_from_maps(blu_events.iter().collect_vec());
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, NUM_LOAD_BYTE_COLUMNS)
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -175,6 +185,7 @@ impl LoadByteChip {
 
         if event.opcode == Opcode::LB {
             cols.is_lb = F::one();
+            cols.is_lbu = F::zero();
             cols.msb = F::from_canonical_u8(byte >> 7);
             blu.add_byte_lookup_event(ByteLookupEvent {
                 opcode: ByteOpcode::MSB,
@@ -183,7 +194,9 @@ impl LoadByteChip {
                 c: 0,
             });
         } else {
+            cols.is_lb = F::zero();
             cols.is_lbu = F::one();
+            cols.msb = F::zero();
         }
     }
 }

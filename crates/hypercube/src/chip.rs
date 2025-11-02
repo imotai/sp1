@@ -233,6 +233,15 @@ where
         self.air.generate_trace(input, output)
     }
 
+    fn generate_trace_into(
+        &self,
+        input: &A::Record,
+        output: &mut A::Record,
+        buffer: &mut [std::mem::MaybeUninit<F>],
+    ) {
+        self.air.generate_trace_into(input, output, buffer);
+    }
+
     fn generate_dependencies(&self, input: &A::Record, output: &mut A::Record) {
         self.air.generate_dependencies(input, output);
     }

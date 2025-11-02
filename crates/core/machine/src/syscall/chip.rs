@@ -3,8 +3,8 @@ use core::fmt;
 use itertools::Itertools;
 use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
-use slop_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
+use slop_matrix::Matrix;
+use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
 use sp1_core_executor::{
     events::{ByteRecord, GlobalInteractionEvent, SyscallEvent},
     ExecutionRecord, Program,
@@ -16,7 +16,7 @@ use sp1_hypercube::{
 };
 use std::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 /// The number of main trace columns for `SyscallChip`.
 pub const NUM_SYSCALL_COLS: usize = size_of::<SyscallCols<u8>>();
@@ -146,15 +146,13 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         _output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
-        let row_fn = |syscall_event: &SyscallEvent, _: bool| {
-            let mut row = [F::zero(); NUM_SYSCALL_COLS];
-            let cols: &mut SyscallCols<F> = row.as_mut_slice().borrow_mut();
-
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let row_fn = |syscall_event: &SyscallEvent, cols: &mut SyscallCols<F>| {
             cols.clk_high = F::from_canonical_u32((syscall_event.clk >> 24) as u32);
             cols.clk_low = F::from_canonical_u32((syscall_event.clk & 0xFFFFFF) as u32);
             cols.syscall_id = F::from_canonical_u32(syscall_event.syscall_code.syscall_id());
@@ -171,33 +169,44 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
             ];
 
             cols.is_real = F::one();
-            row
         };
 
-        let mut rows = match self.shard_kind {
+        let padded_nb_rows = <SyscallChip as MachineAir<F>>::num_rows(self, input).unwrap();
+
+        // Get event slice based on shard kind
+        let events: Vec<&SyscallEvent> = match self.shard_kind {
             SyscallShardKind::Core => input
                 .syscall_events
-                .par_iter()
+                .iter()
                 .map(|(event, _)| event)
                 .filter(|e| e.should_send)
-                .map(|event| row_fn(event, false))
-                .collect::<Vec<_>>(),
-            SyscallShardKind::Precompile => input
-                .precompile_events
-                .all_events()
-                .map(|(event, _)| event)
-                .par_bridge()
-                .map(|event| row_fn(event, true))
-                .collect::<Vec<_>>(),
+                .collect(),
+            SyscallShardKind::Precompile => {
+                input.precompile_events.all_events().map(|(event, _)| event).collect()
+            }
         };
 
-        // Pad the trace to a power of two depending on the proof shape in `input`.
-        rows.resize(
-            <SyscallChip as MachineAir<F>>::num_rows(self, input).unwrap(),
-            [F::zero(); NUM_SYSCALL_COLS],
-        );
+        let num_event_rows = events.len();
 
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_SYSCALL_COLS)
+        unsafe {
+            let padding_start = num_event_rows * NUM_SYSCALL_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_SYSCALL_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * NUM_SYSCALL_COLS)
+        };
+
+        values.par_chunks_mut(NUM_SYSCALL_COLS).enumerate().for_each(|(idx, row)| {
+            if idx < events.len() {
+                let cols: &mut SyscallCols<F> = row.borrow_mut();
+                row_fn(events[idx], cols);
+            }
+        });
     }
 
     fn included(&self, shard: &Self::Record) -> bool {

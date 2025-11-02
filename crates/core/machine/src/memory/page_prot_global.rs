@@ -12,8 +12,11 @@ use core::{
 };
 use slop_air::{Air, AirBuilder, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
-use slop_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
+use slop_matrix::Matrix;
+use slop_maybe_rayon::prelude::{
+    IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator, ParallelSlice,
+    ParallelSliceMut,
+};
 use sp1_core_executor::{
     events::{
         ByteLookupEvent, ByteRecord, GlobalInteractionEvent, PageProtInitializeFinalizeEvent,
@@ -26,7 +29,7 @@ use sp1_hypercube::{
     InteractionKind, Word,
 };
 use sp1_primitives::consts::{split_page_idx, DEFAULT_PAGE_PROT};
-use std::iter::once;
+use std::{iter::once, mem::MaybeUninit};
 
 /// A memory chip that can initialize or finalize values in memory.
 pub struct PageProtGlobalChip {
@@ -162,11 +165,12 @@ impl<F: PrimeField32> MachineAir<F> for PageProtGlobalChip {
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         _output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         let mut page_prot_events = match self.kind {
             MemoryChipType::Initialize => input.global_page_prot_initialize_events.clone(),
             MemoryChipType::Finalize => input.global_page_prot_finalize_events.clone(),
@@ -181,14 +185,31 @@ impl<F: PrimeField32> MachineAir<F> for PageProtGlobalChip {
         if input.public_values.is_untrusted_programs_enabled == 0 {
             assert!(page_prot_events.is_empty());
         }
-        let mut rows: Vec<[F; NUM_PAGE_PROT_INIT_COLS]> = page_prot_events
-            .par_iter()
-            .map(|event| {
+
+        let padded_nb_rows = <PageProtGlobalChip as MachineAir<F>>::num_rows(self, input).unwrap();
+        let num_event_rows = page_prot_events.len();
+
+        unsafe {
+            let padding_start = num_event_rows * NUM_PAGE_PROT_INIT_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_PAGE_PROT_INIT_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * NUM_PAGE_PROT_INIT_COLS)
+        };
+
+        values
+            .par_chunks_exact_mut(NUM_PAGE_PROT_INIT_COLS)
+            .zip(page_prot_events.par_iter())
+            .for_each(|(row, event)| {
+                let cols: &mut PageProtInitCols<F> = row.borrow_mut();
                 let PageProtInitializeFinalizeEvent { page_idx, page_prot, timestamp } =
                     event.to_owned();
 
-                let mut row = [F::zero(); NUM_PAGE_PROT_INIT_COLS];
-                let cols: &mut PageProtInitCols<F> = row.as_mut_slice().borrow_mut();
                 let page_idx_limbs = split_page_idx(page_idx);
                 cols.page_idx[0] = F::from_canonical_u16(page_idx_limbs[0]);
                 cols.page_idx[1] = F::from_canonical_u16(page_idx_limbs[1]);
@@ -197,14 +218,15 @@ impl<F: PrimeField32> MachineAir<F> for PageProtGlobalChip {
                 cols.clk_low = F::from_canonical_u32((timestamp & 0xFFFFFF) as u32);
                 cols.page_prot = F::from_canonical_u8(page_prot);
                 cols.is_real = F::one();
-                row
-            })
-            .collect::<Vec<_>>();
+            });
 
         let mut blu: Vec<ByteLookupEvent> = vec![];
         for i in 0..page_prot_events.len() {
+            let row_start = i * NUM_PAGE_PROT_INIT_COLS;
+            let row = &mut values[row_start..row_start + NUM_PAGE_PROT_INIT_COLS];
+            let cols: &mut PageProtInitCols<F> = row.borrow_mut();
+
             let page_idx = page_prot_events[i].page_idx;
-            let cols: &mut PageProtInitCols<F> = rows[i].as_mut_slice().borrow_mut();
             let prev_page_idx =
                 if i == 0 { previous_page_idx } else { page_prot_events[i - 1].page_idx };
             if prev_page_idx == 0 && i != 0 {
@@ -232,16 +254,11 @@ impl<F: PrimeField32> MachineAir<F> for PageProtGlobalChip {
                 // cols.page_idx are 4 bit limbs. The lt_cols operation will split it's
                 // operands to 16 bit limbs.
                 cols.lt_cols.populate_unsigned(&mut blu, 1, prev_page_idx << 12, page_idx << 12);
+            } else {
+                cols.is_comp = F::zero();
+                cols.lt_cols = LtOperationUnsigned::<F>::default();
             }
         }
-
-        // Pad the trace to a power of two depending on the proof shape in `input`.
-        rows.resize(
-            <PageProtGlobalChip as MachineAir<F>>::num_rows(self, input).unwrap(),
-            [F::zero(); NUM_PAGE_PROT_INIT_COLS],
-        );
-
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_PAGE_PROT_INIT_COLS)
     }
 
     fn included(&self, shard: &Self::Record) -> bool {

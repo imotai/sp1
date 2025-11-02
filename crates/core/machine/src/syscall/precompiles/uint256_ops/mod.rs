@@ -2,7 +2,6 @@ mod air;
 
 use num::{BigUint, One, Zero};
 use slop_algebra::PrimeField32;
-use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{
     events::{ByteRecord, MemoryRecordEnum, PrecompileEvent},
     syscalls::SyscallCode,
@@ -11,14 +10,14 @@ use sp1_core_executor::{
 use sp1_curves::{params::NumWords, uint256::U256Field};
 use sp1_hypercube::air::MachineAir;
 use sp1_primitives::consts::{PROT_READ, PROT_WRITE};
-use std::borrow::BorrowMut;
+use std::{borrow::BorrowMut, mem::MaybeUninit};
 
 pub use air::{Uint256OpsChip, Uint256OpsCols, NUM_UINT256_OPS_COLS};
 use typenum::Unsigned;
 type WordsFieldElement = <U256Field as NumWords>::WordsFieldElement;
 const WORDS_FIELD_ELEMENT: usize = WordsFieldElement::USIZE;
 
-use crate::utils::{next_multiple_of_32, pad_rows_fixed};
+use crate::{operations::AddressSlicePageProtOperation, utils::next_multiple_of_32};
 
 pub const U256_NUM_WORDS: usize = 4;
 
@@ -39,26 +38,46 @@ impl<F: PrimeField32> MachineAir<F> for Uint256OpsChip {
         Some(padded_nb_rows)
     }
 
-    fn generate_trace(&self, input: &Self::Record, output: &mut Self::Record) -> RowMajorMatrix<F> {
-        let mut all_events = Vec::new();
-        all_events.extend(input.get_precompile_events(SyscallCode::UINT256_ADD_CARRY).iter());
-        all_events.extend(input.get_precompile_events(SyscallCode::UINT256_MUL_CARRY).iter());
+    fn generate_trace_into(
+        &self,
+        input: &ExecutionRecord,
+        output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows = <Uint256OpsChip as MachineAir<F>>::num_rows(self, input).unwrap();
+        let mut events = Vec::new();
+        events.extend(input.get_precompile_events(SyscallCode::UINT256_ADD_CARRY).iter());
+        events.extend(input.get_precompile_events(SyscallCode::UINT256_MUL_CARRY).iter());
+        let num_event_rows = events.len();
+        let chunk_size = 1;
 
-        let event_rows = all_events
-            .chunks(1)
-            .map(|events| {
-                let mut new_byte_lookup_events = Vec::new();
+        unsafe {
+            let padding_start = num_event_rows * NUM_UINT256_OPS_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_UINT256_OPS_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
 
-                let rows = events
-                    .iter()
-                    .map(|(_, event)| {
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let buffer_as_slice = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * NUM_UINT256_OPS_COLS)
+        };
+
+        let mut new_byte_lookup_events = Vec::new();
+
+        buffer_as_slice.chunks_mut(chunk_size * NUM_UINT256_OPS_COLS).enumerate().for_each(
+            |(i, rows)| {
+                rows.chunks_mut(NUM_UINT256_OPS_COLS).enumerate().for_each(|(j, row)| {
+                    let idx = i * chunk_size + j;
+                    if idx < events.len() {
+                        let event = &events[idx].1;
                         let event = if let PrecompileEvent::Uint256Ops(event) = event {
                             event
                         } else {
                             unreachable!()
                         };
-                        let mut row: [F; NUM_UINT256_OPS_COLS] = [F::zero(); NUM_UINT256_OPS_COLS];
-                        let cols: &mut Uint256OpsCols<F> = row.as_mut_slice().borrow_mut();
+                        let cols: &mut Uint256OpsCols<F> = row.borrow_mut();
 
                         // Set is_real flag
                         cols.is_real = F::one();
@@ -237,50 +256,46 @@ impl<F: PrimeField32> MachineAir<F> for Uint256OpsChip {
                                 &event.page_prot_records.write_e_page_prot_records.get(1).copied(),
                                 input.public_values.is_untrusted_programs_enabled,
                             );
+                        } else {
+                            cols.address_slice_page_prot_access_a =
+                                AddressSlicePageProtOperation::default();
+                            cols.address_slice_page_prot_access_b =
+                                AddressSlicePageProtOperation::default();
+                            cols.address_slice_page_prot_access_c =
+                                AddressSlicePageProtOperation::default();
+                            cols.address_slice_page_prot_access_d =
+                                AddressSlicePageProtOperation::default();
+                            cols.address_slice_page_prot_access_e =
+                                AddressSlicePageProtOperation::default();
                         }
-
-                        row
-                    })
-                    .collect::<Vec<_>>();
-
-                // records.add_byte_lookup_events(new_byte_lookup_events);
-                output.add_byte_lookup_events(new_byte_lookup_events);
-                rows
-            })
-            .collect::<Vec<_>>();
-
-        // Generate the trace rows for each event.
-        let mut rows = Vec::new();
-        for row in event_rows {
-            rows.extend(row);
-        }
-
-        // Pad rows to the required size
-        pad_rows_fixed(
-            &mut rows,
-            || {
-                let mut row: [F; NUM_UINT256_OPS_COLS] = [F::zero(); NUM_UINT256_OPS_COLS];
-                let cols: &mut Uint256OpsCols<F> = row.as_mut_slice().borrow_mut();
-
-                // Initialize with zero values for padding rows
-                let zero = BigUint::zero();
-                cols.field_op.populate_conditional_op_and_carry(
-                    &mut vec![],
-                    &zero,
-                    &zero,
-                    &zero,
-                    &(BigUint::one() << 256),
-                    true,
-                    false,
-                );
-
-                row
+                    }
+                })
             },
-            input.fixed_log2_rows::<F, _>(self),
         );
 
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_UINT256_OPS_COLS)
+        for row in num_event_rows..padded_nb_rows {
+            let row_start = row * NUM_UINT256_OPS_COLS;
+            let row = unsafe {
+                core::slice::from_raw_parts_mut(
+                    buffer[row_start..].as_mut_ptr() as *mut F,
+                    NUM_UINT256_OPS_COLS,
+                )
+            };
+            let cols: &mut Uint256OpsCols<F> = row.borrow_mut();
+
+            let zero = BigUint::zero();
+            cols.field_op.populate_conditional_op_and_carry(
+                &mut vec![],
+                &zero,
+                &zero,
+                &zero,
+                &(BigUint::one() << 256),
+                true,
+                false,
+            );
+        }
+
+        output.add_byte_lookup_events(new_byte_lookup_events);
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
