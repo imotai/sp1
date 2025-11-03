@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use slop_futures::pipeline::{SubmitError, TaskHandle};
+use slop_futures::pipeline::SubmitError;
 use sp1_core_executor::SP1CoreOpts;
 use sp1_hypercube::prover::ProverSemaphore;
 use sp1_prover_types::{Artifact, ArtifactClient};
@@ -8,9 +8,9 @@ use sp1_prover_types::{Artifact, ArtifactClient};
 use crate::{
     components::{CoreProver, RecursionProver},
     worker::{
-        ProofId, RawTaskRequest, SP1CoreProver, SP1CoreProverConfig, SP1RecursionProver,
-        SP1RecursionProverConfig, SetupTask, TaskError, TaskId, TaskMetadata, TracingTask,
-        WorkerClient,
+        CoreProveSubmitHandle, RawTaskRequest, ReduceSubmitHandle, SP1CoreProver,
+        SP1CoreProverConfig, SP1RecursionProver, SP1RecursionProverConfig, SetupSubmitHandle,
+        SetupTask, TaskError, TaskId, WorkerClient,
     },
     SP1ProverComponents,
 };
@@ -57,29 +57,9 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
 
     pub async fn submit_prove_core_shard(
         &self,
-        task_id: TaskId,
-        proof_id: ProofId,
-        elf: Artifact,
-        common_input: Artifact,
-        record: Artifact,
-        output: Artifact,
-        deferred_marker_task: Artifact,
-        deferred_output: Artifact,
-    ) -> Result<TaskHandle<Result<(TaskId, TaskMetadata), TaskError>>, SubmitError> {
-        let handle = self
-            .core_prover
-            .submit_prove_shard(TracingTask {
-                task_id,
-                proof_id,
-                elf,
-                common_input,
-                record,
-                output,
-                deferred_marker_task,
-                deferred_output,
-            })
-            .await?;
-        Ok(handle)
+        request: RawTaskRequest,
+    ) -> Result<CoreProveSubmitHandle<A, W, C>, TaskError> {
+        self.core_prover.submit_prove_shard(request).await
     }
 
     pub async fn submit_setup(
@@ -87,7 +67,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
         id: TaskId,
         elf: Artifact,
         output: Artifact,
-    ) -> Result<TaskHandle<Result<(TaskId, TaskMetadata), TaskError>>, SubmitError> {
+    ) -> Result<SetupSubmitHandle<A, C>, SubmitError> {
         let handle = self.core_prover.submit_setup(SetupTask { id, elf, output }).await?;
         Ok(handle)
     }
@@ -95,7 +75,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
     pub async fn submit_recursion_reduce(
         &self,
         request: RawTaskRequest,
-    ) -> Result<TaskHandle<Result<TaskMetadata, TaskError>>, TaskError> {
+    ) -> Result<ReduceSubmitHandle<A, C>, TaskError> {
         self.recursion_prover.submit_recursion_reduce(request).await
     }
 }

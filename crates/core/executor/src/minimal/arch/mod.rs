@@ -7,6 +7,3 @@ cfg_if::cfg_if! {
         pub use portable::*;
     }
 }
-
-pub const MAX_NUMBER_TRACE_ENTRIES: u64 =
-    2147483648 / std::mem::size_of::<sp1_jit::MemValue>() as u64;

@@ -1,9 +1,11 @@
 mod compress;
 mod core;
+mod splicing;
 mod tasks;
 
 pub use compress::*;
 pub use core::*;
+pub use splicing::*;
 
 use opentelemetry::Context;
 use sp1_core_executor::SP1CoreOpts;

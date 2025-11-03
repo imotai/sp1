@@ -401,10 +401,20 @@ impl CompressTree {
 
                Some((task_id, status)) = core_proofs_event_stream.recv() => {
                         if status != TaskStatus::Succeeded {
-                            return Err(TaskError::Fatal(anyhow::anyhow!("Core proof task {} failed", task_id)));
+                            return Err(
+                                TaskError::Fatal
+                                (anyhow::anyhow!("Core proof task {} failed", task_id))
+                            );
                         }
                         // Download the proof
-                        let normalize_proof = core_proof_map.lock().unwrap().remove(&task_id).ok_or_else(|| TaskError::Fatal(anyhow::anyhow!("Task {} not found in core proof map", task_id)))?;
+                        let normalize_proof = core_proof_map
+                              .lock()
+                              .unwrap()
+                              .remove(&task_id)
+                              .ok_or_else(||
+                                TaskError::Fatal
+                                (anyhow::anyhow!("Task {} not found in core proof map", task_id))
+                            )?;
                         let shard_range = &normalize_proof.shard_range;
                         let (start, end) = (shard_range.start(), shard_range.end());
                         if start < max_range.start {

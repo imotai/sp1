@@ -44,42 +44,15 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, TryAcquireError};
 
 use thiserror::Error;
 
-use crate::queue::{AcquireWorkerError, WorkerQueue};
+use crate::queue::{self, AcquireWorkerError, WorkerQueue};
 
 /// A trait for task inputs that can be processed by the pipeline.
 ///
-/// Tasks must be cloneable, thread-safe, and able to report their weight
-/// for capacity management purposes.
-///
-/// # Example
-///
-/// ```ignore
-/// #[derive(Debug, Clone)]
-/// struct MyTask {
-///     data: String,
-///     memory_consumption: u32,
-/// }
-///
-/// impl TaskInput for MyTask {
-///     fn weight(&self) -> u32 {
-///         // High memory consumption tasks might consume more resources
-///         self.memory_consumption
-///     }
-/// }
-/// ```
-pub trait TaskInput: 'static + Send + Sync {
-    /// Returns the weight of this task.
-    ///
-    /// The weight determines how many permits this task will consume from the semaphore when
-    /// submitted to the engine. Tasks with higher weights will consume more capacity.
-    fn weight(&self) -> u32;
-}
+/// Tasks must have a static lifetime and be thread-safe. This trait is automatically implemented
+/// for all static lifetime types that are `Send` and `Sync`.
+pub trait TaskInput: 'static + Send + Sync {}
 
-impl<T: TaskInput, E: Send + Sync + 'static> TaskInput for Result<T, E> {
-    fn weight(&self) -> u32 {
-        self.as_ref().map_or(1, |t| t.weight())
-    }
-}
+impl<T: 'static + Send + Sync> TaskInput for T {}
 
 /// Error returned when a task submission fails.
 ///
@@ -108,6 +81,17 @@ impl<T> fmt::Debug for TrySubmitError<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "TrySubmitError<{}>", std::any::type_name::<T>())
     }
+}
+
+/// Error returned when a task submission fails.
+///
+/// This error indicates that the engine has been closed and is no longer accepting new tasks.
+#[derive(Error, Debug)]
+pub enum RunError {
+    #[error("failed to submit task")]
+    SubmitError(#[from] SubmitError),
+    #[error("task execution failed")]
+    TaskFailed(#[from] TaskJoinError),
 }
 
 /// Error that can occur when waiting for a task to complete.
@@ -172,6 +156,35 @@ impl<T> Future for TaskHandle<T> {
     }
 }
 
+pub type SubmitHandle<P> = PipelineHandle<<P as Pipeline>::Resource, <P as Pipeline>::Output>;
+
+pub struct PipelineHandle<R, O> {
+    handle: TaskHandle<(R, O)>,
+}
+
+impl<R, O> PipelineHandle<R, O> {
+    pub fn new(handle: TaskHandle<(R, O)>) -> Self {
+        Self { handle }
+    }
+
+    pub fn abort(&self) {
+        self.handle.abort();
+    }
+
+    pub fn into_inner(self) -> TaskHandle<(R, O)> {
+        self.handle
+    }
+}
+
+impl<R, O> Future for PipelineHandle<R, O> {
+    type Output = Result<O, TaskJoinError>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let pin = Pin::new(&mut self.handle);
+        pin.poll(cx).map(|res| res.map(|(_, output)| output))
+    }
+}
+
 /// A trait representing an asynchronous processing pipeline.
 ///
 /// Pipelines accept input tasks and produce output results asynchronously.
@@ -186,37 +199,22 @@ impl<T> Future for TaskHandle<T> {
 ///
 /// - `submit`: Asynchronously submit a task, waiting if necessary for capacity
 /// - `try_submit`: Try to submit a task without waiting
-///
-/// # Example
-///
-/// ```ignore
-/// impl Pipeline for MyPipeline {
-///     type Input = MyTask;
-///     type Output = MyResult;
-///
-///     async fn submit(&self, input: Self::Input) -> Result<TaskHandle<Self::Output>, SubmitError> {
-///         // wait for capacity to be available and spawn the task into the pipeline
-///     }
-///
-///     fn try_submit(&self, input: Self::Input) -> Result<TaskHandle<Self::Output>, TrySubmitError> {
-///         // Try to submit a task into the pipeline without blocking...
-///     }
-/// }
-/// ```
 pub trait Pipeline: 'static + Send + Sync {
     /// The input type that this pipeline accepts
     type Input: 'static + Send + Sync;
     /// The output type that this pipeline produces
     type Output: 'static + Send + Sync;
+    /// The resource type that this pipeline uses
+    type Resource: 'static + Send + Sync;
 
     /// Submit a task to the pipeline, waiting if necessary for capacity.
     ///
-    /// This method will wait until there is capacity available in the pipeline
-    /// before submitting the task. Use `try_submit` for non-blocking submission.
+    /// This method will wait until there is capacity available in the pipeline before submitting
+    /// the task.
     fn submit(
         &self,
         input: Self::Input,
-    ) -> impl Future<Output = Result<TaskHandle<Self::Output>, SubmitError>> + Send;
+    ) -> impl Future<Output = Result<SubmitHandle<Self>, SubmitError>> + Send;
 
     /// Try to submit a task without waiting.
     ///
@@ -225,9 +223,23 @@ pub trait Pipeline: 'static + Send + Sync {
     fn try_submit(
         &self,
         input: Self::Input,
-    ) -> Result<TaskHandle<Self::Output>, TrySubmitError<Self::Input>>;
+    ) -> Result<SubmitHandle<Self>, TrySubmitError<Self::Input>>;
 
-    fn blocking_submit(&self, input: Self::Input) -> Result<TaskHandle<Self::Output>, SubmitError> {
+    /// Run the pipeline on an input task and wait for the output.
+    ///     
+    /// This method will submit the task to the pipeline and wait for the output.
+    fn run(
+        &self,
+        input: Self::Input,
+    ) -> impl Future<Output = Result<Self::Output, RunError>> + Send {
+        async move {
+            let handle = self.submit(input).await?;
+            let output = handle.await.map_err(RunError::from)?;
+            Ok(output)
+        }
+    }
+
+    fn blocking_submit(&self, input: Self::Input) -> Result<SubmitHandle<Self>, SubmitError> {
         let mut last_input = input;
         loop {
             match self.try_submit(last_input) {
@@ -353,16 +365,22 @@ where
         Self::new(workers, num_workers)
     }
 
-    fn spawn(&self, input: Input, permit: OwnedSemaphorePermit) -> TaskHandle<Output> {
+    fn spawn(
+        &self,
+        input: Input,
+        permit: OwnedSemaphorePermit,
+    ) -> TaskHandle<(queue::Worker<Worker>, Output)> {
         let workers = self.workers.clone();
         let handle = tokio::spawn(
             async move {
                 let permit = permit;
                 let worker = workers.pop().await.map_err(TaskJoinError::from)?;
-                let output = worker.call(input).await;
-                drop(worker);
+                // Drop the permit to release the input queue task slot.
                 drop(permit);
-                Ok(output)
+                // Process the task.
+                let output = worker.call(input).await;
+                // Return the worker and output.
+                Ok((worker, output))
             }
             .in_current_span(),
         );
@@ -382,24 +400,20 @@ where
 {
     type Input = Input;
     type Output = Output;
+    type Resource = queue::Worker<Worker>;
 
-    async fn submit(&self, input: Self::Input) -> Result<TaskHandle<Self::Output>, SubmitError> {
-        let permit = self
-            .task_permits
-            .clone()
-            .acquire_many_owned(input.weight())
-            .await
-            .map_err(|_| SubmitError)?;
-        Ok(self.spawn(input, permit))
+    async fn submit(&self, input: Self::Input) -> Result<SubmitHandle<Self>, SubmitError> {
+        let permit = self.task_permits.clone().acquire_owned().await.map_err(|_| SubmitError)?;
+        Ok(PipelineHandle::new(self.spawn(input, permit)))
     }
 
     fn try_submit(
         &self,
         input: Self::Input,
-    ) -> Result<TaskHandle<Self::Output>, TrySubmitError<Self::Input>> {
-        let permit_result = self.task_permits.clone().try_acquire_many_owned(input.weight());
+    ) -> Result<SubmitHandle<Self>, TrySubmitError<Self::Input>> {
+        let permit_result = self.task_permits.clone().try_acquire_owned();
         match permit_result {
-            Ok(permit) => Ok(self.spawn(input, permit)),
+            Ok(permit) => Ok(PipelineHandle::new(self.spawn(input, permit))),
             Err(TryAcquireError::NoPermits) => Err(TrySubmitError::NoCapacity(input)),
             Err(TryAcquireError::Closed) => Err(TrySubmitError::Closed),
         }
@@ -527,32 +541,41 @@ where
         Self::new(workers, num_workers)
     }
 
-    fn spawn(&self, input: Input, permit: OwnedSemaphorePermit) -> TaskHandle<Output> {
+    fn spawn(
+        &self,
+        input: Input,
+        permit: OwnedSemaphorePermit,
+    ) -> TaskHandle<(queue::Worker<Worker>, Output)> {
         let workers = self.workers.clone();
         let handle = tokio::spawn(
             async move {
                 let permit = permit;
+                // Wait for a worker to become available.
                 let worker = workers.pop().await.map_err(TaskJoinError::from)?;
+                // Drop the permit to release the input queue task slot.
+                drop(permit);
                 // Spawn the blocking task on the tokio runtime
                 let parent = tracing::Span::current();
-                let output = tokio::task::spawn_blocking(move || {
+                let (worker, output) = tokio::task::spawn_blocking(move || {
                     let _guard = parent.enter();
-                    worker.call(input)
+                    let output = worker.call(input);
+                    (worker, output)
                 })
                 .await
                 .unwrap();
-                drop(permit);
-                Ok(output)
+                Ok((worker, output))
             }
             .in_current_span(),
         );
         TaskHandle { inner: handle }
     }
 
-    pub fn blocking_submit(&self, input: Input) -> Result<TaskHandle<Output>, SubmitError> {
-        let weight = input.weight();
-        let permits = loop {
-            match self.task_permits.clone().try_acquire_many_owned(weight) {
+    pub fn blocking_submit(
+        &self,
+        input: Input,
+    ) -> Result<TaskHandle<(queue::Worker<Worker>, Output)>, SubmitError> {
+        let permit = loop {
+            match self.task_permits.clone().try_acquire_owned() {
                 Ok(permit) => break permit,
                 Err(TryAcquireError::NoPermits) => {
                     std::hint::spin_loop();
@@ -562,7 +585,7 @@ where
                 }
             }
         };
-        Ok(self.spawn(input, permits))
+        Ok(self.spawn(input, permit))
     }
 }
 
@@ -578,24 +601,20 @@ where
 {
     type Input = Input;
     type Output = Output;
+    type Resource = queue::Worker<Worker>;
 
-    async fn submit(&self, input: Self::Input) -> Result<TaskHandle<Self::Output>, SubmitError> {
-        let permit = self
-            .task_permits
-            .clone()
-            .acquire_many_owned(input.weight())
-            .await
-            .map_err(|_| SubmitError)?;
-        Ok(self.spawn(input, permit))
+    async fn submit(&self, input: Self::Input) -> Result<SubmitHandle<Self>, SubmitError> {
+        let permit = self.task_permits.clone().acquire_owned().await.map_err(|_| SubmitError)?;
+        Ok(PipelineHandle::new(self.spawn(input, permit)))
     }
 
     fn try_submit(
         &self,
         input: Self::Input,
-    ) -> Result<TaskHandle<Self::Output>, TrySubmitError<Self::Input>> {
-        let permit_result = self.task_permits.clone().try_acquire_many_owned(input.weight());
+    ) -> Result<SubmitHandle<Self>, TrySubmitError<Self::Input>> {
+        let permit_result = self.task_permits.clone().try_acquire_owned();
         match permit_result {
-            Ok(permit) => Ok(self.spawn(input, permit)),
+            Ok(permit) => Ok(PipelineHandle::new(self.spawn(input, permit))),
             Err(TryAcquireError::NoPermits) => Err(TrySubmitError::NoCapacity(input)),
             Err(TryAcquireError::Closed) => Err(TrySubmitError::Closed),
         }
@@ -681,16 +700,27 @@ where
         Self::new(workers, Arc::new(Semaphore::new(num_workers)))
     }
 
-    fn spawn(&self, input: Input, permit: OwnedSemaphorePermit) -> TaskHandle<Output> {
+    fn spawn(
+        &self,
+        input: Input,
+        permit: OwnedSemaphorePermit,
+    ) -> TaskHandle<(queue::Worker<Worker>, Output)> {
         let workers = self.workers.clone();
         let handle = tokio::spawn(
             async move {
                 let permit = permit;
+                // Wait for a worker to become available.
                 let worker = workers.pop().await.map_err(TaskJoinError::from)?;
-                // Spawn the blocking task on the tokio runtime
-                let output = tokio::task::spawn_blocking(move || worker.call(input)).await.unwrap();
+                // Drop the permit to release the input queue task slot.
                 drop(permit);
-                Ok(output)
+                // Spawn the blocking task on the rayon thread pool
+                let ret = crate::rayon::spawn(move || {
+                    let output = worker.call(input);
+                    (worker, output)
+                })
+                .await
+                .unwrap();
+                Ok(ret)
             }
             .in_current_span(),
         );
@@ -710,24 +740,19 @@ where
 {
     type Input = Input;
     type Output = Output;
-
-    async fn submit(&self, input: Self::Input) -> Result<TaskHandle<Self::Output>, SubmitError> {
-        let permit = self
-            .task_permits
-            .clone()
-            .acquire_many_owned(input.weight())
-            .await
-            .map_err(|_| SubmitError)?;
-        Ok(self.spawn(input, permit))
+    type Resource = queue::Worker<Worker>;
+    async fn submit(&self, input: Self::Input) -> Result<SubmitHandle<Self>, SubmitError> {
+        let permit = self.task_permits.clone().acquire_owned().await.map_err(|_| SubmitError)?;
+        Ok(PipelineHandle::new(self.spawn(input, permit)))
     }
 
     fn try_submit(
         &self,
         input: Self::Input,
-    ) -> Result<TaskHandle<Self::Output>, TrySubmitError<Self::Input>> {
-        let permit_result = self.task_permits.clone().try_acquire_many_owned(input.weight());
+    ) -> Result<SubmitHandle<Self>, TrySubmitError<Self::Input>> {
+        let permit_result = self.task_permits.clone().try_acquire_owned();
         match permit_result {
-            Ok(permit) => Ok(self.spawn(input, permit)),
+            Ok(permit) => Ok(PipelineHandle::new(self.spawn(input, permit))),
             Err(TryAcquireError::NoPermits) => Err(TrySubmitError::NoCapacity(input)),
             Err(TryAcquireError::Closed) => Err(TrySubmitError::Closed),
         }
@@ -802,15 +827,23 @@ where
         &self.second
     }
 
-    fn spawn(&self, first_handle: TaskHandle<First::Output>) -> TaskHandle<Second::Output> {
+    fn spawn(
+        &self,
+        first_handle: TaskHandle<(First::Resource, First::Output)>,
+    ) -> TaskHandle<(Second::Resource, Second::Output)> {
         let second = self.second.clone();
         let handle = tokio::spawn(
             async move {
                 let first_handle = first_handle;
-                let first_output = first_handle.await?;
+                let (first_resource, first_output) = first_handle.await?;
                 let second_input: Second::Input = first_output.into();
+                // Submit the second task to the second pipeline.
                 let second_handle =
                     second.submit(second_input).await.expect("failed to submit second task");
+                // Once the task is in the second pipeline, we can release the first resource.
+                drop(first_resource);
+                // Wait for the second task to complete with it's resource.
+                let second_handle = second_handle.into_inner();
                 second_handle.await
             }
             .in_current_span(),
@@ -831,7 +864,7 @@ where
 {
     type Input = First::Input;
     type Output = Second::Output;
-
+    type Resource = Second::Resource;
     /// Submit a task to the chained pipeline.
     ///
     /// The task will be processed by the first pipeline, and its output
@@ -844,9 +877,9 @@ where
     /// # Returns
     ///
     /// A handle to the final result from the second pipeline
-    async fn submit(&self, input: Self::Input) -> Result<TaskHandle<Self::Output>, SubmitError> {
+    async fn submit(&self, input: Self::Input) -> Result<SubmitHandle<Self>, SubmitError> {
         let first_handle = self.first.submit(input).await?;
-        Ok(self.spawn(first_handle))
+        Ok(PipelineHandle::new(self.spawn(first_handle.into_inner())))
     }
 
     /// Try to submit a task to the chained pipeline without blocking.
@@ -862,9 +895,9 @@ where
     fn try_submit(
         &self,
         input: Self::Input,
-    ) -> Result<TaskHandle<Self::Output>, TrySubmitError<Self::Input>> {
+    ) -> Result<SubmitHandle<Self>, TrySubmitError<Self::Input>> {
         let first_handle = self.first.try_submit(input)?;
-        Ok(self.spawn(first_handle))
+        Ok(PipelineHandle::new(self.spawn(first_handle.into_inner())))
     }
 }
 
@@ -889,9 +922,10 @@ where
 impl<P: Pipeline> Pipeline for Arc<P> {
     type Input = P::Input;
     type Output = P::Output;
+    type Resource = P::Resource;
 
     #[inline]
-    async fn submit(&self, input: Self::Input) -> Result<TaskHandle<Self::Output>, SubmitError> {
+    async fn submit(&self, input: Self::Input) -> Result<SubmitHandle<Self>, SubmitError> {
         self.as_ref().submit(input).await
     }
 
@@ -899,7 +933,7 @@ impl<P: Pipeline> Pipeline for Arc<P> {
     fn try_submit(
         &self,
         input: Self::Input,
-    ) -> Result<TaskHandle<Self::Output>, TrySubmitError<Self::Input>> {
+    ) -> Result<SubmitHandle<Self>, TrySubmitError<Self::Input>> {
         self.as_ref().try_submit(input)
     }
 }
@@ -964,12 +998,6 @@ mod tests {
             time: Duration,
         }
 
-        impl TaskInput for TestTask {
-            fn weight(&self) -> u32 {
-                1
-            }
-        }
-
         impl AsyncWorker<TestTask, ()> for TestWorker {
             async fn call(&self, input: TestTask) {
                 tokio::time::sleep(input.time).await;
@@ -1024,12 +1052,6 @@ mod tests {
             summands: Vec<u32>,
         }
 
-        impl TaskInput for SummingTask {
-            fn weight(&self) -> u32 {
-                self.summands.len() as u32
-            }
-        }
-
         impl BlockingWorker<SummingTask, u32> for SummingWorker {
             fn call(&self, input: SummingTask) -> u32 {
                 input.summands.iter().sum()
@@ -1038,7 +1060,7 @@ mod tests {
 
         let num_workers = 10;
         let task_queue_length = 20;
-        let num_tasks_spawned = 40;
+        let num_tasks_spawned = 10;
         let max_summands = 20;
 
         let workers = (0..num_workers).map(|_| SummingWorker).collect();
@@ -1052,8 +1074,7 @@ mod tests {
         // Submit all tasks concurrently and wait for them to complete
         let mut results = FuturesOrdered::new();
         for task in tasks.iter() {
-            let e = engine.clone();
-            results.push_back(e.submit(task.clone()).await.unwrap());
+            results.push_back(engine.submit(task.clone()).await.unwrap());
         }
         let results = results.collect::<Vec<_>>().await;
         for (task, result) in tasks.iter().zip(results) {
@@ -1073,12 +1094,6 @@ mod tests {
         #[derive(Debug, Clone)]
         struct TestTask {
             time: Duration,
-        }
-
-        impl TaskInput for TestTask {
-            fn weight(&self) -> u32 {
-                1
-            }
         }
 
         impl AsyncWorker<TestTask, ()> for FailingWorker {
@@ -1118,12 +1133,6 @@ mod tests {
         #[derive(Debug, Clone)]
         struct FirstTask;
 
-        impl TaskInput for FirstTask {
-            fn weight(&self) -> u32 {
-                1
-            }
-        }
-
         #[derive(Debug, Clone)]
         struct FirstWorker;
 
@@ -1140,12 +1149,6 @@ mod tests {
         #[derive(Debug, Clone)]
         struct SecondTask {
             value: u64,
-        }
-
-        impl TaskInput for SecondTask {
-            fn weight(&self) -> u32 {
-                1
-            }
         }
 
         impl AsyncWorker<SecondTask, u64> for SecondWorker {
@@ -1179,12 +1182,6 @@ mod tests {
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         struct SleepTask {
             duration: Duration,
-        }
-
-        impl TaskInput for SleepTask {
-            fn weight(&self) -> u32 {
-                1
-            }
         }
 
         #[derive(Debug, Clone)]

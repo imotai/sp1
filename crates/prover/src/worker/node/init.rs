@@ -168,34 +168,20 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                 loop {
                     tokio::select! {
                         Some((id, request)) = core_prover_rx.recv() => {
-                            let RawTaskRequest { inputs, outputs, proof_id, .. } = request;
-
-                            let elf = inputs[0].clone();
-                            let common_input = inputs[1].clone();
-                            let record = inputs[2].clone();
-                            let deferred_marker_task = inputs[3].clone();
-                            let output = outputs[0].clone();
-                            let deferred_output = outputs[1].clone();
-
+                            let proof_id = request.proof_id.clone();
                             let handle = worker
                                 .prover_engine()
                                 .submit_prove_core_shard(
-                                    id,
-                                    proof_id.clone(),
-                                    elf,
-                                    common_input,
-                                    record,
-                                    output,
-                                    deferred_marker_task,
-                                    deferred_output,
+                                    request,
                                 )
                                 .await
                                 .unwrap();
                             let proof_id = proof_id.clone();
                             let tx = task_tx.clone();
+                            let task_id = id;
                             task_set.spawn(async move {
                                 match handle.await {
-                                    Ok(Ok((task_id, task_metadata))) => {
+                                    Ok(Ok(task_metadata)) => {
                                         tx.send((proof_id, (task_id, task_metadata), TaskStatus::Succeeded)).ok();
                                     }
                                     Ok(Err(e)) => {

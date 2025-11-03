@@ -44,6 +44,8 @@ impl<C: SP1ProverComponents> SP1WorkerBuilder<C> {
 }
 
 impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
+    /// Set the artifact client.
+    #[must_use]
     pub fn with_artifact_client<B: ArtifactClient>(
         self,
         artifact_client: B,
@@ -71,6 +73,8 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
         }
     }
 
+    /// Set the worker client.
+    #[must_use]
     pub fn with_worker_client<V: WorkerClient>(
         self,
         worker_client: V,
@@ -97,9 +101,8 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
             worker_client: Some(worker_client),
         }
     }
-}
 
-impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
+    /// Set the core air prover.
     #[must_use]
     pub fn with_core_air_prover(
         mut self,
@@ -110,6 +113,7 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
         self
     }
 
+    /// Set the compress air prover.
     #[must_use]
     pub fn with_compress_air_prover(
         mut self,
@@ -120,6 +124,7 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
         self
     }
 
+    /// Set the shrink air prover.
     #[must_use]
     pub fn with_shrink_air_prover(
         mut self,
@@ -130,6 +135,7 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
         self
     }
 
+    /// Set the wrap air prover.
     #[must_use]
     pub fn with_wrap_air_prover(
         mut self,
@@ -140,22 +146,26 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
         self
     }
 
+    /// Set the core options.
     #[must_use]
     pub fn with_core_opts(self, opts: SP1CoreOpts) -> Self {
         self.with_config(|config| config.controller_config.opts = opts)
     }
 
+    /// Get the core options from the builder.
     #[must_use]
     pub fn core_opts(&self) -> &SP1CoreOpts {
         &self.config.controller_config.opts
     }
 
+    /// Mutate the worker config.
     #[must_use]
     pub fn with_config(mut self, f: impl FnOnce(&mut SP1WorkerConfig)) -> Self {
         f(&mut self.config);
         self
     }
 
+    /// Build the worker.
     pub async fn build(self) -> anyhow::Result<SP1Worker<A, W, C>>
     where
         A: ArtifactClient,
@@ -225,10 +235,10 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
     }
 }
 
-/// Create a [SP1CudaWorkerBuilder]
+/// Create a [SP1WorkerBuilder] for a CPU worker.
 pub fn cpu_worker_builder() -> SP1WorkerBuilder<CpuSP1ProverComponents> {
-    // Create a prover permits, assuming a single proof happens at a time.
-    let prover_permits = ProverSemaphore::new(1);
+    // Create the prover permits, setting it to having 4 provers.
+    let prover_permits = ProverSemaphore::new(4);
 
     // Get the core options.
     let opts = SP1CoreOpts::default();

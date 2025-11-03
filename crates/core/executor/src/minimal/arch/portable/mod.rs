@@ -12,9 +12,8 @@ use std::{
 };
 
 use crate::{
-    minimal::{arch::MAX_NUMBER_TRACE_ENTRIES, ecall::ecall_handler},
-    syscalls::SyscallCode,
-    Instruction, Opcode, Program, Register, M64,
+    minimal::ecall::ecall_handler, syscalls::SyscallCode, Instruction, Opcode, Program, Register,
+    M64,
 };
 
 mod cow;
@@ -223,8 +222,8 @@ impl MinimalExecutor {
 
     /// Create a new minimal executor with tracing.
     #[must_use]
-    pub fn tracing(program: Arc<Program>, max_trace_size: Option<u64>) -> Self {
-        Self::new(program, true, max_trace_size.or(Some(MAX_NUMBER_TRACE_ENTRIES)))
+    pub fn tracing(program: Arc<Program>, max_trace_size: u64) -> Self {
+        Self::new(program, true, Some(max_trace_size))
     }
 
     /// Create a new minimal executor with debugging.

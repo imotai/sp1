@@ -200,10 +200,11 @@ impl<F: PrimeField32> MachineExecutor<F> {
 
         let minimal_executor_handle = tokio::task::spawn_blocking({
             let program = program.clone();
-
+            let max_trace_size = self.opts.minimal_trace_chunk_threshold;
             move || {
                 let _debug_span = tracing::debug_span!("minimal executor task").entered();
-                let mut minimal_executor = MinimalExecutor::tracing(program.clone(), None);
+                let mut minimal_executor =
+                    MinimalExecutor::tracing(program.clone(), max_trace_size);
 
                 for buf in stdin.buffer {
                     minimal_executor.with_input(&buf);

@@ -1,7 +1,4 @@
-use crate::{
-    memory::MAX_LOG_ADDR, minimal::arch::MAX_NUMBER_TRACE_ENTRIES, Instruction, Opcode, Program,
-    Register, HALT_PC,
-};
+use crate::{memory::MAX_LOG_ADDR, Instruction, Opcode, Program, Register, HALT_PC};
 use sp1_jit::{
     debug, DebugBackend, JitFunction, MemValue, MemoryView, RiscOperand, RiscRegister,
     RiscvTranspiler, TraceChunkRaw, TranspilerBackend,
@@ -77,8 +74,8 @@ impl MinimalExecutor {
     /// * `max_trace_size` - The maximum trace size in terms of [`MemValue`]s. If not set, it will
     ///   be set to 2 gb worth of memory events.
     #[must_use]
-    pub fn tracing(program: Arc<Program>, max_trace_size: Option<u64>) -> Self {
-        Self::new(program, false, max_trace_size.or(Some(MAX_NUMBER_TRACE_ENTRIES)))
+    pub fn tracing(program: Arc<Program>, max_trace_size: u64) -> Self {
+        Self::new(program, false, Some(max_trace_size))
     }
 
     /// Create a new minimal executor with debugging.

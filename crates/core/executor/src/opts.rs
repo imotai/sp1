@@ -12,6 +12,9 @@ const MAX_SHARD_SIZE: usize = 1 << 24;
 pub const ELEMENT_THRESHOLD: u64 = (1 << 28) + (1 << 27);
 /// The height threshold for a shard.
 pub const HEIGHT_THRESHOLD: u64 = 1 << 22;
+/// The maximum size of a minimal trace chunk in terms of memory entries.
+pub const MINIMAL_TRACE_CHUNK_THRESHOLD: u64 =
+    2147483648 / std::mem::size_of::<sp1_jit::MemValue>() as u64;
 
 /// The threshold that determines when to split the shard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,6 +28,8 @@ pub struct ShardingThreshold {
 /// Options for the core prover.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SP1CoreOpts {
+    /// The maximum size of a minimal trace chunk in terms of memory entries.
+    pub minimal_trace_chunk_threshold: u64,
     /// The size of a shard in terms of cycles.
     pub shard_size: usize,
     /// The threshold that determines when to split the shard.
@@ -35,6 +40,11 @@ pub struct SP1CoreOpts {
 
 impl Default for SP1CoreOpts {
     fn default() -> Self {
+        let minimal_trace_chunk_threshold = env::var("MINIMAL_TRACE_CHUNK_THRESHOLD").map_or_else(
+            |_| MINIMAL_TRACE_CHUNK_THRESHOLD,
+            |s| s.parse::<u64>().unwrap_or(MINIMAL_TRACE_CHUNK_THRESHOLD),
+        );
+
         let shard_size = env::var("SHARD_SIZE")
             .map_or_else(|_| MAX_SHARD_SIZE, |s| s.parse::<usize>().unwrap_or(MAX_SHARD_SIZE));
 
@@ -53,7 +63,12 @@ impl Default for SP1CoreOpts {
         retained_events_presets.insert(RetainedEventsPreset::Poseidon2);
         retained_events_presets.insert(RetainedEventsPreset::U256Ops);
 
-        Self { shard_size, sharding_threshold, retained_events_presets }
+        Self {
+            minimal_trace_chunk_threshold,
+            shard_size,
+            sharding_threshold,
+            retained_events_presets,
+        }
     }
 }
 

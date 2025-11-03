@@ -11,7 +11,7 @@ use slop_challenger::IopCtx;
 use slop_algebra::PrimeField32;
 use slop_futures::pipeline::{
     AsyncEngine, AsyncWorker, BlockingEngine, BlockingWorker, Chain, Pipeline, SubmitError,
-    TaskHandle, TaskInput,
+    SubmitHandle,
 };
 use sp1_hypercube::{
     air::SP1CorePublicValues,
@@ -127,13 +127,7 @@ impl ReduceTaskRequest {
     }
 }
 
-impl TaskInput for ReduceTaskRequest {
-    fn weight(&self) -> u32 {
-        1
-    }
-}
-
-struct PrepareReduceTaskWorker<A, C: SP1ProverComponents> {
+pub struct PrepareReduceTaskWorker<A, C: SP1ProverComponents> {
     prover_data: Arc<RecursionProverData<C>>,
     artifact_client: A,
 }
@@ -163,12 +157,6 @@ pub struct RecursionTask {
     program: Arc<RecursionProgram<SP1Field>>,
     witness: SP1CircuitWitness,
     output: Artifact,
-}
-
-impl TaskInput for RecursionTask {
-    fn weight(&self) -> u32 {
-        1
-    }
 }
 
 pub struct RecursionExecutorWorker<C: SP1ProverComponents> {
@@ -230,12 +218,6 @@ pub struct ProveRecursionTask<C: SP1ProverComponents> {
     record: ExecutionRecord<SP1Field>,
     keys: RecursionKeys<C>,
     output: Artifact,
-}
-
-impl<C: SP1ProverComponents> TaskInput for ProveRecursionTask<C> {
-    fn weight(&self) -> u32 {
-        1
-    }
 }
 
 pub struct RecursionProverWorker<A, C: SP1ProverComponents> {
@@ -323,6 +305,10 @@ type PrepareReduceEngine<A, C> = Arc<
 type RecursionProvePipeline<A, C> = Chain<ExecutorEngine<C>, RecursionProverEngine<A, C>>;
 
 type ReducePipeline<A, C> = Chain<PrepareReduceEngine<A, C>, Arc<RecursionProvePipeline<A, C>>>;
+
+pub type RecursionProveSubmitHandle<A, C> = SubmitHandle<RecursionProvePipeline<A, C>>;
+
+pub type ReduceSubmitHandle<A, C> = SubmitHandle<ReducePipeline<A, C>>;
 
 pub struct SP1RecursionProver<A, C: SP1ProverComponents> {
     reduce_pipeline: Arc<ReducePipeline<A, C>>,
@@ -476,7 +462,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
         program: Arc<RecursionProgram<SP1Field>>,
         witness: SP1CircuitWitness,
         output: Artifact,
-    ) -> Result<TaskHandle<Result<TaskMetadata, TaskError>>, SubmitError> {
+    ) -> Result<RecursionProveSubmitHandle<A, C>, SubmitError> {
         self.recursion_prover_pipeline()
             .submit(Ok(RecursionTask { program, witness, output }))
             .await
@@ -485,7 +471,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
     pub async fn submit_recursion_reduce(
         &self,
         request: RawTaskRequest,
-    ) -> Result<TaskHandle<Result<TaskMetadata, TaskError>>, TaskError> {
+    ) -> Result<ReduceSubmitHandle<A, C>, TaskError> {
         let input = ReduceTaskRequest::from_raw(request)?;
         let handle = self.reduce_pipeline.submit(input).await?;
         Ok(handle)

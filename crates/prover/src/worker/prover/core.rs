@@ -1,10 +1,11 @@
 use std::{collections::BTreeSet, sync::Arc};
 
+use opentelemetry::Context;
 use slop_air::BaseAir;
 use slop_algebra::AbstractField;
 use slop_challenger::IopCtx;
 use slop_futures::pipeline::{
-    AsyncEngine, AsyncWorker, Chain, Pipeline, SubmitError, TaskHandle, TaskInput,
+    AsyncEngine, AsyncWorker, Chain, Pipeline, SubmitError, SubmitHandle,
 };
 use sp1_core_executor::{
     events::{PrecompileEvent, SyscallEvent},
@@ -33,8 +34,8 @@ use crate::{
     shapes::{SP1NormalizeCache, SP1NormalizeInputShape, SP1RecursionProofShape},
     worker::{
         AirProverWorker, CommonProverInput, DeferredEvents, GlobalMemoryShard,
-        PrecompileArtifactSlice, ProofId, SP1RecursionProver, TaskError, TaskId, TaskMetadata,
-        TraceData, WorkerClient,
+        PrecompileArtifactSlice, ProofId, RawTaskRequest, RequesterId, SP1RecursionProver,
+        TaskError, TaskId, TaskMetadata, TraceData, WorkerClient,
     },
     CoreSC, InnerSC, SP1CircuitWitness, SP1ProverComponents, SP1VerifyingKey,
 };
@@ -45,16 +46,7 @@ pub struct SetupTask {
     pub output: Artifact,
 }
 
-impl TaskInput for SetupTask {
-    fn weight(&self) -> u32 {
-        1
-    }
-}
-
-/// Generates traces and optionally deferred records for a core shard.
-pub struct TracingTask {
-    /// The task id.
-    pub task_id: TaskId,
+pub struct ProveShardTaskRequest {
     /// The proof id.
     pub proof_id: ProofId,
     /// The elf artifact.
@@ -69,12 +61,78 @@ pub struct TracingTask {
     pub deferred_marker_task: Artifact,
     /// The deferred output artifact.
     pub deferred_output: Artifact,
+    /// The parent id.
+    pub parent_id: Option<TaskId>,
+    /// The parent context.
+    pub parent_context: Option<Context>,
+    /// The requester id.
+    pub requester_id: RequesterId,
 }
 
-impl TaskInput for TracingTask {
-    fn weight(&self) -> u32 {
-        1
+impl ProveShardTaskRequest {
+    pub fn from_raw(request: RawTaskRequest) -> Result<Self, TaskError> {
+        let RawTaskRequest { inputs, outputs, proof_id, parent_id, parent_context, requester_id } =
+            request;
+        let elf = inputs[0].clone();
+        let common_input = inputs[1].clone();
+        let record = inputs[2].clone();
+        let deferred_marker_task = inputs[3].clone();
+
+        let output = outputs[0].clone();
+        let deferred_output = outputs[1].clone();
+
+        Ok(ProveShardTaskRequest {
+            proof_id,
+            elf,
+            common_input,
+            record,
+            output,
+            deferred_marker_task,
+            deferred_output,
+            parent_id,
+            parent_context,
+            requester_id,
+        })
     }
+
+    pub fn into_raw(self) -> Result<RawTaskRequest, TaskError> {
+        let ProveShardTaskRequest {
+            proof_id,
+            elf,
+            common_input,
+            record,
+            output,
+            deferred_marker_task,
+            deferred_output,
+            parent_id,
+            parent_context,
+            requester_id,
+        } = self;
+
+        let inputs = vec![elf, common_input, record, deferred_marker_task];
+        let outputs = vec![output, deferred_output];
+        let raw_task_request =
+            RawTaskRequest { inputs, outputs, proof_id, parent_id, parent_context, requester_id };
+        Ok(raw_task_request)
+    }
+}
+
+/// Generates traces and optionally deferred records for a core shard.
+pub struct TracingTask {
+    /// The proof id.
+    pub proof_id: ProofId,
+    /// The elf artifact.
+    pub elf: Artifact,
+    /// The common input artifact.
+    pub common_input: Artifact,
+    /// The record artifact.
+    pub record: Artifact,
+    /// The traces output artifact.
+    pub output: Artifact,
+    /// The deferred marker task id.
+    pub deferred_marker_task: Artifact,
+    /// The deferred output artifact.
+    pub deferred_output: Artifact,
 }
 
 struct NormalizeProgramCompiler {
@@ -127,7 +185,7 @@ impl NormalizeProgramCompiler {
     }
 }
 
-struct TracingWorker<A, W> {
+pub struct TracingWorker<A, W> {
     normalize_program_compiler: Arc<NormalizeProgramCompiler>,
     opts: SP1CoreOpts,
     artifact_client: A,
@@ -135,7 +193,7 @@ struct TracingWorker<A, W> {
 }
 
 impl<A, W> TracingWorker<A, W> {
-    pub fn new(
+    fn new(
         normalize_program_compiler: Arc<NormalizeProgramCompiler>,
         opts: SP1CoreOpts,
         artifact_client: A,
@@ -378,7 +436,6 @@ where
         };
 
         Ok(CoreProveTask {
-            id: input.task_id,
             program,
             recursion_program_handle,
             common_input,
@@ -391,8 +448,7 @@ where
     }
 }
 
-struct CoreProveTask {
-    id: TaskId,
+pub struct CoreProveTask {
     program: Arc<Program>,
     recursion_program_handle: Option<tokio::task::JoinHandle<Arc<RecursionProgram<SP1Field>>>>,
     common_input: CommonProverInput,
@@ -401,12 +457,6 @@ struct CoreProveTask {
     record_artifact: Artifact,
     precompile_artifacts: Option<Vec<PrecompileArtifactSlice>>,
     deferred_upload_handle: Option<JoinHandle<std::result::Result<(), TaskError>>>,
-}
-
-impl TaskInput for CoreProveTask {
-    fn weight(&self) -> u32 {
-        1
-    }
 }
 
 pub enum SP1CoreShardProof {
@@ -419,7 +469,7 @@ pub struct CoreProveOutput {
     pub proof: SP1CoreShardProof,
 }
 
-struct CoreProverWorker<A, C: SP1ProverComponents> {
+pub struct CoreProverWorker<A, C: SP1ProverComponents> {
     artifact_client: A,
     core_prover: Arc<CoreProver<C>>,
     recursion_prover: SP1RecursionProver<A, C>,
@@ -438,16 +488,15 @@ impl<A, C: SP1ProverComponents> CoreProverWorker<A, C> {
 }
 
 impl<A: ArtifactClient, C: SP1ProverComponents>
-    AsyncWorker<Result<CoreProveTask, TaskError>, Result<(TaskId, TaskMetadata), TaskError>>
+    AsyncWorker<Result<CoreProveTask, TaskError>, Result<TaskMetadata, TaskError>>
     for CoreProverWorker<A, C>
 {
     async fn call(
         &self,
         input: Result<CoreProveTask, TaskError>,
-    ) -> Result<(TaskId, TaskMetadata), TaskError> {
+    ) -> Result<TaskMetadata, TaskError> {
         let input = input?;
         let CoreProveTask {
-            id,
             program,
             recursion_program_handle,
             common_input,
@@ -518,7 +567,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
         }
 
         // TODO: Add the busy time here.
-        Ok((id, TaskMetadata::default()))
+        Ok(TaskMetadata::default())
     }
 }
 
@@ -546,19 +595,23 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
     }
 }
 
-type SetupEngine<A, P> =
+pub type SetupEngine<A, P> =
     Arc<AsyncEngine<SetupTask, Result<(TaskId, TaskMetadata), TaskError>, CoreProverWorker<A, P>>>;
 
-type TraceEngine<A, W> =
+pub type TraceEngine<A, W> =
     Arc<AsyncEngine<TracingTask, Result<CoreProveTask, TaskError>, TracingWorker<A, W>>>;
-type CoreProveEngine<A, P> = Arc<
+pub type CoreProveEngine<A, P> = Arc<
     AsyncEngine<
         Result<CoreProveTask, TaskError>,
-        Result<(TaskId, TaskMetadata), TaskError>,
+        Result<TaskMetadata, TaskError>,
         CoreProverWorker<A, P>,
     >,
 >;
-type SP1CoreEngine<A, W, P> = Chain<TraceEngine<A, W>, CoreProveEngine<A, P>>;
+pub type SP1CoreEngine<A, W, P> = Chain<TraceEngine<A, W>, CoreProveEngine<A, P>>;
+
+pub type CoreProveSubmitHandle<A, W, C> = SubmitHandle<SP1CoreEngine<A, W, C>>;
+
+pub type SetupSubmitHandle<A, C> = SubmitHandle<SetupEngine<A, C>>;
 
 pub struct SP1CoreProver<A, W, C: SP1ProverComponents> {
     prove_shard_engine: Arc<SP1CoreEngine<A, W, C>>,
@@ -577,15 +630,36 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> Clone for SP1Co
 impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A, W, C> {
     pub async fn submit_prove_shard(
         &self,
-        task: TracingTask,
-    ) -> Result<TaskHandle<Result<(TaskId, TaskMetadata), TaskError>>, SubmitError> {
-        self.prove_shard_engine.submit(task).await
+        task: RawTaskRequest,
+    ) -> Result<CoreProveSubmitHandle<A, W, C>, TaskError> {
+        let task = ProveShardTaskRequest::from_raw(task)?;
+        let ProveShardTaskRequest {
+            proof_id,
+            elf,
+            common_input,
+            record,
+            output,
+            deferred_marker_task,
+            deferred_output,
+            ..
+        } = task;
+        let tracing_task = TracingTask {
+            proof_id,
+            elf,
+            common_input,
+            record,
+            output,
+            deferred_marker_task,
+            deferred_output,
+        };
+        let handle = self.prove_shard_engine.submit(tracing_task).await?;
+        Ok(handle)
     }
 
     pub async fn submit_setup(
         &self,
         task: SetupTask,
-    ) -> Result<TaskHandle<Result<(TaskId, TaskMetadata), TaskError>>, SubmitError> {
+    ) -> Result<SetupSubmitHandle<A, C>, SubmitError> {
         self.setup_engine.submit(task).await
     }
 }
