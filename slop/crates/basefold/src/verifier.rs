@@ -328,6 +328,10 @@ where
             .zip_eq(commitments.iter().zip_eq(query_openings.iter()).zip_eq(betas))
         {
             let openings = &query_opening.values;
+            if openings.dimensions.sizes().len() != 2 {
+                return Err(BaseFoldVerifierError::IncorrectShape);
+            }
+
             if indices.len() != folded_evals.len()
                 || indices.len() != openings.dimensions.sizes()[0]
                 || indices.len() != xis.len()
