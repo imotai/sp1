@@ -20,6 +20,8 @@ struct Args {
     pub telemetry: bool,
     #[arg(long, default_value = "core")]
     pub stage: Stage,
+    #[arg(long, short, default_value = "1")]
+    pub num_iterations: usize,
 }
 
 fn proof_mode_from_stage(stage: Stage) -> ProofMode {
@@ -35,6 +37,9 @@ fn proof_mode_from_stage(stage: Stage) -> ProofMode {
 async fn main() {
     let args = Args::parse();
 
+    // Load the environment variables.
+    dotenv::dotenv().ok();
+
     // Initialize the tracer.
     if args.telemetry {
         let resource = Resource::new(vec![KeyValue::new("service.name", "csl-perf")]);
@@ -47,7 +52,7 @@ async fn main() {
     let (elf, stdin) = get_program_and_input(args.program.clone(), args.param);
 
     // Initialize the AirProver and permits
-    let measurement = csl_cuda::spawn(move |t| async move {
+    let measurements = csl_cuda::spawn(move |t| async move {
         let client =
             SP1LocalNodeBuilder::from_worker_client_builder(cuda_worker_builder(t.clone()))
                 .build()
@@ -56,6 +61,7 @@ async fn main() {
 
         let time = tokio::time::Instant::now();
         let context = SP1Context::default();
+        tracing::info!("executing the program");
         let (_, _, report) = client.execute(&elf, stdin.clone(), context.clone()).await.unwrap();
         let execute_time = time.elapsed();
         let cycles = report.total_instruction_count() as usize;
@@ -66,38 +72,40 @@ async fn main() {
         let setup_time = time.elapsed();
         tracing::info!("setup time: {:?}", setup_time);
 
-        let time = tokio::time::Instant::now();
+        // Run the prover for a number of iterations.
+        let mut measurements = Vec::with_capacity(args.num_iterations);
+        for _ in 0..args.num_iterations {
+            let mode = proof_mode_from_stage(args.stage);
+            let stdin = stdin.clone();
+            let context = context.clone();
+            let time = tokio::time::Instant::now();
+            tracing::info!("proving with mode: {mode:?}");
+            let proof = client.prove_with_mode(&elf, stdin, context, mode).await.unwrap();
+            let proof_time = time.elapsed();
+            tracing::info!("proof time: {:?}", proof_time);
+            // Verify the proof
+            client.verify(&vk, &proof).unwrap();
+            let num_shards = proof.num_shards().unwrap();
 
-        let mode = proof_mode_from_stage(args.stage);
+            let (core_time, compress_time) = match mode {
+                ProofMode::Core => (Some(proof_time), None),
+                ProofMode::Compressed => (None, Some(proof_time)),
+                _ => (None, None),
+            };
 
-        tracing::info!("proving with mode: {mode:?}");
-        let proof = client.prove_with_mode(&elf, stdin, context, mode).await.unwrap();
-        let proof_time = time.elapsed();
-        tracing::info!("proof time: {:?}", proof_time);
-
-        // let cycles = proof.cycles as usize;
-        // let num_shards = proof.proof.0.len();
-
-        // Verify the proof
-        client.verify(&vk, &proof).unwrap();
-
-        let num_shards = proof.num_shards().unwrap();
-
-        let (core_time, compress_time) = match mode {
-            ProofMode::Core => (Some(proof_time), None),
-            ProofMode::Compressed => (None, Some(proof_time)),
-            _ => (None, None),
-        };
-
-        Measurement {
-            name: args.program,
-            cycles,
-            num_shards,
-            core_time,
-            compress_time,
-            shrink_time: Duration::ZERO,
-            wrap_time: Duration::ZERO,
+            let measurement = Measurement {
+                name: args.program.clone(),
+                cycles,
+                num_shards,
+                core_time,
+                compress_time,
+                shrink_time: Duration::ZERO,
+                wrap_time: Duration::ZERO,
+            };
+            println!("{measurement}");
+            measurements.push(measurement);
         }
+        measurements
     })
     .await
     .unwrap();
@@ -106,5 +114,5 @@ async fn main() {
         tokio::task::spawn_blocking(opentelemetry::global::shutdown_tracer_provider).await.unwrap();
     }
 
-    println!("{measurement}");
+    println!("All {} measurements done", measurements.len());
 }

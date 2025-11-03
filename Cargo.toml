@@ -182,3 +182,4 @@ cc = { version = "1.0", features = ["parallel"] }
 which = "6.0"
 cbindgen = "0.27.0"
 pathdiff = "0.2.1"
+dotenv = "0.15.0"
