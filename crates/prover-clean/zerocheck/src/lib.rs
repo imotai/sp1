@@ -900,6 +900,15 @@ pub mod tests {
             unimplemented!();
         }
 
+        fn generate_trace_into(
+            &self,
+            _: &Self::Record,
+            _: &mut Self::Record,
+            _: &mut [std::mem::MaybeUninit<F>],
+        ) {
+            unimplemented!();
+        }
+
         fn included(&self, _: &Self::Record) -> bool {
             true
         }
@@ -992,6 +1001,15 @@ pub mod tests {
             _: &ExecutionRecord,
             _: &mut ExecutionRecord,
         ) -> RowMajorMatrix<F> {
+            unimplemented!();
+        }
+
+        fn generate_trace_into(
+            &self,
+            _: &Self::Record,
+            _: &mut Self::Record,
+            _: &mut [std::mem::MaybeUninit<F>],
+        ) {
             unimplemented!();
         }
 
@@ -1104,6 +1122,15 @@ pub mod tests {
             _: &ExecutionRecord,
             _: &mut ExecutionRecord,
         ) -> RowMajorMatrix<F> {
+            unimplemented!();
+        }
+
+        fn generate_trace_into(
+            &self,
+            _: &Self::Record,
+            _: &mut Self::Record,
+            _: &mut [std::mem::MaybeUninit<F>],
+        ) {
             unimplemented!();
         }
 
@@ -1247,6 +1274,15 @@ pub mod tests {
             _: &ExecutionRecord,
             _: &mut ExecutionRecord,
         ) -> RowMajorMatrix<F> {
+            unimplemented!();
+        }
+
+        fn generate_trace_into(
+            &self,
+            _: &Self::Record,
+            _: &mut Self::Record,
+            _: &mut [std::mem::MaybeUninit<F>],
+        ) {
             unimplemented!();
         }
 
