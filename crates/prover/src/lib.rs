@@ -224,6 +224,12 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         self
     }
 
+    /// Set the core buffer size.
+    pub fn core_buffer_size(&mut self, buffer_size: usize) -> &mut Self {
+        self.core_prover_builder.buffer_size(buffer_size);
+        self
+    }
+
     pub fn num_compress_workers_for_base_kind(
         &mut self,
         base_kind: usize,
@@ -238,13 +244,31 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         self
     }
 
+    /// Set the compress buffer size.
+    pub fn compress_buffer_size(&mut self, buffer_size: usize) -> &mut Self {
+        self.compress_prover_builder.buffer_size(buffer_size);
+        self
+    }
+
     pub fn num_shrink_workers_per_kind(&mut self, num_workers_per_kind: Vec<usize>) -> &mut Self {
         self.shrink_prover_builder.num_workers_per_kind(num_workers_per_kind);
         self
     }
 
+    /// Set the shrink buffer size.
+    pub fn shrink_buffer_size(&mut self, buffer_size: usize) -> &mut Self {
+        self.shrink_prover_builder.buffer_size(buffer_size);
+        self
+    }
+
     pub fn num_wrap_workers_per_kind(&mut self, num_workers_per_kind: Vec<usize>) -> &mut Self {
         self.wrap_prover_builder.num_workers_per_kind(num_workers_per_kind);
+        self
+    }
+
+    /// Set the wrap buffer size.
+    pub fn wrap_buffer_size(&mut self, buffer_size: usize) -> &mut Self {
+        self.wrap_prover_builder.buffer_size(buffer_size);
         self
     }
 

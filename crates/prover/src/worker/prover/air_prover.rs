@@ -30,6 +30,7 @@ pub trait AirProverWorker<GC: IopCtx, C: MachineConfig<GC>, Air: MachineAir<GC::
         record: Air::Record,
         vk: Option<MachineVerifyingKey<GC, C>>,
         prover_permits: ProverSemaphore,
+        buffer_ptr: Option<usize>,
         challenger: &mut GC::Challenger,
     ) -> impl Future<Output = (MachineVerifyingKey<GC, C>, ShardProof<GC, C>, ProverPermit)> + Send;
 
@@ -67,9 +68,18 @@ where
         record: Air::Record,
         vk: Option<MachineVerifyingKey<GC, C>>,
         prover_permits: ProverSemaphore,
+        buffer_ptr: Option<usize>,
         challenger: &mut GC::Challenger,
     ) -> (MachineVerifyingKey<GC, C>, ShardProof<GC, C>, ProverPermit) {
-        AirProver::setup_and_prove_shard(self, program, record, vk, prover_permits, challenger)
-            .await
+        AirProver::setup_and_prove_shard(
+            self,
+            program,
+            record,
+            vk,
+            prover_permits,
+            buffer_ptr,
+            challenger,
+        )
+        .await
     }
 }

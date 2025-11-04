@@ -1,12 +1,13 @@
+use opentelemetry::Context;
+use slop_algebra::AbstractField;
+use slop_challenger::IopCtx;
+use std::mem::MaybeUninit;
+use std::pin::Pin;
 use std::{
     borrow::Borrow,
     collections::{BTreeMap, BTreeSet, VecDeque},
     sync::Arc,
 };
-
-use opentelemetry::Context;
-use slop_algebra::AbstractField;
-use slop_challenger::IopCtx;
 
 use slop_algebra::PrimeField32;
 use slop_futures::pipeline::{
@@ -34,6 +35,7 @@ use sp1_recursion_compiler::config::InnerConfig;
 use sp1_recursion_executor::{Block, ExecutionRecord, Executor, RecursionProgram};
 use tokio::sync::oneshot;
 
+use crate::recursion::RECURSION_LOG_TRACE_AREA;
 use crate::{
     components::RecursionProver,
     recursion::{compose_program_from_input, recursive_verifier, RecursionConfig},
@@ -224,6 +226,7 @@ pub struct RecursionProverWorker<A, C: SP1ProverComponents> {
     recursion_prover: Arc<RecursionProver<C>>,
     permits: ProverSemaphore,
     artifact_client: A,
+    buffer: Pin<Box<[MaybeUninit<SP1Field>]>>,
 }
 
 impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
@@ -238,7 +241,13 @@ impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
                 vk.observe_into(&mut challenger);
                 let (proof, _) = self
                     .recursion_prover
-                    .prove_shard_with_pk(pk.clone(), record, self.permits.clone(), &mut challenger)
+                    .prove_shard_with_pk(
+                        pk.clone(),
+                        record,
+                        self.permits.clone(),
+                        Some(self.buffer.as_ptr() as usize),
+                        &mut challenger,
+                    )
                     .await;
                 SP1RecursionProof { vk, proof }
             }
@@ -251,6 +260,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
                         record,
                         None,
                         self.permits.clone(),
+                        Some(self.buffer.as_ptr() as usize),
                         &mut challenger,
                     )
                     .await;
@@ -432,10 +442,18 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
 
             // Initialize the prove engine.
             let prove_workers = (0..config.num_recursion_prover_workers)
-                .map(|_| RecursionProverWorker {
-                    recursion_prover: air_prover.clone(),
-                    permits: permits.clone(),
-                    artifact_client: artifact_client.clone(),
+                .map(|_| {
+                    let mut buffer: Vec<MaybeUninit<SP1Field>> =
+                        Vec::with_capacity(1 << RECURSION_LOG_TRACE_AREA);
+                    unsafe { buffer.set_len(1 << RECURSION_LOG_TRACE_AREA) };
+                    let boxed: Box<[MaybeUninit<SP1Field>]> = buffer.into_boxed_slice();
+                    let buffer = Box::into_pin(boxed);
+                    RecursionProverWorker {
+                        recursion_prover: air_prover.clone(),
+                        permits: permits.clone(),
+                        artifact_client: artifact_client.clone(),
+                        buffer,
+                    }
                 })
                 .collect();
             let prove_engine =
