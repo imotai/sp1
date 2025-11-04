@@ -187,12 +187,22 @@ impl SP1ProverCleanBuilder {
 
         let mut num_prover_workers = 4;
 
+        if cpu_memory_gb <= 20 {
+            num_prover_workers = 1;
+        }
+
+        let num_core_workers = num_prover_workers;
+        let num_recursion_workers = num_prover_workers;
+        let num_shrink_workers = num_prover_workers;
+        let num_wrap_workers = num_prover_workers;
+
         let num_elts = Self::num_elts() + (1 << CORE_LOG_STACKING_HEIGHT);
 
         let core_verifier = ProverCleanSP1ProverComponents::core_verifier();
         let core_prover = new_prover_clean_prover(
             core_verifier.clone(),
             num_elts,
+            num_core_workers,
             CORE_LOG_BLOWUP,
             scope.clone(),
         )
@@ -203,6 +213,7 @@ impl SP1ProverCleanBuilder {
         let recursion_prover = new_prover_clean_prover(
             recursion_verifier.clone(),
             RECURSION_TRACE_ALLOCATION,
+            num_recursion_workers,
             RECURSION_LOG_BLOWUP,
             scope.clone(),
         )
@@ -212,6 +223,7 @@ impl SP1ProverCleanBuilder {
         let shrink_prover = new_prover_clean_prover(
             shrink_verifier.clone(),
             SHRINK_TRACE_ALLOCATION,
+            num_shrink_workers,
             SHRINK_LOG_BLOWUP,
             scope.clone(),
         )
@@ -221,22 +233,14 @@ impl SP1ProverCleanBuilder {
         let wrap_prover = new_prover_clean_prover(
             wrap_verifier.clone(),
             WRAP_TRACE_ALLOCATION,
+            num_wrap_workers,
             WRAP_LOG_BLOWUP,
             scope.clone(),
         )
         .await;
 
-        if cpu_memory_gb <= 20 {
-            num_prover_workers = 1;
-        }
-
         // Log the memory on CPU and GPU.
         tracing::debug!("cpu_memory_gb={}, gpu_memory_gb={}", cpu_memory_gb, gpu_memory_gb);
-
-        let num_core_workers = num_prover_workers;
-        let num_recursion_workers = num_prover_workers;
-        let num_shrink_workers = num_prover_workers;
-        let num_wrap_workers = num_prover_workers;
 
         let core_prover_permit = prover_permits.clone();
         let recursion_prover_permit = prover_permits.clone();
@@ -328,7 +332,7 @@ pub async fn prover_clean_worker_builder(
 
     let core_verifier = ProverCleanSP1ProverComponents::core_verifier();
     let core_prover = Arc::new(
-        new_prover_clean_prover(core_verifier.clone(), num_elts, CORE_LOG_BLOWUP, scope.clone())
+        new_prover_clean_prover(core_verifier.clone(), num_elts, 4, CORE_LOG_BLOWUP, scope.clone())
             .await,
     );
 
@@ -338,6 +342,7 @@ pub async fn prover_clean_worker_builder(
         new_prover_clean_prover(
             recursion_verifier.clone(),
             RECURSION_TRACE_ALLOCATION,
+            4,
             RECURSION_LOG_BLOWUP,
             scope.clone(),
         )

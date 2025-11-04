@@ -293,7 +293,7 @@ mod tests {
     use slop_challenger::{FieldChallenger, IopCtx};
     use slop_sumcheck::partially_verify_sumcheck_proof;
     use sp1_hypercube::{prover::ProverSemaphore, ShardVerifier};
-    use std::{mem::MaybeUninit, pin::Pin, sync::Arc};
+    use std::{mem::MaybeUninit, sync::Arc};
 
     use crate::execution::{extract_outputs, gkr_transition, layer_transition};
 
@@ -540,7 +540,7 @@ mod tests {
             let mut buffer: Vec<MaybeUninit<Felt>> = Vec::with_capacity(capacity);
             unsafe { buffer.set_len(capacity) };
             let boxed: Box<[MaybeUninit<Felt>]> = buffer.into_boxed_slice();
-            let buffer = unsafe { Pin::new_unchecked(boxed) };
+            let buffer = Box::into_pin(boxed);
             let (public_values, jagged_trace_data, shard_chips, _permit) = full_tracegen(
                 &machine,
                 program.clone(),

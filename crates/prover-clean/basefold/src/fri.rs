@@ -491,7 +491,6 @@ unsafe impl MleFlattenKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> fo
 #[cfg(test)]
 mod tests {
     use std::mem::MaybeUninit;
-    use std::pin::Pin;
     use std::sync::Arc;
 
     use csl_basefold::Poseidon2KoalaBear16BasefoldCudaProverComponents;
@@ -570,7 +569,7 @@ mod tests {
             let mut buffer: Vec<MaybeUninit<Felt>> = Vec::with_capacity(capacity);
             unsafe { buffer.set_len(capacity) };
             let boxed: Box<[MaybeUninit<Felt>]> = buffer.into_boxed_slice();
-            let buffer = unsafe { Pin::new_unchecked(boxed) };
+            let buffer = Box::into_pin(boxed);
             let (_, new_traces, _, _) = full_tracegen(
                 &machine,
                 program,

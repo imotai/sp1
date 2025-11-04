@@ -366,7 +366,7 @@ unsafe impl MerkleTreeSingleLayerKernels<BNGC<KoalaBear, BinomialExtensionField<
 #[cfg(test)]
 mod tests {
     use std::mem::MaybeUninit;
-    use std::pin::Pin;
+
     use std::sync::Arc;
 
     use csl_cuda::run_in_place;
@@ -430,7 +430,7 @@ mod tests {
             let mut buffer: Vec<MaybeUninit<Felt>> = Vec::with_capacity(capacity);
             unsafe { buffer.set_len(capacity) };
             let boxed: Box<[MaybeUninit<Felt>]> = buffer.into_boxed_slice();
-            let buffer = unsafe { Pin::new_unchecked(boxed) };
+            let buffer = Box::into_pin(boxed);
 
             let (_, new_traces, _, _) = full_tracegen(
                 &machine,

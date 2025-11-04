@@ -35,6 +35,7 @@ slop-commit = { workspace = true }
 slop-tensor = { workspace = true }
 slop-basefold = { workspace = true }
 slop-stacked = { workspace = true }
+slop-futures = { workspace = true }
 
 # sp1
 sp1-hypercube = { workspace = true }

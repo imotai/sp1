@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
+use std::{collections::BTreeMap, marker::PhantomData, mem::MaybeUninit, sync::Arc};
 
 use csl_air::{air_block::BlockAir, SymbolicProverFolder};
 use csl_cuda::{TaskScope, ToDevice};
@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use slop_algebra::extension::BinomialExtensionField;
 use slop_basefold::{Poseidon2Bn254FrBasefoldConfig, Poseidon2KoalaBear16BasefoldConfig};
 use slop_challenger::IopCtx;
+use slop_futures::queue::WorkerQueue;
 use slop_jagged::{DefaultJaggedProver, JaggedProver, JaggedProverComponents, SP1OuterConfig};
 use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 use sp1_core_machine::riscv::RiscvAir;
@@ -174,6 +175,7 @@ where
 pub async fn new_prover_clean_prover<GC, C, PC>(
     verifier: sp1_hypercube::MachineVerifier<GC, C, PC::Air>,
     max_trace_size: usize,
+    num_workers: usize,
     log_blowup: usize,
     scope: TaskScope,
 ) -> CudaShardProver<GC, PC>
@@ -214,7 +216,30 @@ where
         all_interactions.insert(chip.name().to_string(), Arc::new(device_interactions));
     }
 
+    let mut trace_buffers = Vec::with_capacity(num_workers);
+    for _ in 0..num_workers {
+        let mut v: Vec<MaybeUninit<GC::F>> = Vec::with_capacity(max_trace_size);
+        unsafe { v.set_len(max_trace_size) };
+        let boxed: Box<[MaybeUninit<GC::F>]> = v.into_boxed_slice();
+        let pinned = Box::into_pin(boxed);
+
+        unsafe {
+            let ptr = pinned.as_ptr() as *const std::ffi::c_void;
+            let size = std::mem::size_of::<GC::F>() * max_trace_size;
+            let result = csl_cuda::sys::runtime::cuda_host_register(ptr, size);
+            if result != csl_cuda::sys::runtime::CUDA_SUCCESS_CSL {
+                tracing::warn!(
+                    "Failed to register buffer {} as pinned memory",
+                    trace_buffers.len()
+                );
+            }
+        }
+
+        trace_buffers.push(pinned);
+    }
+
     CudaShardProver {
+        trace_buffers: Arc::new(WorkerQueue::new(trace_buffers)),
         all_interactions,
         max_log_row_count: max_log_row_count as u32,
         basefold_prover,

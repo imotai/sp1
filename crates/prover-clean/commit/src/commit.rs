@@ -88,7 +88,6 @@ pub async fn commit_multilinears<GC: IopCtx<F = Felt, EF = Ext>, P: TcsProverCle
 mod tests {
 
     use std::mem::MaybeUninit;
-    use std::pin::Pin;
     use std::sync::Arc;
 
     use csl_cuda::run_in_place;
@@ -157,7 +156,7 @@ mod tests {
             let mut buffer: Vec<MaybeUninit<Felt>> = Vec::with_capacity(capacity);
             unsafe { buffer.set_len(capacity) };
             let boxed: Box<[MaybeUninit<Felt>]> = buffer.into_boxed_slice();
-            let buffer = unsafe { Pin::new_unchecked(boxed) };
+            let buffer = Box::into_pin(boxed);
             let (_public_values, jagged_trace_data, _chip_set, _permit) = full_tracegen(
                 &machine,
                 program.clone(),
