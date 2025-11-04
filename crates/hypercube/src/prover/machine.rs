@@ -6,8 +6,6 @@ use slop_futures::queue::WorkerQueue;
 use std::{
     collections::{BTreeMap, BTreeSet},
     future::Future,
-    mem::MaybeUninit,
-    pin::Pin,
     sync::Arc,
 };
 
@@ -58,35 +56,14 @@ pub struct MachineProverBuilder<GC: IopCtx, C: MachineProverComponents<GC>> {
     base_workers: Vec<Arc<C::Prover>>,
     worker_permits: Vec<ProverSemaphore>,
     num_workers: Vec<usize>,
-    buffer_size: usize,
 }
 
 /// A machine prover.
 pub struct MachineProver<GC: IopCtx, C: MachineProverComponents<GC>> {
     base_workers: Vec<Arc<C::Prover>>,
     worker_permits: Vec<ProverSemaphore>,
-    worker_queue: Arc<WorkerQueue<ProverSlot<GC::F>>>,
+    worker_queue: Arc<WorkerQueue<usize>>,
     verifier: MachineVerifier<GC, C::Config, C::Air>,
-}
-
-/// A buffer allocated for each worker.
-pub struct ProverSlot<T> {
-    /// The index corresponding to the worker.
-    pub base_idx: usize,
-    /// The buffer of pinned field elements allocated for the worker.
-    pub buffer: Pin<Box<[MaybeUninit<T>]>>,
-}
-
-impl<T> ProverSlot<T> {
-    /// Build a new `ProverSlot` with a given index and buffer capacity.
-    #[must_use]
-    pub fn new(base_idx: usize, capacity: usize) -> Self {
-        let mut buffer: Vec<MaybeUninit<T>> = Vec::with_capacity(capacity);
-        unsafe { buffer.set_len(capacity) };
-        let boxed: Box<[MaybeUninit<T>]> = buffer.into_boxed_slice();
-        let buffer = Box::into_pin(boxed);
-        Self { base_idx, buffer }
-    }
 }
 
 impl<GC: IopCtx, C: MachineProverComponents<GC>> MachineProverBuilder<GC, C> {
@@ -109,7 +86,6 @@ impl<GC: IopCtx, C: MachineProverComponents<GC>> MachineProverBuilder<GC, C> {
             base_workers,
             worker_permits,
             num_workers: vec![1; num_base_workers],
-            buffer_size: 0,
         }
     }
 
@@ -144,22 +120,14 @@ impl<GC: IopCtx, C: MachineProverComponents<GC>> MachineProverBuilder<GC, C> {
         self
     }
 
-    /// Set the buffer size.
-    pub fn buffer_size(&mut self, buffer_size: usize) -> &mut Self {
-        self.buffer_size = buffer_size;
-        self
-    }
-
     /// Build the machine prover.
     pub fn build(&mut self) -> MachineProver<GC, C> {
         // For each base worker, repeat it the number of times specified by the number of workers.
-        let mut worker_queue: Vec<ProverSlot<GC::F>> = Vec::new();
+        let mut worker_queue: Vec<usize> = Vec::new();
         for ((idx, _), num_workers) in
             self.base_workers.iter().enumerate().zip_eq(self.num_workers.iter())
         {
-            for _ in 0..*num_workers {
-                worker_queue.push(ProverSlot::new(idx, self.buffer_size));
-            }
+            worker_queue.extend(std::iter::repeat_n(idx, *num_workers));
         }
 
         MachineProver {
@@ -285,7 +253,7 @@ impl<GC: IopCtx, C: MachineProverComponents<GC>> MachineProver<GC, C> {
             self.worker_queue.clone().pop().await.expect("no workers for setup, this is a bug.");
 
         // Copy the worker index.
-        let idx = worker.base_idx;
+        let idx = *worker;
 
         self.base_workers[idx].setup_from_vk(program, vk, self.worker_permits[idx].clone()).await
     }
@@ -304,19 +272,13 @@ impl<GC: IopCtx, C: MachineProverComponents<GC>> MachineProver<GC, C> {
             self.worker_queue.clone().pop().await.expect("no workers for setup, this is a bug.");
 
         // Copy the worker index.
-        let idx = worker.base_idx;
+        let idx = *worker;
 
         let mut challenger = self.challenger();
         pk.vk.observe_into(&mut challenger);
 
         let (proof, _) = self.base_workers[idx]
-            .prove_shard_with_pk(
-                pk,
-                record,
-                self.worker_permits[idx].clone(),
-                Some(worker.buffer.as_ptr() as usize),
-                &mut challenger,
-            )
+            .prove_shard_with_pk(pk, record, self.worker_permits[idx].clone(), &mut challenger)
             .await;
 
         // Return the proof.
@@ -339,7 +301,7 @@ impl<GC: IopCtx, C: MachineProverComponents<GC>> MachineProver<GC, C> {
             self.worker_queue.clone().pop().await.expect("no workers for setup, this is a bug.");
 
         // Copy the worker index.
-        let idx = worker.base_idx;
+        let idx = *worker;
 
         let mut challenger = self.challenger();
 
@@ -349,7 +311,6 @@ impl<GC: IopCtx, C: MachineProverComponents<GC>> MachineProver<GC, C> {
                 record,
                 vk,
                 self.worker_permits[idx].clone(),
-                Some(worker.buffer.as_ptr() as usize),
                 &mut challenger,
             )
             .await;

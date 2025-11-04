@@ -7,7 +7,6 @@ use crate::{CompressAir, InnerSC, OuterSC, WrapAir};
 pub const RECURSION_LOG_BLOWUP: usize = 1;
 pub(crate) const RECURSION_LOG_STACKING_HEIGHT: u32 = 20;
 pub const RECURSION_MAX_LOG_ROW_COUNT: usize = 20;
-pub const RECURSION_LOG_TRACE_AREA: usize = 27;
 const SHRINK_LOG_STACKING_HEIGHT: u32 = 18;
 pub(crate) const SHRINK_MAX_LOG_ROW_COUNT: usize = 18;
 

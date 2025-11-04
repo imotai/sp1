@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, mem::MaybeUninit, pin::Pin, sync::Arc};
+use std::{collections::BTreeSet, sync::Arc};
 
 use opentelemetry::Context;
 use slop_air::BaseAir;
@@ -474,7 +474,6 @@ pub struct CoreProverWorker<A, C: SP1ProverComponents> {
     core_prover: Arc<CoreProver<C>>,
     recursion_prover: SP1RecursionProver<A, C>,
     permits: ProverSemaphore,
-    buffer: Pin<Box<[MaybeUninit<SP1Field>]>>,
 }
 
 impl<A, C: SP1ProverComponents> CoreProverWorker<A, C> {
@@ -483,14 +482,8 @@ impl<A, C: SP1ProverComponents> CoreProverWorker<A, C> {
         core_prover: Arc<CoreProver<C>>,
         recursion_prover: SP1RecursionProver<A, C>,
         permits: ProverSemaphore,
-        capacity: usize,
     ) -> Self {
-        let mut buffer: Vec<MaybeUninit<SP1Field>> = Vec::with_capacity(capacity);
-        unsafe { buffer.set_len(capacity) };
-        let boxed: Box<[MaybeUninit<SP1Field>]> = buffer.into_boxed_slice();
-        let buffer = Box::into_pin(boxed);
-
-        Self { artifact_client, core_prover, recursion_prover, permits, buffer }
+        Self { artifact_client, core_prover, recursion_prover, permits }
     }
 }
 
@@ -523,7 +516,6 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
                 record,
                 Some(common_input.vk.vk.clone()),
                 permits,
-                Some(self.buffer.as_ptr() as usize),
                 &mut challenger,
             )
             .await;
@@ -740,7 +732,6 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
                     air_prover.clone(),
                     recursion_prover.clone(),
                     permits.clone(),
-                    opts.sharding_threshold.element_threshold as usize,
                 )
             })
             .collect::<Vec<_>>();
@@ -755,7 +746,6 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
                     air_prover.clone(),
                     recursion_prover.clone(),
                     permits.clone(),
-                    0,
                 )
             })
             .collect::<Vec<_>>();

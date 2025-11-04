@@ -68,7 +68,6 @@ pub trait AirProver<GC: IopCtx, C: MachineConfig<GC>, Air: MachineAir<GC::F>>:
         record: Air::Record,
         vk: Option<MachineVerifyingKey<GC, C>>,
         prover_permits: ProverSemaphore,
-        buffer_ptr: Option<usize>,
         challenger: &mut GC::Challenger,
     ) -> impl Future<Output = (MachineVerifyingKey<GC, C>, ShardProof<GC, C>, ProverPermit)> + Send;
 
@@ -78,7 +77,6 @@ pub trait AirProver<GC: IopCtx, C: MachineConfig<GC>, Air: MachineAir<GC::F>>:
         pk: Arc<ProvingKey<GC, C, Air, Self>>,
         record: Air::Record,
         prover_permits: ProverSemaphore,
-        buffer_ptr: Option<usize>,
         challenger: &mut GC::Challenger,
     ) -> impl Future<Output = (ShardProof<GC, C>, ProverPermit)> + Send;
 
@@ -279,7 +277,6 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> AirProver<GC, C::Config, C::Air>
         record: C::Record,
         vk: Option<MachineVerifyingKey<GC, C::Config>>,
         prover_permits: ProverSemaphore,
-        _buffer_ptr: Option<usize>,
         challenger: &mut GC::Challenger,
     ) -> (MachineVerifyingKey<GC, C::Config>, ShardProof<GC, C::Config>, ProverPermit) {
         // Get the initial global cumulative sum and pc start.
@@ -337,7 +334,6 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> AirProver<GC, C::Config, C::Air>
         pk: Arc<ProvingKey<GC, C::Config, C::Air, Self>>,
         record: C::Record,
         prover_permits: ProverSemaphore,
-        _buffer_ptr: Option<usize>,
         challenger: &mut GC::Challenger,
     ) -> (ShardProof<GC, C::Config>, ProverPermit) {
         // Generate the traces.
