@@ -24,6 +24,7 @@ slop-jagged = { workspace = true }
 slop-multilinear = { workspace = true }
 slop-futures = { workspace = true }
 slop-challenger = { workspace = true }
+slop-tensor = { workspace = true }
 
 # sp1
 sp1-hypercube = { workspace = true }

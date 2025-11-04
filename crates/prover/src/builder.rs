@@ -152,6 +152,21 @@ pub struct SP1ProverCleanBuilder {
 }
 
 impl SP1ProverCleanBuilder {
+    pub fn num_elts() -> usize {
+        // Convert bytes to GB.
+        let gb = 1024.0 * 1024.0 * 1024.0;
+
+        // Get the amount of memory on the GPU.
+        let gpu_memory_gb: usize =
+            (((cuda_memory_info().unwrap().1 as f64) / gb).ceil() as usize) + 4;
+
+        if gpu_memory_gb <= 30 {
+            (ELEMENT_THRESHOLD - (1 << 25)) as usize
+        } else {
+            ELEMENT_THRESHOLD as usize
+        }
+    }
+
     pub async fn new(scope: TaskScope) -> Self {
         // Convert bytes to GB.
         let gb = 1024.0 * 1024.0 * 1024.0;
@@ -172,17 +187,12 @@ impl SP1ProverCleanBuilder {
 
         let mut num_prover_workers = 4;
 
-        // TODO: Change this to be calculated from SplitOpts, but this requires a refactor in
-        // `sp1-wip`.
-        let num_elts =
-            if gpu_memory_gb <= 30 { ELEMENT_THRESHOLD - (1 << 25) } else { ELEMENT_THRESHOLD };
-
-        let num_elts = (num_elts as f64).ceil() as usize + (1 << CORE_LOG_STACKING_HEIGHT);
+        let num_elts = Self::num_elts() + (1 << CORE_LOG_STACKING_HEIGHT);
 
         let core_verifier = ProverCleanSP1ProverComponents::core_verifier();
         let core_prover = new_prover_clean_prover(
             core_verifier.clone(),
-            num_elts as usize,
+            num_elts,
             CORE_LOG_BLOWUP,
             scope.clone(),
         )
@@ -302,4 +312,58 @@ pub fn cuda_worker_builder(scope: TaskScope) -> SP1WorkerBuilder<CudaSP1ProverCo
         .with_core_opts(opts)
         .with_core_air_prover(core_air_prover, prover_permits.clone())
         .with_compress_air_prover(recursion_air_prover, prover_permits)
+}
+
+/// Create a [SP1ProverCleanWorkerBuilder]
+pub async fn prover_clean_worker_builder(
+    scope: TaskScope,
+) -> SP1WorkerBuilder<ProverCleanSP1ProverComponents> {
+    // Create a prover permits, assuming a single proof happens at a time.
+    let prover_permits = ProverSemaphore::new(1);
+
+    // Get the core options.
+    let opts = local_gpu_opts().core_opts;
+
+    let num_elts = SP1ProverCleanBuilder::num_elts() + (1 << CORE_LOG_STACKING_HEIGHT);
+
+    let core_verifier = ProverCleanSP1ProverComponents::core_verifier();
+    let core_prover = Arc::new(
+        new_prover_clean_prover(core_verifier.clone(), num_elts, CORE_LOG_BLOWUP, scope.clone())
+            .await,
+    );
+
+    // TODO: tune this more precisely and make it a constant.
+    let recursion_verifier = ProverCleanSP1ProverComponents::compress_verifier();
+    let recursion_prover = Arc::new(
+        new_prover_clean_prover(
+            recursion_verifier.clone(),
+            RECURSION_TRACE_ALLOCATION,
+            RECURSION_LOG_BLOWUP,
+            scope.clone(),
+        )
+        .await,
+    );
+
+    // let shrink_verifier = ProverCleanSP1ProverComponents::shrink_verifier();
+    // let shrink_prover = new_prover_clean_prover(
+    //     shrink_verifier.clone(),
+    //     SHRINK_TRACE_ALLOCATION,
+    //     SHRINK_LOG_BLOWUP,
+    //     scope.clone(),
+    // )
+    // .await;
+
+    // let wrap_verifier = ProverCleanSP1ProverComponents::wrap_verifier();
+    // let wrap_prover = new_prover_clean_prover(
+    //     wrap_verifier.clone(),
+    //     WRAP_TRACE_ALLOCATION,
+    //     WRAP_LOG_BLOWUP,
+    //     scope.clone(),
+    // )
+    // .await;
+
+    SP1WorkerBuilder::new()
+        .with_core_opts(opts)
+        .with_core_air_prover(core_prover, prover_permits.clone())
+        .with_compress_air_prover(recursion_prover, prover_permits)
 }

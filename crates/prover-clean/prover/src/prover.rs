@@ -119,6 +119,7 @@ where
         record: <PC::Air as MachineAir<GC::F>>::Record,
         vk: Option<MachineVerifyingKey<GC, PC::C>>,
         prover_permits: ProverSemaphore,
+        buffer_ptr: Option<usize>,
         challenger: &mut GC::Challenger,
     ) -> (MachineVerifyingKey<GC, PC::C>, ShardProof<GC, PC::C>, ProverPermit) {
         // Get the initial global cumulative sum and pc start.
@@ -141,6 +142,7 @@ where
             &self.machine,
             program,
             record,
+            buffer_ptr.unwrap(),
             self.max_trace_size,
             self.basefold_prover.log_height,
             self.max_log_row_count,
@@ -188,6 +190,7 @@ where
         pk: Arc<ProvingKey<GC, PC::C, PC::Air, Self>>,
         record: <PC::Air as MachineAir<GC::F>>::Record,
         prover_permits: ProverSemaphore,
+        buffer_ptr: Option<usize>,
         challenger: &mut GC::Challenger,
     ) -> (ShardProof<GC, PC::C>, ProverPermit) {
         // Generate the traces.
@@ -197,6 +200,7 @@ where
             &self.machine,
             record,
             &pk.preprocessed_data,
+            buffer_ptr.unwrap(),
             self.basefold_prover.log_height,
             self.max_log_row_count,
             &self.backend,
@@ -687,6 +691,8 @@ mod tests {
     use slop_tensor::Tensor;
     use sp1_core_machine::riscv::RiscvAir;
     use sp1_hypercube::SP1CoreJaggedConfig;
+    use std::mem::MaybeUninit;
+    use std::pin::Pin;
 
     pub struct ProverCleanTestProverComponentsImpl {}
 
@@ -703,10 +709,16 @@ mod tests {
         let (machine, record, program) = tracegen_setup::setup().await;
         run_in_place(|scope| async move {
             // *********** Generate traces using the host tracegen. ***********
+            let capacity = CORE_MAX_TRACE_SIZE as usize;
+            let mut buffer: Vec<MaybeUninit<Felt>> = Vec::with_capacity(capacity);
+            unsafe { buffer.set_len(capacity) };
+            let boxed: Box<[MaybeUninit<Felt>]> = buffer.into_boxed_slice();
+            let buffer = unsafe { Pin::new_unchecked(boxed) };
             let (_public_values, jagged_trace_data, _shard_chips, _permit) = full_tracegen(
                 &machine,
                 program.clone(),
                 Arc::new(record),
+                buffer.as_ptr() as usize,
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT,

@@ -87,6 +87,8 @@ pub async fn commit_multilinears<GC: IopCtx<F = Felt, EF = Ext>, P: TcsProverCle
 #[cfg(test)]
 mod tests {
 
+    use std::mem::MaybeUninit;
+    use std::pin::Pin;
     use std::sync::Arc;
 
     use csl_cuda::run_in_place;
@@ -98,7 +100,7 @@ mod tests {
         self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT,
     };
     use cslpc_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
-    use cslpc_utils::TestGC;
+    use cslpc_utils::{Felt, TestGC};
     use serial_test::serial;
     use slop_challenger::IopCtx;
     use slop_jagged::{JaggedPcsVerifier, JaggedProver, KoalaBearPoseidon2};
@@ -151,10 +153,16 @@ mod tests {
             // Commit to preprocessed and main using the new prover.
             // Do tracegen with the new setup.
             let record = Arc::new(record);
+            let capacity = CORE_MAX_TRACE_SIZE as usize;
+            let mut buffer: Vec<MaybeUninit<Felt>> = Vec::with_capacity(capacity);
+            unsafe { buffer.set_len(capacity) };
+            let boxed: Box<[MaybeUninit<Felt>]> = buffer.into_boxed_slice();
+            let buffer = unsafe { Pin::new_unchecked(boxed) };
             let (_public_values, jagged_trace_data, _chip_set, _permit) = full_tracegen(
                 &machine,
                 program.clone(),
                 record.clone(),
+                buffer.as_ptr() as usize,
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT,

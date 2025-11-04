@@ -806,6 +806,8 @@ pub mod tests {
         prover::ProverSemaphore, Chip, ChipEvaluation, ChipOpenedValues, ConstraintSumcheckFolder,
         LogUpEvaluations, ShardOpenedValues, VerifierConstraintFolder,
     };
+    use std::mem::MaybeUninit;
+    use std::pin::Pin;
 
     use std::collections::{BTreeMap, BTreeSet};
     use std::marker::PhantomData;
@@ -2079,10 +2081,17 @@ pub mod tests {
         run_in_place(|t| async move {
             let mut rng = rand::thread_rng();
 
+            let capacity = CORE_MAX_TRACE_SIZE as usize;
+            let mut buffer: Vec<MaybeUninit<Felt>> = Vec::with_capacity(capacity);
+            unsafe { buffer.set_len(capacity) };
+            let boxed: Box<[MaybeUninit<Felt>]> = buffer.into_boxed_slice();
+            let buffer = unsafe { Pin::new_unchecked(boxed) };
+
             let (public_values, trace_mle, chips, _permit) = full_tracegen(
                 &machine,
                 program.clone(),
                 Arc::new(record),
+                buffer.as_ptr() as usize,
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT,

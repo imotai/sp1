@@ -4,9 +4,10 @@ use clap::{arg, Parser, ValueEnum};
 use csl_perf::{get_program_and_input, make_measurement, telemetry, ProverBackend, Stage};
 use csl_prover::{local_gpu_opts, SP1CudaProverBuilder, SP1ProverCleanBuilder};
 use csl_tracing::init_tracer;
+use cslpc_prover::CORE_MAX_TRACE_SIZE;
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
-use sp1_prover::{local::LocalProver, shapes::DEFAULT_ARITY};
+use sp1_prover::{local::LocalProver, recursion::RECURSION_LOG_TRACE_AREA, shapes::DEFAULT_ARITY};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -66,6 +67,10 @@ async fn main() {
             ProverBackend::ProverClean => {
                 let sp1_prover_clean = SP1ProverCleanBuilder::new(t.clone())
                     .await
+                    .core_buffer_size(CORE_MAX_TRACE_SIZE as usize)
+                    .compress_buffer_size(1 << RECURSION_LOG_TRACE_AREA)
+                    .shrink_buffer_size(1 << RECURSION_LOG_TRACE_AREA)
+                    .wrap_buffer_size(1 << RECURSION_LOG_TRACE_AREA)
                     .normalize_cache_size(recursion_cache_size)
                     .set_max_compose_arity(DEFAULT_ARITY)
                     .without_vk_verification()

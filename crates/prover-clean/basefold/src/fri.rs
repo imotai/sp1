@@ -490,6 +490,8 @@ unsafe impl MleFlattenKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> fo
 
 #[cfg(test)]
 mod tests {
+    use std::mem::MaybeUninit;
+    use std::pin::Pin;
     use std::sync::Arc;
 
     use csl_basefold::Poseidon2KoalaBear16BasefoldCudaProverComponents;
@@ -564,10 +566,16 @@ mod tests {
                 old_prover.commit_mles(interleaved_message.clone()).await.unwrap();
 
             let new_semaphore = ProverSemaphore::new(1);
+            let capacity = CORE_MAX_TRACE_SIZE as usize;
+            let mut buffer: Vec<MaybeUninit<Felt>> = Vec::with_capacity(capacity);
+            unsafe { buffer.set_len(capacity) };
+            let boxed: Box<[MaybeUninit<Felt>]> = buffer.into_boxed_slice();
+            let buffer = unsafe { Pin::new_unchecked(boxed) };
             let (_, new_traces, _, _) = full_tracegen(
                 &machine,
                 program,
                 Arc::new(record),
+                buffer.as_ptr() as usize,
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT,

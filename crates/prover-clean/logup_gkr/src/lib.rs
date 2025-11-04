@@ -293,7 +293,7 @@ mod tests {
     use slop_challenger::{FieldChallenger, IopCtx};
     use slop_sumcheck::partially_verify_sumcheck_proof;
     use sp1_hypercube::{prover::ProverSemaphore, ShardVerifier};
-    use std::sync::Arc;
+    use std::{mem::MaybeUninit, pin::Pin, sync::Arc};
 
     use crate::execution::{extract_outputs, gkr_transition, layer_transition};
 
@@ -536,10 +536,16 @@ mod tests {
 
         run_in_place(|scope| async move {
             // *********** Generate traces using the host tracegen. ***********
+            let capacity = CORE_MAX_TRACE_SIZE as usize;
+            let mut buffer: Vec<MaybeUninit<Felt>> = Vec::with_capacity(capacity);
+            unsafe { buffer.set_len(capacity) };
+            let boxed: Box<[MaybeUninit<Felt>]> = buffer.into_boxed_slice();
+            let buffer = unsafe { Pin::new_unchecked(boxed) };
             let (public_values, jagged_trace_data, shard_chips, _permit) = full_tracegen(
                 &machine,
                 program.clone(),
                 Arc::new(record),
+                buffer.as_ptr() as usize,
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT,
