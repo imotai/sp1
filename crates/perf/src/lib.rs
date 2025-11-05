@@ -204,14 +204,20 @@ pub fn get_program_and_input(program: String, param: u32) -> (Vec<u8>, SP1Stdin)
     // Otherwise, assume it's a program from the s3 bucket.
     // Download files from S3
     let s3_path = program;
-    std::process::Command::new("aws")
+    let output = std::process::Command::new("aws")
         .args(["s3", "cp", &format!("s3://sp1-testing-suite/{s3_path}/program.bin"), "program.bin"])
         .output()
         .unwrap();
-    std::process::Command::new("aws")
+    if !output.status.success() {
+        panic!("failed to download program.bin");
+    }
+    let output = std::process::Command::new("aws")
         .args(["s3", "cp", &format!("s3://sp1-testing-suite/{s3_path}/stdin.bin"), "stdin.bin"])
         .output()
         .unwrap();
+    if !output.status.success() {
+        panic!("failed to download stdin.bin");
+    }
 
     let program_path = "program.bin";
     let stdin_path = "stdin.bin";
@@ -219,9 +225,9 @@ pub fn get_program_and_input(program: String, param: u32) -> (Vec<u8>, SP1Stdin)
     let stdin = std::fs::read(stdin_path).unwrap();
     let stdin: SP1Stdin = bincode::deserialize(&stdin).unwrap();
 
-    // // remove the files
-    // std::fs::remove_file(program_path).unwrap();
-    // std::fs::remove_file(stdin_path).unwrap();
+    // remove the files
+    std::fs::remove_file(program_path).unwrap();
+    std::fs::remove_file(stdin_path).unwrap();
 
     (program, stdin)
 }

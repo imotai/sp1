@@ -9,6 +9,7 @@ on:
     paths:
       - "crates/**"
       - "Cargo.toml"
+      - "Cargo.lock"
       - ".github/workflows/**"
       - "cuda/**"
   merge_group:
