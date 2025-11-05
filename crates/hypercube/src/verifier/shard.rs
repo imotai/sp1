@@ -1,4 +1,5 @@
 use derive_where::derive_where;
+use slop_basefold::FriConfig;
 use slop_merkle_tree::MerkleTreeTcs;
 use slop_whir::{Verifier, WhirJaggedConfig, WhirProofShape};
 use std::{
@@ -724,13 +725,13 @@ where
     /// Create a shard verifier from basefold parameters.
     #[must_use]
     pub fn from_basefold_parameters(
-        log_blowup: usize,
+        fri_config: FriConfig<GC::F>,
         log_stacking_height: u32,
         max_log_row_count: usize,
         machine: Machine<GC::F, A>,
     ) -> Self {
         let pcs_verifier = JaggedPcsVerifier::new(
-            log_blowup,
+            fri_config,
             log_stacking_height,
             max_log_row_count,
             NUM_SP1_COMMITMENTS,

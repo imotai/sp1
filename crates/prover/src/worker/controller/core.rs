@@ -637,7 +637,8 @@ impl DeferredEvents {
     /// `ExecutionRecord::append`.
     pub async fn append(&mut self, other: DeferredEvents, client: &impl ArtifactClient) {
         for (code, events) in other.0 {
-            // Add task references for artifacts so they are not cleaned up before they are fully split.
+            // Add task references for artifacts so they are not cleaned up before they are fully
+            // split.
             for PrecompileArtifactSlice { artifact, .. } in &events {
                 if let Err(e) = client.add_ref(artifact, CONTROLLER_PRECOMPILE_ARTIFACT_REF).await {
                     tracing::error!("Failed to add ref to artifact {:?}: {:?}", artifact, e);

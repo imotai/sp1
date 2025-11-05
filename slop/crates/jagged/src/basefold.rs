@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use slop_algebra::{extension::BinomialExtensionField, TwoAdicField};
 use slop_alloc::CpuBackend;
 use slop_baby_bear::{baby_bear_poseidon2::BabyBearDegree4Duplex, BabyBear};
-use slop_basefold::BasefoldVerifier;
+use slop_basefold::{BasefoldVerifier, FriConfig};
 use slop_basefold_prover::{
     BasefoldProver, BasefoldProverComponents, DefaultBasefoldProver,
     Poseidon2BabyBear16BasefoldCpuProverComponents, Poseidon2Bn254BasefoldCpuProverComponents,
@@ -130,12 +130,12 @@ where
     GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>,
 {
     pub fn new(
-        log_blowup: usize,
+        fri_config: FriConfig<GC::F>,
         log_stacking_height: u32,
         max_log_row_count: usize,
         expected_number_of_commits: usize,
     ) -> Self {
-        let basefold_verifer = BasefoldVerifier::<GC>::new(log_blowup, expected_number_of_commits);
+        let basefold_verifer = BasefoldVerifier::<GC>::new(fri_config, expected_number_of_commits);
         let stacked_pcs_verifier = StackedPcsVerifier::new(basefold_verifer, log_stacking_height);
         Self { pcs_verifier: stacked_pcs_verifier, max_log_row_count }
     }
@@ -245,7 +245,6 @@ mod tests {
         let column_counts_rounds = vec![vec![128, 45, 32], vec![512]];
         let num_rounds = row_counts_rounds.len();
 
-        let log_blowup = 1;
         let log_stacking_height = 11;
         let max_log_row_count = 10;
 
@@ -276,7 +275,7 @@ mod tests {
             .collect::<Rounds<_>>();
 
         let jagged_verifier = JaggedPcsVerifier::<GC, JaggedBasefoldConfig<GC>>::new(
-            log_blowup,
+            FriConfig::default_fri_config(),
             log_stacking_height,
             max_log_row_count as usize,
             num_rounds,

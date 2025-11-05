@@ -145,7 +145,7 @@ pub fn dummy_pcs_proof(
 mod tests {
 
     use rand::{thread_rng, Rng};
-    use slop_basefold::BasefoldProof;
+    use slop_basefold::{BasefoldProof, FriConfig};
     use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
     use std::sync::Arc;
 
@@ -200,7 +200,7 @@ mod tests {
             .collect::<Rounds<_>>();
 
         let jagged_verifier = JaggedPcsVerifier::<_, JC>::new(
-            log_blowup,
+            FriConfig::default_fri_config(),
             log_stacking_height,
             max_log_row_count as usize,
             row_counts_rounds.len(),
@@ -280,9 +280,12 @@ mod tests {
         .div_ceil(1 << max_log_row_count)
         .max(1);
 
+        // Magic constant 84 comes from the desired bits of security post grinding (for 16 bits of
+        // grinding).
+        let num_queries = 94;
+
         let dummy_proof = dummy_pcs_proof(
-            // Magic constant is the number of queries in the FRI phase.
-            84,
+            num_queries,
             max_log_row_count as usize,
             &[prep_multiple, main_multiple],
             log_stacking_height as usize,

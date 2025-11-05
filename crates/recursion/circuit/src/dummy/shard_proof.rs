@@ -4,7 +4,7 @@ use std::{
 };
 
 use slop_algebra::AbstractField;
-use slop_basefold::BasefoldVerifier;
+use slop_basefold::{BasefoldVerifier, FriConfig};
 use slop_multilinear::Point;
 use sp1_hypercube::{
     air::MachineAir, septic_digest::SepticDigest, AirOpenedValues, Chip, ChipDimensions,
@@ -36,15 +36,16 @@ pub fn dummy_vk(
 pub fn dummy_shard_proof<A: MachineAir<SP1Field>>(
     shard_chips: BTreeSet<Chip<SP1Field, A>>,
     max_log_row_count: usize,
-    log_blowup: usize,
+    fri_config: FriConfig<SP1Field>,
     log_stacking_height: usize,
     log_stacking_height_multiples: &[usize],
     added_cols: &[usize],
 ) -> ShardProof<SP1GlobalContext, SP1CoreJaggedConfig> {
     let default_verifier =
-        BasefoldVerifier::<SP1GlobalContext>::new(log_blowup, NUM_SP1_COMMITMENTS);
+        BasefoldVerifier::<SP1GlobalContext>::new(fri_config, NUM_SP1_COMMITMENTS);
 
     let fri_queries = default_verifier.fri_config.num_queries;
+    let log_blowup = default_verifier.fri_config.log_blowup;
 
     let total_machine_cols =
         shard_chips.iter().map(|chip| chip.air.width() + chip.preprocessed_width()).sum::<usize>();

@@ -631,6 +631,7 @@ where
 #[cfg(test)]
 mod tests {
     use rand::SeedableRng;
+    use slop_basefold::FriConfig;
     use slop_challenger::IopCtx;
     use slop_dft::p3::Radix2DitParallel;
     use slop_merkle_tree::{FieldMerkleTreeProver, MerkleTreeTcs, Poseidon2KoalaBear16Prover};
@@ -771,11 +772,10 @@ mod tests {
 
         type A = RecursionAir<SP1Field, 3, 2>;
         let machine = A::compress_machine();
-        let log_blowup = 1;
         let log_stacking_height = 22;
         let max_log_row_count = 21;
         let verifier = ShardVerifier::from_basefold_parameters(
-            log_blowup,
+            FriConfig::default_fri_config(),
             log_stacking_height,
             max_log_row_count,
             machine,

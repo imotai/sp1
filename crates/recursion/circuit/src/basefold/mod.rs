@@ -437,7 +437,6 @@ mod tests {
 
         let num_variables = 16;
         let round_widths = [vec![16, 10, 14], vec![20, 78, 34], vec![10, 10]];
-        let log_blowup = 1;
 
         let mut rng = thread_rng();
         let round_mles = round_widths
@@ -450,7 +449,8 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let verifier = BasefoldVerifier::<_>::new(log_blowup, round_widths.len());
+        let verifier =
+            BasefoldVerifier::<_>::new(FriConfig::default_fri_config(), round_widths.len());
         let recursive_verifier = RecursiveBasefoldVerifier::<C, SC> {
             fri_config: verifier.fri_config,
             tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),
@@ -541,7 +541,7 @@ mod tests {
 
         let num_variables = 16;
         let round_widths = [vec![16, 10, 14], vec![20, 78, 34], vec![10, 10]];
-        let log_blowup = 1;
+        let fri_config = FriConfig::default_fri_config();
 
         let mut rng = thread_rng();
         let round_mles = round_widths
@@ -554,7 +554,7 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let verifier = BasefoldVerifier::<SC>::new(log_blowup, round_widths.len());
+        let verifier = BasefoldVerifier::<SC>::new(fri_config, round_widths.len());
         let recursive_verifier = RecursiveBasefoldVerifier::<C, SC> {
             fri_config: verifier.fri_config,
             tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),

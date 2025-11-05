@@ -191,9 +191,9 @@
 //             );
 
 //             let mut spliced_traces = Vec::new();
-//             let mut last_spliced_trace = SplicedMinimalTrace::new_full_trace(minimal_trace.clone());
-//             let mut splice_duration = Duration::ZERO;
-//             let mut splice_timer = Instant::now();
+//             let mut last_spliced_trace =
+// SplicedMinimalTrace::new_full_trace(minimal_trace.clone());             let mut splice_duration =
+// Duration::ZERO;             let mut splice_timer = Instant::now();
 //             while let CycleResult::ShardBoundry =
 //                 splicing_vm.execute().expect("failed to execute chunk")
 //             {
@@ -209,8 +209,8 @@
 
 //                     spliced_traces.push(last_spliced_trace);
 //                 } else {
-//                     unreachable!("This trace has no cycle limit, so we expect it always splice.");
-//                 }
+//                     unreachable!("This trace has no cycle limit, so we expect it always
+// splice.");                 }
 //             }
 //             // Handle the last spliced trace correctly.
 //             splice_duration += splice_timer.elapsed();
@@ -274,8 +274,8 @@
 //             );
 //             println!(
 //                 "total new mhz: {}",
-//                 minimal.global_clk() as f64 / 1_000_000.0 / total_execution_duration.as_secs_f64()
-//             );
+//                 minimal.global_clk() as f64 / 1_000_000.0 /
+// total_execution_duration.as_secs_f64()             );
 //             println!(
 //                 "average shard trace duraiton new: {:?}",
 //                 shard_tracing_durations.iter().sum::<Duration>()

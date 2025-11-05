@@ -15,6 +15,7 @@ use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use slop_air::BaseAir;
 use slop_algebra::AbstractField;
+use slop_basefold::FriConfig;
 use sp1_core_executor::{ELEMENT_THRESHOLD, MAX_PROGRAM_SIZE};
 use sp1_core_machine::{
     bytes::columns::NUM_BYTE_PREPROCESSED_COLS, program::NUM_PROGRAM_PREPROCESSED_COLS,
@@ -26,7 +27,7 @@ use sp1_hypercube::{
     prover::{CoreProofShape, DefaultTraceGenerator, ProverSemaphore, TraceGenerator},
     Chip, ChipDimensions, Machine, MachineShape,
 };
-use sp1_primitives::{SP1Field, SP1GlobalContext};
+use sp1_primitives::{fri_params::core_fri_config, SP1Field, SP1GlobalContext};
 use sp1_recursion_circuit::{
     dummy::{dummy_shard_proof, dummy_vk},
     machine::{
@@ -107,7 +108,7 @@ impl SP1NormalizeInputShape {
                 dummy_shard_proof(
                     core_shape.shard_chips.clone(),
                     self.max_log_row_count,
-                    self.log_blowup,
+                    core_fri_config(),
                     self.log_stacking_height,
                     &[core_shape.preprocessed_multiple, core_shape.main_multiple],
                     &[core_shape.preprocessed_padding_cols, core_shape.main_padding_cols],
@@ -231,7 +232,7 @@ impl SP1RecursionProofShape {
         height: usize,
         chips: BTreeSet<Chip<SP1Field, CompressAir<SP1Field>>>,
         max_log_row_count: usize,
-        log_blowup: usize,
+        fri_config: FriConfig<SP1Field>,
         log_stacking_height: usize,
     ) -> SP1CompressWithVKeyWitnessValues<InnerSC> {
         let preprocessed_chip_information = self.shape.preprocessed_chip_information(&chips);
@@ -266,7 +267,7 @@ impl SP1RecursionProofShape {
         let dummy_proof = dummy_shard_proof(
             chips,
             max_log_row_count,
-            log_blowup,
+            fri_config,
             log_stacking_height,
             &[preprocessed_multiple, main_multiple],
             &[preprocessed_padding_cols, main_padding_cols],

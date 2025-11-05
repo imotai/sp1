@@ -614,8 +614,14 @@ fn dummy_compose_input<C: SP1ProverComponents>(
         verifier.shard_verifier().machine().chips().iter().cloned().collect::<BTreeSet<_>>();
 
     let max_log_row_count = verifier.max_log_row_count();
-    let log_blowup = verifier.fri_config().log_blowup();
     let log_stacking_height = verifier.log_stacking_height() as usize;
 
-    shape.dummy_input(arity, height, chips, max_log_row_count, log_blowup, log_stacking_height)
+    shape.dummy_input(
+        arity,
+        height,
+        chips,
+        max_log_row_count,
+        *verifier.fri_config(),
+        log_stacking_height,
+    )
 }

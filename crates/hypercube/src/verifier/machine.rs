@@ -1,18 +1,17 @@
 use derive_where::derive_where;
-use slop_algebra::PrimeField32;
+use slop_algebra::{PrimeField32, TwoAdicField};
 use slop_basefold::FriConfig;
 use slop_challenger::IopCtx;
-use slop_jagged::JaggedConfig;
+use slop_jagged::{JaggedBasefoldConfig, JaggedConfig};
 
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
 use slop_multilinear::MultilinearPcsVerifier;
-use sp1_primitives::{SP1Field, SP1GlobalContext};
 use thiserror::Error;
 
 use crate::{
-    air::MachineAir, prover::CoreProofShape, Machine, SP1CoreJaggedConfig,
-    ShardVerifierConfigError, VerifierConstraintFolder,
+    air::MachineAir, prover::CoreProofShape, Machine, ShardVerifierConfigError,
+    VerifierConstraintFolder,
 };
 
 use super::{MachineConfig, MachineVerifyingKey, ShardProof, ShardVerifier, ShardVerifierError};
@@ -153,11 +152,15 @@ where
     }
 }
 
-impl<A: MachineAir<SP1Field>> MachineVerifier<SP1GlobalContext, SP1CoreJaggedConfig, A> {
+impl<GC: IopCtx, A: MachineAir<GC::F>> MachineVerifier<GC, JaggedBasefoldConfig<GC>, A>
+where
+    GC::F: TwoAdicField,
+    GC::EF: TwoAdicField,
+{
     /// Get the FRI config.
     #[must_use]
     #[inline]
-    pub fn fri_config(&self) -> &FriConfig<SP1Field> {
+    pub fn fri_config(&self) -> &FriConfig<GC::F> {
         &self.shard_verifier.jagged_pcs_verifier.pcs_verifier.pcs_verifier.fri_config
     }
 }

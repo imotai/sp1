@@ -62,7 +62,8 @@ members = [
   "slop/crates/tensor",
   "slop/crates/uni-stark",
   "slop/crates/utils",
-  "slop/crates/whir",
+  "slop/crates/primitives",
+  "slop/crates/whir", "slop/crates/primitives",
 ]
 exclude = [
   "examples/target",
@@ -149,6 +150,7 @@ slop-maybe-rayon = { path = "./slop/crates/maybe-rayon" }
 slop-merkle-tree = { path = "./slop/crates/merkle-tree" }
 slop-multilinear = { path = "./slop/crates/multilinear" }
 slop-pgspcs = { path = "./slop/crates/pgspcs" }
+slop-primitives = { path = "./slop/crates/primitives" }
 slop-poseidon2 = { path = "./slop/crates/poseidon2" }
 slop-spartan = { path = "./slop/crates/spartan" }
 slop-stacked = { path = "./slop/crates/stacked" }

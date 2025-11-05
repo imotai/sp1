@@ -837,10 +837,16 @@ pub(crate) fn dummy_compose_input<C: RecursionProverComponents>(
         .collect::<BTreeSet<_>>();
 
     let max_log_row_count = prover.verifier().max_log_row_count();
-    let log_blowup = prover.verifier().fri_config().log_blowup();
     let log_stacking_height = prover.verifier().log_stacking_height() as usize;
 
-    shape.dummy_input(arity, height, chips, max_log_row_count, log_blowup, log_stacking_height)
+    shape.dummy_input(
+        arity,
+        height,
+        chips,
+        max_log_row_count,
+        *prover.verifier().fri_config(),
+        log_stacking_height,
+    )
 }
 
 pub(crate) fn dummy_deferred_input<C: RecursionProverComponents>(
@@ -858,11 +864,16 @@ pub(crate) fn dummy_deferred_input<C: RecursionProverComponents>(
         .collect::<BTreeSet<_>>();
 
     let max_log_row_count = prover.verifier().max_log_row_count();
-    let log_blowup = prover.verifier().fri_config().log_blowup();
     let log_stacking_height = prover.verifier().log_stacking_height() as usize;
 
-    let compress_input =
-        shape.dummy_input(1, height, chips, max_log_row_count, log_blowup, log_stacking_height);
+    let compress_input = shape.dummy_input(
+        1,
+        height,
+        chips,
+        max_log_row_count,
+        *prover.verifier().fri_config(),
+        log_stacking_height,
+    );
 
     SP1DeferredWitnessValues {
         vks_and_proofs: compress_input.compress_val.vks_and_proofs,

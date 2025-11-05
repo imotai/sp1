@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use slop_basefold::FriConfig;
 use sp1_core_executor::{Executor, Program, SP1Context, SP1CoreOpts, Trace};
 use sp1_hypercube::{
     prover::{AirProver, CpuMachineProverComponents, CpuShardProver, ProverSemaphore},
@@ -91,11 +92,10 @@ pub async fn run_test_core(
     MachineProof<SP1GlobalContext, SP1CoreJaggedConfig>,
     MachineVerifierConfigError<SP1GlobalContext, SP1CoreJaggedConfig>,
 > {
-    let log_blowup = 1;
     let machine = RiscvAir::machine();
 
     let verifier = ShardVerifier::from_basefold_parameters(
-        log_blowup,
+        FriConfig::default_fri_config(),
         log_stacking_height,
         max_log_row_count,
         machine,

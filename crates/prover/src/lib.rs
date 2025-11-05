@@ -49,7 +49,7 @@ pub const SP1_CIRCUIT_VERSION: &str = include_str!("../SP1_VERSION");
 
 /// The configuration for the core prover.
 pub type CoreSC = SP1CoreJaggedConfig;
-pub const CORE_LOG_BLOWUP: usize = 1;
+pub const CORE_LOG_BLOWUP: usize = 2;
 
 /// The configuration for the inner prover.
 pub type InnerSC = SP1CoreJaggedConfig;
@@ -402,9 +402,7 @@ mod tests {
     use static_assertions::{assert_type_eq_all, const_assert_eq};
 
     use crate::{
-        recursion::{
-            RECURSION_LOG_BLOWUP, RECURSION_LOG_STACKING_HEIGHT, RECURSION_MAX_LOG_ROW_COUNT,
-        },
+        recursion::{RECURSION_LOG_STACKING_HEIGHT, RECURSION_MAX_LOG_ROW_COUNT},
         CompressAir,
     };
     use sp1_hypercube::SP1CoreJaggedConfig;
@@ -423,7 +421,6 @@ mod tests {
         assert_type_eq_all!(internal::CompressAir<SP1Field>, CompressAir<SP1Field>);
 
         const_assert_eq!(internal::COMPRESS_DEGREE, crate::COMPRESS_DEGREE);
-        const_assert_eq!(internal::RECURSION_LOG_BLOWUP, RECURSION_LOG_BLOWUP);
         const_assert_eq!(internal::RECURSION_LOG_STACKING_HEIGHT, RECURSION_LOG_STACKING_HEIGHT);
         const_assert_eq!(internal::RECURSION_MAX_LOG_ROW_COUNT, RECURSION_MAX_LOG_ROW_COUNT);
 

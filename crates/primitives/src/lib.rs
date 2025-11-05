@@ -14,6 +14,7 @@ pub mod io;
 pub mod polynomial;
 pub mod types;
 pub use types::Elf;
+pub mod fri_params;
 
 /// The canonical version of the SP1 crate.
 pub const SP1_VERSION: &str = env!("CARGO_PKG_VERSION");

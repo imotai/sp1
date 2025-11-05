@@ -28,6 +28,7 @@ sp1-primitives = { workspace = true, optional = true }
 sp1-recursion-machine = { workspace = true, optional = true, default-features = false }
 sp1-recursion-executor = { workspace = true, optional = true, default-features = false }
 slop-algebra = { workspace = true, optional = true }
+slop-primitives = { workspace = true, optional = true }
 slop-symmetric = { workspace = true, optional = true }
 
 # arkworks
@@ -57,6 +58,7 @@ compressed = [
     "dep:sp1-recursion-machine",
     "dep:sp1-recursion-executor",
     "dep:slop-algebra",
+    "dep:slop-primitives",
     "dep:slop-symmetric",
 ]
 std = ["thiserror/std"]

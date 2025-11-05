@@ -192,7 +192,7 @@ mod tests {
     use rand::thread_rng;
     use slop_algebra::extension::BinomialExtensionField;
     use slop_baby_bear::{baby_bear_poseidon2::BabyBearDegree4Duplex, BabyBear};
-    use slop_basefold::BasefoldVerifier;
+    use slop_basefold::{BasefoldVerifier, FriConfig};
     use slop_basefold_prover::{BasefoldProver, Poseidon2BabyBear16BasefoldCpuProverComponents};
     use slop_challenger::CanObserve;
     use slop_tensor::Tensor;
@@ -228,8 +228,6 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        let log_blowup = 1;
-
         let mut rng = thread_rng();
         let round_mles = round_widths_and_log_heights
             .iter()
@@ -240,8 +238,10 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let pcs_verifier =
-            BasefoldVerifier::<GC>::new(log_blowup, round_widths_and_log_heights.len());
+        let pcs_verifier = BasefoldVerifier::<GC>::new(
+            FriConfig::default_fri_config(),
+            round_widths_and_log_heights.len(),
+        );
         let pcs_prover = Prover::new(&pcs_verifier);
         let stacker = FixedRateInterleave::new(batch_size);
 

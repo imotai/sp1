@@ -76,7 +76,7 @@ mod tests {
 
     use super::*;
 
-    use slop_basefold::BasefoldVerifier;
+    use slop_basefold::{BasefoldVerifier, FriConfig};
     use slop_basefold_prover::BasefoldProver;
     use slop_challenger::CanObserve;
 
@@ -108,8 +108,6 @@ mod tests {
         let total_number_of_variables = total_data_length.next_power_of_two().ilog2();
         assert_eq!(1 << total_number_of_variables, total_data_length);
 
-        let log_blowup = 1;
-
         let mut rng = thread_rng();
         let round_mles = round_widths_and_log_heights
             .iter()
@@ -120,8 +118,10 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let pcs_verifier =
-            BasefoldVerifier::<SC>::new(log_blowup, round_widths_and_log_heights.len());
+        let pcs_verifier = BasefoldVerifier::<SC>::new(
+            FriConfig::default_fri_config(),
+            round_widths_and_log_heights.len(),
+        );
         let pcs_prover = Prover::new(&pcs_verifier);
         let stacker = FixedRateInterleave::new(batch_size);
 
@@ -175,7 +175,10 @@ mod tests {
         Witnessable::<AsmConfig>::write(&eval_claim, &mut witness_stream);
         let eval_claim = eval_claim.read(&mut builder);
 
-        let verifier = BasefoldVerifier::<SC>::new(log_blowup, round_widths_and_log_heights.len());
+        let verifier = BasefoldVerifier::<SC>::new(
+            FriConfig::default_fri_config(),
+            round_widths_and_log_heights.len(),
+        );
         let recursive_verifier = RecursiveBasefoldVerifier::<C, SC> {
             fri_config: verifier.fri_config,
             tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),

@@ -112,7 +112,7 @@ mod tests {
     use rand::{thread_rng, Rng};
     use slop_algebra::extension::BinomialExtensionField;
     use slop_baby_bear::{baby_bear_poseidon2::BabyBearDegree4Duplex, BabyBear};
-    use slop_basefold::BasefoldVerifier;
+    use slop_basefold::{BasefoldVerifier, FriConfig};
     use slop_basefold_prover::{BasefoldProver, Poseidon2BabyBear16BasefoldCpuProverComponents};
 
     use crate::verifier::SparsePCSVerifier;
@@ -129,7 +129,6 @@ mod tests {
 
         let mut rng = thread_rng();
 
-        let log_blowup = 1;
         let log_sparsity = 8;
         let num_variables = 16;
         let sparsity = 1 << log_sparsity;
@@ -140,7 +139,7 @@ mod tests {
         );
         let alpha = Point::new((0..num_variables).map(|_| rng.gen::<EF>()).collect());
 
-        let basefold_verifier = BackendVerifier::new(log_blowup, 1);
+        let basefold_verifier = BackendVerifier::new(FriConfig::default_fri_config(), 1);
         let basefold_prover = BackendProver::new(&basefold_verifier);
 
         let mut challenger = GC::default_challenger();

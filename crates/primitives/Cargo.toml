@@ -29,6 +29,7 @@ slop-challenger = { workspace = true }
 slop-bn254 = { workspace = true }
 slop-koala-bear = { workspace = true }
 slop-poseidon2 = { workspace = true }
+slop-primitives ={ workspace = true }
 slop-symmetric = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 sha2 = { workspace = true }

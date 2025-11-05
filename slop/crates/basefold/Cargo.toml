@@ -15,6 +15,7 @@ slop-utils = { workspace = true }
 slop-tensor = { workspace = true }
 slop-alloc = { workspace = true }
 slop-baby-bear = { workspace = true }
+slop-primitives = { workspace = true }
 slop-koala-bear = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-bn254 = { workspace = true }

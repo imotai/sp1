@@ -6,7 +6,7 @@ use core::borrow::Borrow;
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_symmetric::CryptographicHasher;
 use sp1_hypercube::{MachineVerifier, MachineVerifierError, SP1RecursionProof, ShardVerifier};
-use sp1_primitives::poseidon2_hasher;
+use sp1_primitives::{fri_params::recursion_fri_config, poseidon2_hasher};
 use sp1_recursion_executor::{RecursionPublicValues, NUM_PV_ELMS_TO_HASH};
 
 use super::CompressedError;
@@ -23,9 +23,8 @@ pub const COMPRESS_DEGREE: usize = 3;
 
 pub type CompressAir<F> = sp1_recursion_machine::RecursionAir<F, COMPRESS_DEGREE, 2>;
 
-pub const RECURSION_LOG_BLOWUP: usize = 1;
 pub const RECURSION_LOG_STACKING_HEIGHT: u32 = 20;
-pub const RECURSION_MAX_LOG_ROW_COUNT: usize = 20;
+pub const RECURSION_MAX_LOG_ROW_COUNT: usize = 21;
 
 // // The rest of the functions in this file have been copied from elsewhere with slight
 // modifications.
@@ -102,13 +101,12 @@ pub fn verify_compressed(
 
 /// Copied from `RecursionProverComponents::verifier`.
 pub fn verifier() -> MachineVerifier<GC, C, CompressAir<F>> {
-    let compress_log_blowup = RECURSION_LOG_BLOWUP;
     let compress_log_stacking_height = RECURSION_LOG_STACKING_HEIGHT;
     let compress_max_log_row_count = RECURSION_MAX_LOG_ROW_COUNT;
 
     let machine = CompressAir::<F>::compress_machine();
     let recursion_shard_verifier = ShardVerifier::from_basefold_parameters(
-        compress_log_blowup,
+        recursion_fri_config(),
         compress_log_stacking_height,
         compress_max_log_row_count,
         machine.clone(),

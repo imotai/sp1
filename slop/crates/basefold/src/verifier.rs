@@ -7,6 +7,8 @@ use slop_multilinear::{MleEval, MultilinearPcsBatchVerifier, Point};
 use slop_utils::reverse_bits_len;
 use thiserror::Error;
 
+pub use slop_primitives::FriConfig;
+
 #[derive(Clone)]
 pub struct BasefoldVerifier<GC: IopCtx> {
     pub fri_config: crate::FriConfig<GC::F>,
@@ -17,13 +19,9 @@ impl<GC: IopCtx> BasefoldVerifier<GC>
 where
     GC::F: TwoAdicField,
 {
-    pub fn new(log_blowup: usize, num_expected_commitments: usize) -> Self {
+    pub fn new(fri_config: crate::FriConfig<GC::F>, num_expected_commitments: usize) -> Self {
         assert_ne!(num_expected_commitments, 0, "commitment must exist");
-        Self {
-            fri_config: crate::FriConfig::auto(log_blowup, 84),
-            tcs: MerkleTreeTcs::default(),
-            num_expected_commitments,
-        }
+        Self { fri_config, tcs: MerkleTreeTcs::default(), num_expected_commitments }
     }
 }
 
@@ -348,7 +346,7 @@ where
                 let index_sibling = *index ^ 1;
                 let index_pair = *index >> 1;
 
-                if opening.total_len() != 2 * GC::EF::D {
+                if opening.total_len() != 2 * <GC::EF as AbstractExtensionField<GC::F>>::D {
                     return Err(BaseFoldVerifierError::IncorrectShape);
                 }
 

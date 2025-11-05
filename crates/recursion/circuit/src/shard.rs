@@ -492,7 +492,7 @@ pub type RecursiveVerifierPublicValuesConstraintFolder<'a> =
 mod tests {
     use std::{marker::PhantomData, sync::Arc};
 
-    use slop_basefold::BasefoldVerifier;
+    use slop_basefold::{BasefoldVerifier, FriConfig};
     use sp1_core_executor::{Program, SP1Context, SP1CoreOpts};
     use sp1_core_machine::{
         io::SP1Stdin,
@@ -527,12 +527,11 @@ mod tests {
     #[tokio::test]
     async fn test_verify_shard() {
         setup_logger();
-        let log_blowup = 1;
         let log_stacking_height = 21;
         let max_log_row_count = 22;
         let machine = RiscvAir::machine();
         let verifier = ShardVerifier::from_basefold_parameters(
-            log_blowup,
+            FriConfig::default_fri_config(),
             log_stacking_height,
             max_log_row_count,
             machine.clone(),
@@ -582,7 +581,7 @@ mod tests {
         let dummy_proof = dummy_shard_proof(
             shape.shard_chips,
             max_log_row_count,
-            log_blowup,
+            FriConfig::default_fri_config(),
             log_stacking_height as usize,
             &[shape.preprocessed_multiple, shape.main_multiple],
             &[shape.preprocessed_padding_cols, shape.main_padding_cols],
@@ -591,7 +590,8 @@ mod tests {
         let vk_variable = vk.read(&mut builder);
         let shard_proof_variable = dummy_proof.read(&mut builder);
 
-        let verifier = BasefoldVerifier::<GC>::new(log_blowup, NUM_SP1_COMMITMENTS);
+        let verifier =
+            BasefoldVerifier::<GC>::new(FriConfig::default_fri_config(), NUM_SP1_COMMITMENTS);
         let recursive_verifier = crate::basefold::RecursiveBasefoldVerifier::<C, GC> {
             fri_config: verifier.fri_config,
             tcs: RecursiveMerkleTreeTcs::<C, GC>(PhantomData),

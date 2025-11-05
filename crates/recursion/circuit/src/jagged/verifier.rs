@@ -207,7 +207,7 @@ mod tests {
 
     use rand::{thread_rng, Rng};
     use slop_algebra::AbstractField;
-    use slop_basefold::BasefoldVerifier;
+    use slop_basefold::{BasefoldVerifier, FriConfig};
     use slop_challenger::{CanObserve, IopCtx};
     use slop_commit::Rounds;
     use slop_jagged::{JaggedPcsProof, JaggedPcsVerifier, JaggedProver};
@@ -316,7 +316,6 @@ mod tests {
 
         let num_rounds = row_counts_rounds.len();
 
-        let log_blowup = 1;
         let log_stacking_height = 21;
         let max_log_row_count = 20;
 
@@ -347,7 +346,7 @@ mod tests {
             .collect::<Rounds<_>>();
 
         let jagged_verifier = JaggedPcsVerifier::<GC, JC>::new(
-            log_blowup,
+            FriConfig::default_fri_config(),
             log_stacking_height,
             max_log_row_count as usize,
             num_rounds,
@@ -397,7 +396,7 @@ mod tests {
             challenger_variable.observe_slice(&mut builder, *commitment_var);
         }
         builder.cycle_tracker_v2_exit();
-        let verifier = BasefoldVerifier::<SC>::new(log_blowup, num_rounds);
+        let verifier = BasefoldVerifier::<SC>::new(FriConfig::default_fri_config(), num_rounds);
         let recursive_verifier = RecursiveBasefoldVerifier::<C, SC> {
             fri_config: verifier.fri_config,
             tcs: RecursiveMerkleTreeTcs::<C, SC>(PhantomData),

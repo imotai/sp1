@@ -10,6 +10,7 @@ keywords = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
+slop-basefold = { workspace = true }
 sp1-derive = { workspace = true }
 sp1-primitives = { workspace = true }
 sp1-recursion-executor = { workspace = true, features = ["program_validation"] }

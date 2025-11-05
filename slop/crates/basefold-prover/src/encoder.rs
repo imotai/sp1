@@ -14,7 +14,7 @@ pub trait ReedSolomonEncoder<F: TwoAdicField, A: Backend = CpuBackend>:
     /// The error type returned by the encoder.
     type Error: Error;
 
-    fn config(&self) -> &FriConfig<F>;
+    fn config(&self) -> FriConfig<F>;
 
     /// Encodes the input into a new codeword.
     fn encode_batch<M>(
@@ -35,8 +35,8 @@ impl<F: TwoAdicField, D: Dft<F>> ReedSolomonEncoder<F> for CpuDftEncoder<F, D> {
     type Error = D::Error;
 
     #[inline]
-    fn config(&self) -> &FriConfig<F> {
-        &self.config
+    fn config(&self) -> FriConfig<F> {
+        self.config
     }
 
     async fn encode_batch<M>(&self, data: Message<M>) -> Result<Message<RsCodeWord<F>>, Self::Error>

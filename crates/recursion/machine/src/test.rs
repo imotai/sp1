@@ -1,11 +1,15 @@
 use std::sync::Arc;
 
 use slop_algebra::extension::BinomialExtensionField;
+use slop_basefold::FriConfig;
 use sp1_hypercube::{
     inner_perm, prover::CpuProverBuilder, Machine, MachineProof, MachineVerifier,
     MachineVerifierConfigError, SP1CoreJaggedConfig, ShardVerifier,
 };
-use sp1_primitives::{SP1DiffusionMatrix, SP1Field, SP1GlobalContext};
+use sp1_primitives::{
+    fri_params::{unique_decoding_queries, SP1_PROOF_OF_WORK_BITS},
+    SP1DiffusionMatrix, SP1Field, SP1GlobalContext,
+};
 use sp1_recursion_executor::{
     linear_program, Block, ExecutionRecord, Executor, Instruction, RecursionProgram, D,
 };
@@ -48,10 +52,11 @@ pub async fn run_test_recursion<const DEGREE: usize, const VAR_EVENTS_PER_ROW: u
     MachineVerifierConfigError<SP1GlobalContext, SP1CoreJaggedConfig>,
 > {
     let log_blowup = 1;
+    let num_queries = unique_decoding_queries(log_blowup);
     let log_stacking_height = 22;
     let max_log_row_count = 21;
     let verifier = ShardVerifier::from_basefold_parameters(
-        log_blowup,
+        FriConfig::new(log_blowup, num_queries, SP1_PROOF_OF_WORK_BITS),
         log_stacking_height,
         max_log_row_count,
         machine,

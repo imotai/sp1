@@ -2847,6 +2847,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "slop-primitives"
+version = "6.0.0"
+dependencies = [
+ "slop-algebra",
+]
+
+[[package]]
 name = "slop-symmetric"
 version = "6.0.0"
 dependencies = [
@@ -2929,6 +2936,7 @@ dependencies = [
  "slop-challenger",
  "slop-koala-bear",
  "slop-poseidon2",
+ "slop-primitives",
  "slop-symmetric",
 ]
 

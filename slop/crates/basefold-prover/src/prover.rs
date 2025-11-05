@@ -466,7 +466,7 @@ impl<
 mod tests {
     use futures::prelude::*;
     use rand::thread_rng;
-    use slop_basefold::BasefoldVerifier;
+    use slop_basefold::{BasefoldVerifier, FriConfig};
     use slop_challenger::CanObserve;
     use slop_multilinear::{MleEval, MultilinearPcsBatchVerifier};
 
@@ -500,7 +500,6 @@ mod tests {
     {
         let num_variables = 16;
         let round_widths = [vec![16, 10, 14], vec![20, 78, 34], vec![10, 10]];
-        let log_blowup = 1;
 
         let mut rng = thread_rng();
         let round_mles = round_widths
@@ -513,7 +512,8 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let verifier = BasefoldVerifier::<GC>::new(log_blowup, round_widths.len());
+        let verifier =
+            BasefoldVerifier::<GC>::new(FriConfig::default_fri_config(), round_widths.len());
         let prover = BasefoldProver::<GC, Prover>::new(&verifier);
 
         let mut challenger = GC::default_challenger();

@@ -8,7 +8,7 @@ use sp1_hypercube::{
     },
     Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
 };
-use sp1_primitives::{SP1Field, SP1GlobalContext};
+use sp1_primitives::{fri_params::core_fri_config, SP1Field, SP1GlobalContext};
 use static_assertions::const_assert;
 
 use crate::{
@@ -19,7 +19,6 @@ pub struct SP1CoreProver<C: CoreProverComponents> {
     prover: MachineProver<SP1GlobalContext, C>,
 }
 
-pub const CORE_LOG_BLOWUP: usize = 1;
 pub const CORE_LOG_STACKING_HEIGHT: u32 = 21;
 pub const CORE_MAX_LOG_ROW_COUNT: usize = 22;
 
@@ -32,14 +31,13 @@ pub trait CoreProverComponents:
     ///
     /// Thew verifier fixes the parameters of the underlying proof system.
     fn verifier() -> MachineVerifier<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>> {
-        let core_log_blowup = CORE_LOG_BLOWUP;
         let core_log_stacking_height = CORE_LOG_STACKING_HEIGHT;
         let core_max_log_row_count = CORE_MAX_LOG_ROW_COUNT;
 
         let machine = RiscvAir::machine();
 
         let core_verifier = ShardVerifier::from_basefold_parameters(
-            core_log_blowup,
+            core_fri_config(),
             core_log_stacking_height,
             core_max_log_row_count,
             machine.clone(),
