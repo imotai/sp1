@@ -17,7 +17,9 @@ use slop_algebra::extension::BinomialExtensionField;
 use slop_basefold::{Poseidon2Bn254FrBasefoldConfig, Poseidon2KoalaBear16BasefoldConfig};
 use slop_challenger::IopCtx;
 use slop_futures::queue::WorkerQueue;
-use slop_jagged::{DefaultJaggedProver, JaggedProver, JaggedProverComponents, SP1OuterConfig};
+use slop_jagged::{
+    DefaultJaggedProver, JaggedBasefoldConfig, JaggedProver, JaggedProverComponents, SP1OuterConfig,
+};
 use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_hypercube::{
@@ -172,16 +174,14 @@ where
     }
 }
 
-pub async fn new_prover_clean_prover<GC, C, PC>(
-    verifier: sp1_hypercube::MachineVerifier<GC, C, PC::Air>,
+pub async fn new_prover_clean_prover<GC, PC>(
+    verifier: sp1_hypercube::MachineVerifier<GC, JaggedBasefoldConfig<GC>, PC::Air>,
     max_trace_size: usize,
     num_workers: usize,
-    log_blowup: usize,
     scope: TaskScope,
 ) -> CudaShardProver<GC, PC>
 where
     GC: IopCtx<F = KoalaBear, EF = BinomialExtensionField<KoalaBear, 4>>,
-    C: MachineConfig<GC>,
     PC: ProverCleanProverComponents<GC>,
     PC::P: TcsProverClean<GC> + Default,
     PC::Air: CudaTracegenAir<GC::F>
@@ -199,7 +199,7 @@ where
 
     // Create the basefold prover from the verifier's PCS config
     // TODO: get this straight from the verifier.
-    let basefold_verifier = BasefoldVerifier::<GC>::new(log_blowup, 2);
+    let basefold_verifier = BasefoldVerifier::<GC>::new(*verifier.fri_config(), 2);
 
     let basefold_prover = ProverCleanFriCudaProver::<GC, PC::P, GC::F>::new(
         PC::P::default(),

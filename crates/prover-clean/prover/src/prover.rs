@@ -708,6 +708,7 @@ mod tests {
     use slop_tensor::Tensor;
     use sp1_core_machine::riscv::RiscvAir;
     use sp1_hypercube::SP1CoreJaggedConfig;
+    use sp1_primitives::fri_params::core_fri_config;
     use std::mem::MaybeUninit;
 
     pub struct ProverCleanTestProverComponentsImpl {}
@@ -745,7 +746,7 @@ mod tests {
 
             let jagged_trace_data = Arc::new(jagged_trace_data);
 
-            let verifier = BasefoldVerifier::<TestGC>::new(1, 2);
+            let verifier = BasefoldVerifier::<TestGC>::new(core_fri_config(), 2);
 
             let basefold_prover = ProverCleanFriCudaProver::<TestGC, _, Felt>::new(
                 Poseidon2KoalaBear16CudaProver::default(),
@@ -825,7 +826,7 @@ mod tests {
                 .unwrap();
 
             let jagged_verifier = JaggedPcsVerifier::<_, SP1CoreJaggedConfig>::new(
-                1,
+                core_fri_config(),
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT as usize,
                 2,

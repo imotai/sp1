@@ -512,6 +512,7 @@ mod tests {
     use cslpc_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
     use cslpc_utils::{Felt, TestGC};
     use futures::{stream, StreamExt};
+    use sp1_primitives::fri_params::core_fri_config;
 
     use super::*;
 
@@ -520,7 +521,7 @@ mod tests {
         let (machine, record, program) = tracegen_setup::setup().await;
 
         run_in_place(|scope| async move {
-            let verifier = BasefoldVerifier::<KoalaBearDegree4Duplex>::new(1, 2);
+            let verifier = BasefoldVerifier::<KoalaBearDegree4Duplex>::new(core_fri_config(), 2);
             let old_prover = BasefoldProver::<
                 KoalaBearDegree4Duplex,
                 Poseidon2KoalaBear16BasefoldCudaProverComponents,

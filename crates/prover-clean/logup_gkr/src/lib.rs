@@ -293,6 +293,7 @@ mod tests {
     use slop_challenger::{FieldChallenger, IopCtx};
     use slop_sumcheck::partially_verify_sumcheck_proof;
     use sp1_hypercube::{prover::ProverSemaphore, ShardVerifier};
+    use sp1_primitives::fri_params::core_fri_config;
     use std::{mem::MaybeUninit, sync::Arc};
 
     use crate::execution::{extract_outputs, gkr_transition, layer_transition};
@@ -570,7 +571,7 @@ mod tests {
 
             let shard_verifier: ShardVerifier<TestGC, _, _> =
                 ShardVerifier::from_basefold_parameters(
-                    1,
+                    core_fri_config(),
                     LOG_STACKING_HEIGHT,
                     CORE_MAX_LOG_ROW_COUNT as usize,
                     machine.clone(),

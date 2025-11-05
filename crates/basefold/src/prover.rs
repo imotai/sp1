@@ -74,7 +74,7 @@ mod tests {
     use futures::prelude::*;
     use rand::thread_rng;
     use slop_alloc::{IntoHost, ToHost};
-    use slop_basefold::BasefoldVerifier;
+    use slop_basefold::{BasefoldVerifier, FriConfig};
     use slop_challenger::{CanObserve, IopCtx};
     use slop_commit::{Message, Rounds};
     use slop_koala_bear::KoalaBear;
@@ -96,7 +96,6 @@ mod tests {
         type EF = BinomialExtensionField<KoalaBear, 4>;
 
         let round_widths = [vec![16, 10, 14], vec![20, 78, 34], vec![10, 10]];
-        let log_blowup = 1;
 
         let mut rng = thread_rng();
 
@@ -111,7 +110,8 @@ mod tests {
                 })
                 .collect::<Vec<_>>();
 
-            let verifier = BasefoldVerifier::<GC>::new(log_blowup, round_widths.len());
+            let verifier =
+                BasefoldVerifier::<GC>::new(FriConfig::default_fri_config(), round_widths.len());
             let prover = Prover::new(&verifier);
 
             let point = Point::<EF>::rand(&mut rng, num_variables);
@@ -240,8 +240,6 @@ mod tests {
                     .push((last_batch_size, last_log_height));
             }
 
-            let log_blowup = 1;
-
             let mut rng = thread_rng();
             let round_mles_host = round_widths_and_log_heights
                 .iter()
@@ -252,8 +250,10 @@ mod tests {
                 })
                 .collect::<Rounds<_>>();
 
-            let pcs_verifier =
-                BasefoldVerifier::<GC>::new(log_blowup, round_widths_and_log_heights.len());
+            let pcs_verifier = BasefoldVerifier::<GC>::new(
+                FriConfig::default_fri_config(),
+                round_widths_and_log_heights.len(),
+            );
             let pcs_prover = Prover::new(&pcs_verifier);
             let stacker = FixedRateInterleave::new(batch_size);
 

@@ -311,10 +311,11 @@ unsafe impl MleFlattenKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> fo
 mod tests {
     use futures::{future::join_all, prelude::*};
     use rand::Rng;
-    use slop_basefold::BasefoldVerifier;
+    use slop_basefold::{BasefoldVerifier, FriConfig};
     use slop_basefold_prover::{BasefoldProver, Poseidon2KoalaBear16BasefoldCpuProverComponents};
     use slop_koala_bear::KoalaBearDegree4Duplex;
     use slop_multilinear::Point;
+    use sp1_primitives::fri_params::core_fri_config;
 
     use crate::Poseidon2KoalaBear16BasefoldCudaProverComponents;
 
@@ -338,7 +339,10 @@ mod tests {
             BasefoldProver<KoalaBearDegree4Duplex, Poseidon2KoalaBear16BasefoldCpuProverComponents>;
         type EF = BinomialExtensionField<KoalaBear, 4>;
 
-        let verifier = BasefoldVerifier::<KoalaBearDegree4Duplex>::new(log_blowup, widths.len());
+        let verifier = BasefoldVerifier::<KoalaBearDegree4Duplex>::new(
+            FriConfig::default_fri_config(),
+            widths.len(),
+        );
         let cuda_prover = CudaProver::new(&verifier);
         let host_prover = HostProver::new(&verifier);
 
@@ -431,8 +435,6 @@ mod tests {
     async fn test_commit_phase_round() {
         let mut rng = rand::thread_rng();
 
-        let log_blowup = 1;
-
         for num_variables in 1..16 {
             type EF = BinomialExtensionField<KoalaBear, 4>;
 
@@ -447,7 +449,7 @@ mod tests {
                 Poseidon2KoalaBear16BasefoldCpuProverComponents,
             >;
 
-            let verifier = BasefoldVerifier::<GC>::new(log_blowup, 1);
+            let verifier = BasefoldVerifier::<GC>::new(core_fri_config(), 1);
             let cuda_prover = CudaProver::new(&verifier);
             let host_prover = HostProver::new(&verifier);
 

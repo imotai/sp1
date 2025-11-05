@@ -34,5 +34,7 @@ workspace = true
 
 [dev-dependencies]
 futures = { workspace = true }
+sp1-prover = { workspace = true }
+sp1-primitives = { workspace = true }
 rand = "0.8"
 serial_test = { workspace = true }

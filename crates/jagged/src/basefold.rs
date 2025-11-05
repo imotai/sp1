@@ -137,7 +137,7 @@ mod tests {
                 .collect::<Rounds<_>>();
 
             let jagged_verifier = JaggedPcsVerifier::<_, JC>::new(
-                log_blowup as usize,
+                sp1_primitives::fri_params::core_fri_config(),
                 log_stacking_height,
                 max_log_row_count as usize,
                 column_counts.len(),

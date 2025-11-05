@@ -55,6 +55,7 @@ slop-stacked = { workspace = true }
 
 # sp1
 sp1-core-machine = { workspace = true }
+sp1-primitives = { workspace = true }
 
 [lints]
 workspace = true

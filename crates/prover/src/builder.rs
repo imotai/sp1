@@ -8,16 +8,12 @@ use csl_cuda::{cuda_memory_info, TaskScope};
 use sp1_core_executor::ELEMENT_THRESHOLD;
 use sp1_hypercube::prover::ProverSemaphore;
 use sp1_prover::{
-    components::SP1ProverComponents,
-    core::CORE_LOG_STACKING_HEIGHT,
-    local::LocalProverOpts,
-    recursion::{RECURSION_LOG_BLOWUP, SHRINK_LOG_BLOWUP, WRAP_LOG_BLOWUP},
-    worker::SP1WorkerBuilder,
-    SP1ProverBuilder, CORE_LOG_BLOWUP,
+    components::SP1ProverComponents, core::CORE_LOG_STACKING_HEIGHT, local::LocalProverOpts,
+    worker::SP1WorkerBuilder, SP1ProverBuilder,
 };
 
 pub const RECURSION_TRACE_ALLOCATION: usize = 1 << 27;
-pub const SHRINK_TRACE_ALLOCATION: usize = 1 << 24;
+pub const SHRINK_TRACE_ALLOCATION: usize = 1 << 25;
 pub const WRAP_TRACE_ALLOCATION: usize = 1 << 25;
 
 use crate::{
@@ -196,14 +192,13 @@ impl SP1ProverCleanBuilder {
         let num_shrink_workers = num_prover_workers;
         let num_wrap_workers = num_prover_workers;
 
-        let num_elts = Self::num_elts() + (1 << CORE_LOG_STACKING_HEIGHT);
+        let num_elts = Self::num_elts() + (2 << CORE_LOG_STACKING_HEIGHT);
 
         let core_verifier = ProverCleanSP1ProverComponents::core_verifier();
         let core_prover = new_prover_clean_prover(
             core_verifier.clone(),
             num_elts,
             num_core_workers,
-            CORE_LOG_BLOWUP,
             scope.clone(),
         )
         .await;
@@ -214,7 +209,6 @@ impl SP1ProverCleanBuilder {
             recursion_verifier.clone(),
             RECURSION_TRACE_ALLOCATION,
             num_recursion_workers,
-            RECURSION_LOG_BLOWUP,
             scope.clone(),
         )
         .await;
@@ -224,7 +218,6 @@ impl SP1ProverCleanBuilder {
             shrink_verifier.clone(),
             SHRINK_TRACE_ALLOCATION,
             num_shrink_workers,
-            SHRINK_LOG_BLOWUP,
             scope.clone(),
         )
         .await;
@@ -234,7 +227,6 @@ impl SP1ProverCleanBuilder {
             wrap_verifier.clone(),
             WRAP_TRACE_ALLOCATION,
             num_wrap_workers,
-            WRAP_LOG_BLOWUP,
             scope.clone(),
         )
         .await;
@@ -331,10 +323,8 @@ pub async fn prover_clean_worker_builder(
     let num_elts = SP1ProverCleanBuilder::num_elts() + (1 << CORE_LOG_STACKING_HEIGHT);
 
     let core_verifier = ProverCleanSP1ProverComponents::core_verifier();
-    let core_prover = Arc::new(
-        new_prover_clean_prover(core_verifier.clone(), num_elts, 4, CORE_LOG_BLOWUP, scope.clone())
-            .await,
-    );
+    let core_prover =
+        Arc::new(new_prover_clean_prover(core_verifier.clone(), num_elts, 4, scope.clone()).await);
 
     // TODO: tune this more precisely and make it a constant.
     let recursion_verifier = ProverCleanSP1ProverComponents::compress_verifier();
@@ -343,7 +333,6 @@ pub async fn prover_clean_worker_builder(
             recursion_verifier.clone(),
             RECURSION_TRACE_ALLOCATION,
             4,
-            RECURSION_LOG_BLOWUP,
             scope.clone(),
         )
         .await,

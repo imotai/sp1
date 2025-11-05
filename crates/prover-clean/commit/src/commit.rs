@@ -104,6 +104,7 @@ mod tests {
     use slop_challenger::IopCtx;
     use slop_jagged::{JaggedPcsVerifier, JaggedProver, KoalaBearPoseidon2};
     use sp1_hypercube::prover::{ProverSemaphore, TraceGenerator};
+    use sp1_primitives::fri_params::core_fri_config;
 
     use crate::commit::commit_multilinears;
     #[serial]
@@ -132,7 +133,7 @@ mod tests {
             let num_rounds = 2;
 
             let jagged_verifier = JaggedPcsVerifier::<_, JC>::new(
-                1,
+                core_fri_config(),
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT as usize,
                 num_rounds,

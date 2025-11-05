@@ -36,6 +36,7 @@ itertools = { workspace = true }
 
 [dev-dependencies]
 slop-stacked = { workspace = true }
+sp1-prover = { workspace = true }
 futures = { workspace = true }
 
 rand = { workspace = true }
