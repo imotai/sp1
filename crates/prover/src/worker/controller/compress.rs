@@ -18,6 +18,7 @@ use tokio::{
     sync::{mpsc, oneshot},
     task::JoinSet,
 };
+use tracing::Instrument;
 
 use crate::{
     worker::{ProofData, ProofId, ReduceTaskRequest, RequesterId, TaskError, TaskId, WorkerClient},
@@ -287,8 +288,8 @@ impl CompressTree {
 
         let mut join_set = JoinSet::<Result<(), TaskError>>::new();
 
+        let (num_core_proofs_tx, mut num_core_proofs_rx) = mpsc::channel(1);
         // Spawn a task to process the incoming core proofs and subscribe to them.
-        let (tx, mut rx) = mpsc::channel(1);
         join_set.spawn({
             let core_proof_map = core_proof_map.clone();
             async move {
@@ -302,9 +303,14 @@ impl CompressTree {
                     core_proof_map.lock().unwrap().insert(proof_data.task_id, proof);
                     num_core_proofs += 1;
                 }
-                tx.send(num_core_proofs).await.ok();
+                tracing::info!(
+                    "All core proofs received: number of core proofs: {:?}",
+                    num_core_proofs
+                );
+                num_core_proofs_tx.send(num_core_proofs).await.ok();
                 Ok(())
             }
+            .instrument(tracing::info_span!("Core proof processing"))
         });
 
         let mut num_core_proofs_completed = 0;
@@ -312,7 +318,7 @@ impl CompressTree {
         let mut last_core_proof = None;
         loop {
             tokio::select! {
-                Some(num_proofs) = rx.recv() => {
+                Some(num_proofs) = num_core_proofs_rx.recv() => {
                     num_core_proofs = Some(num_proofs);
                     // If all core proofs have been completed, set the full range to the max range
                     // and send the last core proof to the proof queue.
@@ -337,91 +343,90 @@ impl CompressTree {
                             Sibling::Left(mut proofs) => {
                                 proofs.push_left(proof);
                                 proofs
-                           }
-                          Sibling::Right(mut proofs) => {
-                               proofs.push_right(proof);
-                               proofs
-                           }
-                           Sibling::Both(mut proofs, right) => {
-                               proofs.push_both(proof, right);
-                               proofs
-                       }
-                   };
+                            }
+                            Sibling::Right(mut proofs) => {
+                                proofs.push_right(proof);
+                                proofs
+                            }
+                            Sibling::Both(mut proofs, right) => {
+                                proofs.push_both(proof, right);
+                                proofs
+                            }
+                        };
 
-                   // Check for proofs to split and put back the reminder.
-                   let split = proofs.split_off(self.batch_size);
-                   if let Some(split) = split {
-                       self.insert(split);
-                   }
+                        // Check for proofs to split and put back the remainder.
+                        let split = proofs.split_off(self.batch_size);
+                        if let Some(split) = split {
+                            self.insert(split);
+                        }
 
-                   if proofs.len() > self.batch_size {
-                       tracing::error!("Proofs are larger than the batch size: {:?}", proofs.len());
-                       panic!("Proofs are larger than the batch size: {:?}", proofs.len());
-                   }
+                        if proofs.len() > self.batch_size {
+                            tracing::error!("Proofs are larger than the batch size: {:?}", proofs.len());
+                            panic!("Proofs are larger than the batch size: {:?}", proofs.len());
+                        }
 
-                   let is_complete = self.is_complete(&proofs.shard_range, pending_tasks, &full_range);
-                   if proofs.len() == self.batch_size || is_complete {
-                       let shard_range = proofs.shard_range;
-                       // Create an artifact for the output proof.
-                       let output_artifact = if is_complete { output.clone() } else { artifact_client.create_artifact()? };
-                       let task_request = ReduceTaskRequest {
-                           range_proofs: proofs,
-                           is_complete,
-                           output: output_artifact.clone(),
-                           proof_id: proof_id.clone(),
-                           parent_id: parent_id.clone(),
-                           parent_context: parent_context.clone(),
-                           requester_id: requester_id.clone(),
-                       };
-                       let raw_task_request = task_request.into_raw()?;
-                       let task_id = worker_client.submit_task(TaskType::RecursionReduce, raw_task_request).await?;
-                       // Update the proof map mapping the task id to the proof.
-                       proof_map.insert(task_id.clone(), RecursionProof { shard_range, proof: output_artifact });
-                       // Subsctibe to the task.
-                       subscriber.subscribe(task_id).map_err(|_| TaskError::Fatal(anyhow::anyhow!("Subscriver closed")))?;
-                       // Updare the number of pending tasks.
-                       pending_tasks += 1;
-                   } else {
-                       self.insert(proofs);
-                   }
-                   } else {
-                       // If there is no neighboring range, add the proof to the tree.
-                       let mut queue = VecDeque::with_capacity(self.batch_size);
-                       let range = proof.shard_range;
-                       queue.push_back(proof);
-                       let proofs = RangeProofs::new(range, queue);
-                       self.insert(proofs);
-                     }
+                        let is_complete = self.is_complete(&proofs.shard_range, pending_tasks, &full_range);
+                        if proofs.len() == self.batch_size || is_complete {
+                            let shard_range = proofs.shard_range;
+                            // Create an artifact for the output proof.
+                            let output_artifact = if is_complete { output.clone() } else { artifact_client.create_artifact()? };
+                            let task_request = ReduceTaskRequest {
+                                range_proofs: proofs,
+                                is_complete,
+                                output: output_artifact.clone(),
+                                proof_id: proof_id.clone(),
+                                parent_id: parent_id.clone(),
+                                parent_context: parent_context.clone(),
+                                requester_id: requester_id.clone(),
+                            };
+                            let raw_task_request = task_request.into_raw()?;
+                            let task_id = worker_client.submit_task(TaskType::RecursionReduce, raw_task_request).await?;
+                            // Update the proof map mapping the task id to the proof.
+                            proof_map.insert(task_id.clone(), RecursionProof { shard_range, proof: output_artifact });
+                            // Subsctibe to the task.
+                            subscriber.subscribe(task_id).map_err(|_| TaskError::Fatal(anyhow::anyhow!("Subscriver closed")))?;
+                            // Updare the number of pending tasks.
+                            pending_tasks += 1;
+                        } else {
+                            self.insert(proofs);
+                        }
+                    } else {
+                        // If there is no neighboring range, add the proof to the tree.
+                        let mut queue = VecDeque::with_capacity(self.batch_size);
+                        let range = proof.shard_range;
+                        queue.push_back(proof);
+                        let proofs = RangeProofs::new(range, queue);
+                        self.insert(proofs);
                     }
+                }
                 Some((task_id, TaskStatus::Succeeded)) = event_stream.recv() => {
-                    let proof = proof_map.remove(&task_id).ok_or_else(|| TaskError::Fatal(anyhow::anyhow!("Task {} not found in compress tree proof map", task_id)))?;
-                    // Send the proof to the proof queue.
-                    proof_tx.send(proof).map_err(|_| TaskError::Fatal(anyhow::anyhow!("Compress tree panicked")))?;
+                    let proof = proof_map.remove(&task_id);
+                    if let Some(proof) = proof {
+                        // Send the proof to the proof queue.
+                        proof_tx.send(proof).map_err(|_| TaskError::Fatal(anyhow::anyhow!("Compress tree panicked")))?;
+                    }
+                    else {
+                        tracing::debug!("Proof not found for task id: {}", task_id);
+                    }
                 }
 
-               Some((task_id, status)) = core_proofs_event_stream.recv() => {
-                        if status != TaskStatus::Succeeded {
-                            return Err(
-                                TaskError::Fatal
-                                (anyhow::anyhow!("Core proof task {} failed", task_id))
-                            );
-                        }
-                        // Download the proof
-                        let normalize_proof = core_proof_map
-                              .lock()
-                              .unwrap()
-                              .remove(&task_id)
-                              .ok_or_else(||
-                                TaskError::Fatal
-                                (anyhow::anyhow!("Task {} not found in core proof map", task_id))
-                            )?;
+                Some((task_id, status)) = core_proofs_event_stream.recv() => {
+                    if status != TaskStatus::Succeeded {
+                        return Err(
+                            TaskError::Fatal
+                            (anyhow::anyhow!("Core proof task {} failed", task_id))
+                        );
+                    }
+                    // Download the proof
+                    let normalize_proof = core_proof_map.lock().unwrap().remove(&task_id);
+                    if let Some(normalize_proof) = normalize_proof {
                         let shard_range = &normalize_proof.shard_range;
                         let (start, end) = (shard_range.start(), shard_range.end());
                         if start < max_range.start {
                             max_range.start = start;
                         }
                         if end > max_range.end {
-                           max_range.end = end;
+                            max_range.end = end;
                         }
                         // Set it as the last core proof and take the previous one.
                         let previous_core_proof = last_core_proof.take();
@@ -436,10 +441,10 @@ impl CompressTree {
                         // Mark this as a pending task for the compress tree.
                         pending_tasks += 1;
                         // Increment the number of completed core proofs.
-                        num_core_proofs_completed +=1;
+                        num_core_proofs_completed += 1;
                         // If all core proofs have been completed, set the full range to the max
                         // range and send the last core proof to the proof queue.
-                        if let Some(num_core_proofs) = num_core_proofs  {
+                        if let Some(num_core_proofs) = num_core_proofs {
                             if num_core_proofs_completed == num_core_proofs {
                                 full_range = Some(max_range.clone().into());
                                 // Send the last core proof to the proof queue.
@@ -449,7 +454,9 @@ impl CompressTree {
                                 core_proofs_event_stream.close();
                             }
                         }
-
+                    } else {
+                        tracing::debug!("Core proof not found for task id: {}", task_id);
+                    }
                 }
                 else => {
                     break;

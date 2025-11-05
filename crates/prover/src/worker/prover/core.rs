@@ -1,5 +1,6 @@
 use std::{collections::BTreeSet, sync::Arc};
 
+use anyhow::anyhow;
 use opentelemetry::Context;
 use slop_air::BaseAir;
 use slop_algebra::AbstractField;
@@ -15,7 +16,7 @@ use sp1_core_machine::{executor::trace_chunk, riscv::RiscvAir};
 use sp1_hypercube::{
     air::MachineAir,
     prover::{CoreProofShape, ProverSemaphore},
-    Machine, MachineVerifier, SP1RecursionProof, ShardProof,
+    Machine, MachineProof, MachineVerifier, SP1RecursionProof, ShardProof,
 };
 use sp1_jit::TraceChunk;
 use sp1_primitives::{SP1Field, SP1GlobalContext};
@@ -234,7 +235,9 @@ where
         let (program, mut record, deferred_record) = tokio::task::spawn_blocking({
             let artifact_client = self.artifact_client.clone();
             let opts = self.opts.clone();
+            let span = tracing::Span::current();
             move || {
+                let _guard = span.enter();
                 {
                     let program =
                         Arc::new(Program::from(&elf).expect("failed to disassemble program"));
@@ -242,7 +245,7 @@ where
                         TraceData::Core(chunk_bytes) => {
                             let chunk: TraceChunk = bincode::deserialize(&chunk_bytes)
                                 .expect("failed to deserialize chunk");
-                            tracing::trace!(
+                            tracing::debug!(
                                 "tracing chunk at clk range: {}..{}",
                                 chunk.clk_start,
                                 chunk.clk_end
@@ -256,6 +259,7 @@ where
                             (record, Some(deferred_record))
                         }
                         TraceData::Memory(shard) => {
+                            tracing::debug!("global memory shard");
                             let GlobalMemoryShard {
                                 final_state,
                                 initialize_events,
@@ -305,7 +309,7 @@ where
                             (record, None)
                         }
                         TraceData::Precompile(artifacts, code) => {
-                            tracing::info!("precompile events: code {}", code);
+                            tracing::debug!("precompile events: code {}", code);
                             let mut main_record = ExecutionRecord::new(program.clone());
 
                             // [start, end)
@@ -372,6 +376,7 @@ where
                 }
             }
         })
+        .instrument(tracing::debug_span!("into record"))
         .await
         .map_err(|e| TaskError::Fatal(e.into()))?;
         let program_clone = program.clone();
@@ -522,6 +527,16 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
         // Drop the permit
         drop(permit);
 
+        let vk_clone = common_input.vk.vk.clone();
+        let proof_clone = proof.clone();
+
+        let verify_future = tokio::spawn(async move {
+            let machine_proof = MachineProof::from(vec![proof_clone]);
+            C::core_verifier()
+                .verify(&vk_clone, &machine_proof)
+                .map_err(|e| TaskError::Retryable(anyhow!("shard verification failed: {e}")))
+        });
+
         if common_input.mode != ProofMode::Core {
             let program = recursion_program_handle
                 .ok_or_else(|| {
@@ -533,7 +548,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
             let witness = SP1CircuitWitness::Core(input);
             let _recursion_metadata = self
                 .recursion_prover
-                .submit_prove_shard(program, witness, output)
+                .submit_prove_shard(program, witness, output, false)
                 .await?
                 .await
                 .map_err(|e| TaskError::Fatal(e.into()))??;
@@ -565,6 +580,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
         if let Some(deferred_upload_handle) = deferred_upload_handle {
             deferred_upload_handle.await.map_err(|e| TaskError::Fatal(e.into()))??;
         }
+        verify_future.await.map_err(|e| TaskError::Retryable(e.into()))??;
 
         // TODO: Add the busy time here.
         Ok(TaskMetadata::default())

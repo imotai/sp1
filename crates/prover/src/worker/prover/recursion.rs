@@ -26,7 +26,7 @@ use sp1_hypercube::{
     air::SP1CorePublicValues,
     inner_perm,
     prover::{AirProver, MachineProvingKey, ProverSemaphore},
-    MachineVerifier, MachineVerifyingKey, SP1RecursionProof, ShardProof, DIGEST_SIZE,
+    MachineProof, MachineVerifier, MachineVerifyingKey, SP1RecursionProof, ShardProof, DIGEST_SIZE,
 };
 use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
 use sp1_prover_types::{Artifact, ArtifactClient, ArtifactId};
@@ -147,13 +147,14 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
 
         let witness = range_proofs.download_witness(is_complete, &self.artifact_client).await?;
 
-        Ok(RecursionTask { program, witness, output })
+        Ok(RecursionTask { program, witness, is_complete, output })
     }
 }
 
 pub struct RecursionTask {
     program: Arc<RecursionProgram<SP1Field>>,
     witness: SP1CircuitWitness,
+    is_complete: bool,
     output: Artifact,
 }
 
@@ -170,7 +171,7 @@ impl<C: SP1ProverComponents>
         &self,
         input: Result<RecursionTask, TaskError>,
     ) -> Result<ProveRecursionTask<C>, TaskError> {
-        let RecursionTask { program, witness, output } = input?;
+        let RecursionTask { program, witness, is_complete, output } = input?;
 
         // Execute the runtime.
         let runtime_span = tracing::debug_span!("execute runtime").entered();
@@ -200,7 +201,7 @@ impl<C: SP1ProverComponents>
             _ => unimplemented!(),
         };
 
-        Ok(ProveRecursionTask { record, keys, output })
+        Ok(ProveRecursionTask { record, keys, output, is_complete })
     }
 }
 
@@ -216,6 +217,7 @@ pub struct ProveRecursionTask<C: SP1ProverComponents> {
     record: ExecutionRecord<SP1Field>,
     keys: RecursionKeys<C>,
     output: Artifact,
+    is_complete: bool,
 }
 
 pub struct RecursionProverWorker<A, C: SP1ProverComponents> {
@@ -238,6 +240,11 @@ impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
                     .recursion_prover
                     .prove_shard_with_pk(pk.clone(), record, self.permits.clone(), &mut challenger)
                     .await;
+                C::compress_verifier()
+                    .verify(&vk, &MachineProof::from(vec![proof.clone()]))
+                    .map_err(|e| {
+                        TaskError::Retryable(anyhow::anyhow!("compress verify failed: {}", e))
+                    })?;
                 SP1RecursionProof { vk, proof }
             }
             RecursionKeys::Program(program) => {
@@ -252,6 +259,11 @@ impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
                         &mut challenger,
                     )
                     .await;
+                C::compress_verifier()
+                    .verify(&vk, &MachineProof::from(vec![proof.clone()]))
+                    .map_err(|e| {
+                        TaskError::Retryable(anyhow::anyhow!("compress verify failed: {}", e))
+                    })?;
                 SP1RecursionProof { vk, proof }
             }
         };
@@ -270,11 +282,15 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
         input: Result<ProveRecursionTask<C>, TaskError>,
     ) -> Result<TaskMetadata, TaskError> {
         // Get the input or return an error
-        let ProveRecursionTask { record, keys, output } = input?;
+        let ProveRecursionTask { record, keys, output, is_complete } = input?;
         // Prove the shard
         let (proof, metadata) = self.prove_shard(keys, record).await?;
         // Upload the proof
-        self.artifact_client.upload(&output, proof.clone()).await?;
+        if is_complete {
+            self.artifact_client.upload_proof(&output, proof.clone()).await?;
+        } else {
+            self.artifact_client.upload(&output, proof.clone()).await?;
+        }
 
         Ok(metadata)
     }
@@ -460,9 +476,10 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
         program: Arc<RecursionProgram<SP1Field>>,
         witness: SP1CircuitWitness,
         output: Artifact,
+        is_complete: bool,
     ) -> Result<RecursionProveSubmitHandle<A, C>, SubmitError> {
         self.recursion_prover_pipeline()
-            .submit(Ok(RecursionTask { program, witness, output }))
+            .submit(Ok(RecursionTask { program, witness, is_complete, output }))
             .await
     }
 

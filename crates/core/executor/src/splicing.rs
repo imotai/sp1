@@ -340,7 +340,7 @@ pub struct SplicedMinimalTrace<T: MinimalTrace> {
 
 impl<T: MinimalTrace> SplicedMinimalTrace<T> {
     /// Create a new spliced minimal trace.
-    #[tracing::instrument(name = "SplicedMinimalTrace::new", skip(inner))]
+    #[tracing::instrument(name = "SplicedMinimalTrace::new", skip(inner), level = "trace")]
     pub fn new(
         inner: T,
         start_registers: [u64; 32],
@@ -362,7 +362,11 @@ impl<T: MinimalTrace> SplicedMinimalTrace<T> {
     }
 
     /// Create a new spliced minimal trace from a minimal trace without any splicing.
-    #[tracing::instrument(name = "SplicedMinimalTrace::new_full_trace", skip(trace))]
+    #[tracing::instrument(
+        name = "SplicedMinimalTrace::new_full_trace",
+        skip(trace),
+        level = "trace"
+    )]
     pub fn new_full_trace(trace: T) -> Self {
         let start_registers = trace.start_registers();
         let start_pc = trace.pc_start();

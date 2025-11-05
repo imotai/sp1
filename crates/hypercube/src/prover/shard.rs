@@ -296,7 +296,7 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> AirProver<GC, C::Config, C::Air>
         let trace_data = self
             .trace_generator
             .generate_traces(program, record, self.max_log_row_count(), prover_permits)
-            .instrument(tracing::debug_span!("generate main traces"))
+            .instrument(tracing::debug_span!("generate full traces"))
             .await;
 
         let TraceData { preprocessed_traces, main_trace_data } = trace_data;

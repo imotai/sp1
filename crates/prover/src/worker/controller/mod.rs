@@ -1,7 +1,6 @@
 mod compress;
 mod core;
 mod splicing;
-mod tasks;
 
 pub use compress::*;
 pub use core::*;
@@ -105,10 +104,12 @@ where
     ) {
         // Spawn a task to gather the proofs
         let (proofs_tx, proofs_rx) = oneshot::channel();
+        let parent = tracing::Span::current();
         join_set.spawn({
             let worker_client = self.worker_client.clone();
             let artifact_client = self.artifact_client.clone();
             async move {
+                let _guard = parent.enter();
                 let subscriber = worker_client.subscriber(proof_id).await?.per_task();
                 let mut shard_proofs = Vec::new();
                 while let Some(proof_data) = core_proof_rx.recv().await {
@@ -131,12 +132,15 @@ where
                 proofs_tx.send(shard_proofs).ok();
                 Ok(())
             }
+            .instrument(tracing::debug_span!("Core proof processing"))
         });
 
+        let parent = tracing::Span::current();
         // Task to wait for the proofs and execution output and upload the output.
         join_set.spawn({
             let artifact_client = self.artifact_client.clone();
             async move {
+                let _guard = parent.enter();
                 // Wait for the proofs to finish
                 let mut shard_proofs = proofs_rx.await.map_err(|e| TaskError::Fatal(e.into()))?;
                 shard_proofs.sort_by_key(|shard_proof| {
@@ -159,10 +163,11 @@ where
                 };
 
                 // Upload the proof
-                artifact_client.upload(&outputs[0], proof).await?;
+                artifact_client.upload_proof(&outputs[0], proof).await?;
 
                 Ok(())
             }
+            .instrument(tracing::debug_span!("Core proof waiter"))
         });
     }
 

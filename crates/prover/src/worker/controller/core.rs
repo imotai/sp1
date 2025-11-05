@@ -21,6 +21,7 @@ use sp1_prover_types::{
     TaskType,
 };
 use tokio::{sync::mpsc, task::JoinSet};
+use tracing::Instrument;
 
 use crate::{
     worker::{
@@ -282,9 +283,11 @@ where
         let mut join_set = JoinSet::new();
 
         // Spawn the task that creates the memory shards
+        let span = tracing::debug_span!("create global memory shards");
         join_set.spawn_blocking({
             let threshold = split_opts.memory;
             move || {
+                let _guard = span.enter();
                 let (global_memory_initialize_events, global_memory_finalize_events) =
                     Self::global_memory_events(
                         minimal_executor,
@@ -339,7 +342,7 @@ where
             let prove_shard_tx = self.sender.clone();
 
             async move {
-                let mut counter = 0;
+               let mut counter = 0;
                 let mut previous_init_addr = 0;
                 let mut previous_finalize_addr = 0;
                 let mut previous_init_page_idx = 0;
@@ -439,6 +442,7 @@ where
                     previous_finalize_page_idx = last_finalize_page_idx;
                 }
             }
+            .instrument(tracing::debug_span!("Global memory shards"))
         });
 
         // Wait for the tasks to finish

@@ -111,10 +111,14 @@ where
         };
 
         let deferred_message = match trace_data {
-            TraceData::Core(_) => Some(DeferredMessage {
-                task_id: deferred_marker_task.clone(),
-                record: deferred_output_artifact.clone(),
-            }),
+            TraceData::Core(_) => {
+                tracing::debug!("created deferred marker task id: {}", deferred_marker_task);
+                tracing::debug!("created deferred output artifact: {}", deferred_output_artifact);
+                Some(DeferredMessage {
+                    task_id: deferred_marker_task.clone(),
+                    record: deferred_output_artifact.clone(),
+                })
+            }
             _ => None,
         };
 
@@ -149,7 +153,7 @@ where
         let task_id = worker_client
             .submit_task(TaskType::ProveShard, task)
             .await
-            .expect("failed to send task");
+            .map_err(|e| ExecutionError::Other(e.to_string()))?;
         let proof_data = ProofData { task_id, range, proof: proof_artifact };
         Ok(SpawnProveOutput { deferred_message, proof_data })
     }
@@ -179,13 +183,13 @@ where
         let split_opts = SplitOpts::new(&opts, program.instructions.len(), false);
 
         let (splicing_tx, mut splicing_rx) = mpsc::channel::<SendSpliceTask>(1);
-        // TODO: what size should the buffer be? maybe even unbounded?
         let (deferred_marker_tx, mut deferred_marker_rx) =
             mpsc::unbounded_channel::<DeferredMessage>();
 
         let mut join_set = JoinSet::<Result<(), ExecutionError>>::new();
 
         // Spawn the task to spawn the prove shard tasks.
+        let parent = tracing::Span::current();
         join_set.spawn({
             let self_clone = self.clone();
             let elf_artifact = elf_artifact.clone();
@@ -196,10 +200,11 @@ where
             let parent_context_clone = parent_context.clone();
             let prove_shard_tx = prove_shard_tx.clone();
             async move {
+                let _guard = parent.enter();
                 while let Some(task) = splicing_rx.recv().await {
                     let SendSpliceTask { chunk, range } = task;
-                    let chunk_bytes =
-                        bincode::serialize(&chunk).expect("failed to serialize record");
+                    let chunk_bytes = bincode::serialize(&chunk)
+                        .map_err(|e| ExecutionError::Other(e.to_string()))?;
                     let data = TraceData::Core(chunk_bytes);
 
                     let SpawnProveOutput { deferred_message, proof_data } = self_clone
@@ -214,18 +219,22 @@ where
                             data,
                         )
                         .await
-                        .expect("failed to create core proving task");
+                        .map_err(|e| {
+                            ExecutionError::Other(format!(
+                                "error in create_core_proving_task: {}",
+                                e
+                            ))
+                        })?;
 
-                    // Send the task id
-                    prove_shard_tx.send(proof_data).expect("failed to send task id");
+                    prove_shard_tx.send(proof_data).map_err(|e| {
+                        ExecutionError::Other(format!("error in send proof data: {}", e))
+                    })?;
                     // Send the deferred message to the deferred marker receiver.
                     if let Some(deferred_message) = deferred_message {
-                        deferred_marker_tx
-                            .send(deferred_message)
-                            .expect("failed to send deferred marker");
+                        deferred_marker_tx.send(deferred_message).map_err(|e| {
+                            ExecutionError::Other(format!("error in send deferred message: {}", e))
+                        })?;
                     }
-                    // Check for deferred records that can be sent and spawn the prove shard tasks
-                    // for them.
                 }
 
                 Ok(())
@@ -233,7 +242,9 @@ where
         });
 
         // Spawn the task that splices the trace.
+        let span = tracing::debug_span!("splicing trace");
         join_set.spawn_blocking(move || {
+            let _guard = span.enter();
             let mut touched_addresses = CompressedMemory::new();
             let mut vm = SplicingVM::new(&chunk, program.clone(), &mut touched_addresses, opts);
 
@@ -282,7 +293,8 @@ where
                             let splice_to_send = std::mem::replace(&mut last_splice, spliced);
 
                             // TODO: handle errors.
-                            splicing_tx.blocking_send(SendSpliceTask { chunk: splice_to_send, range }).expect("failed to send splicing task");
+                            splicing_tx.blocking_send(SendSpliceTask { chunk: splice_to_send, range })
+                                .map_err(|e| ExecutionError::Other(format!("error sending to splicing tx: {}", e)))?;
                         } else {
                             tracing::trace!("trace ended at clk: {}", vm.core.clk());
                             tracing::trace!("trace ended at pc: {}", vm.core.pc());
@@ -308,7 +320,8 @@ where
                                 start_num_mem_reads as usize - vm.core.mem_reads.len(),
                             );
 
-                            splicing_tx.blocking_send(SendSpliceTask { chunk: last_splice, range }).expect("failed to send splicing task");
+                            splicing_tx.blocking_send(SendSpliceTask { chunk: last_splice, range })
+                                .map_err(|e| ExecutionError::Other(format!("error sending to splicing tx: {}", e)))?;
 
                             break;
                         }
@@ -335,7 +348,8 @@ where
                         final_vm_state.set(final_state);
 
                         // Send the last splice.
-                        splicing_tx.blocking_send(SendSpliceTask { chunk: last_splice, range }).expect("failed to send splicing task");
+                        splicing_tx.blocking_send(SendSpliceTask { chunk: last_splice, range })
+                            .map_err(|e| ExecutionError::Other(format!("error sending to splicing tx: {}", e)))?;
 
                         break;
                     }
@@ -354,6 +368,8 @@ where
 
         // Spawn the task that waits for deferred records, accumulates them, and creates tasks to
         // prove them.
+        let span = tracing::info_span!("create tasks");
+        let inner_span = tracing::info_span!(parent: span.clone(), "deferred listener");
         join_set.spawn({
             let self_clone = self.clone();
             let elf_artifact_clone = elf_artifact.clone();
@@ -376,53 +392,99 @@ where
                     .await
                     .map_err(|e| ExecutionError::Other(e.to_string()))?
                     .stream();
-                join_set.spawn({
-                    let task_data_map = task_data_map.clone();
-                    async move {
-                        while let Some(deferred_message) = deferred_marker_rx.recv().await {
-                            tracing::trace!(
-                                "received deferred message with task id {:?}",
-                                deferred_message.task_id
-                            );
-                            let DeferredMessage { task_id, record: deferred_events } =
-                                deferred_message;
-                            task_data_map.lock().await.insert(task_id.clone(), deferred_events);
-                            subscriber
-                                .subscribe(task_id.clone())
-                                .map_err(|e| ExecutionError::Other(e.to_string()))?;
-                        }
-                        Ok::<_, ExecutionError>(())
-                    }
-                });
-
-                join_set.spawn({
-                    async move {
-                        let mut deferred_accumulator = DeferredEvents::empty();
-                        while let Some((task_id, status)) = event_stream.next().await {
-                            if status != TaskStatus::Succeeded {
-                                return Err(ExecutionError::Other(format!(
-                                    "deferred marker task failed: {}",
-                                    task_id
-                                )));
-                            }
-                            let deferred_events_artifact =
-                                task_data_map.lock().await.remove(&task_id).ok_or_else(|| {
+                join_set.spawn(
+                    {
+                        let task_data_map = task_data_map.clone();
+                        async move {
+                            while let Some(deferred_message) = deferred_marker_rx.recv().await {
+                                tracing::trace!(
+                                    "received deferred message with task id {:?}",
+                                    deferred_message.task_id
+                                );
+                                let DeferredMessage { task_id, record: deferred_events } =
+                                    deferred_message;
+                                task_data_map.lock().await.insert(task_id.clone(), deferred_events);
+                                subscriber.subscribe(task_id.clone()).map_err(|e| {
                                     ExecutionError::Other(format!(
-                                        "task data not found for task id: {}",
-                                        task_id
+                                        "error subscribing to task {}: {}",
+                                        task_id, e
                                     ))
                                 })?;
-                            let deferred_events: DeferredEvents = artifact_client
-                                .download(&deferred_events_artifact)
-                                .await
-                                .map_err(|e| ExecutionError::Other(e.to_string()))?;
+                            }
+                            Ok::<_, ExecutionError>(())
+                        }
+                    }
+                    .instrument(inner_span.clone()),
+                );
 
-                            deferred_accumulator.append(deferred_events, &artifact_client).await;
-                            let new_shards = deferred_accumulator
-                                .split(false, split_opts, &artifact_client)
+                join_set.spawn(
+                    {
+                        async move {
+                            let mut deferred_accumulator = DeferredEvents::empty();
+                            while let Some((task_id, status)) = event_stream.next().await {
+                                if status != TaskStatus::Succeeded {
+                                    return Err(ExecutionError::Other(format!(
+                                        "deferred marker task failed: {}",
+                                        task_id
+                                    )));
+                                }
+                                let deferred_events_artifact =
+                                    task_data_map.lock().await.remove(&task_id);
+                                if let Some(deferred_events_artifact) = deferred_events_artifact {
+                                    let deferred_events: DeferredEvents = artifact_client
+                                        .download(&deferred_events_artifact)
+                                        .await
+                                        .map_err(|e| ExecutionError::Other(e.to_string()))?;
+
+                                    deferred_accumulator
+                                        .append(deferred_events, &artifact_client)
+                                        .await;
+                                    let new_shards = deferred_accumulator
+                                        .split(false, split_opts, &artifact_client)
+                                        .await;
+
+                                    for shard in new_shards {
+                                        let SpawnProveOutput { deferred_message, proof_data } =
+                                            self_clone
+                                                .create_core_proving_task(
+                                                    elf_artifact_clone.clone(),
+                                                    common_input_artifact_clone.clone(),
+                                                    proof_id_clone.clone(),
+                                                    requester_id_clone.clone(),
+                                                    parent_id_clone.clone(),
+                                                    parent_context_clone.clone(),
+                                                    ShardRange::deferred(),
+                                                    shard,
+                                                )
+                                                .await
+                                                .map_err(|e| {
+                                                    ExecutionError::Other(e.to_string())
+                                                })?;
+
+                                        if deferred_message.is_some() {
+                                            return Err(ExecutionError::Other(
+                                                "deferred message is not none".to_string(),
+                                            ));
+                                        }
+                                        prove_shard_tx.send(proof_data).map_err(|e| {
+                                            ExecutionError::Other(format!(
+                                                "error sending to proving tx: {}",
+                                                e
+                                            ))
+                                        })?;
+                                    }
+                                } else {
+                                    tracing::debug!(
+                                        "deferred events artifact not found for task id: {}",
+                                        task_id
+                                    );
+                                }
+                            }
+                            let final_shards = deferred_accumulator
+                                .split(true, split_opts, &artifact_client)
+                                .instrument(tracing::info_span!("split last"))
                                 .await;
-
-                            for shard in new_shards {
+                            for shard in final_shards {
                                 let SpawnProveOutput { deferred_message, proof_data } = self_clone
                                     .create_core_proving_task(
                                         elf_artifact_clone.clone(),
@@ -437,39 +499,19 @@ where
                                     .await
                                     .map_err(|e| ExecutionError::Other(e.to_string()))?;
 
-                                if deferred_message.is_some() {
-                                    return Err(ExecutionError::Other(
-                                        "deferred message is not none".to_string(),
-                                    ));
-                                }
-                                prove_shard_tx.send(proof_data).expect("failed to send task id");
+                                debug_assert!(deferred_message.is_none());
+                                prove_shard_tx.send(proof_data).map_err(|e| {
+                                    ExecutionError::Other(format!(
+                                        "error sending to proving tx: {}",
+                                        e
+                                    ))
+                                })?;
                             }
+                            Ok::<_, ExecutionError>(())
                         }
-                        let final_shards = deferred_accumulator
-                            .split(true, split_opts, &artifact_client)
-                            .instrument(tracing::info_span!("split last"))
-                            .await;
-                        for shard in final_shards {
-                            let SpawnProveOutput { deferred_message, proof_data } = self_clone
-                                .create_core_proving_task(
-                                    elf_artifact_clone.clone(),
-                                    common_input_artifact_clone.clone(),
-                                    proof_id_clone.clone(),
-                                    requester_id_clone.clone(),
-                                    parent_id_clone.clone(),
-                                    parent_context_clone.clone(),
-                                    ShardRange::deferred(),
-                                    shard,
-                                )
-                                .await
-                                .expect("failed to create core proving task");
-
-                            assert!(deferred_message.is_none());
-                            prove_shard_tx.send(proof_data).expect("failed to send task id");
-                        }
-                        Ok::<_, ExecutionError>(())
                     }
-                });
+                    .instrument(inner_span.clone()),
+                );
 
                 join_set.join_all().await.into_iter().collect::<Result<(), ExecutionError>>()?;
                 Ok::<(), ExecutionError>(())
