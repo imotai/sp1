@@ -17,7 +17,7 @@ struct Args {
     pub skip_verify: bool,
     #[arg(long, default_value = "core")]
     pub stage: Stage,
-    #[arg(long, default_value = "1000")]
+    #[arg(long, default_value = "")]
     pub param: String,
     #[arg(long, default_value = "nvtx")]
     pub trace: Trace,

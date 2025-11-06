@@ -169,25 +169,25 @@ pub fn get_program_and_input(program: String, param: String) -> (Vec<u8>, SP1Std
     if let Some(program_path) = program.strip_prefix("local-") {
         if program_path == "fibonacci" {
             let mut stdin = SP1Stdin::new();
-            let n = param;
+            let n = param.parse::<usize>().unwrap_or(1000);
             stdin.write(&n);
             return (FIBONACCI_ELF.to_vec(), stdin);
         } else if program_path == "loop" {
             let mut stdin = SP1Stdin::new();
-            let n = param.parse::<usize>().unwrap();
+            let n = param.parse::<usize>().unwrap_or(1000);
             stdin.write(&n);
             return (LOOP_ELF.to_vec(), stdin);
         } else if program_path == "sha2" {
             let mut stdin = SP1Stdin::new();
-            stdin.write_vec(vec![0u8; param.parse::<usize>().unwrap()]);
+            stdin.write_vec(vec![0u8; param.parse::<usize>().unwrap_or(1000)]);
             return (SHA2_ELF.to_vec(), stdin);
         } else if program_path == "keccak" {
             let mut stdin = SP1Stdin::new();
-            stdin.write_vec(vec![0u8; param.parse::<usize>().unwrap()]);
+            stdin.write_vec(vec![0u8; param.parse::<usize>().unwrap_or(1000)]);
             return (KECCAK_ELF.to_vec(), stdin);
         } else if program_path == "poseidon2" {
             let mut stdin = SP1Stdin::new();
-            let n = param.parse::<usize>().unwrap();
+            let n = param.parse::<usize>().unwrap_or(1000);
             stdin.write(&n);
             return (POSEIDON2_ELF.to_vec(), stdin);
         } else if program_path == "rsp" {
