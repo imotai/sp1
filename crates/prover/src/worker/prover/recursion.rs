@@ -189,17 +189,17 @@ impl<C: SP1ProverComponents>
                 .generate_dependencies(std::iter::once(&mut record), None)
         });
 
-        let keys = match witness {
-            SP1CircuitWitness::Core(_) => RecursionKeys::Program(program),
+        let keys = tracing::debug_span!("get keys").in_scope(|| match witness {
+            SP1CircuitWitness::Core(_) => anyhow::Ok(RecursionKeys::Program(program)),
             SP1CircuitWitness::Compress(input) => {
                 let arity = input.vks_and_proofs.len();
                 let (pk, vk) = self.prover_data.compose_keys.get(&arity).cloned().ok_or(
                     TaskError::Fatal(anyhow::anyhow!("Compose key not found for arity {}", arity)),
                 )?;
-                RecursionKeys::Exists(pk, vk)
+                anyhow::Ok(RecursionKeys::Exists(pk, vk))
             }
             _ => unimplemented!(),
-        };
+        })?;
 
         Ok(ProveRecursionTask { record, keys, output, is_complete })
     }

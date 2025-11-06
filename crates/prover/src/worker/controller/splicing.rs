@@ -111,14 +111,10 @@ where
         };
 
         let deferred_message = match trace_data {
-            TraceData::Core(_) => {
-                tracing::debug!("created deferred marker task id: {}", deferred_marker_task);
-                tracing::debug!("created deferred output artifact: {}", deferred_output_artifact);
-                Some(DeferredMessage {
-                    task_id: deferred_marker_task.clone(),
-                    record: deferred_output_artifact.clone(),
-                })
-            }
+            TraceData::Core(_) => Some(DeferredMessage {
+                task_id: deferred_marker_task.clone(),
+                record: deferred_output_artifact.clone(),
+            }),
             _ => None,
         };
 
@@ -241,7 +237,7 @@ where
                     Ok(())
                 }
             }
-            .in_current_span(),
+            .instrument(tracing::info_span!("spawn prove shard tasks")),
         );
 
         // Spawn the task that splices the trace.
@@ -262,12 +258,12 @@ where
                     deferred_proof: num_deferred_proofs as u64,
                 };
             loop {
-                tracing::info!("starting new shard at clk: {} at pc: {}", vm.core.clk(), vm.core.pc());
+                tracing::debug!("starting new shard at clk: {} at pc: {}", vm.core.clk(), vm.core.pc());
                 match vm.execute()? {
                     CycleResult::ShardBoundry => {
                         // Note: Chunk implentations should always be cheap to clone.
                         if let Some(spliced) = vm.splice(chunk.clone()) {
-                            tracing::info!(global_clk = vm.core.global_clk(), pc = vm.core.pc(), num_mem_reads_left = vm.core.mem_reads.len(), clk = vm.core.clk(), "shard boundary");
+                            tracing::debug!(global_clk = vm.core.global_clk(), pc = vm.core.pc(), num_mem_reads_left = vm.core.mem_reads.len(), clk = vm.core.clk(), "shard boundary");
                             // Get the end boundary of the shard.
                             let end = ShardBoundary {
                                 timestamp: vm.core.clk(),
@@ -288,12 +284,12 @@ where
                                 start_num_mem_reads as usize - vm.core.mem_reads.len(),
                             );
                             let splice_to_send = std::mem::replace(&mut last_splice, spliced);
-                            tracing::info!(global_clk = vm.core.global_clk(), "sending spliced trace to splicing tx");
+                            tracing::debug!(global_clk = vm.core.global_clk(), "sending spliced trace to splicing tx");
                             splicing_tx.blocking_send(SendSpliceTask { chunk: splice_to_send, range })
                                 .map_err(|e| ExecutionError::Other(format!("error sending to splicing tx: {}", e)))?;
-                            tracing::info!(global_clk = vm.core.global_clk(), "spliced trace sent to splicing tx");
+                            tracing::debug!(global_clk = vm.core.global_clk(), "spliced trace sent to splicing tx");
                         } else {
-                            tracing::info!(global_clk = vm.core.global_clk(), pc = vm.core.pc(), num_mem_reads_left = vm.core.mem_reads.len(), "trace ended");
+                            tracing::debug!(global_clk = vm.core.global_clk(), pc = vm.core.pc(), num_mem_reads_left = vm.core.mem_reads.len(), "trace ended");
                             // Get the end boundary of the shard.
                             let end = ShardBoundary {
                                 timestamp: vm.core.clk(),
@@ -310,15 +306,15 @@ where
                             last_splice.set_last_mem_reads_idx(
                                 start_num_mem_reads as usize - vm.core.mem_reads.len(),
                             );
-                            tracing::info!(global_clk = vm.core.global_clk(), "sending last splice to splicing tx");
+                            tracing::debug!(global_clk = vm.core.global_clk(), "sending last splice to splicing tx");
                             splicing_tx.blocking_send(SendSpliceTask { chunk: last_splice, range })
                                 .map_err(|e| ExecutionError::Other(format!("error sending to splicing tx: {}", e)))?;
-                            tracing::info!(global_clk = vm.core.global_clk(), "last splice sent to splicing tx");
+                            tracing::debug!(global_clk = vm.core.global_clk(), "last splice sent to splicing tx");
                             break;
                         }
                     }
                     CycleResult::Done(true) => {
-                        tracing::info!(global_clk = vm.core.global_clk(), "done cycle result");
+                        tracing::debug!(global_clk = vm.core.global_clk(), "done cycle result");
                         last_splice.set_last_clk(vm.core.clk());
                         last_splice.set_last_mem_reads_idx(chunk.num_mem_reads() as usize);
 
@@ -339,11 +335,11 @@ where
                         let final_state = FinalVmState::new(&vm.core);
                         final_vm_state.set(final_state).map_err(|e| ExecutionError::Other(e.to_string()))?;
 
-                        tracing::info!(global_clk = vm.core.global_clk(), "sending last splice to splicing tx");
+                        tracing::debug!(global_clk = vm.core.global_clk(), "sending last splice to splicing tx");
                         // Send the last splice.
                         splicing_tx.blocking_send(SendSpliceTask { chunk: last_splice, range })
                             .map_err(|e| ExecutionError::Other(format!("error sending to splicing tx: {}", e)))?;
-                        tracing::info!(global_clk = vm.core.global_clk(), "last splice sent to splicing tx");
+                        tracing::debug!(global_clk = vm.core.global_clk(), "last splice sent to splicing tx");
                         break;
                     }
                     CycleResult::Done(false) | CycleResult::TraceEnd => {
@@ -361,8 +357,6 @@ where
 
         // Spawn the task that waits for deferred records, accumulates them, and creates tasks to
         // prove them.
-        let span = tracing::info_span!("create tasks");
-        let inner_span = tracing::info_span!(parent: span.clone(), "deferred listener");
         join_set.spawn({
             let self_clone = self.clone();
             let elf_artifact_clone = elf_artifact.clone();
@@ -390,7 +384,7 @@ where
                         let task_data_map = task_data_map.clone();
                         async move {
                             while let Some(deferred_message) = deferred_marker_rx.recv().await {
-                                tracing::info!(
+                                tracing::debug!(
                                     "received deferred message with task id {:?}",
                                     deferred_message.task_id
                                 );
@@ -407,7 +401,7 @@ where
                             Ok::<_, ExecutionError>(())
                         }
                     }
-                    .instrument(inner_span.clone()),
+                    .instrument(tracing::debug_span!("deferred listener")),
                 );
 
                 join_set.spawn(
@@ -415,7 +409,7 @@ where
                         async move {
                             let mut deferred_accumulator = DeferredEvents::empty();
                             while let Some((task_id, status)) = event_stream.next().await {
-                                tracing::info!(
+                                tracing::debug!(
                                     task_id = task_id.to_string(),
                                     "received deferred marker task status: {:?}",
                                     status
@@ -480,7 +474,7 @@ where
                             }
                             let final_shards = deferred_accumulator
                                 .split(true, split_opts, &artifact_client)
-                                .instrument(tracing::info_span!("split last"))
+                                .instrument(tracing::debug_span!("split last"))
                                 .await;
                             for shard in final_shards {
                                 let SpawnProveOutput { deferred_message, proof_data } = self_clone
@@ -505,11 +499,11 @@ where
                                     ))
                                 })?;
                             }
-                            tracing::info!("deferred listener task finished");
+                            tracing::debug!("deferred listener task finished");
                             Ok::<_, ExecutionError>(())
                         }
                     }
-                    .instrument(inner_span.clone()),
+                    .instrument(tracing::debug_span!("deferred sender")),
                 );
 
                 while let Some(result) = join_set.join_next().await {

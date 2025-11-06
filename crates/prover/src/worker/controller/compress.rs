@@ -224,7 +224,7 @@ impl CompressTree {
         pending_tasks: usize,
         full_range: &Option<ShardRange>,
     ) -> bool {
-        tracing::info!(
+        tracing::debug!(
             "Checking if complete: Pending tasks: {:?}, map is empty: {:?}, full range: {:?}",
             pending_tasks,
             self.map.is_empty(),
@@ -310,7 +310,7 @@ impl CompressTree {
                 num_core_proofs_tx.send(num_core_proofs).await.ok();
                 Ok(())
             }
-            .instrument(tracing::info_span!("Core proof processing"))
+            .instrument(tracing::debug_span!("Core proof processing"))
         });
 
         let mut num_core_proofs_completed = 0;

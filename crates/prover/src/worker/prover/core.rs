@@ -232,10 +232,10 @@ where
             None
         };
 
+        let span = tracing::debug_span!("into_record");
         let (program, mut record, deferred_record) = tokio::task::spawn_blocking({
             let artifact_client = self.artifact_client.clone();
             let opts = self.opts.clone();
-            let span = tracing::Span::current();
             move || {
                 let _guard = span.enter();
                 {
@@ -376,7 +376,6 @@ where
                 }
             }
         })
-        .instrument(tracing::debug_span!("into record"))
         .await
         .map_err(|e| TaskError::Fatal(e.into()))?;
         let program_clone = program.clone();
@@ -405,13 +404,15 @@ where
                         .await?;
                     Ok::<(), TaskError>(())
                 }
-                .instrument(tracing::info_span!("deferred upload")),
+                .instrument(tracing::debug_span!("deferred upload")),
             )
         });
 
         // Generate dependencies on the main record.
+        let span = tracing::info_span!("generate dependencies");
         let machine_clone = self.machine().clone();
         let record = tokio::task::spawn_blocking(move || {
+            let _guard = span.enter();
             let record_iter = std::iter::once(&mut record);
             machine_clone.generate_dependencies(record_iter, None);
             record
@@ -420,10 +421,9 @@ where
         .map_err(|e| TaskError::Fatal(e.into()))?;
 
         // If this is not a Core proof request, spawn a task to get the recursion program.
+        let span = tracing::info_span!("get recursion program");
         let recursion_program_handle = if common_input.mode != ProofMode::Core {
-            tracing::info!("Spawning a task to get the recursion program");
             let handle = tokio::task::spawn_blocking({
-                let span = tracing::Span::current();
                 let normalize_program_compiler = self.normalize_program_compiler.clone();
                 let vk = common_input.vk.clone();
                 let shape = shape_from_record(&normalize_program_compiler.verifier, &record)

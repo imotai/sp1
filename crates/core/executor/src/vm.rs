@@ -691,7 +691,7 @@ impl CoreVM<'_> {
             }
         }
 
-        tracing::debug!("register refresh to: {}", self.clk - 1);
+        tracing::trace!("register refresh to: {}", self.clk - 1);
 
         let mut out = [MaybeUninit::uninit(); 32];
         for (i, record) in out.iter_mut().enumerate() {

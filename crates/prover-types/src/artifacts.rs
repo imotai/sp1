@@ -186,7 +186,7 @@ pub trait ArtifactClient: Send + Sync + Clone + 'static {
     ) -> impl Future<Output = Result<()>> + Send {
         async move {
             let data = await_blocking(|| bincode::serialize(&item))
-                .instrument(tracing::info_span!("serialize"))
+                .instrument(tracing::trace_span!("serialize"))
                 .await
                 .unwrap()?;
             drop(item);

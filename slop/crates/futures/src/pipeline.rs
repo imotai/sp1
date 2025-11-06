@@ -374,7 +374,11 @@ where
         let handle = tokio::spawn(
             async move {
                 let permit = permit;
-                let worker = workers.pop().await.map_err(TaskJoinError::from)?;
+                let worker = workers
+                    .pop()
+                    .instrument(tracing::debug_span!("waiting for a worker"))
+                    .await
+                    .map_err(TaskJoinError::from)?;
                 // Drop the permit to release the input queue task slot.
                 drop(permit);
                 // Process the task.
@@ -403,7 +407,13 @@ where
     type Resource = queue::Worker<Worker>;
 
     async fn submit(&self, input: Self::Input) -> Result<SubmitHandle<Self>, SubmitError> {
-        let permit = self.task_permits.clone().acquire_owned().await.map_err(|_| SubmitError)?;
+        let permit = self
+            .task_permits
+            .clone()
+            .acquire_owned()
+            .instrument(tracing::debug_span!("waiting to enter input queue"))
+            .await
+            .map_err(|_| SubmitError)?;
         Ok(PipelineHandle::new(self.spawn(input, permit)))
     }
 
@@ -551,13 +561,16 @@ where
             async move {
                 let permit = permit;
                 // Wait for a worker to become available.
-                let worker = workers.pop().await.map_err(TaskJoinError::from)?;
+                let worker = workers
+                    .pop()
+                    .instrument(tracing::debug_span!("waiting for a worker"))
+                    .await
+                    .map_err(TaskJoinError::from)?;
                 // Drop the permit to release the input queue task slot.
                 drop(permit);
-                // Spawn the blocking task on the tokio runtime
-                let parent = tracing::Span::current();
+                let span = tracing::Span::current();
                 let (worker, output) = tokio::task::spawn_blocking(move || {
-                    let _guard = parent.enter();
+                    let _guard = span.enter();
                     let output = worker.call(input);
                     (worker, output)
                 })
@@ -604,7 +617,13 @@ where
     type Resource = queue::Worker<Worker>;
 
     async fn submit(&self, input: Self::Input) -> Result<SubmitHandle<Self>, SubmitError> {
-        let permit = self.task_permits.clone().acquire_owned().await.map_err(|_| SubmitError)?;
+        let permit = self
+            .task_permits
+            .clone()
+            .acquire_owned()
+            .instrument(tracing::debug_span!("waiting to enter input queue"))
+            .await
+            .map_err(|_| SubmitError)?;
         Ok(PipelineHandle::new(self.spawn(input, permit)))
     }
 
@@ -710,7 +729,11 @@ where
             async move {
                 let permit = permit;
                 // Wait for a worker to become available.
-                let worker = workers.pop().await.map_err(TaskJoinError::from)?;
+                let worker = workers
+                    .pop()
+                    .instrument(tracing::debug_span!("waiting for a worker"))
+                    .await
+                    .map_err(TaskJoinError::from)?;
                 // Drop the permit to release the input queue task slot.
                 drop(permit);
                 // Spawn the blocking task on the rayon thread pool
@@ -742,7 +765,13 @@ where
     type Output = Output;
     type Resource = queue::Worker<Worker>;
     async fn submit(&self, input: Self::Input) -> Result<SubmitHandle<Self>, SubmitError> {
-        let permit = self.task_permits.clone().acquire_owned().await.map_err(|_| SubmitError)?;
+        let permit = self
+            .task_permits
+            .clone()
+            .acquire_owned()
+            .instrument(tracing::debug_span!("waiting to enter input queue"))
+            .await
+            .map_err(|_| SubmitError)?;
         Ok(PipelineHandle::new(self.spawn(input, permit)))
     }
 

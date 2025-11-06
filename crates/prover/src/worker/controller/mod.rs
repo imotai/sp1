@@ -104,12 +104,10 @@ where
     ) {
         // Spawn a task to gather the proofs
         let (proofs_tx, proofs_rx) = oneshot::channel();
-        let parent = tracing::Span::current();
         join_set.spawn({
             let worker_client = self.worker_client.clone();
             let artifact_client = self.artifact_client.clone();
             async move {
-                let _guard = parent.enter();
                 let subscriber = worker_client.subscriber(proof_id).await?.per_task();
                 let mut shard_proofs = Vec::new();
                 while let Some(proof_data) = core_proof_rx.recv().await {
@@ -132,15 +130,13 @@ where
                 proofs_tx.send(shard_proofs).ok();
                 Ok(())
             }
-            .instrument(tracing::debug_span!("Core proof processing"))
+            .instrument(tracing::debug_span!("Gather core proofs"))
         });
 
-        let parent = tracing::Span::current();
         // Task to wait for the proofs and execution output and upload the output.
         join_set.spawn({
             let artifact_client = self.artifact_client.clone();
             async move {
-                let _guard = parent.enter();
                 // Wait for the proofs to finish
                 let mut shard_proofs = proofs_rx.await.map_err(|e| TaskError::Fatal(e.into()))?;
                 shard_proofs.sort_by_key(|shard_proof| {
@@ -181,8 +177,6 @@ where
         let parsed = mode_artifact.parse::<i32>().map_err(|e| TaskError::Fatal(e.into()))?;
         let mode = ProofMode::try_from(parsed).map_err(|e| TaskError::Fatal(e.into()))?;
 
-        tracing::info!("mode: {:?}", mode);
-
         // For now, assume no deferred proofs
         let deferred_digest = [0; 8];
         let num_deferred_proofs = 0usize;
@@ -211,7 +205,7 @@ where
         if status != TaskStatus::Succeeded {
             return Err(TaskError::Fatal(anyhow::anyhow!("setup task failed")));
         }
-        tracing::trace!("setup task succeeded");
+        tracing::debug!("setup task succeeded");
         // Download the vk and stdin
         let (vk, stdin) = tokio::try_join!(
             self.artifact_client.download::<SP1VerifyingKey>(&vk_artifact),

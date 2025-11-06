@@ -165,7 +165,7 @@ where
         // executor chunk producer.
         let (splicing_task_tx, mut splicing_task_rx) = mpsc::channel(2);
         // Start the minimal executor.
-        let parent = tracing::Span::current();
+        let span = tracing::info_span!("minimal executor");
         // TODO: think about cancellation handling
         let minimal_executor_handle = tokio::task::spawn_blocking({
             let program = program.clone();
@@ -180,7 +180,7 @@ where
             let final_vm_state = final_vm_state.clone();
             let opts = opts.clone();
             move || {
-                let _guard = parent.enter();
+                let _guard = span.enter();
                 let max_trace_size = opts.minimal_trace_chunk_threshold;
                 let mut minimal_executor = tracing::info_span!("minimal executor initialization")
                     .in_scope(|| MinimalExecutor::tracing(program.clone(), max_trace_size));
@@ -192,7 +192,7 @@ where
                 let now = std::time::Instant::now();
                 let mut chunk_count = 0;
                 while let Some(chunk) = minimal_executor.execute_chunk() {
-                    tracing::info!(
+                    tracing::debug!(
                         trace_chunk = chunk_count,
                         "mem reads chunk size bytes {}, program is done?: {}",
                         chunk.num_mem_reads() * std::mem::size_of::<sp1_jit::MemValue>() as u64,
@@ -224,7 +224,7 @@ where
                 }
                 let elapsed = now.elapsed().as_secs_f64();
                 tracing::info!(
-                    "executor finished. elapsed: {}s, mhz: {}",
+                    "Minimal Executor finished. elapsed: {}s, mhz: {}",
                     elapsed,
                     minimal_executor.global_clk() as f64 / (elapsed * 1e6)
                 );
@@ -237,14 +237,15 @@ where
             let splicing_engine = self.splicing_engine.clone();
             async move {
                 while let Some((chunk_count, task)) = splicing_task_rx.recv().await {
-                    tracing::info!(idx = chunk_count, "Submitting splicing task");
+                    tracing::debug!(idx = chunk_count, "Submitting splicing task");
                     let time = std::time::Instant::now();
                     let splicing_handle = splicing_engine
                         .submit(task)
+                        .instrument(tracing::debug_span!("splicing", idx = chunk_count))
                         .await
                         .map_err(|e| anyhow::anyhow!("failed to submit splicing task: {}", e))?;
                     let elapsed = time.elapsed().as_secs_f64();
-                    tracing::info!(
+                    tracing::debug!(
                         trace_chunk = chunk_count,
                         wait_time = elapsed,
                         "Splicing task submitted"
@@ -256,6 +257,7 @@ where
 
                 Ok::<_, TaskError>(())
             }
+            .instrument(tracing::debug_span!("submit splicers"))
         });
         let wait_for_splicers_handle = tokio::task::spawn({
             async move {
@@ -263,22 +265,23 @@ where
                 loop {
                     tokio::select! {
                         Some((chunk_count, splicing_handle)) = splicing_submit_rx.recv() => {
-                            tracing::info!(chunk_count = chunk_count, "Received splicing handle");
+                            tracing::debug!(chunk_count = chunk_count, "Received splicing handle");
                             let handle = splicing_handle.map_ok(move |_| chunk_count);
                             splicing_handles.push(handle);
                         }
                         Some(result) = splicing_handles.next() => {
                             let chunk_count = result.map_err(|e| anyhow::anyhow!("splicing task panicked: {}", e))?;
-                            tracing::info!(chunk_count = chunk_count, "Splicing task finished");
+                            tracing::debug!(chunk_count = chunk_count, "Splicing task finished");
                         }
                         else => {
-                            tracing::info!("No more splicing handles to receive");
+                            tracing::debug!("No more splicing handles to receive");
                             break;
                         }
                     }
                 }
                 Ok::<_, TaskError>(())
             }
+            .instrument(tracing::debug_span!("wait for splicers"))
         });
         // Wait for the minimal executor to finish
         let minimal_executor = minimal_executor_handle
@@ -303,7 +306,6 @@ where
 
         let output = ExecutionOutput { cycles, public_value_stream };
 
-        tracing::info!("emitting global memory shards");
         self.emit_global_memory_shards(
             minimal_executor,
             program,
@@ -311,6 +313,7 @@ where
             touched_addresses,
             opts,
         )
+        .instrument(tracing::debug_span!("emit global memory shards"))
         .await?;
 
         Ok(output)
@@ -331,7 +334,7 @@ where
 
         let mut join_set = JoinSet::<anyhow::Result<()>>::new();
         // Spawn the task that creates the memory shards
-        let span = tracing::info_span!("create global memory shards");
+        let span = tracing::debug_span!("create global memory shards");
         join_set.spawn_blocking({
             let threshold = split_opts.memory;
             move || {
@@ -402,7 +405,7 @@ where
                 let mut previous_init_page_idx = 0;
                 let mut previous_finalize_page_idx = 0;
                 while let Some((initialize_events, finalize_events)) = shard_data_rx.recv().await {
-                    tracing::info!("Got global memory shard number {counter}");
+                    tracing::debug!("Got global memory shard number {counter}");
                     let last_init_addr = initialize_events
                         .last()
                         .map(|event| event.addr)
@@ -411,7 +414,7 @@ where
                         .last()
                         .map(|event| event.addr)
                         .unwrap_or(previous_finalize_addr);
-                    tracing::info!("last_init_addr: {last_init_addr}, last_finalize_addr: {last_finalize_addr}");
+                    tracing::debug!("last_init_addr: {last_init_addr}, last_finalize_addr: {last_finalize_addr}");
                     let last_init_page_idx = previous_init_page_idx;
                     let last_finalize_page_idx = previous_finalize_page_idx;
 
@@ -478,17 +481,16 @@ where
                     let task = request.into_raw().map_err(|e| anyhow::anyhow!("failed to convert to raw task request: {}", e))?;
 
                     // Send the task to the worker.
-                    tracing::info!("Submitting prove shard task");
+                    tracing::debug!("Submitting prove shard task");
                     let task_id = worker_client
                         .submit_task(TaskType::ProveShard, task)
-                        .instrument(tracing::info_span!("submit prove shard task"))
                         .await
                         .map_err(|e| anyhow::anyhow!("failed to send task: {}", e))?;
 
                     // Send the task data
                     let proof_data = ProofData { task_id, range, proof: proof_artifact };
                     prove_shard_tx.send(proof_data).map_err(|e| anyhow::anyhow!("failed to send task id: {}", e))?;
-                    tracing::info!("Submitted memory global shard {counter}");
+                    tracing::debug!("Submitted memory global shard {counter}");
                     counter += 1;
                     previous_init_addr = last_init_addr;
                     previous_finalize_addr = last_finalize_addr;
@@ -497,7 +499,7 @@ where
                 }
                 Ok(())
             }
-            .instrument(tracing::info_span!("Global memory shards"))
+            .instrument(tracing::debug_span!("Global memory shards"))
         });
 
         // Wait for the tasks to finish and collect the errors.
