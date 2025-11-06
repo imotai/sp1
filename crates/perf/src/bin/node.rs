@@ -17,7 +17,7 @@ struct Args {
     #[arg(long, default_value = "local-fibonacci")]
     pub program: String,
     #[arg(long, default_value = "1000")]
-    pub param: u32,
+    pub param: String,
     #[arg(long, default_value = "false")]
     pub telemetry: bool,
     #[arg(long, default_value = "core")]

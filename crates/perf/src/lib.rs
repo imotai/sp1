@@ -164,7 +164,7 @@ pub async fn make_measurement<C: SP1ProverComponents>(
     }
 }
 
-pub fn get_program_and_input(program: String, param: u32) -> (Vec<u8>, SP1Stdin) {
+pub fn get_program_and_input(program: String, param: String) -> (Vec<u8>, SP1Stdin) {
     // If the program elf is local, load it.
     if let Some(program_path) = program.strip_prefix("local-") {
         if program_path == "fibonacci" {
@@ -174,20 +174,20 @@ pub fn get_program_and_input(program: String, param: u32) -> (Vec<u8>, SP1Stdin)
             return (FIBONACCI_ELF.to_vec(), stdin);
         } else if program_path == "loop" {
             let mut stdin = SP1Stdin::new();
-            let n = param as usize;
+            let n = param.parse::<usize>().unwrap();
             stdin.write(&n);
             return (LOOP_ELF.to_vec(), stdin);
         } else if program_path == "sha2" {
             let mut stdin = SP1Stdin::new();
-            stdin.write_vec(vec![0u8; param as usize]);
+            stdin.write_vec(vec![0u8; param.parse::<usize>().unwrap()]);
             return (SHA2_ELF.to_vec(), stdin);
         } else if program_path == "keccak" {
             let mut stdin = SP1Stdin::new();
-            stdin.write_vec(vec![0u8; param as usize]);
+            stdin.write_vec(vec![0u8; param.parse::<usize>().unwrap()]);
             return (KECCAK_ELF.to_vec(), stdin);
         } else if program_path == "poseidon2" {
             let mut stdin = SP1Stdin::new();
-            let n = param as usize;
+            let n = param.parse::<usize>().unwrap();
             stdin.write(&n);
             return (POSEIDON2_ELF.to_vec(), stdin);
         } else if program_path == "rsp" {
@@ -211,10 +211,22 @@ pub fn get_program_and_input(program: String, param: u32) -> (Vec<u8>, SP1Stdin)
     if !output.status.success() {
         panic!("failed to download program.bin");
     }
-    let output = std::process::Command::new("aws")
-        .args(["s3", "cp", &format!("s3://sp1-testing-suite/{s3_path}/stdin.bin"), "stdin.bin"])
-        .output()
-        .unwrap();
+    let output = if param.is_empty() {
+        std::process::Command::new("aws")
+            .args(["s3", "cp", &format!("s3://sp1-testing-suite/{s3_path}/stdin.bin"), "stdin.bin"])
+            .output()
+            .unwrap()
+    } else {
+        std::process::Command::new("aws")
+            .args([
+                "s3",
+                "cp",
+                &format!("s3://sp1-testing-suite/{s3_path}/input/{param}.bin"),
+                "stdin.bin",
+            ])
+            .output()
+            .unwrap()
+    };
     if !output.status.success() {
         panic!("failed to download stdin.bin");
     }

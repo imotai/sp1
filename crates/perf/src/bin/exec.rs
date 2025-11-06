@@ -17,7 +17,7 @@ struct Args {
     #[arg(long, default_value = "local-fibonacci")]
     pub program: String,
     #[arg(long, default_value = "1000")]
-    pub param: u32,
+    pub param: String,
     #[arg(long, default_value = "5")]
     pub splice_workers: usize,
     #[arg(long, default_value = "10")]

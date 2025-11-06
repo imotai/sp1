@@ -18,7 +18,7 @@ struct Args {
     #[arg(long, default_value = "core")]
     pub stage: Stage,
     #[arg(long, default_value = "1000")]
-    pub param: u32,
+    pub param: String,
     #[arg(long, default_value = "nvtx")]
     pub trace: Trace,
     #[arg(long, default_value = "prover-clean")]
