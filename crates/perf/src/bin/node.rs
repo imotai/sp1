@@ -16,7 +16,7 @@ use sp1_prover_types::network_base_types::ProofMode;
 struct Args {
     #[arg(long, default_value = "local-fibonacci")]
     pub program: String,
-    #[arg(long, default_value = "1000")]
+    #[arg(long, default_value = "")]
     pub param: String,
     #[arg(long, default_value = "false")]
     pub telemetry: bool,

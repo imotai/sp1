@@ -4,7 +4,8 @@ use tokio::sync::Mutex;
 
 use csl_basefold::DeviceGrindingChallenger;
 use csl_cuda::TaskScope;
-use cslpc_tracegen::{setup_tracegen, CudaShardProverData};
+use cslpc_tracegen::setup_tracegen_permit;
+use cslpc_tracegen::CudaShardProverData;
 use cslpc_utils::{Ext, Felt, JaggedTraceMle};
 use slop_algebra::AbstractField;
 use slop_basefold::BasefoldProof;
@@ -48,9 +49,14 @@ where
     {
         let pc_start = program.pc_start();
         let enable_untrusted_programs = program.enable_untrusted_programs();
-        let (preprocessed_data, permit) = setup_tracegen(
+
+        let (base_ptr, guard) = self.get_buffer().await;
+
+        let (preprocessed_data, permit, _) = setup_tracegen_permit(
             &self.machine,
             program,
+            base_ptr,
+            guard,
             self.max_trace_size,
             self.basefold_prover.log_height,
             self.max_log_row_count,

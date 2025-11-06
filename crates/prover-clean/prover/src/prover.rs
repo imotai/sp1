@@ -62,7 +62,7 @@ pub struct CudaShardProver<GC: IopCtx, PC: ProverCleanProverComponents<GC>> {
 }
 
 impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaShardProver<GC, PC> {
-    async fn get_buffer(&self) -> (usize, Worker<Pin<Box<[MaybeUninit<Felt>]>>>) {
+    pub async fn get_buffer(&self) -> (usize, Worker<Pin<Box<[MaybeUninit<Felt>]>>>) {
         let mut guard = self.trace_buffers.clone().pop().await.expect("buffer pool exhausted");
         let whole: &mut [MaybeUninit<GC::F>] = Pin::get_mut(Pin::as_mut(&mut *guard));
         let base_ptr = whole.as_mut_ptr() as usize;

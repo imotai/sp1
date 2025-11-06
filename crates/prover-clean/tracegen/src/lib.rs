@@ -40,16 +40,8 @@ pub mod test_utils;
 pub const MAX_COLS_PER_TRACE: usize = 1 << 14;
 pub const CORE_MAX_TRACE_SIZE: u32 = (ELEMENT_THRESHOLD + (ELEMENT_THRESHOLD >> 1)) as u32;
 
-/// The output of the host phase of the preprocessed tracegen.
-pub struct HostPhasePreprocessedTracegen<A> {
-    /// Which airs need to be generated on device.
-    pub device_airs: Vec<Arc<A>>,
-    /// The real traces generated in the host phase.
-    pub host_traces: futures::channel::mpsc::UnboundedReceiver<(String, Mle<Felt>)>,
-}
-
-/// The output of the host phase of the main tracegen.
-pub struct HostPhaseMainTracegen<A> {
+/// The output of the host phase of the tracegen.
+pub struct HostPhaseTracegen<A> {
     /// Which airs need to be generated on device.
     pub device_airs: Vec<Arc<A>>,
     /// The real traces generated in the host phase.
@@ -325,8 +317,9 @@ async fn generate_jagged_traces(
 #[instrument(skip_all, level = "debug")]
 fn host_preprocessed_tracegen<A: CudaTracegenAir<Felt>>(
     machine: &Machine<Felt, A>,
+    buffer_ptr: usize,
     program: Arc<<A as MachineAir<Felt>>::Program>,
-) -> HostPhasePreprocessedTracegen<A> {
+) -> (HostPhaseTracegen<A>, usize) {
     // Split chips based on where we will generate their traces.
     let (device_airs, host_airs): (Vec<_>, Vec<_>) = machine
         .chips()
@@ -334,34 +327,62 @@ fn host_preprocessed_tracegen<A: CudaTracegenAir<Felt>>(
         .map(|chip| chip.air.clone())
         .partition(|air| air.supports_device_preprocessed_tracegen());
 
+    let mut total_size = 0;
+    let mut jobs = Vec::new();
+    for air in host_airs.iter() {
+        let height = air.preprocessed_num_rows(&program);
+        let width = air.preprocessed_width();
+        jobs.push((air.clone(), total_size, height, width));
+        if let Some(height) = height {
+            total_size += height * width;
+        }
+    }
+
     // Spawn a rayon task to generate the traces on the CPU.
     // `traces` is a futures Stream that will immediately begin buffering traces.
     let (host_traces_tx, host_traces) = futures::channel::mpsc::unbounded();
     slop_futures::rayon::spawn(move || {
-        host_airs.into_par_iter().for_each_with(host_traces_tx, |tx, air| {
-            if let Some(trace) = air.generate_preprocessed_trace(&program) {
-                tx.unbounded_send((air.name(), Mle::from(trace))).unwrap();
+        jobs.into_par_iter().for_each_with(host_traces_tx, |tx, (air, offset, height, width)| {
+            let base_ptr = buffer_ptr as *mut MaybeUninit<Felt>;
+            if let Some(height) = height {
+                let trace_len = height * width;
+                let slice: &mut [MaybeUninit<Felt>] =
+                    unsafe { std::slice::from_raw_parts_mut(base_ptr.add(offset), trace_len) };
+                air.generate_preprocessed_trace_into(&program, slice);
+                let start_pointer = unsafe { base_ptr.add(offset) as usize };
+                // Since it's unbounded, it will only error if the receiver is disconnected.
+                tx.unbounded_send((air.name(), start_pointer, height, width)).unwrap();
             }
         });
         // Make this explicit.
         // If we are the last users of the program, this will expensively drop it.
         drop(program);
     });
-    HostPhasePreprocessedTracegen { device_airs, host_traces }
+    (HostPhaseTracegen { device_airs, host_traces }, total_size)
 }
 
 #[instrument(skip_all, level = "debug")]
 async fn device_preprocessed_tracegen<A: CudaTracegenAir<Felt>>(
     program: Arc<<A as MachineAir<Felt>>::Program>,
-    host_phase_tracegen: HostPhasePreprocessedTracegen<A>,
+    host_phase_tracegen: HostPhaseTracegen<A>,
     backend: &TaskScope,
 ) -> BTreeMap<String, Trace<TaskScope>> {
-    let HostPhasePreprocessedTracegen { device_airs, host_traces } = host_phase_tracegen;
+    let HostPhaseTracegen { device_airs, host_traces } = host_phase_tracegen;
 
     // Stream that, when polled, copies the host traces to the device.
-    let copied_host_traces = pin!(host_traces.then(|(name, trace)| async move {
-        (name, trace.copy_into_backend(backend).await.unwrap())
-    }));
+    let copied_host_traces =
+        pin!(host_traces.then(|(name, start_pointer, height, width)| async move {
+            let inner_name = name.clone();
+            let trace_len = height * width;
+            let mut storage: Buffer<Felt, TaskScope> =
+                Buffer::with_capacity_in(trace_len, backend.clone());
+            let slice =
+                unsafe { std::slice::from_raw_parts_mut(start_pointer as *mut Felt, trace_len) };
+            storage.extend_from_host_slice(slice).unwrap();
+            let dims: Dimensions = [height, width].try_into().unwrap();
+            let guts = Tensor { storage, dimensions: dims }.transpose();
+            (inner_name, Mle::new(guts))
+        }));
 
     // Stream that, when polled, copies events to the device and generates traces.
     let device_traces = device_airs
@@ -505,9 +526,11 @@ async fn copy_main_jagged_traces(
 
 /// Corresponds to `generate_preprocessed_traces`.
 #[instrument(skip_all, level = "debug")]
+#[allow(clippy::too_many_arguments)]
 pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
     machine: &Machine<Felt, A>,
     program: Arc<<A as MachineAir<Felt>>::Program>,
+    buffer_ptr: usize,
     max_trace_size: usize,
     log_stacking_height: u32,
     max_log_row_count: u32,
@@ -515,7 +538,8 @@ pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
     backend: &TaskScope,
 ) -> (JaggedTraceMle<Felt, TaskScope>, ProverPermit) {
     // Generate traces on host.
-    let host_phase_tracegen = host_preprocessed_tracegen(machine, Arc::clone(&program));
+    let (host_phase_tracegen, _) =
+        host_preprocessed_tracegen(machine, buffer_ptr, Arc::clone(&program));
 
     let permit = prover_permit.acquire().await.unwrap();
     // - Copying host traces to the device.
@@ -535,14 +559,40 @@ pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
     (jagged_traces, permit)
 }
 
+#[allow(clippy::too_many_arguments)]
+pub async fn setup_tracegen_permit<A: CudaTracegenAir<Felt>>(
+    machine: &Machine<Felt, A>,
+    program: Arc<<A as MachineAir<Felt>>::Program>,
+    buffer_ptr: usize,
+    guard: Worker<Pin<Box<[MaybeUninit<Felt>]>>>,
+    max_trace_size: usize,
+    log_stacking_height: u32,
+    max_log_row_count: u32,
+    prover_permit: ProverSemaphore,
+    backend: &TaskScope,
+) -> (JaggedTraceMle<Felt, TaskScope>, ProverPermit, Worker<Pin<Box<[MaybeUninit<Felt>]>>>) {
+    let (jagged_traces, permit) = setup_tracegen(
+        machine,
+        program,
+        buffer_ptr,
+        max_trace_size,
+        log_stacking_height,
+        max_log_row_count,
+        prover_permit,
+        backend,
+    )
+    .await;
+    (jagged_traces, permit, guard)
+}
+
 /// Returns a tuple of (host phase tracegen, shape info).
 #[instrument(skip_all, level = "debug")]
 fn host_main_tracegen<A>(
     machine: &Machine<Felt, A>,
     buffer_ptr: usize,
+    start_idx: usize,
     record: Arc<<A as MachineAir<Felt>>::Record>,
-    // backend: &TaskScope,
-) -> (HostPhaseMainTracegen<A>, HostPhaseShapeInfo<A>)
+) -> (HostPhaseTracegen<A>, HostPhaseShapeInfo<A>)
 where
     A: CudaTracegenAir<Felt>,
 {
@@ -560,7 +610,7 @@ where
         .map(|chip| chip.air.clone())
         .partition(|c| c.supports_device_main_tracegen());
 
-    let mut total_size = 0;
+    let mut total_size = start_idx;
     let mut jobs = Vec::new();
     for air in host_airs.iter() {
         jobs.push((air.clone(), total_size));
@@ -611,7 +661,7 @@ where
 
     let host_phase_shape_info = HostPhaseShapeInfo { traces_by_name: initial_traces, chip_set };
 
-    let host_phase_tracegen = HostPhaseMainTracegen { device_airs, host_traces };
+    let host_phase_tracegen = HostPhaseTracegen { device_airs, host_traces };
 
     (host_phase_tracegen, host_phase_shape_info)
 }
@@ -619,12 +669,12 @@ where
 /// Puts traces on device. Returns (traces, public values).
 #[instrument(skip_all, level = "debug")]
 async fn device_main_tracegen<A: CudaTracegenAir<Felt>>(
-    host_phase_tracegen: HostPhaseMainTracegen<A>,
+    host_phase_tracegen: HostPhaseTracegen<A>,
     record: Arc<<A as MachineAir<Felt>>::Record>,
     initial_traces: BTreeMap<String, Trace>,
     backend: &TaskScope,
 ) -> (BTreeMap<String, Trace>, Vec<Felt>) {
-    let HostPhaseMainTracegen { device_airs, host_traces } = host_phase_tracegen;
+    let HostPhaseTracegen { device_airs, host_traces } = host_phase_tracegen;
 
     let outer_span = tracing::Span::current();
     // Stream that, when polled, copies the host traces to the device.
@@ -700,7 +750,7 @@ pub async fn main_tracegen<GC: IopCtx<F = Felt>, A: CudaTracegenAir<Felt>>(
 ) -> (Vec<Felt>, BTreeSet<Chip<Felt, A>>, ProverPermit) {
     // Start generating traces on host.
     let (host_phase_tracegen, host_phase_shape_info) =
-        host_main_tracegen(machine, buffer_ptr, record.clone());
+        host_main_tracegen(machine, buffer_ptr, 0, record.clone());
 
     let HostPhaseShapeInfo { traces_by_name: initial_traces, chip_set } = host_phase_shape_info;
     let permit =
@@ -769,10 +819,11 @@ pub async fn full_tracegen<A: CudaTracegenAir<Felt>>(
     backend: &TaskScope,
     prover_permits: ProverSemaphore,
 ) -> (Vec<Felt>, JaggedTraceMle<Felt, TaskScope>, BTreeSet<Chip<Felt, A>>, ProverPermit) {
-    let prep_host_phase_tracegen = host_preprocessed_tracegen(machine, program.clone());
+    let (prep_host_phase_tracegen, start_idx) =
+        host_preprocessed_tracegen(machine, buffer_ptr, program.clone());
 
     let (main_host_phase_tracegen, HostPhaseShapeInfo { traces_by_name: initial_traces, chip_set }) =
-        host_main_tracegen(machine, buffer_ptr, record.clone());
+        host_main_tracegen(machine, buffer_ptr, start_idx, record.clone());
 
     // Wait for a prover to be available.
     let permit =

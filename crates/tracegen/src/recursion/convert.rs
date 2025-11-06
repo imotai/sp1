@@ -38,8 +38,9 @@ impl CudaTracegenAir<F> for ConvertChip {
 
         let width = MachineAir::<F>::preprocessed_width(self);
 
-        let height = MachineAir::<F>::preprocessed_num_rows(self, program, instrs.len())
-            .expect("preprocessed_num_rows(...) should be Some(_)");
+        let height =
+            MachineAir::<F>::preprocessed_num_rows_with_instrs_len(self, program, instrs.len())
+                .expect("preprocessed_num_rows_with_instrs_len(...) should be Some(_)");
 
         let mut trace = Tensor::<F, TaskScope>::zeros_in([width, height], scope.clone());
 
