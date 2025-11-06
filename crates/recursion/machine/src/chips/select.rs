@@ -1,7 +1,7 @@
 use core::borrow::Borrow;
 use slop_air::{Air, BaseAir, PairBuilder};
-use slop_algebra::{AbstractField, Field, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_algebra::{Field, PrimeField32};
+use slop_matrix::Matrix;
 use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::{air::MachineAir, next_multiple_of_32};
@@ -54,32 +54,61 @@ impl<F: PrimeField32> MachineAir<F> for SelectChip {
         SELECT_PREPROCESSED_COLS
     }
 
-    fn preprocessed_num_rows(&self, program: &Self::Program, instrs_len: usize) -> Option<usize> {
+    fn preprocessed_num_rows(&self, program: &Self::Program) -> Option<usize> {
+        let instrs_len = program
+            .inner
+            .iter()
+            .filter_map(|instruction| match instruction.inner() {
+                Instruction::Select(x) => Some(x),
+                _ => None,
+            })
+            .count();
+        self.preprocessed_num_rows_with_instrs_len(program, instrs_len)
+    }
+
+    fn preprocessed_num_rows_with_instrs_len(
+        &self,
+        program: &Self::Program,
+        instrs_len: usize,
+    ) -> Option<usize> {
         let height = program.shape.as_ref().and_then(|shape| shape.height(self));
         Some(next_multiple_of_32(instrs_len, height))
     }
 
-    fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
+    fn generate_preprocessed_trace_into(
+        &self,
+        program: &Self::Program,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         assert_eq!(
             std::any::TypeId::of::<F>(),
             std::any::TypeId::of::<SP1Field>(),
             "generate_preprocessed_trace only supports SP1Field field"
         );
 
-        let instrs = unsafe {
-            std::mem::transmute::<Vec<&SelectInstr<F>>, Vec<&SelectInstr<SP1Field>>>(
-                program
-                    .inner
-                    .iter()
-                    .filter_map(|instruction| match instruction.inner() {
-                        Instruction::Select(x) => Some(x),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>(),
-            )
+        let instrs = program
+            .inner
+            .iter()
+            .filter_map(|instruction| match instruction.inner() {
+                Instruction::Select(x) => Some(x),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let padded_nb_rows =
+            self.preprocessed_num_rows_with_instrs_len(program, instrs.len()).unwrap();
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, padded_nb_rows * SELECT_PREPROCESSED_COLS)
         };
-        let padded_nb_rows = self.preprocessed_num_rows(program, instrs.len()).unwrap();
-        let mut values = vec![SP1Field::zero(); padded_nb_rows * SELECT_PREPROCESSED_COLS];
+
+        unsafe {
+            let padding_start = instrs.len() * SELECT_PREPROCESSED_COLS;
+            let padding_size = padded_nb_rows * SELECT_PREPROCESSED_COLS - padding_start;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
 
         // Generate the trace rows & corresponding records for each chunk of events in parallel.
         let populate_len = instrs.len() * SELECT_PREPROCESSED_COLS;
@@ -88,19 +117,13 @@ impl<F: PrimeField32> MachineAir<F> for SelectChip {
                 let SelectInstr { addrs, mult1, mult2 } = instr;
                 let access: &mut SelectPreprocessedCols<_> = row.borrow_mut();
                 *access = SelectPreprocessedCols {
-                    is_real: SP1Field::one(),
+                    is_real: F::one(),
                     addrs: addrs.to_owned(),
                     mult1: mult1.to_owned(),
                     mult2: mult2.to_owned(),
                 };
             },
         );
-
-        // Convert the trace to a row major matrix.
-        Some(RowMajorMatrix::new(
-            unsafe { std::mem::transmute::<Vec<SP1Field>, Vec<F>>(values) },
-            SELECT_PREPROCESSED_COLS,
-        ))
     }
 
     fn generate_dependencies(&self, _: &Self::Record, _: &mut Self::Record) {
@@ -193,6 +216,7 @@ where
 mod tests {
     use crate::{chips::test_fixtures, test::test_recursion_linear_program};
     use rand::{rngs::StdRng, Rng, SeedableRng};
+    use slop_algebra::AbstractField;
     use slop_challenger::IopCtx;
     use sp1_primitives::SP1GlobalContext;
     use sp1_recursion_executor::{instruction as instr, MemAccessKind};

@@ -2,9 +2,9 @@ use core::borrow::Borrow;
 use itertools::Itertools;
 use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::PrimeField32;
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use sp1_derive::AlignedBorrow;
-use sp1_hypercube::{air::MachineAir, next_multiple_of_32, pad_rows_fixed};
+use sp1_hypercube::{air::MachineAir, next_multiple_of_32};
 use sp1_recursion_executor::{
     Block, ExecutionRecord, Instruction, MemAccessKind, MemInstr, RecursionProgram,
 };
@@ -56,9 +56,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryConstChip<F> {
         NUM_MEM_PREPROCESSED_INIT_COLS
     }
 
-    fn preprocessed_num_rows(&self, program: &Self::Program, _instrs_len: usize) -> Option<usize> {
-        let height = program.shape.as_ref().and_then(|shape| shape.height(self));
-        let instr_len = program
+    fn preprocessed_num_rows(&self, program: &Self::Program) -> Option<usize> {
+        let instrs_len = program
             .inner
             .iter()
             .filter_map(|instruction| match instruction.inner() {
@@ -76,11 +75,24 @@ impl<F: PrimeField32> MachineAir<F> for MemoryConstChip<F> {
             .chunks(NUM_CONST_MEM_ENTRIES_PER_ROW)
             .into_iter()
             .count();
-        Some(next_multiple_of_32(instr_len, height))
+        self.preprocessed_num_rows_with_instrs_len(program, instrs_len)
     }
 
-    fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
-        let mut rows = program
+    fn preprocessed_num_rows_with_instrs_len(
+        &self,
+        program: &Self::Program,
+        instrs_len: usize,
+    ) -> Option<usize> {
+        let height = program.shape.as_ref().and_then(|shape| shape.height(self));
+        Some(next_multiple_of_32(instrs_len, height))
+    }
+
+    fn generate_preprocessed_trace_into(
+        &self,
+        program: &Self::Program,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let chunks = program
             .inner
             .iter()
             .filter_map(|instruction| match instruction.inner() {
@@ -95,29 +107,36 @@ impl<F: PrimeField32> MachineAir<F> for MemoryConstChip<F> {
                 }
                 _ => None,
             })
-            .chunks(NUM_CONST_MEM_ENTRIES_PER_ROW)
-            .into_iter()
-            .map(|row_vs_as| {
-                let mut row = [F::zero(); NUM_MEM_PREPROCESSED_INIT_COLS];
-                let cols: &mut MemoryConstPreprocessedCols<_> = row.as_mut_slice().borrow_mut();
-                for (cell, access) in zip(&mut cols.values_and_accesses, row_vs_as) {
-                    *cell = access;
-                }
-                row
-            })
-            .collect::<Vec<_>>();
+            .chunks(NUM_CONST_MEM_ENTRIES_PER_ROW);
 
-        let height = program.shape.as_ref().and_then(|shape| shape.height(self));
-        // Pad the rows to the next power of two.
-        pad_rows_fixed(&mut rows, || [F::zero(); NUM_MEM_PREPROCESSED_INIT_COLS], height);
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
 
-        // Convert the trace to a row major matrix.
-        let trace = RowMajorMatrix::new(
-            rows.into_iter().flatten().collect::<Vec<_>>(),
-            NUM_MEM_PREPROCESSED_INIT_COLS,
-        );
+        let mut nb_rows = 0;
+        for row_vs_as in &chunks {
+            let start = nb_rows * NUM_MEM_PREPROCESSED_INIT_COLS;
+            let values = unsafe {
+                core::slice::from_raw_parts_mut(
+                    buffer_ptr.add(start),
+                    NUM_MEM_PREPROCESSED_INIT_COLS,
+                )
+            };
+            let cols: &mut MemoryConstPreprocessedCols<_> = values.borrow_mut();
+            for (cell, access) in zip(&mut cols.values_and_accesses, row_vs_as) {
+                *cell = access;
+            }
+            nb_rows += 1;
+        }
 
-        Some(trace)
+        let padded_nb_rows = self.preprocessed_num_rows_with_instrs_len(program, nb_rows).unwrap();
+
+        // NOTE: this is safe since there are always a single event per row.
+        unsafe {
+            let padding_start = nb_rows * NUM_MEM_PREPROCESSED_INIT_COLS;
+            let padding_size = padded_nb_rows * NUM_MEM_PREPROCESSED_INIT_COLS - padding_start;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
     }
 
     fn generate_dependencies(&self, _: &Self::Record, _: &mut Self::Record) {

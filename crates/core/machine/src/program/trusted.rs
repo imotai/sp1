@@ -4,14 +4,10 @@ use core::{
 };
 use std::collections::HashMap;
 
-use crate::{
-    air::ProgramAirBuilder,
-    program::InstructionCols,
-    utils::{next_multiple_of_32, zeroed_f_vec},
-};
+use crate::{air::ProgramAirBuilder, program::InstructionCols, utils::next_multiple_of_32};
 use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::PrimeField32;
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_matrix::Matrix;
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use sp1_core_executor::{ExecutionRecord, Program};
 use sp1_derive::AlignedBorrow;
@@ -68,7 +64,24 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
         Some(padded_nb_rows)
     }
 
-    fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
+    fn preprocessed_num_rows(&self, program: &Self::Program) -> Option<usize> {
+        let instrs_len = program.instructions.len();
+        Some(next_multiple_of_32(instrs_len, None))
+    }
+
+    fn preprocessed_num_rows_with_instrs_len(
+        &self,
+        _program: &Self::Program,
+        instrs_len: usize,
+    ) -> Option<usize> {
+        Some(next_multiple_of_32(instrs_len, None))
+    }
+
+    fn generate_preprocessed_trace_into(
+        &self,
+        program: &Self::Program,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         debug_assert!(
             !program.instructions.is_empty() || program.preprocessed_shape.is_some(),
             "empty program"
@@ -81,7 +94,13 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
             padded_nb_rows.checked_mul(4),
             Some(last_idx) if last_idx < F::ORDER_U64 as usize,
         ));
-        let mut values = zeroed_f_vec(padded_nb_rows * NUM_PROGRAM_PREPROCESSED_COLS);
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(
+                buffer_ptr,
+                padded_nb_rows * NUM_PROGRAM_PREPROCESSED_COLS,
+            )
+        };
         let chunk_size = std::cmp::max((nb_rows + 1) / num_cpus::get(), 1);
 
         values
@@ -106,9 +125,6 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
                     cols.instruction.populate(&instruction);
                 });
             });
-
-        // Convert the trace to a row major matrix.
-        Some(RowMajorMatrix::new(values, NUM_PROGRAM_PREPROCESSED_COLS))
     }
 
     fn generate_dependencies(&self, _input: &ExecutionRecord, _output: &mut ExecutionRecord) {

@@ -1,13 +1,13 @@
 use crate::builder::SP1RecursionAirBuilder;
 use slop_air::{Air, AirBuilder, BaseAir, PairBuilder};
-use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_algebra::PrimeField32;
+use slop_matrix::Matrix;
 use sp1_derive::AlignedBorrow;
-use sp1_hypercube::{air::MachineAir, pad_rows_fixed};
+use sp1_hypercube::air::MachineAir;
 use sp1_primitives::SP1Field;
 use sp1_recursion_executor::{
-    CommitPublicValuesInstr, ExecutionRecord, Instruction, RecursionProgram, RecursionPublicValues,
-    DIGEST_SIZE, RECURSIVE_PROOF_NUM_PV_ELTS,
+    ExecutionRecord, Instruction, RecursionProgram, RecursionPublicValues, DIGEST_SIZE,
+    RECURSIVE_PROOF_NUM_PV_ELTS,
 };
 use std::{
     borrow::{Borrow, BorrowMut},
@@ -68,29 +68,46 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
         Some(1 << PUB_VALUES_LOG_HEIGHT)
     }
 
-    fn preprocessed_num_rows(&self, _program: &Self::Program, _instrs_len: usize) -> Option<usize> {
+    fn preprocessed_num_rows(&self, _program: &Self::Program) -> Option<usize> {
         Some(1 << PUB_VALUES_LOG_HEIGHT)
     }
 
-    fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
+    fn preprocessed_num_rows_with_instrs_len(&self, _: &Self::Program, _: usize) -> Option<usize> {
+        Some(1 << PUB_VALUES_LOG_HEIGHT)
+    }
+
+    fn generate_preprocessed_trace_into(
+        &self,
+        program: &Self::Program,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         assert_eq!(
             std::any::TypeId::of::<F>(),
             std::any::TypeId::of::<SP1Field>(),
             "generate_preprocessed_trace only supports SP1Field field"
         );
 
-        let mut rows: Vec<[SP1Field; NUM_PUBLIC_VALUES_PREPROCESSED_COLS]> = Vec::new();
+        let padded_nb_rows = self.preprocessed_num_rows(program).unwrap();
+
+        unsafe {
+            let padding_size = padded_nb_rows * NUM_PUBLIC_VALUES_PREPROCESSED_COLS;
+            core::ptr::write_bytes(buffer.as_mut_ptr(), 0, padding_size);
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(
+                buffer_ptr,
+                padded_nb_rows * NUM_PUBLIC_VALUES_PREPROCESSED_COLS,
+            )
+        };
+
         let commit_pv_hash_instrs = program
             .inner
             .iter()
             .filter_map(|instruction| {
                 if let Instruction::CommitPublicValues(instr) = instruction.inner() {
-                    Some(unsafe {
-                        std::mem::transmute::<
-                            &Box<CommitPublicValuesInstr<F>>,
-                            &Box<CommitPublicValuesInstr<SP1Field>>,
-                        >(instr)
-                    })
+                    Some(instr)
                 } else {
                     None
                 }
@@ -105,32 +122,13 @@ impl<F: PrimeField32> MachineAir<F> for PublicValuesChip {
         // values hash.
         for instr in commit_pv_hash_instrs.iter().take(1) {
             for (i, addr) in instr.pv_addrs.digest.iter().enumerate() {
-                let mut row = [SP1Field::zero(); NUM_PUBLIC_VALUES_PREPROCESSED_COLS];
-                let cols: &mut PublicValuesPreprocessedCols<SP1Field> =
-                    row.as_mut_slice().borrow_mut();
-                cols.pv_idx[i] = SP1Field::one();
-                cols.pv_mem = MemoryAccessCols { addr: *addr, mult: SP1Field::one() };
-                rows.push(row);
+                let start = i * NUM_PUBLIC_VALUES_PREPROCESSED_COLS;
+                let end = (i + 1) * NUM_PUBLIC_VALUES_PREPROCESSED_COLS;
+                let cols: &mut PublicValuesPreprocessedCols<F> = values[start..end].borrow_mut();
+                cols.pv_idx[i] = F::one();
+                cols.pv_mem = MemoryAccessCols { addr: *addr, mult: F::one() };
             }
         }
-
-        // Pad the preprocessed rows to 8 rows.
-        // gpu code breaks for small traces
-        pad_rows_fixed(
-            &mut rows,
-            || [SP1Field::zero(); NUM_PUBLIC_VALUES_PREPROCESSED_COLS],
-            self.preprocessed_num_rows(program, commit_pv_hash_instrs.len()),
-        );
-
-        let trace = RowMajorMatrix::new(
-            unsafe {
-                std::mem::transmute::<Vec<SP1Field>, Vec<F>>(
-                    rows.into_iter().flatten().collect::<Vec<SP1Field>>(),
-                )
-            },
-            NUM_PUBLIC_VALUES_PREPROCESSED_COLS,
-        );
-        Some(trace)
     }
 
     fn generate_trace_into(

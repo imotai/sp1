@@ -9,10 +9,10 @@ use std::marker::PhantomData;
 
 use itertools::Itertools;
 use slop_algebra::Field;
-use slop_matrix::dense::RowMajorMatrix;
+use std::mem::MaybeUninit;
 
 use self::columns::{BytePreprocessedCols, NUM_BYTE_PREPROCESSED_COLS};
-use crate::{bytes::trace::NUM_ROWS, utils::zeroed_f_vec};
+use crate::bytes::trace::NUM_ROWS;
 
 /// The number of different byte operations in the byte table.
 pub const NUM_BYTE_OPS: usize = 6;
@@ -27,13 +27,12 @@ pub struct ByteChip<F>(PhantomData<F>);
 impl<F: Field> ByteChip<F> {
     /// Creates the preprocessed byte trace.
     ///
-    /// This function returns a `trace` which is a matrix containing all possible byte operations.
-    pub fn trace() -> RowMajorMatrix<F> {
-        // The trace containing all values, with all multiplicities set to zero.
-        let mut initial_trace = RowMajorMatrix::new(
-            zeroed_f_vec(NUM_ROWS * NUM_BYTE_PREPROCESSED_COLS),
-            NUM_BYTE_PREPROCESSED_COLS,
-        );
+    /// This writes the `buffer` which is a matrix containing all possible byte operations.
+    pub fn trace(buffer: &mut [MaybeUninit<F>]) {
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, NUM_BYTE_PREPROCESSED_COLS * NUM_ROWS)
+        };
 
         // Record all the necessary operations for each byte lookup.
         let opcodes = ByteOpcode::byte_table();
@@ -42,7 +41,9 @@ impl<F: Field> ByteChip<F> {
         for (row_index, (b, c)) in (0..=u8::MAX).cartesian_product(0..=u8::MAX).enumerate() {
             let b = b as u8;
             let c = c as u8;
-            let col: &mut BytePreprocessedCols<F> = initial_trace.row_mut(row_index).borrow_mut();
+            let start = row_index * NUM_BYTE_PREPROCESSED_COLS;
+            let end = (row_index + 1) * NUM_BYTE_PREPROCESSED_COLS;
+            let col: &mut BytePreprocessedCols<F> = values[start..end].borrow_mut();
 
             // Set the values of `b` and `c`.
             col.b = F::from_canonical_u8(b);
@@ -76,8 +77,6 @@ impl<F: Field> ByteChip<F> {
                 };
             }
         }
-
-        initial_trace
     }
 }
 
@@ -92,8 +91,9 @@ mod tests {
 
     #[test]
     pub fn test_trace_and_map() {
+        let mut vec: Vec<SP1Field> = Vec::with_capacity(NUM_ROWS * NUM_BYTE_PREPROCESSED_COLS);
         let start = Instant::now();
-        ByteChip::<SP1Field>::trace();
+        ByteChip::<SP1Field>::trace(vec.spare_capacity_mut());
         println!("trace and map: {:?}", start.elapsed());
     }
 }

@@ -72,13 +72,38 @@ pub trait MachineAir<F: Field>: BaseAir<F> + 'static + Send + Sync {
     }
 
     /// The number of rows in the preprocessed trace
-    fn preprocessed_num_rows(&self, _program: &Self::Program, _instrs_len: usize) -> Option<usize> {
+    fn preprocessed_num_rows(&self, _program: &Self::Program) -> Option<usize> {
         None
     }
 
-    /// Generate the preprocessed trace given a specific program.
-    fn generate_preprocessed_trace(&self, _program: &Self::Program) -> Option<RowMajorMatrix<F>> {
+    /// The number of rows in the preprocessed trace using the program and the instr len.
+    fn preprocessed_num_rows_with_instrs_len(
+        &self,
+        _program: &Self::Program,
+        _instrs_len: usize,
+    ) -> Option<usize> {
         None
+    }
+
+    /// Generate the preprocessed trace into a slice of `MaybeUninit<F>`.
+    fn generate_preprocessed_trace_into(&self, _: &Self::Program, _: &mut [MaybeUninit<F>]) {}
+
+    /// Generate the preprocessed trace given a specific program.
+    fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
+        if self.preprocessed_width() == 0 {
+            return None;
+        }
+
+        let padded_nb_rows = self.preprocessed_num_rows(program).unwrap();
+        let num_columns = self.preprocessed_width();
+        let mut values: Vec<F> = Vec::with_capacity(padded_nb_rows * num_columns);
+        self.generate_preprocessed_trace_into(program, values.spare_capacity_mut());
+
+        unsafe {
+            values.set_len(padded_nb_rows * num_columns);
+        }
+
+        Some(RowMajorMatrix::new(values, num_columns))
     }
 }
 

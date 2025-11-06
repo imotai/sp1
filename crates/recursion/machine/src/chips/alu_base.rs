@@ -1,8 +1,8 @@
 use crate::builder::SP1RecursionAirBuilder;
 use core::borrow::Borrow;
 use slop_air::{Air, AirBuilder, BaseAir, PairBuilder};
-use slop_algebra::{AbstractField, Field, PrimeField32};
-use slop_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_algebra::{Field, PrimeField32};
+use slop_matrix::Matrix;
 use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::{air::MachineAir, next_multiple_of_32};
@@ -74,33 +74,65 @@ impl<F: PrimeField32> MachineAir<F> for BaseAluChip {
         NUM_BASE_ALU_PREPROCESSED_COLS
     }
 
-    fn preprocessed_num_rows(&self, program: &Self::Program, instrs_len: usize) -> Option<usize> {
+    fn preprocessed_num_rows(&self, program: &Self::Program) -> Option<usize> {
+        let instrs_len = program
+            .inner
+            .iter()
+            .filter_map(|instruction| match instruction.inner() {
+                Instruction::BaseAlu(x) => Some(x),
+                _ => None,
+            })
+            .count();
+        self.preprocessed_num_rows_with_instrs_len(program, instrs_len)
+    }
+
+    fn preprocessed_num_rows_with_instrs_len(
+        &self,
+        program: &Self::Program,
+        instrs_len: usize,
+    ) -> Option<usize> {
         let height = program.shape.as_ref().and_then(|shape| shape.height(self));
         let nb_rows = instrs_len.div_ceil(NUM_BASE_ALU_ENTRIES_PER_ROW);
         Some(next_multiple_of_32(nb_rows, height))
     }
 
-    fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
+    fn generate_preprocessed_trace_into(
+        &self,
+        program: &Self::Program,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         assert_eq!(
             std::any::TypeId::of::<F>(),
             std::any::TypeId::of::<SP1Field>(),
             "generate_preprocessed_trace only supports SP1Field field"
         );
 
-        let instrs = unsafe {
-            std::mem::transmute::<Vec<&BaseAluInstr<F>>, Vec<&BaseAluInstr<SP1Field>>>(
-                program
-                    .inner
-                    .iter()
-                    .filter_map(|instruction| match instruction.inner() {
-                        Instruction::BaseAlu(x) => Some(x),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>(),
+        let instrs = program
+            .inner
+            .iter()
+            .filter_map(|instruction| match instruction.inner() {
+                Instruction::BaseAlu(x) => Some(x),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let padded_nb_rows =
+            self.preprocessed_num_rows_with_instrs_len(program, instrs.len()).unwrap();
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(
+                buffer_ptr,
+                padded_nb_rows * NUM_BASE_ALU_PREPROCESSED_COLS,
             )
         };
-        let padded_nb_rows = self.preprocessed_num_rows(program, instrs.len()).unwrap();
-        let mut values = vec![SP1Field::zero(); padded_nb_rows * NUM_BASE_ALU_PREPROCESSED_COLS];
+
+        unsafe {
+            let padding_start = instrs.len() * NUM_BASE_ALU_ACCESS_COLS;
+            let padding_size = padded_nb_rows * NUM_BASE_ALU_PREPROCESSED_COLS - padding_start;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
 
         // Generate the trace rows & corresponding records for each chunk of events in parallel.
         let populate_len = instrs.len() * NUM_BASE_ALU_ACCESS_COLS;
@@ -110,10 +142,10 @@ impl<F: PrimeField32> MachineAir<F> for BaseAluChip {
                 let access: &mut BaseAluAccessCols<_> = row.borrow_mut();
                 *access = BaseAluAccessCols {
                     addrs: addrs.to_owned(),
-                    is_add: SP1Field::from_bool(false),
-                    is_sub: SP1Field::from_bool(false),
-                    is_mul: SP1Field::from_bool(false),
-                    is_div: SP1Field::from_bool(false),
+                    is_add: F::from_bool(false),
+                    is_sub: F::from_bool(false),
+                    is_mul: F::from_bool(false),
+                    is_div: F::from_bool(false),
                     mult: mult.to_owned(),
                 };
                 let target_flag = match opcode {
@@ -122,15 +154,9 @@ impl<F: PrimeField32> MachineAir<F> for BaseAluChip {
                     BaseAluOpcode::MulF => &mut access.is_mul,
                     BaseAluOpcode::DivF => &mut access.is_div,
                 };
-                *target_flag = SP1Field::from_bool(true);
+                *target_flag = F::from_bool(true);
             },
         );
-
-        // Convert the trace to a row major matrix.
-        Some(RowMajorMatrix::new(
-            unsafe { std::mem::transmute::<Vec<SP1Field>, Vec<F>>(values) },
-            NUM_BASE_ALU_PREPROCESSED_COLS,
-        ))
     }
 
     fn generate_dependencies(&self, _: &Self::Record, _: &mut Self::Record) {

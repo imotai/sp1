@@ -154,6 +154,13 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
                 }
             });
 
+            let preprocessed_num_rows_arms = variants.iter().map(|(variant_name, field)| {
+                let field_ty = &field.ty;
+                quote! {
+                    #name::#variant_name(x) => <#field_ty as sp1_hypercube::air::MachineAir<F>>::preprocessed_num_rows(x, program)
+                }
+            });
+
             let preprocessed_width_arms = variants.iter().map(|(variant_name, field)| {
                 let field_ty = &field.ty;
                 quote! {
@@ -165,6 +172,13 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
                 let field_ty = &field.ty;
                 quote! {
                     #name::#variant_name(x) => <#field_ty as sp1_hypercube::air::MachineAir<F>>::generate_preprocessed_trace(x, program)
+                }
+            });
+
+            let generate_preprocessed_trace_into_arms = variants.iter().map(|(variant_name, field)| {
+                let field_ty = &field.ty;
+                quote! {
+                    #name::#variant_name(x) => <#field_ty as sp1_hypercube::air::MachineAir<F>>::generate_preprocessed_trace_into(x, program, buffer)
                 }
             });
 
@@ -221,12 +235,28 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
                         }
                     }
 
+                    fn preprocessed_num_rows(&self, program: &#program_path,) -> Option<usize> {
+                        match self {
+                            #(#preprocessed_num_rows_arms,)*
+                        }
+                    }
+
                     fn generate_preprocessed_trace(
                         &self,
                         program: &#program_path,
                     ) -> Option<slop_matrix::dense::RowMajorMatrix<F>> {
                         match self {
                             #(#generate_preprocessed_trace_arms,)*
+                        }
+                    }
+
+                    fn generate_preprocessed_trace_into(
+                        &self,
+                        program: &#program_path,
+                        buffer: &mut [MaybeUninit<F>],
+                    ) {
+                        match self {
+                            #(#generate_preprocessed_trace_into_arms,)*
                         }
                     }
 

@@ -1,6 +1,5 @@
 use slop_air::BaseAir;
-use slop_algebra::{AbstractField, PrimeField32};
-use slop_matrix::dense::RowMajorMatrix;
+use slop_algebra::PrimeField32;
 use slop_maybe_rayon::prelude::*;
 use sp1_hypercube::{
     air::MachineAir,
@@ -8,7 +7,7 @@ use sp1_hypercube::{
     operations::poseidon2::{trace::populate_perm, WIDTH},
 };
 use sp1_primitives::SP1Field;
-use sp1_recursion_executor::{ExecutionRecord, Instruction, Poseidon2Instr, RecursionProgram};
+use sp1_recursion_executor::{ExecutionRecord, Instruction, RecursionProgram};
 use std::{
     borrow::BorrowMut,
     mem::{size_of, MaybeUninit},
@@ -88,12 +87,29 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
         PREPROCESSED_POSEIDON2_WIDTH
     }
 
-    fn preprocessed_num_rows(&self, program: &Self::Program, instrs_len: usize) -> Option<usize> {
+    fn preprocessed_num_rows(&self, program: &Self::Program) -> Option<usize> {
+        let instrs_len = program
+            .inner
+            .iter()
+            .filter(|instruction| matches!(instruction.inner(), Instruction::Poseidon2(_)))
+            .count();
+        self.preprocessed_num_rows_with_instrs_len(program, instrs_len)
+    }
+
+    fn preprocessed_num_rows_with_instrs_len(
+        &self,
+        program: &Self::Program,
+        instrs_len: usize,
+    ) -> Option<usize> {
         let height = program.shape.as_ref().and_then(|shape| shape.height(self));
         Some(next_multiple_of_32(instrs_len, height))
     }
 
-    fn generate_preprocessed_trace(&self, program: &Self::Program) -> Option<RowMajorMatrix<F>> {
+    fn generate_preprocessed_trace_into(
+        &self,
+        program: &Self::Program,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         assert_eq!(
             std::any::TypeId::of::<F>(),
             std::any::TypeId::of::<SP1Field>(),
@@ -101,20 +117,32 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
         );
 
         // Allocating an intermediate `Vec` is faster.
-        let instrs: Vec<&Poseidon2Instr<SP1Field>> = program
+        let instrs = program
             .inner
             .iter() // Faster than using `rayon` for some reason. Maybe vectorization?
             .filter_map(|instruction| match instruction.inner() {
-                Instruction::Poseidon2(instr) => Some(unsafe {
-                    std::mem::transmute::<&Poseidon2Instr<F>, &Poseidon2Instr<SP1Field>>(
-                        instr.as_ref(),
-                    )
-                }),
+                Instruction::Poseidon2(instr) => Some(instr.as_ref()),
                 _ => None,
             })
             .collect::<Vec<_>>();
-        let padded_nb_rows = self.preprocessed_num_rows(program, instrs.len()).unwrap();
-        let mut values = vec![SP1Field::zero(); padded_nb_rows * PREPROCESSED_POSEIDON2_WIDTH];
+        let padded_nb_rows =
+            self.preprocessed_num_rows_with_instrs_len(program, instrs.len()).unwrap();
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(
+                buffer_ptr,
+                padded_nb_rows * PREPROCESSED_POSEIDON2_WIDTH,
+            )
+        };
+
+        unsafe {
+            let padding_start = instrs.len() * PREPROCESSED_POSEIDON2_WIDTH;
+            let padding_size = padded_nb_rows * PREPROCESSED_POSEIDON2_WIDTH - padding_start;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
 
         let populate_len = instrs.len() * PREPROCESSED_POSEIDON2_WIDTH;
         values[..populate_len]
@@ -129,14 +157,9 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
                         addr: instr.addrs.output[j],
                         mult: instr.mults[j],
                     }),
-                    is_real: SP1Field::one(),
+                    is_real: F::one(),
                 }
             });
-
-        Some(RowMajorMatrix::new(
-            unsafe { std::mem::transmute::<Vec<SP1Field>, Vec<F>>(values) },
-            PREPROCESSED_POSEIDON2_WIDTH,
-        ))
     }
 }
 

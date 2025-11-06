@@ -1,7 +1,6 @@
 use std::mem::MaybeUninit;
 
 use slop_algebra::PrimeField32;
-use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{events::ByteRecord, ByteOpcode, ExecutionRecord, Program};
 use sp1_hypercube::air::{MachineAir, PV_DIGEST_NUM_WORDS};
 
@@ -22,16 +21,27 @@ impl<F: PrimeField32> MachineAir<F> for ByteChip<F> {
     }
 
     fn num_rows(&self, _: &Self::Record) -> Option<usize> {
-        Some(1 << 16)
+        Some(NUM_ROWS)
     }
 
     fn preprocessed_width(&self) -> usize {
         NUM_BYTE_PREPROCESSED_COLS
     }
 
-    fn generate_preprocessed_trace(&self, _program: &Self::Program) -> Option<RowMajorMatrix<F>> {
-        let trace = Self::trace();
-        Some(trace)
+    fn preprocessed_num_rows(&self, _program: &Self::Program) -> Option<usize> {
+        Some(NUM_ROWS)
+    }
+
+    fn preprocessed_num_rows_with_instrs_len(
+        &self,
+        _program: &Self::Program,
+        _instrs_len: usize,
+    ) -> Option<usize> {
+        Some(NUM_ROWS)
+    }
+
+    fn generate_preprocessed_trace_into(&self, _: &Self::Program, buffer: &mut [MaybeUninit<F>]) {
+        Self::trace(buffer)
     }
 
     fn generate_dependencies(&self, input: &ExecutionRecord, output: &mut ExecutionRecord) {

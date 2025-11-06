@@ -217,8 +217,16 @@ where
         <A as MachineAir<F>>::preprocessed_width(&self.air)
     }
 
-    fn preprocessed_num_rows(&self, program: &Self::Program, instrs_len: usize) -> Option<usize> {
-        <A as MachineAir<F>>::preprocessed_num_rows(&self.air, program, instrs_len)
+    fn preprocessed_num_rows(&self, program: &Self::Program) -> Option<usize> {
+        <A as MachineAir<F>>::preprocessed_num_rows(&self.air, program)
+    }
+
+    fn preprocessed_num_rows_with_instrs_len(
+        &self,
+        program: &Self::Program,
+        instrs_len: usize,
+    ) -> Option<usize> {
+        <A as MachineAir<F>>::preprocessed_num_rows_with_instrs_len(&self.air, program, instrs_len)
     }
 
     fn generate_preprocessed_trace(&self, program: &A::Program) -> Option<RowMajorMatrix<F>> {

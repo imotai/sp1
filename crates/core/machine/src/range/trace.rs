@@ -1,9 +1,7 @@
-use std::mem::MaybeUninit;
-
 use slop_algebra::PrimeField32;
-use slop_matrix::dense::RowMajorMatrix;
 use sp1_core_executor::{events::ByteRecord, ByteOpcode, ExecutionRecord, Program};
 use sp1_hypercube::air::MachineAir;
+use std::mem::MaybeUninit;
 
 use super::{
     columns::{NUM_RANGE_MULT_COLS, NUM_RANGE_PREPROCESSED_COLS},
@@ -29,9 +27,24 @@ impl<F: PrimeField32> MachineAir<F> for RangeChip<F> {
         NUM_RANGE_PREPROCESSED_COLS
     }
 
-    fn generate_preprocessed_trace(&self, _program: &Self::Program) -> Option<RowMajorMatrix<F>> {
-        let trace = Self::trace();
-        Some(trace)
+    fn preprocessed_num_rows(&self, _program: &Self::Program) -> Option<usize> {
+        Some(NUM_ROWS)
+    }
+
+    fn preprocessed_num_rows_with_instrs_len(
+        &self,
+        _program: &Self::Program,
+        _instrs_len: usize,
+    ) -> Option<usize> {
+        Some(NUM_ROWS)
+    }
+
+    fn generate_preprocessed_trace_into(
+        &self,
+        _program: &Self::Program,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        Self::trace(buffer);
     }
 
     fn generate_dependencies(&self, input: &ExecutionRecord, output: &mut ExecutionRecord) {
