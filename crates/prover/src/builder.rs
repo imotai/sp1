@@ -192,7 +192,7 @@ impl SP1ProverCleanBuilder {
         let num_shrink_workers = num_prover_workers;
         let num_wrap_workers = num_prover_workers;
 
-        let num_elts = Self::num_elts() + (2 << CORE_LOG_STACKING_HEIGHT);
+        let num_elts = Self::num_elts() + (1 << CORE_LOG_STACKING_HEIGHT);
 
         let core_verifier = ProverCleanSP1ProverComponents::core_verifier();
         let core_prover = new_prover_clean_prover(
