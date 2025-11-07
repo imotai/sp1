@@ -6,7 +6,8 @@ use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
 use sp1_core_executor::SP1CoreOpts;
 use sp1_prover::worker::{
-    ProofId, RequesterId, SP1CoreExecutor, SplicingEngine, SplicingWorker, TrivialWorkerClient,
+    ProofId, RequesterId, SP1CoreExecutor, SplicingEngine, SplicingWorker, TaskContext,
+    TrivialWorkerClient,
 };
 use sp1_prover_types::{ArtifactClient, InMemoryArtifactClient};
 use tokio::sync::mpsc;
@@ -72,6 +73,7 @@ async fn main() {
     artifact_client.upload(&mode_artifact, opts).await.expect("failed to upload opts");
 
     let opts = SP1CoreOpts::default();
+    let task_context = TaskContext { proof_id, parent_id, parent_context, requester_id };
     let executor = SP1CoreExecutor::new(
         splicing_engine,
         elf_artifact,
@@ -79,10 +81,7 @@ async fn main() {
         common_input,
         opts,
         0,
-        proof_id,
-        parent_id,
-        parent_context,
-        requester_id,
+        task_context,
         sender,
         artifact_client,
         worker_client,

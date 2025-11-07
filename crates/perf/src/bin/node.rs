@@ -8,7 +8,7 @@ use csl_prover::prover_clean_worker_builder;
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
 use sp1_core_executor::SP1Context;
-use sp1_prover::worker::SP1LocalNodeBuilder;
+use sp1_prover::worker::{SP1LocalNodeBuilder, SP1Proof};
 use sp1_prover_types::network_base_types::ProofMode;
 
 #[derive(Parser, Debug)]
@@ -97,8 +97,12 @@ async fn main() {
             let proof_time = time.elapsed();
             tracing::info!("proof time: {:?}", proof_time);
             // Verify the proof
-            client.verify(&vk, &proof).unwrap();
-            let num_shards = proof.num_shards().unwrap();
+            client.verify(&vk, &proof.proof).unwrap();
+            let num_shards = if let SP1Proof::Core(ref shard_proofs) = &proof.proof {
+                shard_proofs.len()
+            } else {
+                0
+            };
 
             let (core_time, compress_time) = match mode {
                 ProofMode::Core => (Some(proof_time), None),
