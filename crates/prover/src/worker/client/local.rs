@@ -30,49 +30,7 @@ impl LocalWorkerClientInner {
     }
 
     fn init() -> (Self, LocalWorkerClientChannels) {
-        let mut task_inputs = BTreeMap::new();
         let mut task_outputs = BTreeMap::new();
-
-        let unspecified_channel = mpsc::channel(1);
-        task_inputs.insert(TaskType::UnspecifiedTaskType, unspecified_channel.0);
-        task_outputs.insert(TaskType::UnspecifiedTaskType, unspecified_channel.1);
-
-        let controller_channel = mpsc::channel(1);
-        task_inputs.insert(TaskType::Controller, controller_channel.0);
-        task_outputs.insert(TaskType::Controller, controller_channel.1);
-
-        let prove_shard_channel = mpsc::channel(1);
-        task_inputs.insert(TaskType::ProveShard, prove_shard_channel.0);
-        task_outputs.insert(TaskType::ProveShard, prove_shard_channel.1);
-
-        let recursion_reduce_channel = mpsc::channel(1);
-        task_inputs.insert(TaskType::RecursionReduce, recursion_reduce_channel.0);
-        task_outputs.insert(TaskType::RecursionReduce, recursion_reduce_channel.1);
-
-        let recursion_deferred_channel = mpsc::channel(1);
-        task_inputs.insert(TaskType::RecursionDeferred, recursion_deferred_channel.0);
-        task_outputs.insert(TaskType::RecursionDeferred, recursion_deferred_channel.1);
-
-        let shrink_wrap_channel = mpsc::channel(1);
-        task_inputs.insert(TaskType::ShrinkWrap, shrink_wrap_channel.0);
-        task_outputs.insert(TaskType::ShrinkWrap, shrink_wrap_channel.1);
-
-        let setup_vkey_channel = mpsc::channel(1);
-        task_inputs.insert(TaskType::SetupVkey, setup_vkey_channel.0);
-        task_outputs.insert(TaskType::SetupVkey, setup_vkey_channel.1);
-
-        let marker_deferred_record_channel = mpsc::channel(1);
-        task_inputs.insert(TaskType::MarkerDeferredRecord, marker_deferred_record_channel.0);
-        task_outputs.insert(TaskType::MarkerDeferredRecord, marker_deferred_record_channel.1);
-
-        let plonk_wrap_channel = mpsc::channel(1);
-        task_inputs.insert(TaskType::PlonkWrap, plonk_wrap_channel.0);
-        task_outputs.insert(TaskType::PlonkWrap, plonk_wrap_channel.1);
-
-        let groth16_wrap_channel = mpsc::channel(1);
-        task_inputs.insert(TaskType::Groth16Wrap, groth16_wrap_channel.0);
-        task_outputs.insert(TaskType::Groth16Wrap, groth16_wrap_channel.1);
-
         let mut task_queues = HashMap::new();
         for task_type in [
             TaskType::UnspecifiedTaskType,
@@ -86,7 +44,9 @@ impl LocalWorkerClientInner {
             TaskType::PlonkWrap,
             TaskType::Groth16Wrap,
         ] {
-            task_queues.insert(task_type, task_inputs.remove(&task_type).unwrap());
+            let (tx, rx) = mpsc::channel(1);
+            task_outputs.insert(task_type, rx);
+            task_queues.insert(task_type, tx);
         }
 
         let db = Arc::new(RwLock::new(HashMap::new()));
@@ -124,7 +84,7 @@ impl WorkerClient for LocalWorkerClient {
             .proof_index
             .write()
             .await
-            .entry(task.proof_id.clone())
+            .entry(task.context.proof_id.clone())
             .or_insert_with(HashSet::new)
             .insert(task_id.clone());
         // Create a db entry for the task.

@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex, OnceLock};
 use futures::{prelude::*, stream::FuturesUnordered};
 use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
-use opentelemetry::Context;
 use serde::{Deserialize, Serialize};
 use slop_futures::pipeline::Pipeline;
 use sp1_core_executor::{
@@ -25,8 +24,8 @@ use tracing::Instrument;
 
 use crate::{
     worker::{
-        ProofId, ProveShardTaskRequest, RequesterId, SplicingEngine, SplicingTask, TaskError,
-        TaskId, WorkerClient,
+        ProveShardTaskRequest, SplicingEngine, SplicingTask, TaskContext, TaskError, TaskId,
+        WorkerClient,
     },
     SP1VerifyingKey,
 };
@@ -94,10 +93,7 @@ pub struct SP1CoreExecutor<A, W> {
     common_input: Artifact,
     opts: SP1CoreOpts,
     num_deferred_proofs: usize,
-    proof_id: ProofId,
-    parent_id: Option<TaskId>,
-    parent_context: Option<Context>,
-    requester_id: RequesterId,
+    context: TaskContext,
     sender: mpsc::UnboundedSender<ProofData>,
     artifact_client: A,
     worker_client: W,
@@ -111,10 +107,7 @@ impl<A, W> SP1CoreExecutor<A, W> {
         common_input: Artifact,
         opts: SP1CoreOpts,
         num_deferred_proofs: usize,
-        proof_id: ProofId,
-        parent_id: Option<TaskId>,
-        parent_context: Option<Context>,
-        requester_id: RequesterId,
+        context: TaskContext,
         sender: mpsc::UnboundedSender<ProofData>,
         artifact_client: A,
         worker_client: W,
@@ -126,10 +119,7 @@ impl<A, W> SP1CoreExecutor<A, W> {
             common_input,
             opts,
             num_deferred_proofs,
-            proof_id,
-            parent_id,
-            parent_context,
-            requester_id,
+            context,
             sender,
             artifact_client,
             worker_client,
@@ -171,10 +161,7 @@ where
             let program = program.clone();
             let elf = self.elf.clone();
             let common_input_artifact = self.common_input.clone();
-            let proof_id = self.proof_id.clone();
-            let parent_id = self.parent_id.clone();
-            let parent_context = self.parent_context.clone();
-            let requester_id = self.requester_id.clone();
+            let context = self.context.clone();
             let all_touched_addresses = all_touched_addresses.clone();
             let sender = self.sender.clone();
             let final_vm_state = final_vm_state.clone();
@@ -209,10 +196,7 @@ where
                         all_touched_addresses: all_touched_addresses.clone(),
                         final_vm_state: final_vm_state.clone(),
                         prove_shard_tx: sender.clone(),
-                        proof_id: proof_id.clone(),
-                        parent_id: parent_id.clone(),
-                        parent_context: parent_context.clone(),
-                        requester_id: requester_id.clone(),
+                        context: context.clone(),
                         opts: opts.clone(),
                     };
                     // Send the splicing task to the splicing pipeline spawner task.
@@ -392,10 +376,7 @@ where
             let worker_client = self.worker_client.clone();
             let elf_artifact = self.elf.clone();
             let common_input_artifact = self.common_input.clone();
-            let proof_id = self.proof_id.clone();
-            let parent_id = self.parent_id.clone();
-            let parent_context = self.parent_context.clone();
-            let requester_id = self.requester_id.clone();
+            let context = self.context.clone();
             let prove_shard_tx = self.sender.clone();
 
             async move {
@@ -467,16 +448,13 @@ where
                         Artifact::from("dummy global memory deferred output artifact".to_string());
 
                     let request = ProveShardTaskRequest {
-                        proof_id: proof_id.clone(),
                         elf: elf_artifact.clone(),
                         common_input: common_input_artifact.clone(),
                         record: data_artifact,
                         output: proof_artifact.clone(),
                         deferred_marker_task: deferred_marker_artifact,
                         deferred_output: dummy_output_artifact,
-                        parent_id: parent_id.clone(),
-                        parent_context: parent_context.clone(),
-                        requester_id: requester_id.clone(),
+                        context: context.clone(),
                     };
                     let task = request.into_raw().map_err(|e| anyhow::anyhow!("failed to convert to raw task request: {}", e))?;
 

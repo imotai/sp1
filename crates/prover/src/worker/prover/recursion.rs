@@ -1,4 +1,3 @@
-use opentelemetry::Context;
 use slop_algebra::AbstractField;
 use slop_challenger::IopCtx;
 use std::{
@@ -12,8 +11,7 @@ use crate::{
     recursion::{compose_program_from_input, recursive_verifier, RecursionConfig},
     shapes::SP1RecursionProofShape,
     worker::{
-        CommonProverInput, ProofId, RangeProofs, RawTaskRequest, RequesterId, TaskError, TaskId,
-        TaskMetadata,
+        CommonProverInput, RangeProofs, RawTaskRequest, TaskContext, TaskError, TaskMetadata,
     },
     CompressAir, CoreSC, HashableKey, InnerSC, SP1CircuitWitness, SP1ProverComponents,
 };
@@ -68,59 +66,26 @@ pub struct ReduceTaskRequest {
     pub range_proofs: RangeProofs,
     pub is_complete: bool,
     pub output: Artifact,
-    pub proof_id: ProofId,
-    pub parent_id: Option<TaskId>,
-    pub parent_context: Option<Context>,
-    pub requester_id: RequesterId,
+    pub context: TaskContext,
 }
 
 impl ReduceTaskRequest {
     pub fn from_raw(request: RawTaskRequest) -> Result<Self, TaskError> {
-        let RawTaskRequest {
-            inputs,
-            mut outputs,
-            proof_id,
-            parent_id,
-            parent_context,
-            requester_id,
-        } = request;
+        let RawTaskRequest { inputs, mut outputs, context } = request;
         let is_complete = inputs[0].id().parse::<bool>().map_err(|e| TaskError::Fatal(e.into()))?;
         let range_proofs = RangeProofs::from_artifacts(&inputs[1..])?;
         let output =
             outputs.pop().ok_or(TaskError::Fatal(anyhow::anyhow!("No output artifact")))?;
-        Ok(ReduceTaskRequest {
-            range_proofs,
-            is_complete,
-            output,
-            proof_id,
-            parent_id,
-            parent_context,
-            requester_id,
-        })
+        Ok(ReduceTaskRequest { range_proofs, is_complete, output, context })
     }
 
     pub fn into_raw(self) -> Result<RawTaskRequest, TaskError> {
-        let ReduceTaskRequest {
-            range_proofs,
-            is_complete,
-            output,
-            proof_id,
-            parent_id,
-            parent_context,
-            requester_id,
-        } = self;
+        let ReduceTaskRequest { range_proofs, is_complete, output, context } = self;
         let is_complete_artifact = Artifact::from(is_complete.to_string());
         let mut inputs = Vec::with_capacity(2 * range_proofs.len() + 2);
         inputs.push(is_complete_artifact);
         inputs.extend(range_proofs.as_artifacts());
-        let raw_task_request = RawTaskRequest {
-            inputs,
-            outputs: vec![output],
-            proof_id: proof_id.clone(),
-            parent_id: parent_id.clone(),
-            parent_context: parent_context.clone(),
-            requester_id: requester_id.clone(),
-        };
+        let raw_task_request = RawTaskRequest { inputs, outputs: vec![output], context };
         Ok(raw_task_request)
     }
 }

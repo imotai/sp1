@@ -5,8 +5,6 @@ use std::{
 
 use futures::future::try_join_all;
 use hashbrown::HashMap;
-use opentelemetry::Context;
-use sp1_core_machine::executor::ExecutionOutput;
 use sp1_hypercube::{
     air::{ShardBoundary, ShardRange},
     SP1RecursionProof,
@@ -14,14 +12,11 @@ use sp1_hypercube::{
 use sp1_primitives::SP1GlobalContext;
 use sp1_prover_types::{Artifact, ArtifactClient, ArtifactId, ArtifactType, TaskStatus, TaskType};
 use sp1_recursion_circuit::machine::SP1ShapedWitnessValues;
-use tokio::{
-    sync::{mpsc, oneshot},
-    task::JoinSet,
-};
+use tokio::{sync::mpsc, task::JoinSet};
 use tracing::Instrument;
 
 use crate::{
-    worker::{ProofData, ProofId, ReduceTaskRequest, RequesterId, TaskError, TaskId, WorkerClient},
+    worker::{ProofData, ReduceTaskRequest, TaskContext, TaskError, TaskId, WorkerClient},
     InnerSC, SP1CircuitWitness, SP1CompressWitness,
 };
 
@@ -258,10 +253,7 @@ impl CompressTree {
     /// reached and proven.
     pub async fn reduce_proofs(
         &mut self,
-        proof_id: ProofId,
-        parent_id: Option<TaskId>,
-        parent_context: Option<Context>,
-        requester_id: RequesterId,
+        context: TaskContext,
         output: Artifact,
         mut core_proofs_rx: mpsc::UnboundedReceiver<ProofData>,
         artifact_client: &impl ArtifactClient,
@@ -271,7 +263,7 @@ impl CompressTree {
 
         // Create a subscriber for core proof tasks.
         let (core_proofs_subscriber, mut core_proofs_event_stream) =
-            worker_client.subscriber(proof_id.clone()).await?.stream();
+            worker_client.subscriber(context.proof_id.clone()).await?.stream();
         let core_proof_map = Arc::new(Mutex::new(HashMap::<TaskId, RecursionProof>::new()));
         // Keep track of the full range of proofs.
         let mut full_range: Option<ShardRange> = None;
@@ -283,7 +275,7 @@ impl CompressTree {
         let (proof_tx, mut proof_rx) = mpsc::unbounded_channel::<RecursionProof>();
         // Create a subscriber for the reduction tasks.
         let (subscriber, mut event_stream) =
-            worker_client.subscriber(proof_id.clone()).await?.stream();
+            worker_client.subscriber(context.proof_id.clone()).await?.stream();
         let mut proof_map = HashMap::<TaskId, RecursionProof>::new();
 
         let mut join_set = JoinSet::<Result<(), TaskError>>::new();
@@ -374,10 +366,7 @@ impl CompressTree {
                                 range_proofs: proofs,
                                 is_complete,
                                 output: output_artifact.clone(),
-                                proof_id: proof_id.clone(),
-                                parent_id: parent_id.clone(),
-                                parent_context: parent_context.clone(),
-                                requester_id: requester_id.clone(),
+                                context: context.clone(),
                             };
                             let raw_task_request = task_request.into_raw()?;
                             let task_id = worker_client.submit_task(TaskType::RecursionReduce, raw_task_request).await?;
@@ -465,48 +454,5 @@ impl CompressTree {
         }
 
         Err(TaskError::Fatal(anyhow::anyhow!("todo explain this")))
-    }
-}
-
-pub struct SP1ReduceController<A, W> {
-    tree: CompressTree,
-    artifact_client: A,
-    worker_client: W,
-}
-
-impl<A: ArtifactClient, W: WorkerClient> SP1ReduceController<A, W> {
-    pub fn new(batch_size: usize, artifact_client: A, worker_client: W) -> Self {
-        let tree = CompressTree::new(batch_size);
-        Self { tree, artifact_client, worker_client }
-    }
-
-    pub async fn reduce(
-        mut self,
-        proof_id: ProofId,
-        parent_id: Option<TaskId>,
-        parent_context: Option<Context>,
-        requester_id: RequesterId,
-        outputs: Vec<Artifact>,
-        core_proof_rx: mpsc::UnboundedReceiver<ProofData>,
-        execution_output_rx: oneshot::Receiver<ExecutionOutput>,
-    ) -> Result<ExecutionOutput, TaskError> {
-        let output = outputs[0].clone();
-        self.tree
-            .reduce_proofs(
-                proof_id,
-                parent_id,
-                parent_context,
-                requester_id,
-                output,
-                core_proof_rx,
-                &self.artifact_client,
-                &self.worker_client,
-            )
-            .await?;
-
-        // Wait for the execution output to finish
-        let execution_output = execution_output_rx.await.map_err(|e| TaskError::Fatal(e.into()))?;
-
-        Ok(execution_output)
     }
 }

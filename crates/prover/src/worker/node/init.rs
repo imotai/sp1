@@ -98,22 +98,33 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
             async move {
                 while let Some((task_id, request)) = controller_rx.recv().await {
                     // Run the controller task
-                    worker.controller().run(request.clone()).await.unwrap();
+                    if let Err(e) = worker.controller().run(request.clone()).await {
+                        tracing::error!("Controller: task failed: {e:?}");
+                        continue;
+                    }
 
                     // Complete the task
-                    worker
+                    if let Err(e) = worker
                         .worker_client()
-                        .complete_task(request.proof_id, task_id, TaskMetadata { gpu_time: None })
+                        .complete_task(
+                            request.context.proof_id,
+                            task_id,
+                            TaskMetadata { gpu_time: None },
+                        )
                         .await
-                        .unwrap();
+                    {
+                        tracing::error!("Controller: marking task as complete failed: {e:?}");
+                    }
 
                     // Remove all the inputs from the task
                     for input in request.inputs {
-                        worker
+                        if let Err(e) = worker
                             .artifact_client()
                             .delete(&input, ArtifactType::UnspecifiedArtifactType)
                             .await
-                            .unwrap();
+                        {
+                            tracing::error!("Controller: deleting input artifact failed: {e:?}");
+                        }
                     }
                 }
             }
@@ -130,7 +141,8 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                 loop {
                     tokio::select! {
                         Some((id, request)) = setup_rx.recv() => {
-                            let RawTaskRequest { inputs, outputs, proof_id, .. } = request;
+                            let RawTaskRequest { inputs, outputs, context } = request;
+                            let proof_id = context.proof_id.clone();
                             let elf = inputs[0].clone();
                             let output = outputs[0].clone();
                             // TODO: handle errors
@@ -168,7 +180,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                 loop {
                     tokio::select! {
                         Some((id, request)) = core_prover_rx.recv() => {
-                            let proof_id = request.proof_id.clone();
+                            let proof_id = request.context.proof_id.clone();
                             let handle = worker
                                 .prover_engine()
                                 .submit_prove_core_shard(
@@ -218,7 +230,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                 loop {
                     tokio::select! {
                         Some((id, request)) = recursion_reduce_rx.recv() => {
-                            let proof_id = request.proof_id.clone();
+                            let proof_id = request.context.proof_id.clone();
                             let handle = worker.prover_engine().submit_recursion_reduce(request).await.unwrap();
                             let tx = task_tx.clone();
                             task_set.spawn(async move {

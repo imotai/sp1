@@ -1,7 +1,6 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use anyhow::anyhow;
-use opentelemetry::Context;
 use slop_air::BaseAir;
 use slop_algebra::AbstractField;
 use slop_challenger::IopCtx;
@@ -35,7 +34,7 @@ use crate::{
     shapes::{SP1NormalizeCache, SP1NormalizeInputShape, SP1RecursionProofShape},
     worker::{
         AirProverWorker, CommonProverInput, DeferredEvents, GlobalMemoryShard,
-        PrecompileArtifactSlice, ProofId, RawTaskRequest, RequesterId, SP1RecursionProver,
+        PrecompileArtifactSlice, ProofId, RawTaskRequest, SP1RecursionProver, TaskContext,
         TaskError, TaskId, TaskMetadata, TraceData, WorkerClient,
     },
     CoreSC, InnerSC, SP1CircuitWitness, SP1ProverComponents, SP1VerifyingKey,
@@ -48,8 +47,6 @@ pub struct SetupTask {
 }
 
 pub struct ProveShardTaskRequest {
-    /// The proof id.
-    pub proof_id: ProofId,
     /// The elf artifact.
     pub elf: Artifact,
     /// The common input artifact.
@@ -62,18 +59,13 @@ pub struct ProveShardTaskRequest {
     pub deferred_marker_task: Artifact,
     /// The deferred output artifact.
     pub deferred_output: Artifact,
-    /// The parent id.
-    pub parent_id: Option<TaskId>,
-    /// The parent context.
-    pub parent_context: Option<Context>,
-    /// The requester id.
-    pub requester_id: RequesterId,
+    /// The task context.
+    pub context: TaskContext,
 }
 
 impl ProveShardTaskRequest {
     pub fn from_raw(request: RawTaskRequest) -> Result<Self, TaskError> {
-        let RawTaskRequest { inputs, outputs, proof_id, parent_id, parent_context, requester_id } =
-            request;
+        let RawTaskRequest { inputs, outputs, context } = request;
         let elf = inputs[0].clone();
         let common_input = inputs[1].clone();
         let record = inputs[2].clone();
@@ -83,37 +75,30 @@ impl ProveShardTaskRequest {
         let deferred_output = outputs[1].clone();
 
         Ok(ProveShardTaskRequest {
-            proof_id,
             elf,
             common_input,
             record,
             output,
             deferred_marker_task,
             deferred_output,
-            parent_id,
-            parent_context,
-            requester_id,
+            context,
         })
     }
 
     pub fn into_raw(self) -> Result<RawTaskRequest, TaskError> {
         let ProveShardTaskRequest {
-            proof_id,
             elf,
             common_input,
             record,
             output,
             deferred_marker_task,
             deferred_output,
-            parent_id,
-            parent_context,
-            requester_id,
+            context,
         } = self;
 
         let inputs = vec![elf, common_input, record, deferred_marker_task];
         let outputs = vec![output, deferred_output];
-        let raw_task_request =
-            RawTaskRequest { inputs, outputs, proof_id, parent_id, parent_context, requester_id };
+        let raw_task_request = RawTaskRequest { inputs, outputs, context };
         Ok(raw_task_request)
     }
 }
@@ -650,17 +635,16 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
     ) -> Result<CoreProveSubmitHandle<A, W, C>, TaskError> {
         let task = ProveShardTaskRequest::from_raw(task)?;
         let ProveShardTaskRequest {
-            proof_id,
             elf,
             common_input,
             record,
             output,
             deferred_marker_task,
             deferred_output,
-            ..
+            context,
         } = task;
         let tracing_task = TracingTask {
-            proof_id,
+            proof_id: context.proof_id,
             elf,
             common_input,
             record,

@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use futures::StreamExt;
 use hashbrown::HashMap;
-use opentelemetry::Context;
 use slop_futures::pipeline::{AsyncEngine, AsyncWorker};
 use sp1_core_executor::{
     CompressedMemory, CycleResult, ExecutionError, Program, SP1CoreOpts, SplicedMinimalTrace,
@@ -15,8 +14,8 @@ use tokio::{sync::mpsc, task::JoinSet};
 use tracing::Instrument;
 
 use crate::worker::{
-    DeferredEvents, DeferredMessage, FinalVmState, FinalVmStateLock, ProofData, ProofId,
-    ProveShardTaskRequest, RawTaskRequest, RequesterId, SendSpliceTask, SpawnProveOutput, TaskId,
+    DeferredEvents, DeferredMessage, FinalVmState, FinalVmStateLock, ProofData,
+    ProveShardTaskRequest, RawTaskRequest, SendSpliceTask, SpawnProveOutput, TaskContext, TaskId,
     TouchedAddresses, TraceData, WorkerClient,
 };
 
@@ -33,10 +32,7 @@ pub struct SplicingTask {
     pub all_touched_addresses: TouchedAddresses,
     pub final_vm_state: FinalVmStateLock,
     pub prove_shard_tx: mpsc::UnboundedSender<ProofData>,
-    pub proof_id: ProofId,
-    pub parent_id: Option<TaskId>,
-    pub parent_context: Option<Context>,
-    pub requester_id: RequesterId,
+    pub context: TaskContext,
     pub opts: SP1CoreOpts,
 }
 
@@ -65,10 +61,7 @@ where
         &self,
         elf_artifact: Artifact,
         common_input_artifact: Artifact,
-        proof_id: ProofId,
-        requester_id: RequesterId,
-        parent_id: Option<TaskId>,
-        parent_context: Option<Context>,
+        context: TaskContext,
         range: ShardRange,
         trace_data: TraceData,
     ) -> Result<SpawnProveOutput, ExecutionError> {
@@ -86,10 +79,12 @@ where
                     RawTaskRequest {
                         inputs: vec![],
                         outputs: vec![],
-                        proof_id: proof_id.clone(),
-                        parent_id: None,
-                        parent_context: None,
-                        requester_id: requester_id.clone(),
+                        context: TaskContext {
+                            proof_id: context.proof_id.clone(),
+                            parent_id: None,
+                            parent_context: None,
+                            requester_id: context.requester_id.clone(),
+                        },
                     },
                 )
                 .await
@@ -131,16 +126,13 @@ where
         })?;
 
         let request = ProveShardTaskRequest {
-            proof_id: proof_id.clone(),
             elf: elf_artifact,
             common_input: common_input_artifact,
             record: record_artifact,
             output: proof_artifact.clone(),
             deferred_marker_task,
             deferred_output: deferred_output_artifact,
-            parent_id,
-            parent_context,
-            requester_id,
+            context,
         };
 
         let task = request.into_raw().map_err(|e| ExecutionError::Other(e.to_string()))?;
@@ -149,7 +141,7 @@ where
         let task_id = worker_client
             .submit_task(TaskType::ProveShard, task)
             .await
-            .map_err(|e| ExecutionError::Other(e.to_string()))?;
+            .expect("failed to send task");
         let proof_data = ProofData { task_id, range, proof: proof_artifact };
         Ok(SpawnProveOutput { deferred_message, proof_data })
     }
@@ -170,10 +162,7 @@ where
             common_input_artifact,
             num_deferred_proofs,
             prove_shard_tx,
-            proof_id,
-            parent_id,
-            parent_context,
-            requester_id,
+            context,
             opts,
         } = input;
         let split_opts = SplitOpts::new(&opts, program.instructions.len(), false);
@@ -189,11 +178,8 @@ where
                 let self_clone = self.clone();
                 let elf_artifact = elf_artifact.clone();
                 let common_input_artifact = common_input_artifact.clone();
-                let proof_id = proof_id.clone();
-                let requester_id = requester_id.clone();
-                let parent_id_clone = parent_id.clone();
-                let parent_context_clone = parent_context.clone();
                 let prove_shard_tx = prove_shard_tx.clone();
+                let context = context.clone();
                 async move {
                     while let Some(task) = splicing_rx.recv().await {
                         let SendSpliceTask { chunk, range } = task;
@@ -205,10 +191,7 @@ where
                             .create_core_proving_task(
                                 elf_artifact.clone(),
                                 common_input_artifact.clone(),
-                                proof_id.clone(),
-                                requester_id.clone(),
-                                parent_id_clone.clone(),
-                                parent_context_clone.clone(),
+                                context.clone(),
                                 range,
                                 data,
                             )
@@ -361,11 +344,8 @@ where
             let self_clone = self.clone();
             let elf_artifact_clone = elf_artifact.clone();
             let common_input_artifact_clone = common_input_artifact.clone();
-            let proof_id_clone = proof_id.clone();
-            let requester_id_clone = requester_id.clone();
-            let parent_id_clone = parent_id.clone();
-            let parent_context_clone = parent_context.clone();
             let prove_shard_tx = prove_shard_tx.clone();
+            let context_clone = context.clone();
             async move {
                 let artifact_client = self_clone.artifact_client.clone();
                 let worker_client = self_clone.worker_client.clone();
@@ -375,7 +355,7 @@ where
 
                 // This subscriber monitors for deferred marker task completion
                 let (subscriber, mut event_stream) = worker_client
-                    .subscriber(proof_id.clone())
+                    .subscriber(context_clone.proof_id.clone())
                     .await
                     .map_err(|e| ExecutionError::Other(e.to_string()))?
                     .stream();
@@ -441,10 +421,7 @@ where
                                                 .create_core_proving_task(
                                                     elf_artifact_clone.clone(),
                                                     common_input_artifact_clone.clone(),
-                                                    proof_id_clone.clone(),
-                                                    requester_id_clone.clone(),
-                                                    parent_id_clone.clone(),
-                                                    parent_context_clone.clone(),
+                                                    context.clone(),
                                                     ShardRange::deferred(),
                                                     shard,
                                                 )
@@ -481,10 +458,7 @@ where
                                     .create_core_proving_task(
                                         elf_artifact_clone.clone(),
                                         common_input_artifact_clone.clone(),
-                                        proof_id_clone.clone(),
-                                        requester_id_clone.clone(),
-                                        parent_id_clone.clone(),
-                                        parent_context_clone.clone(),
+                                        context.clone(),
                                         ShardRange::deferred(),
                                         shard,
                                     )

@@ -19,7 +19,8 @@ use tracing::{instrument, Instrument};
 use crate::{
     verify::SP1Verifier,
     worker::{
-        LocalWorkerClient, ProofId, RawTaskRequest, RequesterId, SP1WorkerProof, WorkerClient,
+        LocalWorkerClient, ProofId, RawTaskRequest, RequesterId, SP1WorkerProof, TaskContext,
+        WorkerClient,
     },
     SP1CoreProof, SP1VerifyingKey,
 };
@@ -99,21 +100,23 @@ impl SP1LocalNode {
 
         // Create a setup task and wait for the vk
         let vk_artifact = self.inner.artifact_client.create_artifact()?;
-        let proof_id = ProofId::new("core_proof");
-        let requester_id = RequesterId::new("local node");
+        let context = TaskContext {
+            proof_id: ProofId::new("core_proof"),
+            parent_id: None,
+            parent_context: None,
+            requester_id: RequesterId::new("local node"),
+        };
         let setup_request = RawTaskRequest {
             inputs: vec![elf_artifact.clone()],
             outputs: vec![vk_artifact.clone()],
-            proof_id: proof_id.clone(),
-            parent_id: None,
-            parent_context: None,
-            requester_id: requester_id.clone(),
+            context: context.clone(),
         };
         tracing::trace!("submitting setup task");
         let setup_id =
             self.inner.worker_client.submit_task(TaskType::SetupVkey, setup_request).await?;
         // Wait for the setup task to finish
-        let subscriber = self.inner.worker_client.subscriber(proof_id.clone()).await?.per_task();
+        let subscriber =
+            self.inner.worker_client.subscriber(context.proof_id.clone()).await?.per_task();
         let status =
             subscriber.wait_task(setup_id).instrument(tracing::debug_span!("setup task")).await?;
         if status != TaskStatus::Succeeded {
@@ -178,10 +181,13 @@ impl SP1LocalNode {
         mode: ProofMode,
     ) -> anyhow::Result<SP1WorkerProof> {
         // Create a request for the controller task.
-
-        let proof_id = ProofId::new("proof".create_type_id::<V7>().to_string());
         let pid = std::process::id();
-        let requester_id = RequesterId::new(format!("local-node-{pid}"));
+        let context = TaskContext {
+            proof_id: ProofId::new("proof".create_type_id::<V7>().to_string()),
+            parent_id: None,
+            parent_context: None,
+            requester_id: RequesterId::new(format!("local-node-{pid}")),
+        };
 
         let elf_artifact = self.inner.artifact_client.create_artifact()?;
         self.inner.artifact_client.upload_program(&elf_artifact, elf.to_vec()).await?;
@@ -200,14 +206,12 @@ impl SP1LocalNode {
         let request = RawTaskRequest {
             inputs: vec![elf_artifact.clone(), stdin_artifact.clone(), mode_artifact.clone()],
             outputs: vec![output_artifact.clone()],
-            proof_id: proof_id.clone(),
-            parent_id: None,
-            parent_context: None,
-            requester_id,
+            context: context.clone(),
         };
 
         let task_id = self.inner.worker_client.submit_task(TaskType::Controller, request).await?;
-        let subscriber = self.inner.worker_client.subscriber(proof_id.clone()).await?.per_task();
+        let subscriber =
+            self.inner.worker_client.subscriber(context.proof_id.clone()).await?.per_task();
         let status = subscriber.wait_task(task_id).await?;
         if status != TaskStatus::Succeeded {
             return Err(anyhow::anyhow!("controller task failed"));

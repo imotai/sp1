@@ -7,7 +7,6 @@ pub use core::*;
 use lru::LruCache;
 pub use splicing::*;
 
-use opentelemetry::Context;
 use sp1_core_executor::SP1CoreOpts;
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
 use sp1_hypercube::{air::PublicValues, ShardProof};
@@ -23,7 +22,7 @@ use tokio::{
 use tracing::Instrument;
 
 use crate::{
-    worker::{ProofId, RawTaskRequest, RequesterId, TaskError, TaskId, WorkerClient},
+    worker::{RawTaskRequest, TaskContext, TaskError, WorkerClient},
     CoreSC, SP1CoreProof, SP1CoreProofData, SP1VerifyingKey,
 };
 
@@ -67,118 +66,15 @@ where
         }
     }
 
-    fn executor(
-        &self,
-        elf: Artifact,
-        stdin: Arc<SP1Stdin>,
-        common_input: Artifact,
-        num_deferred_proofs: usize,
-        proof_id: ProofId,
-        parent_id: Option<TaskId>,
-        parent_context: Option<Context>,
-        requester_id: RequesterId,
-        sender: mpsc::UnboundedSender<ProofData>,
-    ) -> SP1CoreExecutor<A, W> {
-        SP1CoreExecutor::new(
-            self.splicing_engine.clone(),
-            elf,
-            stdin,
-            common_input,
-            self.opts.clone(),
-            num_deferred_proofs,
-            proof_id,
-            parent_id,
-            parent_context,
-            requester_id,
-            sender,
-            self.artifact_client.clone(),
-            self.worker_client.clone(),
-        )
-    }
-
-    fn collect_core_proofs(
-        &self,
-        proof_id: ProofId,
-        stdin: Arc<SP1Stdin>,
-        outputs: Vec<Artifact>,
-        mut core_proof_rx: mpsc::UnboundedReceiver<ProofData>,
-        execution_output_rx: oneshot::Receiver<ExecutionOutput>,
-        join_set: &mut JoinSet<Result<(), TaskError>>,
-    ) {
-        // Spawn a task to gather the proofs
-        let (proofs_tx, proofs_rx) = oneshot::channel();
-        join_set.spawn({
-            let worker_client = self.worker_client.clone();
-            let artifact_client = self.artifact_client.clone();
-            async move {
-                let subscriber = worker_client.subscriber(proof_id).await?.per_task();
-                let mut shard_proofs = Vec::new();
-                while let Some(proof_data) = core_proof_rx.recv().await {
-                    let ProofData { task_id, proof, .. } = proof_data;
-                    // Wait for the task to finish
-                    let status = subscriber.wait_task(task_id.clone()).await?;
-                    if status != TaskStatus::Succeeded {
-                        tracing::error!("core proof task failed: {:?}", task_id);
-                        return Err(TaskError::Fatal(anyhow::anyhow!(
-                            "core proof task failed: {:?}",
-                            task_id
-                        )));
-                    }
-                    // Download the proof
-                    let proof = artifact_client
-                        .download::<ShardProof<SP1GlobalContext, CoreSC>>(&proof)
-                        .await?;
-                    shard_proofs.push(proof);
-                }
-                proofs_tx.send(shard_proofs).ok();
-                Ok(())
-            }
-            .instrument(tracing::debug_span!("Gather core proofs"))
-        });
-
-        // Task to wait for the proofs and execution output and upload the output.
-        join_set.spawn({
-            let artifact_client = self.artifact_client.clone();
-            async move {
-                // Wait for the proofs to finish
-                let mut shard_proofs = proofs_rx.await.map_err(|e| TaskError::Fatal(e.into()))?;
-                shard_proofs.sort_by_key(|shard_proof| {
-                    let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
-                        shard_proof.public_values.as_slice().borrow();
-                    public_values.range()
-                });
-
-                // Wait for the execution output to finish
-                let execution_output =
-                    execution_output_rx.await.map_err(|e| TaskError::Fatal(e.into()))?;
-
-                let ExecutionOutput { public_value_stream, cycles } = execution_output;
-                let public_values = SP1PublicValues::from(&public_value_stream);
-                let proof = SP1CoreProof {
-                    proof: SP1CoreProofData(shard_proofs),
-                    stdin: stdin.as_ref().clone(),
-                    public_values,
-                    cycles,
-                };
-
-                // Upload the proof
-                artifact_client.upload_proof(&outputs[0], proof).await?;
-
-                Ok(())
-            }
-            .instrument(tracing::debug_span!("Core proof waiter"))
-        });
-    }
-
     pub async fn run(&self, request: RawTaskRequest) -> Result<ExecutionOutput, TaskError> {
-        let RawTaskRequest { inputs, outputs, proof_id, parent_id, parent_context, requester_id } =
-            request;
-
-        let elf = inputs[0].clone();
-        let stdin_artifact = inputs[1].clone();
-        let mode_artifact = inputs[2].clone().to_id();
-        let parsed = mode_artifact.parse::<i32>().map_err(|e| TaskError::Fatal(e.into()))?;
-        let mode = ProofMode::try_from(parsed).map_err(|e| TaskError::Fatal(e.into()))?;
+        let RawTaskRequest { inputs, outputs, context } = request;
+        let [elf, stdin_artifact, mode_artifact] = inputs.try_into().unwrap();
+        let [output] = outputs.try_into().unwrap();
+        let mode = {
+            let parsed =
+                mode_artifact.to_id().parse::<i32>().map_err(|e| TaskError::Fatal(e.into()))?;
+            ProofMode::try_from(parsed).map_err(|e| TaskError::Fatal(e.into()))?
+        };
 
         // For now, assume no deferred proofs
         let deferred_digest = [0; 8];
@@ -194,10 +90,7 @@ where
             let worker_client_clone = self.worker_client.clone();
             let elf_clone = elf.clone();
             let setup_cache = self.setup_cache.clone();
-            let proof_id_clone = proof_id.clone();
-            let parent_id_clone = parent_id.clone();
-            let parent_context_clone = parent_context.clone();
-            let requester_id_clone = requester_id.clone();
+            let context = context.clone();
             async move {
                 let mut lock = setup_cache.lock().await;
                 let vkey = lock.get(&elf_clone).cloned();
@@ -211,10 +104,7 @@ where
                     let setup_request = RawTaskRequest {
                         inputs: vec![elf_clone.clone()],
                         outputs: vec![vk_artifact.clone()],
-                        proof_id: proof_id_clone.clone(),
-                        parent_id: parent_id_clone.clone(),
-                        parent_context: parent_context_clone.clone(),
-                        requester_id: requester_id_clone.clone(),
+                        context: context.clone(),
                     };
 
                     tracing::debug!("submitting setup task");
@@ -223,7 +113,7 @@ where
 
                     // Wait for the setup task to finish
                     let subscriber =
-                        worker_client_clone.subscriber(proof_id_clone).await?.per_task();
+                        worker_client_clone.subscriber(context.proof_id.clone()).await?.per_task();
                     let status = subscriber
                         .wait_task(setup_id)
                         .instrument(tracing::debug_span!("setup task"))
@@ -256,50 +146,52 @@ where
 
         let (core_proof_tx, core_proof_rx) = mpsc::unbounded_channel();
 
-        let executor = self.executor(
+        let executor = SP1CoreExecutor::new(
+            self.splicing_engine.clone(),
             elf,
             stdin.clone(),
             common_input_artifact,
+            self.opts.clone(),
             num_deferred_proofs,
-            proof_id.clone(),
-            parent_id.clone(),
-            parent_context.clone(),
-            requester_id.clone(),
+            context.clone(),
             core_proof_tx,
+            self.artifact_client.clone(),
+            self.worker_client.clone(),
         );
-
         let mut join_set = JoinSet::<Result<(), TaskError>>::new();
         let (execution_output_tx, execution_output_rx) = oneshot::channel();
         match mode {
             ProofMode::Core => {
-                self.collect_core_proofs(
-                    proof_id,
+                join_set.spawn(collect_core_proofs(
+                    self.worker_client.clone(),
+                    self.artifact_client.clone(),
+                    context,
                     stdin,
-                    outputs,
+                    output,
                     core_proof_rx,
                     execution_output_rx,
-                    &mut join_set,
-                );
+                ));
             }
             ProofMode::Compressed => {
-                let reducer = SP1ReduceController::new(
-                    self.max_reduce_arity,
-                    self.artifact_client.clone(),
-                    self.worker_client.clone(),
-                );
-                join_set.spawn(async move {
-                    reducer
-                        .reduce(
-                            proof_id,
-                            parent_id,
-                            parent_context,
-                            requester_id,
-                            outputs,
+                join_set.spawn({
+                    let mut tree = CompressTree::new(self.max_reduce_arity);
+                    let artifact_client = self.artifact_client.clone();
+                    let worker_client = self.worker_client.clone();
+                    async move {
+                        tree.reduce_proofs(
+                            context,
+                            output,
                             core_proof_rx,
-                            execution_output_rx,
+                            &artifact_client,
+                            &worker_client,
                         )
                         .await?;
-                    Ok(())
+
+                        let _execution_output =
+                            execution_output_rx.await.map_err(|e| TaskError::Fatal(e.into()))?;
+
+                        Ok(())
+                    }
                 });
             }
             _ => {
@@ -319,4 +211,51 @@ where
 
         Ok(result)
     }
+}
+
+async fn collect_core_proofs(
+    worker_client: impl WorkerClient,
+    artifact_client: impl ArtifactClient,
+    context: TaskContext,
+    stdin: Arc<SP1Stdin>,
+    output: Artifact,
+    mut core_proof_rx: mpsc::UnboundedReceiver<ProofData>,
+    execution_output_rx: oneshot::Receiver<ExecutionOutput>,
+) -> Result<(), TaskError> {
+    let subscriber = worker_client.subscriber(context.proof_id.clone()).await?.per_task();
+    let mut shard_proofs = Vec::new();
+    while let Some(proof_data) = core_proof_rx.recv().await {
+        let ProofData { task_id, proof, .. } = proof_data;
+        // Wait for the task to finish
+        let status = subscriber.wait_task(task_id.clone()).await?;
+        if status != TaskStatus::Succeeded {
+            tracing::error!("core proof task failed: {:?}", task_id);
+            return Err(TaskError::Fatal(anyhow::anyhow!("core proof task failed: {:?}", task_id)));
+        }
+        // Download the proof
+        let proof =
+            artifact_client.download::<ShardProof<SP1GlobalContext, CoreSC>>(&proof).await?;
+        shard_proofs.push(proof);
+    }
+    shard_proofs.sort_by_key(|shard_proof| {
+        let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
+            shard_proof.public_values.as_slice().borrow();
+        public_values.range()
+    });
+
+    // Wait for the execution output to finish
+    let ExecutionOutput { public_value_stream, cycles } =
+        execution_output_rx.await.map_err(|e| TaskError::Fatal(e.into()))?;
+
+    let proof = SP1CoreProof {
+        proof: SP1CoreProofData(shard_proofs),
+        stdin: stdin.as_ref().clone(),
+        public_values: SP1PublicValues::from(&public_value_stream),
+        cycles,
+    };
+
+    // Upload the proof
+    artifact_client.upload_proof(&output, proof).await?;
+
+    Ok(())
 }

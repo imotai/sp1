@@ -127,6 +127,11 @@ impl fmt::Display for RequesterId {
 pub struct RawTaskRequest {
     pub inputs: Vec<Artifact>,
     pub outputs: Vec<Artifact>,
+    pub context: TaskContext,
+}
+
+#[derive(Clone)]
+pub struct TaskContext {
     pub proof_id: ProofId,
     pub parent_id: Option<TaskId>,
     pub parent_context: Option<Context>,
@@ -429,11 +434,6 @@ mod tests {
 
     impl TestTask {
         pub async fn into_raw(self, client: &impl ArtifactClient) -> RawTaskRequest {
-            let proof_id = ProofId::new("test_proof_id");
-            let parent_id = None;
-            let parent_context = None;
-            let requester_id = RequesterId::new("test_requester_id");
-
             let input_artifact = client.create_artifact().expect("failed to create input artifact");
             client.upload(&input_artifact, self.kind).await.unwrap();
             let outputs = if let TestTaskKind::Read = self.kind {
@@ -445,10 +445,12 @@ mod tests {
             RawTaskRequest {
                 inputs: vec![input_artifact],
                 outputs,
-                proof_id,
-                parent_id,
-                parent_context,
-                requester_id,
+                context: TaskContext {
+                    proof_id: ProofId::new("test_proof_id"),
+                    parent_id: None,
+                    parent_context: None,
+                    requester_id: RequesterId::new("test_requester_id"),
+                },
             }
         }
 
