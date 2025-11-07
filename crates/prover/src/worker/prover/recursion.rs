@@ -11,7 +11,8 @@ use crate::{
     recursion::{compose_program_from_input, recursive_verifier, RecursionConfig},
     shapes::SP1RecursionProofShape,
     worker::{
-        CommonProverInput, RangeProofs, RawTaskRequest, TaskContext, TaskError, TaskMetadata,
+        CommonProverInput, ProverMetrics, RangeProofs, RawTaskRequest, TaskContext, TaskError,
+        TaskMetadata,
     },
     CompressAir, CoreSC, HashableKey, InnerSC, SP1CircuitWitness, SP1ProverComponents,
 };
@@ -112,7 +113,8 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
 
         let witness = range_proofs.download_witness(is_complete, &self.artifact_client).await?;
 
-        Ok(RecursionTask { program, witness, is_complete, output })
+        let metrics = ProverMetrics::new();
+        Ok(RecursionTask { program, witness, is_complete, output, metrics })
     }
 }
 
@@ -121,6 +123,7 @@ pub struct RecursionTask {
     witness: SP1CircuitWitness,
     is_complete: bool,
     output: Artifact,
+    metrics: ProverMetrics,
 }
 
 pub struct RecursionExecutorWorker<C: SP1ProverComponents> {
@@ -136,7 +139,7 @@ impl<C: SP1ProverComponents>
         &self,
         input: Result<RecursionTask, TaskError>,
     ) -> Result<ProveRecursionTask<C>, TaskError> {
-        let RecursionTask { program, witness, is_complete, output } = input?;
+        let RecursionTask { program, witness, is_complete, output, metrics } = input?;
 
         // Execute the runtime.
         let runtime_span = tracing::debug_span!("execute runtime").entered();
@@ -166,7 +169,7 @@ impl<C: SP1ProverComponents>
             _ => unimplemented!(),
         })?;
 
-        Ok(ProveRecursionTask { record, keys, output, is_complete })
+        Ok(ProveRecursionTask { record, keys, output, is_complete, metrics })
     }
 }
 
@@ -183,6 +186,7 @@ pub struct ProveRecursionTask<C: SP1ProverComponents> {
     keys: RecursionKeys<C>,
     output: Artifact,
     is_complete: bool,
+    metrics: ProverMetrics,
 }
 
 pub struct RecursionProverWorker<A, C: SP1ProverComponents> {
@@ -196,15 +200,18 @@ impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
         &self,
         keys: RecursionKeys<C>,
         record: ExecutionRecord<SP1Field>,
-    ) -> Result<(SP1RecursionProof<SP1GlobalContext, InnerSC>, TaskMetadata), TaskError> {
+        metrics: ProverMetrics,
+    ) -> Result<SP1RecursionProof<SP1GlobalContext, InnerSC>, TaskError> {
         let proof = match keys {
             RecursionKeys::Exists(pk, vk) => {
                 let mut challenger = SP1GlobalContext::default_challenger();
                 vk.observe_into(&mut challenger);
-                let (proof, _) = self
+                let (proof, permit) = self
                     .recursion_prover
                     .prove_shard_with_pk(pk.clone(), record, self.permits.clone(), &mut challenger)
                     .await;
+                let duration = permit.release();
+                metrics.increment_permit_time(duration);
                 C::compress_verifier()
                     .verify(&vk, &MachineProof::from(vec![proof.clone()]))
                     .map_err(|e| {
@@ -214,7 +221,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
             }
             RecursionKeys::Program(program) => {
                 let mut challenger = SP1GlobalContext::default_challenger();
-                let (vk, proof, _) = self
+                let (vk, proof, permit) = self
                     .recursion_prover
                     .setup_and_prove_shard(
                         program,
@@ -224,6 +231,8 @@ impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
                         &mut challenger,
                     )
                     .await;
+                let duration = permit.release();
+                metrics.increment_permit_time(duration);
                 C::compress_verifier()
                     .verify(&vk, &MachineProof::from(vec![proof.clone()]))
                     .map_err(|e| {
@@ -233,8 +242,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
             }
         };
 
-        // TODO: Add the busy time here.
-        Ok((proof, TaskMetadata::default()))
+        Ok(proof)
     }
 }
 
@@ -247,15 +255,16 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
         input: Result<ProveRecursionTask<C>, TaskError>,
     ) -> Result<TaskMetadata, TaskError> {
         // Get the input or return an error
-        let ProveRecursionTask { record, keys, output, is_complete } = input?;
+        let ProveRecursionTask { record, keys, output, is_complete, metrics } = input?;
         // Prove the shard
-        let (proof, metadata) = self.prove_shard(keys, record).await?;
+        let proof = self.prove_shard(keys, record, metrics.clone()).await?;
         // Upload the proof
         if is_complete {
             self.artifact_client.upload_proof(&output, proof.clone()).await?;
         } else {
             self.artifact_client.upload(&output, proof.clone()).await?;
         }
+        let metadata = metrics.to_metadata();
 
         Ok(metadata)
     }
@@ -442,9 +451,10 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
         witness: SP1CircuitWitness,
         output: Artifact,
         is_complete: bool,
+        metrics: ProverMetrics,
     ) -> Result<RecursionProveSubmitHandle<A, C>, SubmitError> {
         self.recursion_prover_pipeline()
-            .submit(Ok(RecursionTask { program, witness, is_complete, output }))
+            .submit(Ok(RecursionTask { program, witness, is_complete, output, metrics }))
             .await
     }
 

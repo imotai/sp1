@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use thiserror::Error;
 use tokio::sync::{AcquireError, OwnedSemaphorePermit, Semaphore};
@@ -14,6 +14,21 @@ pub struct ProverPermit {
     span: Span,
     /// The time the permit was acquired.
     time: tokio::time::Instant,
+}
+
+impl ProverPermit {
+    /// Release the permit and return the duration it was held for.
+    #[must_use]
+    pub fn release(self) -> Duration {
+        self.time.elapsed()
+    }
+}
+
+impl Drop for ProverPermit {
+    fn drop(&mut self) {
+        let duration = self.time.elapsed();
+        tracing::debug!(parent: &self.span, "permit acquired for {:?} ", duration);
+    }
 }
 
 /// A semaphore for the prover.
@@ -54,10 +69,3 @@ impl ProverSemaphore {
 #[derive(Debug, Error)]
 #[error("failed to acquire permit")]
 pub struct ProverAcquireError(#[from] AcquireError);
-
-impl Drop for ProverPermit {
-    fn drop(&mut self) {
-        let duration = self.time.elapsed();
-        tracing::debug!(parent: &self.span, "permit acquired for {:?} ", duration);
-    }
-}

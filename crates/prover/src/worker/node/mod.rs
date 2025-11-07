@@ -14,15 +14,13 @@ use sp1_prover_types::{
     network_base_types::ProofMode, Artifact, ArtifactClient, ArtifactType, InMemoryArtifactClient,
     TaskStatus, TaskType,
 };
+pub use sp1_verifier::{ProofFromNetwork, SP1Proof};
 use tracing::{instrument, Instrument};
 
 use crate::{
     verify::SP1Verifier,
-    worker::{
-        LocalWorkerClient, ProofId, RawTaskRequest, RequesterId, SP1WorkerProof, TaskContext,
-        WorkerClient,
-    },
-    SP1CoreProof, SP1VerifyingKey,
+    worker::{LocalWorkerClient, ProofId, RawTaskRequest, RequesterId, TaskContext, WorkerClient},
+    SP1CoreProofData, SP1VerifyingKey,
 };
 
 pub(crate) struct SP1NodeInner {
@@ -151,25 +149,12 @@ impl SP1LocalNode {
             .await?
     }
 
-    pub async fn prove_core(
-        &self,
-        elf: &[u8],
-        stdin: SP1Stdin,
-        _context: SP1Context<'static>,
-    ) -> anyhow::Result<SP1CoreProof> {
-        let proof = self.prove_with_mode(elf, stdin, _context, ProofMode::Core).await?;
-        match proof {
-            SP1WorkerProof::Core(proof) => Ok(proof),
-            _ => Err(anyhow::anyhow!("proof is not a core proof")),
-        }
-    }
-
     pub async fn prove(
         &self,
         elf: &[u8],
         stdin: SP1Stdin,
         _context: SP1Context<'static>,
-    ) -> anyhow::Result<SP1WorkerProof> {
+    ) -> anyhow::Result<ProofFromNetwork> {
         self.prove_with_mode(elf, stdin, _context, ProofMode::Compressed).await
     }
 
@@ -179,7 +164,7 @@ impl SP1LocalNode {
         stdin: SP1Stdin,
         _context: SP1Context<'static>,
         mode: ProofMode,
-    ) -> anyhow::Result<SP1WorkerProof> {
+    ) -> anyhow::Result<ProofFromNetwork> {
         // Create a request for the controller task.
         let pid = std::process::id();
         let context = TaskContext {
@@ -223,7 +208,7 @@ impl SP1LocalNode {
 
         // Download the output proof and return it.
         let proof =
-            SP1WorkerProof::download(mode, &output_artifact, &self.inner.artifact_client).await?;
+            self.inner.artifact_client.download::<ProofFromNetwork>(&output_artifact).await?;
         // Clean up the output artifact
         self.inner
             .artifact_client
@@ -240,17 +225,25 @@ impl SP1LocalNode {
         &self.inner.verifier
     }
 
-    pub fn verify(&self, vk: &SP1VerifyingKey, proof: &SP1WorkerProof) -> anyhow::Result<()> {
+    pub fn verify(&self, vk: &SP1VerifyingKey, proof: &SP1Proof) -> anyhow::Result<()> {
+        // Verify the underlying proof.
         match proof {
-            SP1WorkerProof::Core(proof) => self
-                .verifier()
-                .verify(&proof.proof, vk)
-                .map_err(|e| anyhow::anyhow!("failed to verify core proof: {:?}", e)),
-            SP1WorkerProof::Compressed(proof) => self
-                .verifier()
-                .verify_compressed(proof, vk)
-                .map_err(|e| anyhow::anyhow!("failed to verify compressed proof:{:?}", e)),
+            SP1Proof::Core(proof) => {
+                let core_proof = SP1CoreProofData(proof.clone());
+                self.verifier().verify(&core_proof, vk)?;
+            }
+            SP1Proof::Compressed(proof) => {
+                self.verifier().verify_compressed(proof, vk)?;
+            }
+            SP1Proof::Plonk(_) => {
+                todo!()
+            }
+            SP1Proof::Groth16(_) => {
+                todo!()
+            }
         }
+
+        Ok(())
     }
 }
 
@@ -301,7 +294,7 @@ mod tests {
         let proof_time = time.elapsed();
         tracing::info!("proof time: {:?}", proof_time);
         // Verify the proof
-        client.verify(&vk, &proof).unwrap();
+        client.verify(&vk, &proof.proof).unwrap();
 
         Ok(())
     }

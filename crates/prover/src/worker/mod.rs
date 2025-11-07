@@ -5,7 +5,6 @@ mod controller;
 mod error;
 mod internal;
 mod node;
-mod proof;
 mod prover;
 
 pub use builder::*;
@@ -15,5 +14,4 @@ pub use controller::*;
 pub use error::*;
 pub use internal::*;
 pub use node::*;
-pub use proof::*;
 pub use prover::*;

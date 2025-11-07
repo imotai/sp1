@@ -34,8 +34,8 @@ use crate::{
     shapes::{SP1NormalizeCache, SP1NormalizeInputShape, SP1RecursionProofShape},
     worker::{
         AirProverWorker, CommonProverInput, DeferredEvents, GlobalMemoryShard,
-        PrecompileArtifactSlice, ProofId, RawTaskRequest, SP1RecursionProver, TaskContext,
-        TaskError, TaskId, TaskMetadata, TraceData, WorkerClient,
+        PrecompileArtifactSlice, ProofId, ProverMetrics, RawTaskRequest, SP1RecursionProver,
+        TaskContext, TaskError, TaskId, TaskMetadata, TraceData, WorkerClient,
     },
     CoreSC, InnerSC, SP1CircuitWitness, SP1ProverComponents, SP1VerifyingKey,
 };
@@ -119,6 +119,8 @@ pub struct TracingTask {
     pub deferred_marker_task: Artifact,
     /// The deferred output artifact.
     pub deferred_output: Artifact,
+    /// The metrics for the prover.
+    pub metrics: ProverMetrics,
 }
 
 struct NormalizeProgramCompiler {
@@ -224,12 +226,19 @@ where
             move || {
                 let _guard = span.enter();
                 {
-                    let program =
-                        Arc::new(Program::from(&elf).expect("failed to disassemble program"));
+                    let program = Program::from(&elf).map_err(|e| {
+                        TaskError::Fatal(anyhow::anyhow!("failed to disassemble program: {}", e))
+                    })?;
+                    let program = Arc::new(program);
                     let (record, deferred_record) = match record {
                         TraceData::Core(chunk_bytes) => {
-                            let chunk: TraceChunk = bincode::deserialize(&chunk_bytes)
-                                .expect("failed to deserialize chunk");
+                            let chunk: TraceChunk =
+                                bincode::deserialize(&chunk_bytes).map_err(|e| {
+                                    TaskError::Fatal(anyhow::anyhow!(
+                                        "failed to deserialize chunk: {}",
+                                        e
+                                    ))
+                                })?;
                             tracing::debug!(
                                 "tracing chunk at clk range: {}..{}",
                                 chunk.clk_start,
@@ -237,7 +246,12 @@ where
                             );
                             let (_, mut record, _) =
                                 trace_chunk::<SP1Field>(program.clone(), opts.clone(), chunk)
-                                    .expect("failed to trace chunk");
+                                    .map_err(|e| {
+                                        TaskError::Fatal(anyhow::anyhow!(
+                                            "failed to trace chunk: {}",
+                                            e
+                                        ))
+                                    })?;
 
                             let deferred_record = record.defer(&opts.retained_events_presets);
 
@@ -326,7 +340,12 @@ where
 
                             // TODO: Better error handling here?
                             let results = futures::executor::block_on(await_scoped_vec(futures))
-                                .expect("failed to download precompile events");
+                                .map_err(|e| {
+                                    TaskError::Fatal(anyhow::anyhow!(
+                                        "failed to download precompile events: {}",
+                                        e
+                                    ))
+                                })?;
 
                             for (i, events) in results.into_iter().enumerate() {
                                 // TODO: unwrap
@@ -357,13 +376,12 @@ where
                         }
                     };
 
-                    (program, record, deferred_record)
+                    Ok::<_, TaskError>((program, record, deferred_record))
                 }
             }
         })
         .await
-        .map_err(|e| TaskError::Fatal(e.into()))?;
-        let program_clone = program.clone();
+        .map_err(|e| TaskError::Fatal(e.into()))??;
 
         // Asynchronously upload the deferred record
         let deferred_upload_handle = deferred_record.map(|deferred_record| {
@@ -372,9 +390,10 @@ where
             let output_artifact = input.deferred_output.clone();
             let deferred_marker_task = TaskId::new(input.deferred_marker_task.clone().to_id());
             let opts = self.opts.clone();
+            let program = program.clone();
             tokio::spawn(
                 async move {
-                    let split_opts = SplitOpts::new(&opts, program_clone.instructions.len(), false);
+                    let split_opts = SplitOpts::new(&opts, program.instructions.len(), false);
                     let deferred_data =
                         DeferredEvents::defer_record(deferred_record, &artifact_client, split_opts)
                             .await?;
@@ -434,6 +453,7 @@ where
             record_artifact,
             precompile_artifacts,
             deferred_upload_handle,
+            metrics: input.metrics,
         })
     }
 }
@@ -447,6 +467,7 @@ pub struct CoreProveTask {
     record_artifact: Artifact,
     precompile_artifacts: Option<Vec<PrecompileArtifactSlice>>,
     deferred_upload_handle: Option<JoinHandle<std::result::Result<(), TaskError>>>,
+    metrics: ProverMetrics,
 }
 
 pub enum SP1CoreShardProof {
@@ -495,6 +516,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
             record_artifact,
             precompile_artifacts,
             deferred_upload_handle,
+            metrics,
         } = input;
         let mut challenger = SP1GlobalContext::default_challenger();
 
@@ -509,8 +531,9 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
                 &mut challenger,
             )
             .await;
-        // Drop the permit
-        drop(permit);
+        // Release the permit and update the metrics
+        let duration = permit.release();
+        metrics.increment_permit_time(duration);
 
         let vk_clone = common_input.vk.vk.clone();
         let proof_clone = proof.clone();
@@ -531,9 +554,8 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
                 .map_err(|e| TaskError::Fatal(e.into()))?;
             let input = self.recursion_prover.get_normalize_witness(&common_input, &proof, false);
             let witness = SP1CircuitWitness::Core(input);
-            let _recursion_metadata = self
-                .recursion_prover
-                .submit_prove_shard(program, witness, output, false)
+            self.recursion_prover
+                .submit_prove_shard(program, witness, output, false, metrics.clone())
                 .await?
                 .await
                 .map_err(|e| TaskError::Fatal(e.into()))??;
@@ -567,8 +589,9 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
         }
         verify_future.await.map_err(|e| TaskError::Retryable(e.into()))??;
 
-        // TODO: Add the busy time here.
-        Ok(TaskMetadata::default())
+        // Get the metadata
+        let metadata = metrics.to_metadata();
+        Ok(metadata)
     }
 }
 
@@ -643,6 +666,8 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
             deferred_output,
             context,
         } = task;
+
+        let metrics = ProverMetrics::new();
         let tracing_task = TracingTask {
             proof_id: context.proof_id,
             elf,
@@ -651,6 +676,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
             output,
             deferred_marker_task,
             deferred_output,
+            metrics,
         };
         let handle = self.prove_shard_engine.submit(tracing_task).await?;
         Ok(handle)
