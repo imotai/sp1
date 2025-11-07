@@ -400,7 +400,7 @@ impl<'a> TracingVM<'a> {
         //
         // Note that the `precompile_local_memory_access` is set to `None` in the
         // `postprocess_precompile` method.
-        if !self.core().is_retained_syscall(code) {
+        if !self.core().is_retained_syscall(code) && code.should_send() == 1 {
             self.precompile_local_memory_access = Some(LocalMemoryAccess::default());
         }
 
