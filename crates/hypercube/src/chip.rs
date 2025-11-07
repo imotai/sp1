@@ -1,4 +1,5 @@
 use std::{fmt::Display, hash::Hash, sync::Arc};
+use thousands::Separable;
 
 use slop_air::{Air, BaseAir, PairBuilder};
 use slop_algebra::{Field, PrimeField32};
@@ -370,10 +371,10 @@ impl<F: Field> Display for ChipStatistics<F> {
             f,
             "{:<15} | Prep Cols = {:<5} | Main Cols = {:<5} | Rows = {:<5} | Cells = {:<10}",
             self.name,
-            self.preprocessed_cols,
-            self.main_cols,
-            self.height,
-            self.total_number_of_cells()
+            self.preprocessed_cols.separate_with_underscores(),
+            self.main_cols.separate_with_underscores(),
+            self.height.separate_with_underscores(),
+            self.total_number_of_cells().separate_with_underscores()
         )
     }
 }

@@ -21,6 +21,7 @@ use std::{
     iter::once,
     sync::Arc,
 };
+use thousands::Separable;
 use tracing::Instrument;
 
 use crate::{
@@ -657,7 +658,7 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
 
         tracing::info!(
             "Total number of cells: {}, number of variables: {}",
-            total_number_of_cells,
+            total_number_of_cells.separate_with_underscores(),
             total_number_of_cells.next_power_of_two().ilog2(),
         );
 

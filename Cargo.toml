@@ -263,6 +263,7 @@ tracing-appender = "0.2.3"
 tracing-forest = "0.1.6"
 tracing-subscriber = "0.3.18"
 opentelemetry = "0.23.0"
+thousands = "0.2.0"
 tracing-opentelemetry = "0.24.0"
 transpose = "0.2.3"
 twirp = { package = "twirp-rs", version = "0.13.0-succinct" }

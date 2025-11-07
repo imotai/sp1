@@ -47,6 +47,7 @@ rayon-scan = { workspace = true }
 rayon = { workspace = true }
 thiserror = { workspace = true }
 derive-where = { workspace = true }
+thousands = { workspace = true }
 deepsize2 = { workspace = true }
 
 arrayref = { workspace = true }
