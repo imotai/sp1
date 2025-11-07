@@ -21,6 +21,19 @@ cargo +nightly fmt --all
 
 This is enforced by CI and your PR will fail if the code is not properly formatted.
 
+### Unreleased/experimental versions
+
+cuslop-server (for CUDA proving)
+```sh
+cargo install --locked --root "$HOME/.sp1" --git https://github.com/succinctlabs/cuslop cuslop-server
+```
+
+sp1 toolchain
+```sh
+cargo run -p sp1-cli -- prove install-toolchain
+```
+
+
 ### Tips
 
 We recommend you install the [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) extension.
