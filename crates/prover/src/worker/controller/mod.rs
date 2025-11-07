@@ -4,6 +4,7 @@ mod splicing;
 
 pub use compress::*;
 pub use core::*;
+use lru::LruCache;
 pub use splicing::*;
 
 use opentelemetry::Context;
@@ -16,7 +17,7 @@ use sp1_prover_types::{
 };
 use std::{borrow::Borrow, sync::Arc};
 use tokio::{
-    sync::{mpsc, oneshot},
+    sync::{mpsc, oneshot, Mutex},
     task::JoinSet,
 };
 use tracing::Instrument;
@@ -38,6 +39,7 @@ pub struct SP1Controller<A, W> {
     opts: SP1CoreOpts,
     splicing_engine: Arc<SplicingEngine<A, W>>,
     max_reduce_arity: usize,
+    setup_cache: Arc<Mutex<LruCache<Artifact, SP1VerifyingKey>>>,
     pub(crate) artifact_client: A,
     pub(crate) worker_client: W,
 }
@@ -59,6 +61,7 @@ where
             opts: config.opts,
             splicing_engine,
             max_reduce_arity: reduce_batch_size,
+            setup_cache: Arc::new(Mutex::new(LruCache::new(20.try_into().unwrap()))),
             artifact_client,
             worker_client,
         }
@@ -181,36 +184,68 @@ where
         let deferred_digest = [0; 8];
         let num_deferred_proofs = 0usize;
 
-        // Create a setup task and wait for the vk
-        let vk_artifact = self.artifact_client.create_artifact()?;
-        let setup_request = RawTaskRequest {
-            inputs: vec![elf.clone()],
-            outputs: vec![vk_artifact.clone()],
-            proof_id: proof_id.clone(),
-            parent_id: parent_id.clone(),
-            parent_context: parent_context.clone(),
-            requester_id: requester_id.clone(),
-        };
+        let stdin_download_handle =
+            self.artifact_client.download_stdin::<SP1Stdin>(&stdin_artifact);
 
-        // TODO: do setup and start downloading stdin and execute concurrently.
-        tracing::trace!("submitting setup task");
-        let setup_id = self.worker_client.submit_task(TaskType::SetupVkey, setup_request).await?;
-        // Wait for the setup task to finish
-        let subscriber = self.worker_client.subscriber(proof_id.clone()).await?.per_task();
-        let status = subscriber
-            .wait_task(setup_id)
-            .instrument(tracing::debug_span!("setup task"))
-            .await
-            .map_err(|e| TaskError::Fatal(e.into()))?;
-        if status != TaskStatus::Succeeded {
-            return Err(TaskError::Fatal(anyhow::anyhow!("setup task failed")));
-        }
-        tracing::debug!("setup task succeeded");
-        // Download the vk and stdin
-        let (vk, stdin) = tokio::try_join!(
-            self.artifact_client.download::<SP1VerifyingKey>(&vk_artifact),
-            self.artifact_client.download_stdin::<SP1Stdin>(&stdin_artifact),
-        )?;
+        tracing::info!("downloaded stdin");
+
+        let vkey_download_handle = tokio::spawn({
+            let artifact_client_clone = self.artifact_client.clone();
+            let worker_client_clone = self.worker_client.clone();
+            let elf_clone = elf.clone();
+            let setup_cache = self.setup_cache.clone();
+            let proof_id_clone = proof_id.clone();
+            let parent_id_clone = parent_id.clone();
+            let parent_context_clone = parent_context.clone();
+            let requester_id_clone = requester_id.clone();
+            async move {
+                let mut lock = setup_cache.lock().await;
+                let vkey = lock.get(&elf_clone).cloned();
+                drop(lock);
+                let vk = if let Some(vkey) = vkey {
+                    tracing::debug!("setup cache hit");
+                    vkey.clone()
+                } else {
+                    // Create a setup task and wait for the vk
+                    let vk_artifact = artifact_client_clone.create_artifact()?;
+                    let setup_request = RawTaskRequest {
+                        inputs: vec![elf_clone.clone()],
+                        outputs: vec![vk_artifact.clone()],
+                        proof_id: proof_id_clone.clone(),
+                        parent_id: parent_id_clone.clone(),
+                        parent_context: parent_context_clone.clone(),
+                        requester_id: requester_id_clone.clone(),
+                    };
+
+                    tracing::debug!("submitting setup task");
+                    let setup_id =
+                        worker_client_clone.submit_task(TaskType::SetupVkey, setup_request).await?;
+
+                    // Wait for the setup task to finish
+                    let subscriber =
+                        worker_client_clone.subscriber(proof_id_clone).await?.per_task();
+                    let status = subscriber
+                        .wait_task(setup_id)
+                        .instrument(tracing::debug_span!("setup task"))
+                        .await
+                        .map_err(|e| TaskError::Fatal(e.into()))?;
+                    if status != TaskStatus::Succeeded {
+                        return Err(TaskError::Fatal(anyhow::anyhow!("setup task failed")));
+                    }
+                    tracing::info!("setup task succeeded");
+                    let vk =
+                        artifact_client_clone.download::<SP1VerifyingKey>(&vk_artifact).await?;
+                    setup_cache.lock().await.put(elf_clone, vk.clone());
+                    vk
+                };
+                Ok(vk)
+            }
+            .instrument(tracing::debug_span!("setup vkey"))
+        });
+
+        let stdin: SP1Stdin = stdin_download_handle.await?;
+        let vk = vkey_download_handle.await.map_err(|e| TaskError::Fatal(e.into()))??;
+
         let stdin = Arc::new(stdin);
         // Create the common input
         let common_input = CommonProverInput { vk, mode, deferred_digest, num_deferred_proofs };
