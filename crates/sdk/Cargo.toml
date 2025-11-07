@@ -23,6 +23,7 @@ reqwest = { workspace = true, features = [
 ], optional = true }
 anyhow = { workspace = true }
 sp1-prover = { workspace = true }
+sp1-verifier = { workspace = true }
 sp1-core-machine = { workspace = true }
 sp1-cuda = { workspace = true }
 sp1-build = { workspace = true }

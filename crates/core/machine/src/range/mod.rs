@@ -4,8 +4,7 @@ pub mod trace;
 
 use core::borrow::BorrowMut;
 use slop_algebra::Field;
-use std::marker::PhantomData;
-use std::mem::MaybeUninit;
+use std::{marker::PhantomData, mem::MaybeUninit};
 
 use self::columns::{RangePreprocessedCols, NUM_RANGE_PREPROCESSED_COLS};
 use crate::range::trace::NUM_ROWS;

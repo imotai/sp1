@@ -50,6 +50,7 @@ use sp1_recursion_machine::chips::{
     public_values::PublicValuesChip,
     select::SelectChip,
 };
+use sp1_verifier::compressed::RECURSION_MAX_LOG_ROW_COUNT;
 use thiserror::Error;
 use tokio::task::JoinSet;
 
@@ -58,7 +59,7 @@ use crate::{
     core::{CORE_LOG_STACKING_HEIGHT, CORE_MAX_LOG_ROW_COUNT},
     recursion::{
         deferred_program_from_input, dummy_compose_input, dummy_deferred_input,
-        shrink_program_from_input, RECURSION_MAX_LOG_ROW_COUNT,
+        shrink_program_from_input,
     },
     types::HashableKey,
     CompressAir, CoreSC, InnerSC, SP1Prover, SP1RecursionProver, SP1VerifyingKey, CORE_LOG_BLOWUP,

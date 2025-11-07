@@ -63,13 +63,10 @@ members = [
   "slop/crates/uni-stark",
   "slop/crates/utils",
   "slop/crates/primitives",
-  "slop/crates/whir", "slop/crates/primitives",
+  "slop/crates/whir",
+  "slop/crates/primitives",
 ]
-exclude = [
-  "examples/target",
-  "crates/eval",
-  # "crates/verifier",
-]
+exclude = ["examples/target", "crates/eval"]
 resolver = "2"
 
 [profile.release]

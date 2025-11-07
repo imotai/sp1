@@ -396,34 +396,3 @@ pub async fn default_local_prover() -> LocalProver<CpuSP1ProverComponents> {
     let default_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::new().build().await;
     LocalProver::new(default_prover, Default::default())
 }
-
-#[cfg(test)]
-mod tests {
-    use static_assertions::{assert_type_eq_all, const_assert_eq};
-
-    use crate::{
-        recursion::{RECURSION_LOG_STACKING_HEIGHT, RECURSION_MAX_LOG_ROW_COUNT},
-        CompressAir,
-    };
-    use sp1_hypercube::SP1CoreJaggedConfig;
-    use sp1_primitives::{SP1Field, SP1GlobalContext};
-    /// Checks that the constants, types, etc. in sp1-verifier are valid.
-    ///
-    /// # How to obtain constants
-    /// TODO: explain constants.
-    #[test]
-    fn sp1_verifier_valid() {
-        use sp1_verifier::compressed::internal;
-
-        assert_type_eq_all!(internal::F, SP1Field);
-        assert_type_eq_all!(internal::GC, SP1GlobalContext);
-        assert_type_eq_all!(internal::C, SP1CoreJaggedConfig);
-        assert_type_eq_all!(internal::CompressAir<SP1Field>, CompressAir<SP1Field>);
-
-        const_assert_eq!(internal::COMPRESS_DEGREE, crate::COMPRESS_DEGREE);
-        const_assert_eq!(internal::RECURSION_LOG_STACKING_HEIGHT, RECURSION_LOG_STACKING_HEIGHT);
-        const_assert_eq!(internal::RECURSION_MAX_LOG_ROW_COUNT, RECURSION_MAX_LOG_ROW_COUNT);
-
-        // TODO: check vkey verification data is correct, if necessary.
-    }
-}

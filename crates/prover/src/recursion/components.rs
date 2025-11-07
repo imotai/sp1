@@ -4,12 +4,10 @@ use sp1_primitives::{
     SP1Field, SP1GlobalContext, SP1OuterGlobalContext,
 };
 use sp1_recursion_circuit::machine::InnerVal;
+use sp1_verifier::compressed::{RECURSION_LOG_STACKING_HEIGHT, RECURSION_MAX_LOG_ROW_COUNT};
 
 use crate::{CompressAir, InnerSC, OuterSC, WrapAir};
 
-pub(crate) const RECURSION_LOG_STACKING_HEIGHT: u32 = 20;
-
-pub const RECURSION_MAX_LOG_ROW_COUNT: usize = 21;
 pub const RECURSION_LOG_TRACE_AREA: usize = 27;
 const SHRINK_LOG_STACKING_HEIGHT: u32 = 18;
 pub(crate) const SHRINK_MAX_LOG_ROW_COUNT: usize = 19;
