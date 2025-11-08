@@ -33,6 +33,8 @@ pub struct SP1ControllerConfig {
     pub num_splicing_workers: usize,
     pub splicing_buffer_size: usize,
     pub max_reduce_arity: usize,
+    pub number_of_send_splice_workers_per_splice: usize,
+    pub send_splice_input_buffer_size_per_splice: usize,
 }
 
 pub struct SP1Controller<A, W> {
@@ -51,7 +53,14 @@ where
 {
     pub fn new(config: SP1ControllerConfig, artifact_client: A, worker_client: W) -> Self {
         let splicing_workers = (0..config.num_splicing_workers)
-            .map(|_| SplicingWorker::new(artifact_client.clone(), worker_client.clone()))
+            .map(|_| {
+                SplicingWorker::new(
+                    artifact_client.clone(),
+                    worker_client.clone(),
+                    config.number_of_send_splice_workers_per_splice,
+                    config.send_splice_input_buffer_size_per_splice,
+                )
+            })
             .collect();
         let splicing_engine =
             Arc::new(SplicingEngine::new(splicing_workers, config.splicing_buffer_size));

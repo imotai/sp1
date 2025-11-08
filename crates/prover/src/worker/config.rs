@@ -31,6 +31,16 @@ impl Default for SP1WorkerConfig {
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(DEFAULT_MAX_REDUCE_ARITY);
+        let number_of_send_splice_workers_per_splice =
+            env::var("SP1_WORKER_NUMBER_OF_SEND_SPLICE_WORKERS_PER_SPLICE")
+                .ok()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(DEFAULT_NUMBER_OF_SEND_SPLICE_WORKERS_PER_SPLICE);
+        let send_splice_input_buffer_size_per_splice =
+            env::var("SP1_WORKER_SEND_SPLICE_INPUT_BUFFER_SIZE_PER_SPLICE")
+                .ok()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(DEFAULT_SEND_SPLICE_INPUT_BUFFER_SIZE_PER_SPLICE);
 
         // Use default core options as a starting point.
         let opts = SP1CoreOpts::default();
@@ -39,6 +49,8 @@ impl Default for SP1WorkerConfig {
             num_splicing_workers,
             splicing_buffer_size,
             max_reduce_arity,
+            number_of_send_splice_workers_per_splice,
+            send_splice_input_buffer_size_per_splice,
         };
 
         // Build the core prover config.
@@ -135,6 +147,8 @@ impl Default for SP1WorkerConfig {
 pub(crate) const DEFAULT_NUM_SPLICING_WORKERS: usize = 2;
 pub(crate) const DEFAULT_SPLICING_BUFFER_SIZE: usize = 2;
 pub(crate) const DEFAULT_MAX_REDUCE_ARITY: usize = 4;
+pub(crate) const DEFAULT_NUMBER_OF_SEND_SPLICE_WORKERS_PER_SPLICE: usize = 2;
+pub(crate) const DEFAULT_SEND_SPLICE_INPUT_BUFFER_SIZE_PER_SPLICE: usize = 2;
 
 // Default values for the core prover config.
 pub(crate) const DEFAULT_NUM_TRACE_EXECUTOR_WORKERS: usize = 4;

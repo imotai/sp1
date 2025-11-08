@@ -1,22 +1,22 @@
 use std::sync::Arc;
 
-use futures::StreamExt;
+use futures::{stream::FuturesUnordered, StreamExt};
 use hashbrown::HashMap;
-use slop_futures::pipeline::{AsyncEngine, AsyncWorker};
+use slop_futures::pipeline::{AsyncEngine, AsyncWorker, Pipeline};
 use sp1_core_executor::{
     CompressedMemory, CycleResult, ExecutionError, Program, SP1CoreOpts, SplicedMinimalTrace,
     SplicingVM, SplitOpts,
 };
 use sp1_hypercube::air::{ShardBoundary, ShardRange};
 use sp1_jit::{MinimalTrace, TraceChunkRaw};
-use sp1_prover_types::{Artifact, ArtifactClient, TaskStatus, TaskType};
+use sp1_prover_types::{await_blocking, Artifact, ArtifactClient, TaskStatus};
 use tokio::{sync::mpsc, task::JoinSet};
 use tracing::Instrument;
 
 use crate::worker::{
-    DeferredEvents, DeferredMessage, FinalVmState, FinalVmStateLock, ProofData,
-    ProveShardTaskRequest, RawTaskRequest, SendSpliceTask, SpawnProveOutput, TaskContext, TaskId,
-    TouchedAddresses, TraceData, WorkerClient,
+    controller::create_core_proving_task, DeferredEvents, DeferredMessage, FinalVmState,
+    FinalVmStateLock, ProofData, SpawnProveOutput, TaskContext, TouchedAddresses, TraceData,
+    WorkerClient,
 };
 
 pub type SplicingEngine<A, W> =
@@ -40,6 +40,8 @@ pub struct SplicingTask {
 pub struct SplicingWorker<A, W> {
     artifact_client: A,
     worker_client: W,
+    number_of_send_splice_workers: usize,
+    send_splice_input_buffer_size: usize,
 }
 
 impl<A, W> SplicingWorker<A, W>
@@ -47,103 +49,41 @@ where
     A: ArtifactClient,
     W: WorkerClient,
 {
-    pub fn new(artifact_client: A, worker_client: W) -> Self {
-        Self { artifact_client, worker_client }
+    pub fn new(
+        artifact_client: A,
+        worker_client: W,
+        number_of_send_splice_workers: usize,
+        send_splice_input_buffer_size: usize,
+    ) -> Self {
+        Self {
+            artifact_client,
+            worker_client,
+            number_of_send_splice_workers,
+            send_splice_input_buffer_size,
+        }
     }
-}
 
-impl<A, W> SplicingWorker<A, W>
-where
-    A: ArtifactClient,
-    W: WorkerClient,
-{
-    async fn create_core_proving_task(
+    fn initialize_send_splice_engine(
         &self,
         elf_artifact: Artifact,
         common_input_artifact: Artifact,
         context: TaskContext,
-        range: ShardRange,
-        trace_data: TraceData,
-    ) -> Result<SpawnProveOutput, ExecutionError> {
-        let worker_client = self.worker_client.clone();
-        let artifact_client = self.artifact_client.clone();
-        let record_artifact =
-            artifact_client.create_artifact().map_err(|e| ExecutionError::Other(e.to_string()))?;
-
-        // Make a deferred marker task. This is used for the worker to send
-        // its deferred record back to the controller.
-        let deferred_marker_task = match &trace_data {
-            TraceData::Core(_) => worker_client
-                .submit_task(
-                    TaskType::MarkerDeferredRecord,
-                    RawTaskRequest {
-                        inputs: vec![],
-                        outputs: vec![],
-                        context: TaskContext {
-                            proof_id: context.proof_id.clone(),
-                            parent_id: None,
-                            parent_context: None,
-                            requester_id: context.requester_id.clone(),
-                        },
-                    },
-                )
-                .await
-                .map_err(|e| ExecutionError::Other(e.to_string()))?,
-            TraceData::Memory(_) => TaskId::new("memory dummy deferred marker task id"),
-            TraceData::Precompile(_, _) => TaskId::new("precompile dummy deferred marker task id"),
-        };
-
-        let deferred_output_artifact = match &trace_data {
-            TraceData::Core(_) => artifact_client
-                .create_artifact()
-                .map_err(|e| ExecutionError::Other(e.to_string()))?,
-            TraceData::Memory(_) => {
-                Artifact::from("dummy global memory deferred output artifact".to_string())
-            }
-            TraceData::Precompile(_, _) => {
-                Artifact::from("dummy precompile deferred output artifact".to_string())
-            }
-        };
-
-        let deferred_message = match trace_data {
-            TraceData::Core(_) => Some(DeferredMessage {
-                task_id: deferred_marker_task.clone(),
-                record: deferred_output_artifact.clone(),
-            }),
-            _ => None,
-        };
-
-        artifact_client
-            .upload(&record_artifact, trace_data)
-            .await
-            .map_err(|e| ExecutionError::Other(e.to_string()))?;
-
-        let deferred_marker_task = Artifact::from(deferred_marker_task.to_string());
-
-        // Allocate an artifact for the proof
-        let proof_artifact = artifact_client.create_artifact().map_err(|_| {
-            ExecutionError::Other("failed to create shard proof artifact".to_string())
-        })?;
-
-        let request = ProveShardTaskRequest {
-            elf: elf_artifact,
-            common_input: common_input_artifact,
-            record: record_artifact,
-            output: proof_artifact.clone(),
-            deferred_marker_task,
-            deferred_output: deferred_output_artifact,
-            context,
-        };
-
-        let task = request.into_raw().map_err(|e| ExecutionError::Other(e.to_string()))?;
-
-        // Send the task to the worker.
-        let task_id = worker_client
-            .submit_task(TaskType::ProveShard, task)
-            .await
-            .expect("failed to send task");
-        let proof_data = ProofData { task_id, range, proof: proof_artifact };
-        Ok(SpawnProveOutput { deferred_message, proof_data })
+        prove_shard_tx: mpsc::UnboundedSender<ProofData>,
+        deferred_marker_tx: mpsc::UnboundedSender<DeferredMessage>,
+    ) -> SendSpliceEngine<A, W> {
+        let workers = (0..self.number_of_send_splice_workers)
+            .map(|_| SendSpliceWorker {
+                artifact_client: self.artifact_client.clone(),
+                worker_client: self.worker_client.clone(),
+                elf_artifact: elf_artifact.clone(),
+                common_input_artifact: common_input_artifact.clone(),
+                context: context.clone(),
+                prove_shard_tx: prove_shard_tx.clone(),
+                deferred_marker_tx: deferred_marker_tx.clone(),
+            })
+            .collect();
+        let input_buffer_size = self.send_splice_input_buffer_size;
+        SendSpliceEngine::new(workers, input_buffer_size)
     }
 }
 
@@ -167,57 +107,61 @@ where
         } = input;
         let split_opts = SplitOpts::new(&opts, program.instructions.len(), false);
 
-        let (splicing_tx, mut splicing_rx) = mpsc::channel::<SendSpliceTask>(1);
+        let (splicing_tx, mut splicing_rx) = mpsc::channel::<SendSpliceTask>(2);
         let (deferred_marker_tx, mut deferred_marker_rx) =
             mpsc::unbounded_channel::<DeferredMessage>();
 
         let mut join_set = JoinSet::<Result<(), ExecutionError>>::new();
         // Spawn the task to spawn the prove shard tasks.
+        let (send_handle_tx, mut send_handle_rx) = mpsc::unbounded_channel();
         join_set.spawn(
             {
-                let self_clone = self.clone();
-                let elf_artifact = elf_artifact.clone();
-                let common_input_artifact = common_input_artifact.clone();
-                let prove_shard_tx = prove_shard_tx.clone();
-                let context = context.clone();
+                let send_splice_engine = self.initialize_send_splice_engine(
+                    elf_artifact.clone(),
+                    common_input_artifact.clone(),
+                    context.clone(),
+                    prove_shard_tx.clone(),
+                    deferred_marker_tx,
+                );
                 async move {
                     while let Some(task) = splicing_rx.recv().await {
-                        let SendSpliceTask { chunk, range } = task;
-                        let chunk_bytes = bincode::serialize(&chunk)
-                            .map_err(|e| ExecutionError::Other(e.to_string()))?;
-                        let data = TraceData::Core(chunk_bytes);
-
-                        let SpawnProveOutput { deferred_message, proof_data } = self_clone
-                            .create_core_proving_task(
-                                elf_artifact.clone(),
-                                common_input_artifact.clone(),
-                                context.clone(),
-                                range,
-                                data,
-                            )
+                        let handle = send_splice_engine
+                            .submit(task)
+                            .instrument(tracing::debug_span!("send splice"))
                             .await
-                            .map_err(|e| {
-                                ExecutionError::Other(format!(
-                                    "error in create_core_proving_task: {}",
-                                    e
-                                ))
+                            .map_err(|_| {
+                                ExecutionError::Other(
+                                    "failed to submit send splice task".to_string(),
+                                )
                             })?;
-
-                        prove_shard_tx.send(proof_data).map_err(|e| {
-                            ExecutionError::Other(format!("error in send proof data: {}", e))
+                        send_handle_tx.send(handle).map_err(|e| {
+                            ExecutionError::Other(format!("error sending to send handle tx: {}", e))
                         })?;
-                        // Send the deferred message to the deferred marker receiver.
-                        if let Some(deferred_message) = deferred_message {
-                            deferred_marker_tx.send(deferred_message).map_err(|e| {
-                                ExecutionError::Other(format!(
-                                    "error in send deferred message: {}",
-                                    e
-                                ))
-                            })?;
+                    }
+                    Ok(())
+                }
+            }
+            .instrument(tracing::info_span!("get splices to serialize")),
+        );
+
+        join_set.spawn(
+            {
+                async move {
+                    let mut handles = FuturesUnordered::new();
+                    loop {
+                        tokio::select! {
+                            Some(handle) = send_handle_rx.recv() => {
+                                handles.push(handle);
+                            }
+                            Some(result) = handles.next() => {
+                                result.map_err(|e| ExecutionError::Other(format!("failed to join send splice task: {}", e)))??;
+                            }
+                            else => {
+                                break;
+                            }
                         }
                     }
-
-                    Ok(())
+                    Ok::<_, ExecutionError>(())
                 }
             }
             .instrument(tracing::info_span!("spawn prove shard tasks")),
@@ -225,7 +169,8 @@ where
 
         // Spawn the task that splices the trace.
         let span = tracing::info_span!("splicing trace chunk");
-        join_set.spawn_blocking(move || {
+        join_set.spawn_blocking(
+            move || {
             let _guard = span.enter();
             let mut touched_addresses = CompressedMemory::new();
             let mut vm = SplicingVM::new(&chunk, program.clone(), &mut touched_addresses, opts);
@@ -386,6 +331,8 @@ where
 
                 join_set.spawn(
                     {
+                        let worker_client = worker_client.clone();
+                        let artifact_client = artifact_client.clone();
                         async move {
                             let mut deferred_accumulator = DeferredEvents::empty();
                             while let Some((task_id, status)) = event_stream.next().await {
@@ -403,10 +350,19 @@ where
                                 let deferred_events_artifact =
                                     task_data_map.lock().await.remove(&task_id);
                                 if let Some(deferred_events_artifact) = deferred_events_artifact {
-                                    let deferred_events: DeferredEvents = artifact_client
-                                        .download(&deferred_events_artifact)
-                                        .await
-                                        .map_err(|e| ExecutionError::Other(e.to_string()))?;
+                                    let deferred_events = artifact_client
+                                        .download::<DeferredEvents>(&deferred_events_artifact)
+                                        .await;
+                                    if deferred_events.is_err() {
+                                        tracing::error!(
+                                            "failed to download deferred events artifact: {:?}",
+                                            deferred_events_artifact
+                                        );
+                                    }
+                                    // TODO: figure out how to return this as an error while still
+                                    // being able to run pure execution without proving.
+                                    let deferred_events =
+                                        deferred_events.unwrap_or_else(|_| DeferredEvents::empty());
 
                                     deferred_accumulator
                                         .append(deferred_events, &artifact_client)
@@ -417,18 +373,17 @@ where
 
                                     for shard in new_shards {
                                         let SpawnProveOutput { deferred_message, proof_data } =
-                                            self_clone
-                                                .create_core_proving_task(
-                                                    elf_artifact_clone.clone(),
-                                                    common_input_artifact_clone.clone(),
-                                                    context.clone(),
-                                                    ShardRange::deferred(),
-                                                    shard,
-                                                )
-                                                .await
-                                                .map_err(|e| {
-                                                    ExecutionError::Other(e.to_string())
-                                                })?;
+                                            create_core_proving_task(
+                                                elf_artifact_clone.clone(),
+                                                common_input_artifact_clone.clone(),
+                                                context.clone(),
+                                                ShardRange::deferred(),
+                                                shard,
+                                                worker_client.clone(),
+                                                artifact_client.clone(),
+                                            )
+                                            .await
+                                            .map_err(|e| ExecutionError::Other(e.to_string()))?;
 
                                         if deferred_message.is_some() {
                                             return Err(ExecutionError::Other(
@@ -454,13 +409,15 @@ where
                                 .instrument(tracing::debug_span!("split last"))
                                 .await;
                             for shard in final_shards {
-                                let SpawnProveOutput { deferred_message, proof_data } = self_clone
-                                    .create_core_proving_task(
+                                let SpawnProveOutput { deferred_message, proof_data } =
+                                    create_core_proving_task(
                                         elf_artifact_clone.clone(),
                                         common_input_artifact_clone.clone(),
                                         context.clone(),
                                         ShardRange::deferred(),
                                         shard,
+                                        worker_client.clone(),
+                                        artifact_client.clone(),
                                     )
                                     .await
                                     .map_err(|e| ExecutionError::Other(e.to_string()))?;
@@ -498,3 +455,59 @@ where
         Ok(())
     }
 }
+
+pub struct SendSpliceTask {
+    pub chunk: SplicedMinimalTrace<TraceChunkRaw>,
+    pub range: ShardRange,
+}
+
+struct SendSpliceWorker<A, W> {
+    artifact_client: A,
+    worker_client: W,
+    context: TaskContext,
+    elf_artifact: Artifact,
+    common_input_artifact: Artifact,
+    prove_shard_tx: mpsc::UnboundedSender<ProofData>,
+    deferred_marker_tx: mpsc::UnboundedSender<DeferredMessage>,
+}
+
+impl<A, W> AsyncWorker<SendSpliceTask, Result<(), ExecutionError>> for SendSpliceWorker<A, W>
+where
+    A: ArtifactClient,
+    W: WorkerClient,
+{
+    async fn call(&self, input: SendSpliceTask) -> Result<(), ExecutionError> {
+        let SendSpliceTask { chunk, range } = input;
+        let chunk_bytes = await_blocking(|| bincode::serialize(&chunk))
+            .await
+            .map_err(|_| ExecutionError::Other("chunk serialization failed".to_string()))?
+            .map_err(|e| ExecutionError::Other(e.to_string()))?;
+        let data = TraceData::Core(chunk_bytes);
+
+        let SpawnProveOutput { deferred_message, proof_data } = create_core_proving_task(
+            self.elf_artifact.clone(),
+            self.common_input_artifact.clone(),
+            self.context.clone(),
+            range,
+            data,
+            self.worker_client.clone(),
+            self.artifact_client.clone(),
+        )
+        .await
+        .map_err(|e| ExecutionError::Other(format!("error in create_core_proving_task: {}", e)))?;
+
+        self.prove_shard_tx
+            .send(proof_data)
+            .map_err(|e| ExecutionError::Other(format!("error in send proof data: {}", e)))?;
+        // Send the deferred message to the deferred marker receiver.
+        if let Some(deferred_message) = deferred_message {
+            self.deferred_marker_tx.send(deferred_message).map_err(|e| {
+                ExecutionError::Other(format!("error in send deferred message: {}", e))
+            })?;
+        }
+        Ok(())
+    }
+}
+
+type SendSpliceEngine<A, W> =
+    AsyncEngine<SendSpliceTask, Result<(), ExecutionError>, SendSpliceWorker<A, W>>;

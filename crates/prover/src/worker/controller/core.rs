@@ -9,8 +9,7 @@ use sp1_core_executor::{
     chunked_memory_init_events,
     events::{MemoryInitializeFinalizeEvent, MemoryRecord},
     syscalls::SyscallCode,
-    CoreVM, ExecutionError, ExecutionRecord, MinimalExecutor, Program, SP1CoreOpts,
-    SplicedMinimalTrace, SplitOpts, TraceChunkRaw,
+    CoreVM, ExecutionError, ExecutionRecord, MinimalExecutor, Program, SP1CoreOpts, SplitOpts,
 };
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
 use sp1_hypercube::air::{ShardRange, PROOF_NONCE_NUM_WORDS, PV_DIGEST_NUM_WORDS};
@@ -24,8 +23,8 @@ use tracing::Instrument;
 
 use crate::{
     worker::{
-        ProveShardTaskRequest, SplicingEngine, SplicingTask, TaskContext, TaskError, TaskId,
-        WorkerClient,
+        ProveShardTaskRequest, RawTaskRequest, SplicingEngine, SplicingTask, TaskContext,
+        TaskError, TaskId, WorkerClient,
     },
     SP1VerifyingKey,
 };
@@ -39,11 +38,6 @@ pub struct ProofData {
     pub task_id: TaskId,
     pub range: ShardRange,
     pub proof: Artifact,
-}
-
-pub struct SendSpliceTask {
-    pub chunk: SplicedMinimalTrace<TraceChunkRaw>,
-    pub range: ShardRange,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -430,43 +424,17 @@ where
 
                     let data = TraceData::Memory(Box::new(mem_global_shard));
 
-                    // Upload the data
-                    let data_artifact = artifact_client
-                        .create_artifact()?;
-                    artifact_client
-                        .upload(&data_artifact, data)
-                        .await?;
-
-                    let deferred_marker_artifact =
-                        Artifact::from("global memory dummy artifact".to_string());
-
-                    // Allocate an artifact for the proof
-                    let proof_artifact =
-                        artifact_client.create_artifact().map_err(|e| anyhow::anyhow!("failed to create proof artifact: {}", e))?;
-
-                    let dummy_output_artifact =
-                        Artifact::from("dummy global memory deferred output artifact".to_string());
-
-                    let request = ProveShardTaskRequest {
-                        elf: elf_artifact.clone(),
-                        common_input: common_input_artifact.clone(),
-                        record: data_artifact,
-                        output: proof_artifact.clone(),
-                        deferred_marker_task: deferred_marker_artifact,
-                        deferred_output: dummy_output_artifact,
-                        context: context.clone(),
-                    };
-                    let task = request.into_raw().map_err(|e| anyhow::anyhow!("failed to convert to raw task request: {}", e))?;
-
-                    // Send the task to the worker.
-                    tracing::debug!("Submitting prove shard task");
-                    let task_id = worker_client
-                        .submit_task(TaskType::ProveShard, task)
-                        .await
-                        .map_err(|e| anyhow::anyhow!("failed to send task: {}", e))?;
+                    let SpawnProveOutput { proof_data, ..} = create_core_proving_task(
+                        elf_artifact.clone(),
+                        common_input_artifact.clone(),
+                        context.clone(),
+                        range,
+                        data,
+                        worker_client.clone(),
+                        artifact_client.clone(),
+                    ).await?;
 
                     // Send the task data
-                    let proof_data = ProofData { task_id, range, proof: proof_artifact };
                     prove_shard_tx.send(proof_data).map_err(|e| anyhow::anyhow!("failed to send task id: {}", e))?;
                     tracing::debug!("Submitted memory global shard {counter}");
                     counter += 1;
@@ -775,4 +743,81 @@ pub struct DeferredMessage {
 pub struct SpawnProveOutput {
     pub deferred_message: Option<DeferredMessage>,
     pub proof_data: ProofData,
+}
+
+pub(super) async fn create_core_proving_task<A: ArtifactClient, W: WorkerClient>(
+    elf_artifact: Artifact,
+    common_input_artifact: Artifact,
+    context: TaskContext,
+    range: ShardRange,
+    trace_data: TraceData,
+    worker_client: W,
+    artifact_client: A,
+) -> Result<SpawnProveOutput, ExecutionError> {
+    let record_artifact =
+        artifact_client.create_artifact().map_err(|e| ExecutionError::Other(e.to_string()))?;
+
+    // Make a deferred marker task. This is used for the worker to send
+    // its deferred record back to the controller.
+    let deferred_message = match &trace_data {
+        TraceData::Core(_) => {
+            let marker_task_id = worker_client
+                .submit_task(
+                    TaskType::MarkerDeferredRecord,
+                    RawTaskRequest {
+                        inputs: vec![],
+                        outputs: vec![],
+                        context: TaskContext {
+                            proof_id: context.proof_id.clone(),
+                            parent_id: None,
+                            parent_context: None,
+                            requester_id: context.requester_id.clone(),
+                        },
+                    },
+                )
+                .await
+                .map_err(|e| ExecutionError::Other(e.to_string()))?;
+            let deferred_output_artifact = artifact_client
+                .create_artifact()
+                .map_err(|e| ExecutionError::Other(e.to_string()))?;
+            Some(DeferredMessage { task_id: marker_task_id, record: deferred_output_artifact })
+        }
+        TraceData::Memory(_) | TraceData::Precompile(_, _) => None,
+    };
+
+    artifact_client
+        .upload(&record_artifact, trace_data)
+        .await
+        .map_err(|e| ExecutionError::Other(e.to_string()))?;
+
+    // Allocate an artifact for the proof
+    let proof_artifact = artifact_client
+        .create_artifact()
+        .map_err(|_| ExecutionError::Other("failed to create shard proof artifact".to_string()))?;
+
+    let request = ProveShardTaskRequest {
+        elf: elf_artifact,
+        common_input: common_input_artifact,
+        record: record_artifact,
+        output: proof_artifact.clone(),
+        deferred_marker_task: deferred_message
+            .as_ref()
+            .map(|m| Artifact::from(m.task_id.to_string()))
+            .unwrap_or(Artifact::from("dummy marker task".to_string())),
+        deferred_output: deferred_message
+            .as_ref()
+            .map(|m| m.record.clone())
+            .unwrap_or(Artifact::from("dummy output artifact".to_string())),
+        context,
+    };
+
+    let task = request.into_raw().map_err(|e| ExecutionError::Other(e.to_string()))?;
+
+    // Send the task to the worker.
+    let task_id = worker_client
+        .submit_task(TaskType::ProveShard, task)
+        .await
+        .map_err(|e| ExecutionError::Other(e.to_string()))?;
+    let proof_data = ProofData { task_id, range, proof: proof_artifact };
+    Ok(SpawnProveOutput { deferred_message, proof_data })
 }

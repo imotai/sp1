@@ -344,7 +344,8 @@ impl TrivialWorkerClient {
                             .await
                             .unwrap();
                     }
-                    _ => unimplemented!(),
+                    TaskType::MarkerDeferredRecord => {}
+                    _ => unimplemented!("task type not supported"),
                 }
             }
         });
