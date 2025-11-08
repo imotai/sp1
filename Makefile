@@ -71,8 +71,8 @@ else
                       -gencode=arch=compute_89,code=sm_89 \
                       -gencode=arch=compute_90,code=sm_90 \
                       -gencode=arch=compute_100,code=sm_100 \
-                      -gencode=arch=compute_130,code=sm_130 \
-                      -gencode=arch=compute_130,code=compute_130
+                      -gencode=arch=compute_120,code=sm_120 \
+                      -gencode=arch=compute_120,code=compute_120
     else
         ARCH_FLAGS := -gencode=arch=compute_80,code=sm_80 \
                       -gencode=arch=compute_86,code=sm_86 \
