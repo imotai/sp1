@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use clap::Parser;
 use csl_perf::{get_program_and_input, telemetry};
+use csl_prover::local_gpu_opts;
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
-use sp1_core_executor::SP1CoreOpts;
 use sp1_prover::worker::{
     ProofId, RequesterId, SP1CoreExecutor, SplicingEngine, SplicingWorker, TaskContext,
     TrivialWorkerClient,
@@ -17,12 +17,18 @@ use tokio::sync::mpsc;
 struct Args {
     #[arg(long, default_value = "local-fibonacci")]
     pub program: String,
-    #[arg(long, default_value = "1000")]
+    #[arg(long, default_value = "")]
     pub param: String,
-    #[arg(long, default_value = "5")]
+    #[arg(long, default_value = "10")]
     pub splice_workers: usize,
     #[arg(long, default_value = "10")]
     pub splice_buffer: usize,
+    #[arg(long, default_value = "2")]
+    pub send_workers: usize,
+    #[arg(long, default_value = "2")]
+    pub send_buffer_size: usize,
+    #[arg(long, default_value = None)]
+    pub chunk_size: Option<u64>,
     #[arg(long, default_value = "10")]
     pub task_capacity: usize,
     #[arg(long, default_value = "false")]
@@ -30,12 +36,13 @@ struct Args {
 }
 
 #[tokio::main]
+#[allow(clippy::field_reassign_with_default)]
 async fn main() {
     let args = Args::parse();
 
     // Initialize the tracer.
     if args.telemetry {
-        let resource = Resource::new(vec![KeyValue::new("service.name", "csl-perf")]);
+        let resource = Resource::new(vec![KeyValue::new("service.name", "csl-execute")]);
         telemetry::init(resource);
     } else {
         csl_tracing::init_tracer();
@@ -49,12 +56,18 @@ async fn main() {
     let worker_client = TrivialWorkerClient::new(args.task_capacity, artifact_client.clone());
 
     let splicing_workers = (0..args.splice_workers)
-        .map(|_| SplicingWorker::new(artifact_client.clone(), worker_client.clone()))
+        .map(|_| {
+            SplicingWorker::new(
+                artifact_client.clone(),
+                worker_client.clone(),
+                args.send_workers,
+                args.send_buffer_size,
+            )
+        })
         .collect::<Vec<_>>();
 
     let splicing_engine = Arc::new(SplicingEngine::new(splicing_workers, args.splice_buffer));
 
-    let opts = SP1CoreOpts::default();
     let proof_id = ProofId::new("bench_pure_execution");
     let parent_id = None;
     let parent_context = None;
@@ -69,10 +82,10 @@ async fn main() {
 
     let stdin = Arc::new(stdin);
 
-    let mode_artifact = artifact_client.create_artifact().expect("failed to create artifact");
-    artifact_client.upload(&mode_artifact, opts).await.expect("failed to upload opts");
-
-    let opts = SP1CoreOpts::default();
+    let mut opts = local_gpu_opts().core_opts;
+    if let Some(chunk_size) = args.chunk_size {
+        opts.minimal_trace_chunk_threshold = chunk_size;
+    }
     let task_context = TaskContext { proof_id, parent_id, parent_context, requester_id };
     let executor = SP1CoreExecutor::new(
         splicing_engine,

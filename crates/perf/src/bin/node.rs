@@ -46,7 +46,7 @@ async fn main() {
 
     // Initialize the tracer.
     if args.telemetry {
-        let resource = Resource::new(vec![KeyValue::new("service.name", "csl-perf")]);
+        let resource = Resource::new(vec![KeyValue::new("service.name", "csl-node")]);
         telemetry::init(resource);
     } else {
         csl_tracing::init_tracer();

@@ -39,7 +39,7 @@ async fn main() {
     match args.trace {
         Trace::Nvtx => init_tracer(),
         Trace::Telemetry => {
-            let resource = Resource::new(vec![KeyValue::new("service.name", "csl-perf")]);
+            let resource = Resource::new(vec![KeyValue::new("service.name", "csl-e2e")]);
             telemetry::init(resource);
         }
     }
