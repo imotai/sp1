@@ -23,7 +23,7 @@ use thiserror::Error;
 use crate::{
     air::MachineAir, prover::CoreProofShape, Chip, ChipOpenedValues, LogUpEvaluations,
     LogUpGkrVerifier, LogupGkrVerificationError, Machine, VerifierConstraintFolder,
-    VerifierPublicValuesConstraintFolder, PROOF_MAX_NUM_PVS,
+    VerifierPublicValuesConstraintFolder, MAX_CONSTRAINT_DEGREE, PROOF_MAX_NUM_PVS,
 };
 
 use super::{MachineConfig, MachineVerifyingKey, ShardOpenedValues, ShardProof};
@@ -382,8 +382,13 @@ where
         }
 
         // Verify the zerocheck proof.
-        partially_verify_sumcheck_proof(&proof.zerocheck_proof, challenger, max_log_row_count, 4)
-            .map_err(|e| {
+        partially_verify_sumcheck_proof(
+            &proof.zerocheck_proof,
+            challenger,
+            max_log_row_count,
+            MAX_CONSTRAINT_DEGREE + 1,
+        )
+        .map_err(|e| {
             ShardVerifierError::<
                 _,
                 <C::PcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,

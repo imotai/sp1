@@ -8,7 +8,6 @@ use slop_uni_stark::{get_max_constraint_degree, get_symbolic_constraints, Symbol
 
 use crate::{
     air::{MachineAir, SP1AirBuilder},
-    log2_ceil_usize,
     lookup::{Interaction, InteractionBuilder, InteractionKind},
 };
 
@@ -25,8 +24,6 @@ pub struct Chip<F: Field, A> {
     pub sends: Arc<Vec<Interaction<F>>>,
     /// The interactions that the chip receives.
     pub receives: Arc<Vec<Interaction<F>>>,
-    /// The relative log degree of the quotient polynomial, i.e. `log2(max_constraint_degree - 1)`.
-    pub log_quotient_degree: usize,
     /// The total number of constraints in the chip.
     pub num_constraints: usize,
 }
@@ -37,7 +34,6 @@ impl<F: Field, A: MachineAir<F>> std::fmt::Debug for Chip<F, A> {
             .field("air", &self.air.name())
             .field("sends", &self.sends.len())
             .field("receives", &self.receives.len())
-            .field("log_quotient_degree", &self.log_quotient_degree)
             .field("num_constraints", &self.num_constraints)
             .finish()
     }
@@ -49,7 +45,6 @@ impl<F: Field, A> Clone for Chip<F, A> {
             air: self.air.clone(),
             sends: self.sends.clone(),
             receives: self.receives.clone(),
-            log_quotient_degree: self.log_quotient_degree,
             num_constraints: self.num_constraints,
         }
     }
@@ -66,12 +61,6 @@ impl<F: Field, A> Chip<F, A> {
     #[must_use]
     pub fn receives(&self) -> &[Interaction<F>] {
         &self.receives
-    }
-
-    /// The relative log degree of the quotient polynomial, i.e. `log2(max_constraint_degree - 1)`.
-    #[must_use]
-    pub const fn log_quotient_degree(&self) -> usize {
-        self.log_quotient_degree
     }
 
     /// Consumes the chip and returns the underlying air.
@@ -117,9 +106,8 @@ where
             max_constraint_degree = std::cmp::max(max_constraint_degree, MAX_CONSTRAINT_DEGREE);
         }
         assert!(max_constraint_degree > 0);
-        let max_constraint_degree = 3;
-        let log_quotient_degree = log2_ceil_usize(max_constraint_degree - 1);
 
+        assert!(max_constraint_degree <= MAX_CONSTRAINT_DEGREE);
         // Count the number of constraints.
         // TODO: unify this with the constraint degree calculation.
         let num_constraints =
@@ -129,7 +117,7 @@ where
         let receives = Arc::new(receives);
 
         let air = Arc::new(air);
-        Self { air, sends, receives, log_quotient_degree, num_constraints }
+        Self { air, sends, receives, num_constraints }
     }
 
     /// Returns the number of interactions in the chip.
@@ -170,20 +158,6 @@ where
         let preprocessed_cols = self.preprocessed_width();
         let main_cols = self.width();
         (preprocessed_cols + main_cols) as u64
-    }
-
-    /// Returns the width of the quotient polynomial.
-    #[inline]
-    #[must_use]
-    pub const fn quotient_width(&self) -> usize {
-        1 << self.log_quotient_degree
-    }
-
-    /// Returns the log2 of the batch size.
-    #[inline]
-    #[must_use]
-    pub const fn logup_batch_size(&self) -> usize {
-        1 << self.log_quotient_degree
     }
 }
 
