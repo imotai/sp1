@@ -40,6 +40,7 @@ sp1-core-executor = { workspace = true }
 tracing = { workspace = true }
 sysinfo = "0.31.2"
 serde = { workspace = true }
+clap = { version = "4.5.7", features = ["derive"] }
 
 [dev-dependencies]
 slop-algebra = { workspace = true }

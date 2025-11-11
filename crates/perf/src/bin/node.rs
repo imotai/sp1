@@ -1,10 +1,8 @@
 use std::time::Duration;
 
 use clap::Parser;
-use csl_perf::ProverBackend;
 use csl_perf::{get_program_and_input, telemetry, Measurement, Stage};
-use csl_prover::cuda_worker_builder;
-use csl_prover::prover_clean_worker_builder;
+use csl_prover::{cuda_worker_builder, prover_clean_worker_builder, ProverBackend};
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
 use sp1_core_executor::SP1Context;

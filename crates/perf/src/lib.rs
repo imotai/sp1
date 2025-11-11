@@ -14,14 +14,6 @@ pub use report::{write_measurements_to_csv, Measurement};
 mod report;
 pub mod telemetry;
 
-#[derive(ValueEnum, Debug, Clone, Copy)]
-pub enum ProverBackend {
-    /// Use the old prover implementation
-    Old,
-    /// Use the new prover-clean implementation
-    ProverClean,
-}
-
 pub const FIBONACCI_ELF: &[u8] =
     include_bytes!("../../prover/programs/fibonacci/riscv64im-succinct-zkvm-elf");
 pub const KECCAK_ELF: &[u8] =

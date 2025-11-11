@@ -50,7 +50,7 @@ impl Server {
         let listener = UnixListener::bind(&socket_path).expect("Failed to bind to socket addr");
 
         let prover = SP1CudaProverBuilder::new(task_scope).without_vk_verification().build().await;
-        let prover = LocalProver::new(prover, local_gpu_opts());
+        let prover = LocalProver::new(prover, local_gpu_opts(csl_prover::ProverBackend::Old));
         let prover = Arc::new(prover);
 
         tracing::info!("Server listening @ {}", socket_path.display());

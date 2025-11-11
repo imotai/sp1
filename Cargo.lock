@@ -1074,6 +1074,7 @@ dependencies = [
 name = "csl-prover"
 version = "1.2.0"
 dependencies = [
+ "clap",
  "csl-air",
  "csl-cuda",
  "csl-jagged",

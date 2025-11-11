@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use clap::{arg, Parser, ValueEnum};
-use csl_perf::{get_program_and_input, make_measurement, telemetry, ProverBackend, Stage};
-use csl_prover::{local_gpu_opts, SP1CudaProverBuilder, SP1ProverCleanBuilder};
+use csl_perf::{get_program_and_input, make_measurement, telemetry, Stage};
+use csl_prover::{local_gpu_opts, ProverBackend, SP1CudaProverBuilder, SP1ProverCleanBuilder};
 use csl_tracing::init_tracer;
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
@@ -50,7 +50,7 @@ async fn main() {
 
     let measurement = csl_cuda::spawn(move |t| async move {
         let recursion_cache_size = 5;
-        let opts = local_gpu_opts();
+        let opts = local_gpu_opts(args.backend);
 
         match args.backend {
             ProverBackend::Old => {

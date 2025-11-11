@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use clap::Parser;
 use csl_perf::{get_program_and_input, telemetry};
-use csl_prover::local_gpu_opts;
+use csl_prover::{local_gpu_opts, ProverBackend};
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
 use sp1_prover::worker::{
@@ -33,6 +33,8 @@ struct Args {
     pub task_capacity: usize,
     #[arg(long, default_value = "false")]
     pub telemetry: bool,
+    #[arg(long, default_value = "old")]
+    pub backend: ProverBackend,
 }
 
 #[tokio::main]
@@ -82,7 +84,7 @@ async fn main() {
 
     let stdin = Arc::new(stdin);
 
-    let mut opts = local_gpu_opts().core_opts;
+    let mut opts = local_gpu_opts(args.backend).core_opts;
     if let Some(chunk_size) = args.chunk_size {
         opts.minimal_trace_chunk_threshold = chunk_size;
     }

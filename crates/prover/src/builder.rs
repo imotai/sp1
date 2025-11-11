@@ -3,6 +3,7 @@ use std::{
     sync::Arc,
 };
 
+use clap::ValueEnum;
 use csl_cuda::{cuda_memory_info, TaskScope};
 
 use sp1_core_executor::ELEMENT_THRESHOLD;
@@ -11,6 +12,14 @@ use sp1_prover::{
     components::SP1ProverComponents, core::CORE_LOG_STACKING_HEIGHT, local::LocalProverOpts,
     worker::SP1WorkerBuilder, SP1ProverBuilder,
 };
+
+#[derive(ValueEnum, Debug, Clone, Copy)]
+pub enum ProverBackend {
+    /// Use the old prover implementation
+    Old,
+    /// Use the new prover-clean implementation
+    ProverClean,
+}
 
 pub const RECURSION_TRACE_ALLOCATION: usize = 1 << 27;
 pub const SHRINK_TRACE_ALLOCATION: usize = 1 << 25;
@@ -118,7 +127,7 @@ impl DerefMut for SP1CudaProverBuilder {
     }
 }
 
-pub fn local_gpu_opts() -> LocalProverOpts {
+pub fn local_gpu_opts(backend: ProverBackend) -> LocalProverOpts {
     let mut opts = LocalProverOpts::default();
 
     let log2_shard_size = 24;
@@ -134,8 +143,16 @@ pub fn local_gpu_opts() -> LocalProverOpts {
         panic!("Unsupported GPU memory: {gpu_memory_gb}, must be at least 24GB");
     }
 
-    let shard_threshold =
-        if gpu_memory_gb <= 30 { ELEMENT_THRESHOLD - (1 << 27) } else { ELEMENT_THRESHOLD };
+    let shard_threshold = match backend {
+        ProverBackend::Old => ELEMENT_THRESHOLD - (1 << 26),
+        ProverBackend::ProverClean => {
+            if gpu_memory_gb <= 30 {
+                ELEMENT_THRESHOLD - (1 << 27)
+            } else {
+                ELEMENT_THRESHOLD
+            }
+        }
+    };
 
     println!("Shard threshold: {shard_threshold}");
     opts.core_opts.sharding_threshold.element_threshold = shard_threshold;
@@ -282,7 +299,7 @@ pub fn cuda_worker_builder(scope: TaskScope) -> SP1WorkerBuilder<CudaSP1ProverCo
     let prover_permits = ProverSemaphore::new(1);
 
     // Get the core options.
-    let opts = local_gpu_opts().core_opts;
+    let opts = local_gpu_opts(ProverBackend::Old).core_opts;
 
     let core_verifier = CudaSP1ProverComponents::core_verifier();
     let core_air_prover = Arc::new(new_cuda_prover_sumcheck_eval(
@@ -318,7 +335,7 @@ pub async fn prover_clean_worker_builder(
     let prover_permits = ProverSemaphore::new(1);
 
     // Get the core options.
-    let opts = local_gpu_opts().core_opts;
+    let opts = local_gpu_opts(ProverBackend::ProverClean).core_opts;
 
     let num_elts = SP1ProverCleanBuilder::num_elts() + (1 << CORE_LOG_STACKING_HEIGHT);
 
