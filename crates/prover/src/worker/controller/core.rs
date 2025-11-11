@@ -1,15 +1,14 @@
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 
 use futures::{prelude::*, stream::FuturesUnordered};
-use hashbrown::{HashMap, HashSet};
-use itertools::Itertools;
+use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use slop_futures::pipeline::Pipeline;
 use sp1_core_executor::{
-    chunked_memory_init_events,
     events::{MemoryInitializeFinalizeEvent, MemoryRecord},
     syscalls::SyscallCode,
     CoreVM, ExecutionError, ExecutionRecord, MinimalExecutor, Program, SP1CoreOpts, SplitOpts,
+    UnsafeMemory,
 };
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
 use sp1_hypercube::air::{ShardRange, PROOF_NONCE_NUM_WORDS, PV_DIGEST_NUM_WORDS};
@@ -18,13 +17,16 @@ use sp1_prover_types::{
     await_scoped_vec, network_base_types::ProofMode, Artifact, ArtifactClient, ArtifactType,
     TaskType,
 };
-use tokio::{sync::mpsc, task::JoinSet};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task::JoinSet,
+};
 use tracing::Instrument;
 
 use crate::{
     worker::{
-        ProveShardTaskRequest, RawTaskRequest, SplicingEngine, SplicingTask, TaskContext,
-        TaskError, TaskId, WorkerClient,
+        global_memory, ProveShardTaskRequest, RawTaskRequest, SplicingEngine, SplicingTask,
+        TaskContext, TaskError, TaskId, WorkerClient,
     },
     SP1VerifyingKey,
 };
@@ -140,23 +142,28 @@ where
         })?);
 
         // Initialize the touched addresses map.
-        let all_touched_addresses = TouchedAddresses::new();
+        let (all_touched_addresses, global_memory_handler) = global_memory();
         // Initialize the final vm state.
         let final_vm_state = FinalVmStateLock::new();
+        let (final_state_tx, final_state_rx) = oneshot::channel::<FinalVmState>();
+
+        // Create a join set in order to be able to cancel all tasks
+        let mut join_set = JoinSet::<Result<(), TaskError>>::new();
 
         // Create the channel to send the splicing tasks to the splicing pipeline spawner task.
         // This is a bounded channel in order to create a backpressure mechanism for the minimal
         // executor chunk producer.
         let (splicing_task_tx, mut splicing_task_rx) = mpsc::channel(2);
         // Start the minimal executor.
+        let (memory_tx, memory_rx) = oneshot::channel::<UnsafeMemory>();
+        let (minimal_executor_tx, minimal_executor_rx) = oneshot::channel::<MinimalExecutor>();
+        let (output_tx, output_rx) = oneshot::channel::<ExecutionOutput>();
         let span = tracing::info_span!("minimal executor");
-        // TODO: think about cancellation handling
-        let minimal_executor_handle = tokio::task::spawn_blocking({
+        join_set.spawn_blocking({
             let program = program.clone();
             let elf = self.elf.clone();
             let common_input_artifact = self.common_input.clone();
             let context = self.context.clone();
-            let all_touched_addresses = all_touched_addresses.clone();
             let sender = self.sender.clone();
             let final_vm_state = final_vm_state.clone();
             let opts = opts.clone();
@@ -169,6 +176,12 @@ where
                 for buf in stdin.buffer.iter() {
                     minimal_executor.with_input(buf);
                 }
+                // Get the unsafe memory view of the minimal executor.
+                let unsafe_memory = minimal_executor.unsafe_memory();
+                // Send the unsafe memory view to the parent task.
+                memory_tx
+                    .send(unsafe_memory)
+                    .map_err(|_| anyhow::anyhow!("failed to send unsafe memory"))?;
                 tracing::info!("Starting minimal executor");
                 let now = std::time::Instant::now();
                 let mut chunk_count = 0;
@@ -206,12 +219,25 @@ where
                     elapsed,
                     minimal_executor.global_clk() as f64 / (elapsed * 1e6)
                 );
-                Ok::<_, TaskError>(minimal_executor)
+                // Get the output and send it to the output channel.
+                let cycles = minimal_executor.global_clk();
+                let public_value_stream = minimal_executor.public_values_stream().clone();
+
+                let output = ExecutionOutput { cycles, public_value_stream };
+                output_tx.send(output).map_err(|_| anyhow::anyhow!("failed to send output"))?;
+                // Send the hints to the global memory handler.
+                minimal_executor_tx
+                    .send(minimal_executor)
+                    .map_err(|_| anyhow::anyhow!("failed to send minimal executor"))?;
+                Ok::<_, TaskError>(())
             }
         });
 
+        let memory =
+            memory_rx.await.map_err(|_| anyhow::anyhow!("failed to receive unsafe memory"))?;
+
         let (splicing_submit_tx, mut splicing_submit_rx) = mpsc::unbounded_channel();
-        let submit_splicers_handle = tokio::task::spawn({
+        join_set.spawn({
             let splicing_engine = self.splicing_engine.clone();
             async move {
                 while let Some((chunk_count, task)) = splicing_task_rx.recv().await {
@@ -237,7 +263,7 @@ where
             }
             .instrument(tracing::debug_span!("submit splicers"))
         });
-        let wait_for_splicers_handle = tokio::task::spawn({
+        join_set.spawn({
             async move {
                 let mut splicing_handles = FuturesUnordered::new();
                 loop {
@@ -257,288 +283,54 @@ where
                         }
                     }
                 }
+                // Now that all the splicing tasks are finished, send the final vm state to the global memory handler.
+                let final_state = *final_vm_state.get().ok_or(TaskError::Fatal(anyhow::anyhow!("final vm state not set")))?;
+                final_state_tx.send(final_state).map_err(|_| anyhow::anyhow!("failed to send final vm state"))?;
                 Ok::<_, TaskError>(())
             }
             .instrument(tracing::debug_span!("wait for splicers"))
         });
-        // Wait for the minimal executor to finish
-        let minimal_executor = minimal_executor_handle
-            .await
-            .map_err(|e| anyhow::anyhow!("minimal executor failed: {}", e))??;
-        // Wait for the splicer tasks to be submitted to the pipeline
-        submit_splicers_handle
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to submit splicers: {}", e))??;
-        // Wait for the splicers to finish
-        wait_for_splicers_handle
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to wait for splicer tasks: {}", e))??;
 
-        let touched_addresses = all_touched_addresses.take();
-        let final_state = *final_vm_state
-            .get()
-            .ok_or(TaskError::Fatal(anyhow::anyhow!("final vm state not set")))?;
-
-        let cycles = minimal_executor.global_clk();
-        let public_value_stream = minimal_executor.public_values_stream().clone();
-
-        let output = ExecutionOutput { cycles, public_value_stream };
-
-        self.emit_global_memory_shards(
-            minimal_executor,
-            program,
-            final_state,
-            touched_addresses,
-            opts,
-        )
-        .instrument(tracing::debug_span!("emit global memory shards"))
-        .await?;
-
-        Ok(output)
-    }
-
-    async fn emit_global_memory_shards(
-        &self,
-        minimal_executor: MinimalExecutor,
-        program: Arc<Program>,
-        final_state: FinalVmState,
-        touched_addresses: HashSet<u64>,
-        opts: SP1CoreOpts,
-    ) -> anyhow::Result<()> {
-        // Get the split opts
-        let split_opts = SplitOpts::new(&opts, program.instructions.len(), false);
-
-        let (shard_data_tx, mut shard_data_rx) = mpsc::channel(1);
-
-        let mut join_set = JoinSet::<anyhow::Result<()>>::new();
-        // Spawn the task that creates the memory shards
-        let span = tracing::debug_span!("create global memory shards");
-        join_set.spawn_blocking({
-            let threshold = split_opts.memory;
-            move || {
-                let _guard = span.enter();
-                let (global_memory_initialize_events, global_memory_finalize_events) =
-                    Self::global_memory_events(
-                        minimal_executor,
-                        program,
-                        final_state.registers,
-                        touched_addresses,
-                    );
-
-                for chunks in global_memory_initialize_events
-                    .chunks(threshold)
-                    .into_iter()
-                    .zip_longest(global_memory_finalize_events.chunks(threshold).into_iter())
-                {
-                    match chunks {
-                        itertools::EitherOrBoth::Left(initialize_events) => {
-                            let initialize_events =
-                                initialize_events.into_iter().collect::<Vec<_>>();
-                            shard_data_tx.blocking_send((initialize_events, vec![])).map_err(
-                                |e| anyhow::anyhow!("failed to send initialize events: {}", e),
-                            )?;
-                        }
-                        itertools::EitherOrBoth::Right(finalize_events) => {
-                            let finalize_events = finalize_events.into_iter().collect::<Vec<_>>();
-                            shard_data_tx.blocking_send((vec![], finalize_events)).map_err(
-                                |e| anyhow::anyhow!("failed to send finalize events: {}", e),
-                            )?;
-                        }
-                        itertools::EitherOrBoth::Both(initialize_events, finalize_events) => {
-                            let initialize_events =
-                                initialize_events.into_iter().collect::<Vec<_>>();
-                            let finalize_events = finalize_events.into_iter().collect::<Vec<_>>();
-                            shard_data_tx
-                                .blocking_send((initialize_events, finalize_events))
-                                .map_err(|e| {
-                                    anyhow::anyhow!(
-                                        "failed to send initialize and finalize events: {}",
-                                        e
-                                    )
-                                })?;
-                        }
-                    }
+        join_set.spawn(
+            {
+                let artifact_client = self.artifact_client.clone();
+                let worker_client = self.worker_client.clone();
+                let num_deferred_proofs = self.num_deferred_proofs;
+                let sender = self.sender.clone();
+                let elf = self.elf.clone();
+                let common_input = self.common_input.clone();
+                let context = self.context.clone();
+                async move {
+                    global_memory_handler
+                        .emit_global_memory_shards(
+                            program,
+                            final_state_rx,
+                            minimal_executor_rx,
+                            sender,
+                            elf,
+                            common_input,
+                            context,
+                            memory,
+                            opts,
+                            num_deferred_proofs,
+                            artifact_client,
+                            worker_client,
+                        )
+                        .await?;
+                    Ok::<_, TaskError>(())
                 }
-                Ok(())
             }
-        });
+            .instrument(tracing::debug_span!("emit global memory shards")),
+        );
 
-        // Spawn the task that creates the proving tasks and submits them to the worker
-        let num_deferred_proofs = self.num_deferred_proofs;
-        join_set.spawn({
-            let artifact_client = self.artifact_client.clone();
-            let worker_client = self.worker_client.clone();
-            let elf_artifact = self.elf.clone();
-            let common_input_artifact = self.common_input.clone();
-            let context = self.context.clone();
-            let prove_shard_tx = self.sender.clone();
-
-            async move {
-               let mut counter = 0;
-                let mut previous_init_addr = 0;
-                let mut previous_finalize_addr = 0;
-                let mut previous_init_page_idx = 0;
-                let mut previous_finalize_page_idx = 0;
-                while let Some((initialize_events, finalize_events)) = shard_data_rx.recv().await {
-                    tracing::debug!("Got global memory shard number {counter}");
-                    let last_init_addr = initialize_events
-                        .last()
-                        .map(|event| event.addr)
-                        .unwrap_or(previous_init_addr);
-                    let last_finalize_addr = finalize_events
-                        .last()
-                        .map(|event| event.addr)
-                        .unwrap_or(previous_finalize_addr);
-                    tracing::debug!("last_init_addr: {last_init_addr}, last_finalize_addr: {last_finalize_addr}");
-                    let last_init_page_idx = previous_init_page_idx;
-                    let last_finalize_page_idx = previous_finalize_page_idx;
-
-                    // Calculate the range of the shard.
-                    let range = ShardRange {
-                        timestamp_range: (final_state.timestamp, final_state.timestamp),
-                        initialized_address_range: (previous_init_addr, last_init_addr),
-                        finalized_address_range: (previous_finalize_addr, last_finalize_addr),
-                        initialized_page_index_range: (previous_init_page_idx, last_init_page_idx),
-                        finalized_page_index_range: (
-                            previous_finalize_page_idx,
-                            last_finalize_page_idx,
-                        ),
-                        deferred_proof_range: (
-                            num_deferred_proofs as u64,
-                            num_deferred_proofs as u64,
-                        ),
-                    };
-                    let mem_global_shard = GlobalMemoryShard {
-                        final_state,
-                        initialize_events,
-                        finalize_events,
-                        previous_init_addr,
-                        previous_finalize_addr,
-                        previous_init_page_idx,
-                        previous_finalize_page_idx,
-                        last_init_addr,
-                        last_finalize_addr,
-                        last_init_page_idx,
-                        last_finalize_page_idx,
-                    };
-
-                    let data = TraceData::Memory(Box::new(mem_global_shard));
-
-                    let SpawnProveOutput { proof_data, ..} = create_core_proving_task(
-                        elf_artifact.clone(),
-                        common_input_artifact.clone(),
-                        context.clone(),
-                        range,
-                        data,
-                        worker_client.clone(),
-                        artifact_client.clone(),
-                    ).await?;
-
-                    // Send the task data
-                    prove_shard_tx.send(proof_data).map_err(|e| anyhow::anyhow!("failed to send task id: {}", e))?;
-                    tracing::debug!("Submitted memory global shard {counter}");
-                    counter += 1;
-                    previous_init_addr = last_init_addr;
-                    previous_finalize_addr = last_finalize_addr;
-                    previous_init_page_idx = last_init_page_idx;
-                    previous_finalize_page_idx = last_finalize_page_idx;
-                }
-                Ok(())
-            }
-            .instrument(tracing::debug_span!("Global memory shards"))
-        });
-
-        // Wait for the tasks to finish and collect the errors.
+        // Wait for tasks to finish
         while let Some(result) = join_set.join_next().await {
-            result.map_err(|e| anyhow::anyhow!("global memory shards task panicked: {}", e))??;
+            result.map_err(|e| TaskError::Fatal(e.into()))??;
         }
 
-        Ok(())
-    }
+        let output = output_rx.await.map_err(|_| anyhow::anyhow!("failed to receive output"))?;
 
-    fn global_memory_events(
-        minimal_executor: MinimalExecutor,
-        program: Arc<Program>,
-        final_registers: [MemoryRecord; 32],
-        mut touched_addresses: HashSet<u64>,
-    ) -> (
-        impl Iterator<Item = MemoryInitializeFinalizeEvent>,
-        impl Iterator<Item = MemoryInitializeFinalizeEvent>,
-    ) {
-        // Add all the finalize addresses to the touched addresses.
-        touched_addresses.extend(program.memory_image.keys().copied());
-
-        let global_memory_initialize_events = final_registers
-            .into_iter()
-            .enumerate()
-            .filter(|(_, e)| e.timestamp != 0)
-            .map(|(i, _)| MemoryInitializeFinalizeEvent::initialize(i as u64, 0));
-
-        let global_memory_finalize_events =
-            final_registers.into_iter().enumerate().filter(|(_, e)| e.timestamp != 0).map(
-                |(i, entry)| {
-                    MemoryInitializeFinalizeEvent::finalize(i as u64, entry.value, entry.timestamp)
-                },
-            );
-
-        let hint_init_events: Vec<MemoryInitializeFinalizeEvent> = minimal_executor
-            .hints()
-            .iter()
-            .flat_map(|(addr, value)| chunked_memory_init_events(*addr, value))
-            .collect::<Vec<_>>();
-        let hint_addrs = hint_init_events.iter().map(|event| event.addr).collect::<HashSet<_>>();
-
-        // Initialize the all the hints written during execution.
-        let global_memory_initialize_events =
-            global_memory_initialize_events.chain(hint_init_events);
-
-        // Initialize the memory addresses that were touched during execution.
-        // We don't initialize the memory addresses that were in the program image, since they were
-        // initialized in the MemoryProgram chip.
-        let hint_addresses = hint_addrs.clone();
-        let program_memory_image = minimal_executor.program().memory_image.clone();
-        let memory_init_events = touched_addresses
-            .clone()
-            .into_iter()
-            .filter(move |addr| !program_memory_image.contains_key(addr))
-            .filter(move |addr| !hint_addresses.contains(addr))
-            .map(|addr| MemoryInitializeFinalizeEvent::initialize(addr, 0));
-        let global_memory_initialize_events =
-            global_memory_initialize_events.chain(memory_init_events);
-
-        // Ensure all the hinted addresses are initialized.
-        touched_addresses.extend(hint_addrs);
-
-        // Finalize the memory addresses that were touched during execution.
-        let global_memory_finalize_events =
-            global_memory_finalize_events.chain(touched_addresses.into_iter().map(move |addr| {
-                let entry = minimal_executor.get_memory_value(addr);
-                MemoryInitializeFinalizeEvent::finalize(addr, entry.value, entry.clk)
-            }));
-
-        (
-            global_memory_initialize_events.sorted_by_key(|event| event.addr),
-            global_memory_finalize_events.sorted_by_key(|event| event.addr),
-        )
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct TouchedAddresses {
-    inner: Arc<Mutex<HashSet<u64>>>,
-}
-
-impl TouchedAddresses {
-    pub fn new() -> Self {
-        Self { inner: Arc::new(Mutex::new(HashSet::new())) }
-    }
-
-    pub fn extend(&self, addresses: impl IntoIterator<Item = u64>) {
-        self.inner.lock().unwrap().extend(addresses);
-    }
-
-    pub fn take(self) -> HashSet<u64> {
-        std::mem::take(&mut *self.inner.lock().unwrap())
+        Ok(output)
     }
 }
 

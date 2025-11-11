@@ -8,6 +8,7 @@ use sp1_jit::{
 use std::{
     collections::VecDeque,
     io,
+    ptr::NonNull,
     sync::{mpsc, Arc},
 };
 
@@ -26,7 +27,7 @@ pub struct MinimalExecutor {
     program: Arc<Program>,
     input: VecDeque<Vec<u8>>,
     registers: [u64; 32],
-    memory: MaybeCowMemory<MemValue>,
+    memory: Box<MaybeCowMemory<MemValue>>,
     traces: Option<TraceChunkBuffer>,
     pc: u64,
     clk: u64,
@@ -203,7 +204,7 @@ impl MinimalExecutor {
             global_clk: 0,
             clk: 1,
             pc,
-            memory,
+            memory: Box::new(memory),
             traces: None,
             max_trace_size,
             public_values_stream: Vec::new(),
@@ -364,6 +365,13 @@ impl MinimalExecutor {
     #[must_use]
     pub fn get_memory_value(&self, addr: u64) -> MemValue {
         self.memory.get(addr).copied().unwrap_or_default()
+    }
+
+    /// Get an unsafe memory view of the executor.
+    #[must_use]
+    pub fn unsafe_memory(&self) -> UnsafeMemory {
+        let ptr = (&raw const *self.memory).cast::<MaybeCowMemory<MemValue>>().cast_mut();
+        UnsafeMemory { memory: NonNull::new(ptr).unwrap() }
     }
 
     /// Reset the executor, to start from the beginning of the program.
@@ -763,5 +771,29 @@ impl DebugState for MinimalExecutor {
                 Some(rx)
             })
             .flatten()
+    }
+}
+
+/// An unsafe memory view
+///
+/// This allows reading without lifetime and mutability constraints.
+pub struct UnsafeMemory {
+    memory: NonNull<MaybeCowMemory<MemValue>>,
+}
+
+unsafe impl Send for UnsafeMemory {}
+unsafe impl Sync for UnsafeMemory {}
+
+impl UnsafeMemory {
+    /// Get a value from the memory.
+    ///
+    /// # Safety
+    /// As the function strictly breaks the lifetime rules, it is unsafe and should only be used
+    /// under strict guarantees that the memory is not being dropped or the same address being
+    /// accessed is being modified.
+    #[must_use]
+    pub unsafe fn get(&self, addr: u64) -> MemValue {
+        let memory = self.memory.as_ref();
+        memory.get(addr).copied().unwrap_or_default()
     }
 }

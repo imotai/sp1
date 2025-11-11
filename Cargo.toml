@@ -64,7 +64,6 @@ members = [
   "slop/crates/utils",
   "slop/crates/primitives",
   "slop/crates/whir",
-  "slop/crates/primitives",
 ]
 exclude = ["examples/target", "crates/eval"]
 resolver = "2"
@@ -288,3 +287,9 @@ default.extend-ignore-words-re = ["(?i)groth", "TRE"]
 
 [workspace.lints.clippy]
 print_stdout = "deny"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(sp1_debug_constraints)',
+  'cfg(sp1_debug_global_memory)',
+] }

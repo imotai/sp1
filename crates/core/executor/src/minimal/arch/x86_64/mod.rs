@@ -5,6 +5,7 @@ use sp1_jit::{
 };
 use std::{
     collections::VecDeque,
+    ptr::NonNull,
     sync::{mpsc, Arc},
 };
 
@@ -179,6 +180,17 @@ impl MinimalExecutor {
     #[must_use]
     pub fn memory(&self) -> MemoryView<'_> {
         MemoryView::new(&self.compiled.memory)
+    }
+
+    /// Get an unsafe memory view of the JIT function.
+    ///
+    /// This allows reading without lifetime and mutability constraints.
+    #[must_use]
+    #[allow(clippy::cast_ptr_alignment)]
+    pub fn unsafe_memory(&self) -> UnsafeMemory {
+        let view = self.memory();
+        let entry_ptr = view.memory.as_ptr() as *mut MemValue;
+        UnsafeMemory { ptr: NonNull::new(entry_ptr).unwrap() }
     }
 
     /// Reset the JIT function, to start from the beginning of the program.
@@ -425,5 +437,30 @@ impl debug::DebugState for MinimalExecutor {
                 Some(rx)
             })
             .flatten()
+    }
+}
+
+/// An unsafe memory view
+///
+/// This allows reading without lifetime and mutability constraints.
+pub struct UnsafeMemory {
+    ptr: NonNull<MemValue>,
+}
+
+unsafe impl Send for UnsafeMemory {}
+unsafe impl Sync for UnsafeMemory {}
+
+impl UnsafeMemory {
+    /// Get a value from the memory.
+    ///
+    /// # Safety
+    /// As the function strictly breaks the lifetime rules, it is unsafe and should only be used
+    /// under strict guarantees that the memory is not being dropped or the same address being
+    /// accessed is being modified.
+    #[must_use]
+    pub unsafe fn get(&self, addr: u64) -> MemValue {
+        let word_address = addr / 8;
+        let entry_ptr = self.ptr.as_ptr();
+        std::ptr::read(entry_ptr.add(word_address as usize))
     }
 }

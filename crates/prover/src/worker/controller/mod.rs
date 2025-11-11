@@ -1,12 +1,13 @@
 mod compress;
 mod core;
+mod global;
 mod splicing;
 
 pub use compress::*;
 pub use core::*;
-use lru::LruCache;
-pub use splicing::*;
+pub use global::*;
 
+use lru::LruCache;
 use sp1_core_executor::SP1CoreOpts;
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
 use sp1_hypercube::{air::PublicValues, ShardProof};
@@ -15,6 +16,7 @@ use sp1_prover_types::{
     network_base_types::ProofMode, Artifact, ArtifactClient, ArtifactType, TaskStatus, TaskType,
 };
 use sp1_verifier::{ProofFromNetwork, SP1Proof};
+pub use splicing::*;
 use std::{borrow::Borrow, sync::Arc};
 use tokio::{
     sync::{mpsc, Mutex},

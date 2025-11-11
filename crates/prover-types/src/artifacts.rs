@@ -6,7 +6,7 @@ use futures_util::future::FutureExt;
 use hashbrown::{HashMap, HashSet};
 use mti::prelude::{MagicTypeIdExt, V7};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use tracing::Instrument;
 
 use crate::utils::{await_blocking, await_scoped_vec};
@@ -294,7 +294,7 @@ pub trait ArtifactClient: Send + Sync + Clone + 'static {
 
 #[derive(Clone)]
 pub struct InMemoryArtifactClient {
-    artifacts: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    artifacts: Arc<RwLock<HashMap<String, Vec<u8>>>>,
     refs: Arc<Mutex<HashMap<String, HashSet<String>>>>,
 }
 
@@ -307,7 +307,7 @@ impl fmt::Debug for InMemoryArtifactClient {
 impl InMemoryArtifactClient {
     pub fn new() -> Self {
         Self {
-            artifacts: Arc::new(Mutex::new(HashMap::new())),
+            artifacts: Arc::new(RwLock::new(HashMap::new())),
             refs: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -326,7 +326,7 @@ impl ArtifactClient for InMemoryArtifactClient {
         _artifact_type: ArtifactType,
         data: Vec<u8>,
     ) -> Result<()> {
-        let mut artifacts = self.artifacts.lock().await;
+        let mut artifacts = self.artifacts.write().await;
         artifacts.insert(artifact.id().to_string(), data.clone());
         Ok(())
     }
@@ -336,7 +336,7 @@ impl ArtifactClient for InMemoryArtifactClient {
         artifact: &impl ArtifactId,
         _artifact_type: ArtifactType,
     ) -> Result<Vec<u8>> {
-        let artifacts = self.artifacts.lock().await;
+        let artifacts = self.artifacts.read().await;
         let bytes = artifacts.get(artifact.id()).ok_or_else(|| anyhow!("artifact not found"))?;
         Ok(bytes.clone())
     }
@@ -346,12 +346,12 @@ impl ArtifactClient for InMemoryArtifactClient {
         artifact: &impl ArtifactId,
         _artifact_type: ArtifactType,
     ) -> Result<bool> {
-        let artifacts = self.artifacts.lock().await;
+        let artifacts = self.artifacts.read().await;
         Ok(artifacts.contains_key(artifact.id()))
     }
 
     async fn delete(&self, artifact: &impl ArtifactId, _artifact_type: ArtifactType) -> Result<()> {
-        let mut artifacts = self.artifacts.lock().await;
+        let mut artifacts = self.artifacts.write().await;
         artifacts.remove(artifact.id());
         Ok(())
     }
@@ -361,7 +361,7 @@ impl ArtifactClient for InMemoryArtifactClient {
         artifacts: &[impl ArtifactId],
         _artifact_type: ArtifactType,
     ) -> Result<()> {
-        let mut artifact_map = self.artifacts.lock().await;
+        let mut artifact_map = self.artifacts.write().await;
         for artifact in artifacts {
             artifact_map.remove(artifact.id());
         }

@@ -176,9 +176,11 @@ where
             let mut vm = SplicingVM::new(&chunk, program.clone(), &mut touched_addresses, opts);
 
             let start_num_mem_reads = chunk.num_mem_reads();
+            let start_clk = vm.core.clk();
+            let mut end_clk : u64;
             let mut last_splice = SplicedMinimalTrace::new_full_trace(chunk.clone());
                 let mut boundary = ShardBoundary {
-                    timestamp: vm.core.clk(),
+                    timestamp: start_clk,
                     initialized_address: 0,
                     finalized_address: 0,
                     initialized_page_index: 0,
@@ -193,8 +195,9 @@ where
                         if let Some(spliced) = vm.splice(chunk.clone()) {
                             tracing::debug!(global_clk = vm.core.global_clk(), pc = vm.core.pc(), num_mem_reads_left = vm.core.mem_reads.len(), clk = vm.core.clk(), "shard boundary");
                             // Get the end boundary of the shard.
+                            end_clk = vm.core.clk();
                             let end = ShardBoundary {
-                                timestamp: vm.core.clk(),
+                                timestamp: end_clk,
                                 initialized_address: 0,
                                 finalized_address: 0,
                                 initialized_page_index: 0,
@@ -219,8 +222,9 @@ where
                         } else {
                             tracing::debug!(global_clk = vm.core.global_clk(), pc = vm.core.pc(), num_mem_reads_left = vm.core.mem_reads.len(), "trace ended");
                             // Get the end boundary of the shard.
+                            end_clk = vm.core.clk();
                             let end = ShardBoundary {
-                                timestamp: vm.core.clk(),
+                                timestamp: end_clk,
                                 initialized_address: 0,
                                 finalized_address: 0,
                                 initialized_page_index: 0,
@@ -247,8 +251,9 @@ where
                         last_splice.set_last_mem_reads_idx(chunk.num_mem_reads() as usize);
 
                         // Get the end boundary of the shard.
+                        end_clk = vm.core.clk();
                         let end = ShardBoundary {
-                            timestamp: vm.core.clk(),
+                            timestamp: end_clk,
                             initialized_address: 0,
                             finalized_address: 0,
                             initialized_page_index: 0,
@@ -278,8 +283,8 @@ where
             }
             // Append the touched addresses from this chunk to the globally tracked touched addresses.
             tracing::trace!("extending all_touched_addresses with touched_addresses");
-            all_touched_addresses.extend(touched_addresses.is_set().into_iter());
-
+            all_touched_addresses.blocking_extend(start_clk, end_clk, touched_addresses.is_set())
+                .map_err(|e| ExecutionError::Other(e.to_string()))?;
             Ok(())
            });
 
