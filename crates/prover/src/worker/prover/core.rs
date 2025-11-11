@@ -555,7 +555,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
             let input = self.recursion_prover.get_normalize_witness(&common_input, &proof, false);
             let witness = SP1CircuitWitness::Core(input);
             self.recursion_prover
-                .submit_prove_shard(program, witness, output, false, metrics.clone())
+                .submit_prove_shard(program, witness, output, metrics.clone())
                 .await?
                 .await
                 .map_err(|e| TaskError::Fatal(e.into()))??;

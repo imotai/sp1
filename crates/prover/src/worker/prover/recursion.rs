@@ -114,14 +114,13 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
         let witness = range_proofs.download_witness(is_complete, &self.artifact_client).await?;
 
         let metrics = ProverMetrics::new();
-        Ok(RecursionTask { program, witness, is_complete, output, metrics })
+        Ok(RecursionTask { program, witness, output, metrics })
     }
 }
 
 pub struct RecursionTask {
     program: Arc<RecursionProgram<SP1Field>>,
     witness: SP1CircuitWitness,
-    is_complete: bool,
     output: Artifact,
     metrics: ProverMetrics,
 }
@@ -139,7 +138,7 @@ impl<C: SP1ProverComponents>
         &self,
         input: Result<RecursionTask, TaskError>,
     ) -> Result<ProveRecursionTask<C>, TaskError> {
-        let RecursionTask { program, witness, is_complete, output, metrics } = input?;
+        let RecursionTask { program, witness, output, metrics } = input?;
 
         // Execute the runtime.
         let runtime_span = tracing::debug_span!("execute runtime").entered();
@@ -169,7 +168,7 @@ impl<C: SP1ProverComponents>
             _ => unimplemented!(),
         })?;
 
-        Ok(ProveRecursionTask { record, keys, output, is_complete, metrics })
+        Ok(ProveRecursionTask { record, keys, output, metrics })
     }
 }
 
@@ -185,7 +184,6 @@ pub struct ProveRecursionTask<C: SP1ProverComponents> {
     record: ExecutionRecord<SP1Field>,
     keys: RecursionKeys<C>,
     output: Artifact,
-    is_complete: bool,
     metrics: ProverMetrics,
 }
 
@@ -255,15 +253,12 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
         input: Result<ProveRecursionTask<C>, TaskError>,
     ) -> Result<TaskMetadata, TaskError> {
         // Get the input or return an error
-        let ProveRecursionTask { record, keys, output, is_complete, metrics } = input?;
+        let ProveRecursionTask { record, keys, output, metrics, .. } = input?;
         // Prove the shard
         let proof = self.prove_shard(keys, record, metrics.clone()).await?;
         // Upload the proof
-        if is_complete {
-            self.artifact_client.upload_proof(&output, proof.clone()).await?;
-        } else {
-            self.artifact_client.upload(&output, proof.clone()).await?;
-        }
+
+        self.artifact_client.upload(&output, proof.clone()).await?;
         let metadata = metrics.to_metadata();
 
         Ok(metadata)
@@ -450,11 +445,10 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
         program: Arc<RecursionProgram<SP1Field>>,
         witness: SP1CircuitWitness,
         output: Artifact,
-        is_complete: bool,
         metrics: ProverMetrics,
     ) -> Result<RecursionProveSubmitHandle<A, C>, SubmitError> {
         self.recursion_prover_pipeline()
-            .submit(Ok(RecursionTask { program, witness, is_complete, output, metrics }))
+            .submit(Ok(RecursionTask { program, witness, output, metrics }))
             .await
     }
 
