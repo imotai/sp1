@@ -790,7 +790,7 @@ impl NetworkProver {
             cycle_limit_value
         };
         let final_gas_limit = if gas_limit.is_none() {
-            report.gas.unwrap_or(DEFAULT_GAS_LIMIT)
+            report.gas().unwrap_or(DEFAULT_GAS_LIMIT)
         } else {
             gas_limit_value
         };

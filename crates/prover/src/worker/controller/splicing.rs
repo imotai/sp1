@@ -14,9 +14,9 @@ use tokio::{sync::mpsc, task::JoinSet};
 use tracing::Instrument;
 
 use crate::worker::{
-    controller::create_core_proving_task, DeferredEvents, DeferredMessage, FinalVmState,
-    FinalVmStateLock, ProofData, SpawnProveOutput, TaskContext, TouchedAddresses, TraceData,
-    WorkerClient,
+    controller::create_core_proving_task, CommonProverInput, DeferredEvents, DeferredMessage,
+    FinalVmState, FinalVmStateLock, ProofData, SpawnProveOutput, TaskContext, TouchedAddresses,
+    TraceData, WorkerClient,
 };
 
 pub type SplicingEngine<A, W> =
@@ -167,13 +167,21 @@ where
             .instrument(tracing::info_span!("spawn prove shard tasks")),
         );
 
+        let common_prover_input = self
+            .artifact_client
+            .download::<CommonProverInput>(&common_input_artifact)
+            .await
+            .map_err(|e| {
+                ExecutionError::Other(format!("error downloading common prover input: {}", e))
+            })?;
+
         // Spawn the task that splices the trace.
         let span = tracing::info_span!("splicing trace chunk");
         join_set.spawn_blocking(
             move || {
             let _guard = span.enter();
             let mut touched_addresses = CompressedMemory::new();
-            let mut vm = SplicingVM::new(&chunk, program.clone(), &mut touched_addresses, opts);
+            let mut vm = SplicingVM::new(&chunk, program.clone(), &mut touched_addresses, common_prover_input.nonce, opts);
 
             let start_num_mem_reads = chunk.num_mem_reads();
             let start_clk = vm.core.clk();

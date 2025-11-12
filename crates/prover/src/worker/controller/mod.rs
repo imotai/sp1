@@ -10,7 +10,10 @@ pub use global::*;
 use lru::LruCache;
 use sp1_core_executor::SP1CoreOpts;
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
-use sp1_hypercube::{air::PublicValues, ShardProof};
+use sp1_hypercube::{
+    air::{PublicValues, PROOF_NONCE_NUM_WORDS},
+    ShardProof,
+};
 use sp1_primitives::{io::SP1PublicValues, SP1GlobalContext};
 use sp1_prover_types::{
     network_base_types::ProofMode, Artifact, ArtifactClient, ArtifactType, TaskStatus, TaskType,
@@ -80,7 +83,10 @@ where
 
     pub async fn run(&self, request: RawTaskRequest) -> Result<ExecutionOutput, TaskError> {
         let RawTaskRequest { inputs, outputs, context } = request;
-        let [elf, stdin_artifact, mode_artifact] = inputs.try_into().unwrap();
+        let elf = inputs[0].clone();
+        let stdin_artifact = inputs[1].clone();
+        let mode_artifact = inputs[2].clone();
+        let proof_nonce = inputs.get(3);
         let [output] = outputs.try_into().unwrap();
         let mode = {
             let parsed =
@@ -94,6 +100,13 @@ where
 
         let stdin_download_handle =
             self.artifact_client.download_stdin::<SP1Stdin>(&stdin_artifact);
+
+        let proof_nonce = match proof_nonce {
+            Some(artifact) => {
+                self.artifact_client.download::<[u32; PROOF_NONCE_NUM_WORDS]>(artifact).await?
+            }
+            None => [0u32; PROOF_NONCE_NUM_WORDS],
+        };
 
         tracing::info!("downloaded stdin");
 
@@ -149,8 +162,15 @@ where
         let vk = vkey_download_handle.await.map_err(|e| TaskError::Fatal(e.into()))??;
 
         let stdin = Arc::new(stdin);
+
         // Create the common input
-        let common_input = CommonProverInput { vk, mode, deferred_digest, num_deferred_proofs };
+        let common_input = CommonProverInput {
+            vk,
+            mode,
+            deferred_digest,
+            num_deferred_proofs,
+            nonce: proof_nonce,
+        };
         // Upload the common input
         let common_input_artifact = self.artifact_client.create_artifact()?;
         self.artifact_client.upload(&common_input_artifact.clone(), common_input.clone()).await?;

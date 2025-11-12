@@ -429,7 +429,7 @@ impl<'a> Executor<'a> {
     #[must_use]
     pub fn with_context(program: Arc<Program>, opts: SP1CoreOpts, context: SP1Context<'a>) -> Self {
         // Create a default record with the program.
-        let record = ExecutionRecord::new(program.clone());
+        let record = ExecutionRecord::new(program.clone(), context.proof_nonce);
 
         let hook_registry = context.hook_registry.unwrap_or_default();
 

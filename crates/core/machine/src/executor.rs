@@ -14,6 +14,7 @@ use sp1_core_executor::{
     GasEstimatingVM, Program, SP1Context, SP1CoreOpts, SplicingVM, SplitOpts, TracingVM,
 };
 use sp1_hypercube::{
+    air::PROOF_NONCE_NUM_WORDS,
     prover::{MemoryPermit, MemoryPermitting},
     Machine, MachineRecord,
 };
@@ -67,7 +68,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
         &self,
         program: Arc<Program>,
         stdin: SP1Stdin,
-        _context: SP1Context<'static>,
+        context: SP1Context<'static>,
     ) -> Result<(SP1PublicValues, [u8; 32], ExecutionReport), MachineExecutorError> {
         // Phase 1: Use MinimalExecutor for fast execution and public values stream
         const MAX_NUMBER_TRACE_ENTRIES: u64 =
@@ -87,13 +88,13 @@ impl<F: PrimeField32> MachineExecutor<F> {
             chunks.push(chunk);
         }
 
-        tracing::info!("chunks: {:?}", chunks.len());
+        tracing::trace!("chunks: {:?}", chunks.len());
 
         // Extract the public values stream from minimal executor
         let public_value_stream = minimal_executor.into_public_values_stream();
         let public_values = SP1PublicValues::from(&public_value_stream);
 
-        tracing::info!("public_value_stream: {:?}", public_value_stream);
+        tracing::trace!("public_value_stream: {:?}", public_value_stream);
 
         let mut accumulated_report = ExecutionReport::default();
         let filler: [u8; 32] = [0; 32];
@@ -104,6 +105,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
             let mut gas_estimating_vm = GasEstimatingVM::new(
                 &chunk,
                 program.clone(),
+                context.proof_nonce,
                 &mut touched_addresses,
                 self.opts.clone(),
             );
@@ -118,13 +120,14 @@ impl<F: PrimeField32> MachineExecutor<F> {
         &self,
         program: Arc<Program>,
         stdin: SP1Stdin,
-        _context: SP1Context<'static>,
+        context: SP1Context<'static>,
         record_tx: mpsc::UnboundedSender<(ExecutionRecord, Option<MemoryPermit>)>,
     ) -> Result<ExecutionOutput, MachineExecutorError> {
         let (chunk_tx, mut chunk_rx) = mpsc::unbounded_channel::<TraceChunkRaw>();
         let (last_record_tx, mut last_record_rx) =
             tokio::sync::mpsc::channel::<(ExecutionRecord, [MemoryRecord; 32])>(1);
-        let deferred = Arc::new(Mutex::new(ExecutionRecord::new(program.clone())));
+        let deferred =
+            Arc::new(Mutex::new(ExecutionRecord::new(program.clone(), context.proof_nonce)));
         let mut record_worker_channels = Vec::with_capacity(self.num_record_workers);
 
         // todo: use page protection
@@ -159,7 +162,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
                             move || {
                                 let _debug_span =
                                     tracing::trace_span!("tracing chunk blocking task").entered();
-                                trace_chunk::<F>(program, opts, chunk)
+                                trace_chunk::<F>(program, opts, chunk, context.proof_nonce)
                             }
                         })
                         .await
@@ -245,6 +248,7 @@ impl<F: PrimeField32> MachineExecutor<F> {
                                 chunk,
                                 record_worker_channels,
                                 touched_addresses,
+                                context.proof_nonce,
                                 opts,
                             )
                         }
@@ -332,11 +336,12 @@ fn generate_chunks(
     chunk: TraceChunkRaw,
     record_worker_channels: Arc<WorkerQueue<UnboundedSender<RecordTask>>>,
     all_touched_addresses: Arc<Mutex<HashSet<u64>>>,
+    proof_nonce: [u32; PROOF_NONCE_NUM_WORDS],
     opts: SP1CoreOpts,
 ) -> Result<(), ExecutionError> {
     let mut touched_addresses = CompressedMemory::new();
-    let mut vm = SplicingVM::new(&chunk, program.clone(), &mut touched_addresses, opts);
-
+    let mut vm =
+        SplicingVM::new(&chunk, program.clone(), &mut touched_addresses, proof_nonce, opts);
     let start_num_mem_reads = chunk.num_mem_reads();
 
     let mut last_splice = SplicedMinimalTrace::new_full_trace(chunk.clone());
@@ -408,8 +413,9 @@ pub fn trace_chunk<F: PrimeField32>(
     program: Arc<Program>,
     opts: SP1CoreOpts,
     chunk: impl MinimalTrace,
+    proof_nonce: [u32; PROOF_NONCE_NUM_WORDS],
 ) -> Result<(bool, ExecutionRecord, [MemoryRecord; 32]), ExecutionError> {
-    let mut vm = TracingVM::new(&chunk, program, opts);
+    let mut vm = TracingVM::new(&chunk, program, opts, proof_nonce);
     let status = vm.execute()?;
     tracing::trace!("chunk ended at clk: {}", vm.core.clk());
     tracing::trace!("chunk ended at pc: {}", vm.core.pc());

@@ -4,6 +4,7 @@ use std::{
 };
 
 use hashbrown::HashMap;
+use sp1_hypercube::air::PROOF_NONCE_NUM_WORDS;
 use sp1_jit::MinimalTrace;
 
 use crate::{
@@ -180,12 +181,17 @@ impl TracingVM<'_> {
 
 impl<'a> TracingVM<'a> {
     /// Create a new full-tracing VM from a minimal trace.
-    pub fn new<T: MinimalTrace>(trace: &'a T, program: Arc<Program>, opts: SP1CoreOpts) -> Self {
-        let mut record = ExecutionRecord::new(program.clone());
+    pub fn new<T: MinimalTrace>(
+        trace: &'a T,
+        program: Arc<Program>,
+        opts: SP1CoreOpts,
+        proof_nonce: [u32; PROOF_NONCE_NUM_WORDS],
+    ) -> Self {
+        let mut record = ExecutionRecord::new(program.clone(), proof_nonce);
         record.initial_timestamp = trace.clk_start();
 
         Self {
-            core: CoreVM::new(trace, program, opts),
+            core: CoreVM::new(trace, program, opts, proof_nonce),
             record,
             local_memory_access: LocalMemoryAccess::default(),
             precompile_local_memory_access: None,

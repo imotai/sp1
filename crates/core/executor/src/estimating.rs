@@ -1,3 +1,4 @@
+use sp1_hypercube::air::PROOF_NONCE_NUM_WORDS;
 use sp1_jit::MinimalTrace;
 use std::sync::Arc;
 
@@ -119,15 +120,15 @@ impl GasEstimatingVM<'_> {
 
 impl<'a> GasEstimatingVM<'a> {
     /// Create a new full-tracing VM from a minimal trace.
-    #[tracing::instrument(name = "GasEstimatingVM::new", skip_all)]
     pub fn new<T: MinimalTrace>(
         trace: &'a T,
         program: Arc<Program>,
+        proof_nonce: [u32; PROOF_NONCE_NUM_WORDS],
         touched_addresses: &'a mut CompressedMemory,
         opts: SP1CoreOpts,
     ) -> Self {
         Self {
-            core: CoreVM::new(trace, program, opts),
+            core: CoreVM::new(trace, program, opts, proof_nonce),
             touched_addresses,
             hint_lens_idx: 0,
             gas_calculator: ReportGenerator::new(trace.clk_start()),

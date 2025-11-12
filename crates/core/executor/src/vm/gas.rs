@@ -100,7 +100,6 @@ impl ReportGenerator {
                     if let Some(syscall_air_id) = syscall_code.as_air_id() {
                         get_complexity_mapping()[syscall_air_id] * count
                     } else {
-                        tracing::warn!("Syscall with no air id: {:?}", syscall_code);
                         0
                     }
                 })
@@ -112,7 +111,6 @@ impl ReportGenerator {
                     if let Some(syscall_air_id) = syscall_code.as_air_id() {
                         get_complexity_mapping()[syscall_air_id] * count
                     } else {
-                        tracing::warn!("Syscall with no air id: {:?}", syscall_code);
                         0
                     }
                 })
@@ -135,7 +133,6 @@ impl ReportGenerator {
                     if let Some(syscall_air_id) = syscall_code.as_air_id() {
                         self.trace_cost_lookup[syscall_air_id] * count
                     } else {
-                        tracing::warn!("Syscall with no air id: {:?}", syscall_code);
                         0
                     }
                 })
@@ -147,7 +144,6 @@ impl ReportGenerator {
                     if let Some(syscall_air_id) = syscall_code.as_air_id() {
                         self.trace_cost_lookup[syscall_air_id] * count
                     } else {
-                        tracing::warn!("Syscall with no air id: {:?}", syscall_code);
                         0
                     }
                 })

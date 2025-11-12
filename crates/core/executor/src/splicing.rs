@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use serde::Serialize;
+use sp1_hypercube::air::PROOF_NONCE_NUM_WORDS;
 use sp1_jit::{MemReads, MemValue, MinimalTrace, TraceChunk};
 
 use crate::{
@@ -170,12 +171,13 @@ impl<'a> SplicingVM<'a> {
         trace: &'a T,
         program: Arc<Program>,
         touched_addresses: &'a mut CompressedMemory,
+        proof_nonce: [u32; PROOF_NONCE_NUM_WORDS],
         opts: SP1CoreOpts,
     ) -> Self {
         let program_len = program.instructions.len() as u64;
         let sharding_threshold = opts.sharding_threshold;
         Self {
-            core: CoreVM::new(trace, program, opts),
+            core: CoreVM::new(trace, program, opts, proof_nonce),
             touched_addresses,
             hint_lens_idx: 0,
             shape_checker: ShapeChecker::new(program_len, trace.clk_start(), sharding_threshold),

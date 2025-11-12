@@ -61,7 +61,12 @@ pub struct CoreVM<'a> {
 
 impl<'a> CoreVM<'a> {
     /// Create a [`CoreVM`] from a [`MinimalTrace`] and a [`Program`].
-    pub fn new<T: MinimalTrace>(trace: &'a T, program: Arc<Program>, opts: SP1CoreOpts) -> Self {
+    pub fn new<T: MinimalTrace>(
+        trace: &'a T,
+        program: Arc<Program>,
+        opts: SP1CoreOpts,
+        proof_nonce: [u32; PROOF_NONCE_NUM_WORDS],
+    ) -> Self {
         let start_clk = trace.clk_start();
 
         // SAFETY: We're mapping a [T; 32] -> [T; 32] infallibly.
@@ -109,7 +114,7 @@ impl<'a> CoreVM<'a> {
             opts,
             clk_end: trace.clk_end(),
             public_value_digest: [0; PV_DIGEST_NUM_WORDS],
-            proof_nonce: [0; PROOF_NONCE_NUM_WORDS],
+            proof_nonce,
         }
     }
 

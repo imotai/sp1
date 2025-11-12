@@ -244,14 +244,15 @@ where
                                 chunk.clk_start,
                                 chunk.clk_end
                             );
-                            let (_, mut record, _) =
-                                trace_chunk::<SP1Field>(program.clone(), opts.clone(), chunk)
-                                    .map_err(|e| {
-                                        TaskError::Fatal(anyhow::anyhow!(
-                                            "failed to trace chunk: {}",
-                                            e
-                                        ))
-                                    })?;
+                            let (_, mut record, _) = trace_chunk::<SP1Field>(
+                                program.clone(),
+                                opts.clone(),
+                                chunk,
+                                common_input.nonce,
+                            )
+                            .map_err(|e| {
+                                TaskError::Fatal(anyhow::anyhow!("failed to trace chunk: {}", e))
+                            })?;
 
                             let deferred_record = record.defer(&opts.retained_events_presets);
 
@@ -272,7 +273,8 @@ where
                                 last_init_page_idx,
                                 last_finalize_page_idx,
                             } = *shard;
-                            let mut record = ExecutionRecord::new(program.clone());
+                            let mut record =
+                                ExecutionRecord::new(program.clone(), common_input.nonce);
                             record.global_memory_initialize_events = initialize_events;
                             record.global_memory_finalize_events = finalize_events;
 
@@ -309,7 +311,8 @@ where
                         }
                         TraceData::Precompile(artifacts, code) => {
                             tracing::debug!("precompile events: code {}", code);
-                            let mut main_record = ExecutionRecord::new(program.clone());
+                            let mut main_record =
+                                ExecutionRecord::new(program.clone(), common_input.nonce);
 
                             // [start, end)
                             let mut total_events = 0;

@@ -12,6 +12,10 @@ use crate::{
     ITypeRecord, Opcode,
 };
 
+/// This constant is chosen for backwards compatibility with the V4 gas model: with this factor,
+/// the gas costs of op-succinct blocks in V6 will approximately match those in V4.
+const GAS_NORMALIZATION_FACTOR: u64 = 191;
+
 /// An execution report.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct ExecutionReport {
@@ -25,8 +29,8 @@ pub struct ExecutionReport {
     pub invocation_tracker: HashMap<String, u64>,
     /// The unique memory address counts.
     pub touched_memory_addresses: u64,
-    /// The gas, if it was calculated.
-    pub gas: Option<u64>,
+    /// The unnormalized gas, if it was calculated. Should not be accessed directly. Use `gas()` instead.
+    pub(crate) gas: Option<u64>,
 }
 
 impl ExecutionReport {
@@ -59,6 +63,14 @@ impl ExecutionReport {
             self.syscall_counts.values().sum::<u64>() * syscall_avg_record_size as u64;
 
         total_opcode_records_size_bytes + total_syscall_records_size_bytes
+    }
+
+    /// Normalize the internal gas so that op-succinct blocks have approximately the same gas
+    /// on v4 and v6.
+    #[must_use]
+    pub fn gas(&self) -> Option<u64> {
+        // Using integer arithmetic to avoid f64 precision warnings.
+        self.gas.map(|g| g * 10 / GAS_NORMALIZATION_FACTOR)
     }
 }
 
@@ -107,7 +119,7 @@ impl Add for ExecutionReport {
 
 impl Display for ExecutionReport {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        if let Some(gas) = self.gas {
+        if let Some(gas) = self.gas() {
             writeln!(f, "gas: {gas:?}")?;
         }
         writeln!(f, "opcode counts ({} total instructions):", self.total_instruction_count())?;

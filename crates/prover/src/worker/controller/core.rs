@@ -80,6 +80,7 @@ pub struct CommonProverInput {
     pub mode: ProofMode,
     pub deferred_digest: [u32; 8],
     pub num_deferred_proofs: usize,
+    pub nonce: [u32; PROOF_NONCE_NUM_WORDS],
 }
 
 pub struct SP1CoreExecutor<A, W> {

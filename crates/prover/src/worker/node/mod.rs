@@ -45,7 +45,7 @@ impl SP1LocalNode {
         &self,
         program: Arc<Program>,
         stdin: SP1Stdin,
-        _context: SP1Context<'static>,
+        context: SP1Context<'static>,
     ) -> anyhow::Result<(SP1PublicValues, [u8; 32], ExecutionReport)> {
         // Phase 1: Use MinimalExecutor for fast execution and public values stream
         const MAX_NUMBER_TRACE_ENTRIES: u64 =
@@ -82,6 +82,7 @@ impl SP1LocalNode {
             let mut gas_estimating_vm = GasEstimatingVM::new(
                 &chunk,
                 program.clone(),
+                context.proof_nonce,
                 &mut touched_addresses,
                 self.inner.opts.clone(),
             );
@@ -139,13 +140,13 @@ impl SP1LocalNode {
         &self,
         elf: &[u8],
         stdin: SP1Stdin,
-        _context: SP1Context<'static>,
+        context: SP1Context<'static>,
     ) -> anyhow::Result<(SP1PublicValues, [u8; 32], ExecutionReport)> {
         let node = self.clone();
         let program = Program::from(elf)
             .map_err(|e| anyhow::anyhow!("failed to dissassemble program: {}", e))?;
         let program = Arc::new(program);
-        tokio::task::spawn_blocking(move || node.blocking_execute_program(program, stdin, _context))
+        tokio::task::spawn_blocking(move || node.blocking_execute_program(program, stdin, context))
             .await?
     }
 
@@ -153,16 +154,16 @@ impl SP1LocalNode {
         &self,
         elf: &[u8],
         stdin: SP1Stdin,
-        _context: SP1Context<'static>,
+        context: SP1Context<'static>,
     ) -> anyhow::Result<ProofFromNetwork> {
-        self.prove_with_mode(elf, stdin, _context, ProofMode::Compressed).await
+        self.prove_with_mode(elf, stdin, context, ProofMode::Compressed).await
     }
 
     pub async fn prove_with_mode(
         &self,
         elf: &[u8],
         stdin: SP1Stdin,
-        _context: SP1Context<'static>,
+        sp1_context: SP1Context<'static>,
         mode: ProofMode,
     ) -> anyhow::Result<ProofFromNetwork> {
         // Create a request for the controller task.
@@ -177,6 +178,12 @@ impl SP1LocalNode {
         let elf_artifact = self.inner.artifact_client.create_artifact()?;
         self.inner.artifact_client.upload_program(&elf_artifact, elf.to_vec()).await?;
 
+        let proof_nonce_artifact = self.inner.artifact_client.create_artifact()?;
+        self.inner
+            .artifact_client
+            .upload::<[u32; 4]>(&proof_nonce_artifact, sp1_context.proof_nonce)
+            .await?;
+
         let stdin_artifact = self.inner.artifact_client.create_artifact()?;
         self.inner
             .artifact_client
@@ -189,7 +196,12 @@ impl SP1LocalNode {
         let output_artifact = self.inner.artifact_client.create_artifact()?;
 
         let request = RawTaskRequest {
-            inputs: vec![elf_artifact.clone(), stdin_artifact.clone(), mode_artifact.clone()],
+            inputs: vec![
+                elf_artifact.clone(),
+                stdin_artifact.clone(),
+                mode_artifact.clone(),
+                proof_nonce_artifact.clone(),
+            ],
             outputs: vec![output_artifact.clone()],
             context: context.clone(),
         };
@@ -213,6 +225,11 @@ impl SP1LocalNode {
         self.inner
             .artifact_client
             .try_delete(&output_artifact, ArtifactType::UnspecifiedArtifactType)
+            .await?;
+
+        self.inner
+            .artifact_client
+            .try_delete(&proof_nonce_artifact, ArtifactType::UnspecifiedArtifactType)
             .await?;
 
         Ok(proof)
@@ -249,8 +266,13 @@ impl SP1LocalNode {
 
 #[cfg(all(test, feature = "experimental"))]
 mod tests {
+    use std::borrow::Borrow;
+
     use serial_test::serial;
+    use slop_algebra::AbstractField;
     use sp1_core_machine::utils::setup_logger;
+    use sp1_hypercube::air::PublicValues;
+    use sp1_primitives::SP1Field;
 
     use crate::worker::cpu_worker_builder;
 
@@ -270,16 +292,20 @@ mod tests {
             .await
             .unwrap();
 
+        let proof_nonce = [0x6284, 0xC0DE, 0x4242, 0xCAFE];
+
         let time = tokio::time::Instant::now();
-        let context = SP1Context::default();
+        let context = SP1Context { proof_nonce, ..Default::default() };
+
         let (_, _, report) = client.execute(&elf, stdin.clone(), context.clone()).await.unwrap();
+
         let execute_time = time.elapsed();
         let cycles = report.total_instruction_count() as usize;
         tracing::info!(
             "execute time: {:?}, cycles: {}, gas: {:?}",
             execute_time,
             cycles,
-            report.gas
+            report.gas()
         );
 
         let time = tokio::time::Instant::now();
@@ -293,6 +319,22 @@ mod tests {
         let proof = client.prove_with_mode(&elf, stdin, context, mode).await.unwrap();
         let proof_time = time.elapsed();
         tracing::info!("proof time: {:?}", proof_time);
+
+        match proof.proof {
+            SP1Proof::Core(ref shard_proofs) => {
+                for shard_proof in shard_proofs {
+                    let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
+                        shard_proof.public_values.as_slice().borrow();
+
+                    assert_eq!(
+                        public_values.proof_nonce,
+                        proof_nonce.map(SP1Field::from_canonical_u32)
+                    );
+                }
+            }
+            _ => panic!("expected core proof"),
+        }
+
         // Verify the proof
         client.verify(&vk, &proof.proof).unwrap();
 

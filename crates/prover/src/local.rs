@@ -178,6 +178,7 @@ impl<C: SP1ProverComponents> LocalProver<C> {
                     Some((record, permit)) = records_rx.recv() => {
                         let shape = prover.prover.core().core_shape_from_record(&record).unwrap();
 
+
                         let proof = async {
                             let proof = prover
                                 .prover

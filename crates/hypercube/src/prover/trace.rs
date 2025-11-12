@@ -148,6 +148,7 @@ where
 
             // Get the public values from the record.
             let public_values = record.public_values::<F>();
+
             tx.send((chips_and_traces, public_values)).ok().unwrap();
             // Emphasize that we are dropping the record after sending the traces.
             drop(record);

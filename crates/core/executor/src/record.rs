@@ -5,7 +5,7 @@ use slop_algebra::{AbstractField, Field, PrimeField, PrimeField32};
 use sp1_hypercube::{
     air::{
         AirInteraction, BaseAirBuilder, InteractionScope, MachineAir, PublicValues, SP1AirBuilder,
-        PV_DIGEST_NUM_WORDS, SP1_PROOF_NUM_PV_ELTS,
+        PROOF_NONCE_NUM_WORDS, PV_DIGEST_NUM_WORDS, SP1_PROOF_NUM_PV_ELTS,
     },
     septic_digest::SepticDigest,
     shape::Shape,
@@ -145,8 +145,10 @@ pub struct ExecutionRecord {
 impl ExecutionRecord {
     /// Create a new [`ExecutionRecord`].
     #[must_use]
-    pub fn new(program: Arc<Program>) -> Self {
-        Self { program, ..Default::default() }
+    pub fn new(program: Arc<Program>, proof_nonce: [u32; PROOF_NONCE_NUM_WORDS]) -> Self {
+        let mut result = Self { program, ..Default::default() };
+        result.public_values.proof_nonce = proof_nonce;
+        result
     }
 
     /// Take out events from the [`ExecutionRecord`] that should be deferred to a separate shard.
@@ -158,7 +160,8 @@ impl ExecutionRecord {
         &mut self,
         retain_presets: impl IntoIterator<Item = &'a RetainedEventsPreset>,
     ) -> ExecutionRecord {
-        let mut execution_record = ExecutionRecord::new(self.program.clone());
+        let mut execution_record =
+            ExecutionRecord::new(self.program.clone(), self.public_values.proof_nonce);
         execution_record.precompile_events = std::mem::take(&mut self.precompile_events);
 
         // Take back the events that should be retained.
@@ -200,7 +203,8 @@ impl ExecutionRecord {
             if done {
                 let remainder = chunks.remainder().to_vec();
                 if !remainder.is_empty() {
-                    let mut execution_record = ExecutionRecord::new(self.program.clone());
+                    let mut execution_record =
+                        ExecutionRecord::new(self.program.clone(), self.public_values.proof_nonce);
                     execution_record.precompile_events.insert(syscall_code, remainder);
                     execution_record.public_values.update_initialized_state(
                         self.program.pc_start_abs,
@@ -213,7 +217,8 @@ impl ExecutionRecord {
             }
             let mut event_shards = chunks
                 .map(|chunk| {
-                    let mut execution_record = ExecutionRecord::new(self.program.clone());
+                    let mut execution_record =
+                        ExecutionRecord::new(self.program.clone(), self.public_values.proof_nonce);
                     execution_record.precompile_events.insert(syscall_code, chunk.to_vec());
                     execution_record.public_values.update_initialized_state(
                         self.program.pc_start_abs,
@@ -229,7 +234,8 @@ impl ExecutionRecord {
             // If there are no precompile shards, and `last_record` is Some, pack the memory events
             // into the last record.
             let pack_memory_events_into_last_record = can_pack_global_memory && shards.is_empty();
-            let mut blank_record = ExecutionRecord::new(self.program.clone());
+            let mut blank_record =
+                ExecutionRecord::new(self.program.clone(), self.public_values.proof_nonce);
 
             // Clone the public values of the last record to update the last record's public values.
             let last_record_public_values = last_record.public_values;
