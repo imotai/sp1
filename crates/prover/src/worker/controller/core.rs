@@ -150,14 +150,13 @@ where
         // Create a join set in order to be able to cancel all tasks
         let mut join_set = JoinSet::<Result<(), TaskError>>::new();
 
-        // Create the channel to send the splicing tasks to the splicing pipeline spawner task.
-        // This is a bounded channel in order to create a backpressure mechanism for the minimal
-        // executor chunk producer.
-        let (splicing_task_tx, mut splicing_task_rx) = mpsc::channel(2);
         // Start the minimal executor.
         let (memory_tx, memory_rx) = oneshot::channel::<UnsafeMemory>();
         let (minimal_executor_tx, minimal_executor_rx) = oneshot::channel::<MinimalExecutor>();
         let (output_tx, output_rx) = oneshot::channel::<ExecutionOutput>();
+        // Create a channel to send the splicing handles to be awaited and their task_ids being
+        // sent after being submitted to the splicing pipeline.
+        let (splicing_submit_tx, mut splicing_submit_rx) = mpsc::unbounded_channel();
         let span = tracing::info_span!("minimal executor");
         join_set.spawn_blocking({
             let program = program.clone();
@@ -167,6 +166,7 @@ where
             let sender = self.sender.clone();
             let final_vm_state = final_vm_state.clone();
             let opts = opts.clone();
+            let splicing_engine = self.splicing_engine.clone();
             move || {
                 let _guard = span.enter();
                 let max_trace_size = opts.minimal_trace_chunk_threshold;
@@ -206,10 +206,16 @@ where
                         context: context.clone(),
                         opts: opts.clone(),
                     };
-                    // Send the splicing task to the splicing pipeline spawner task.
-                    splicing_task_tx
-                        .blocking_send((chunk_count, task))
-                        .map_err(|e| anyhow::anyhow!("failed to send splicing task: {}", e))?;
+
+                    let splicing_handle = tracing::debug_span!("splicing", idx = chunk_count)
+                        .in_scope(|| {
+                            splicing_engine.blocking_submit(task).map_err(|e| {
+                                anyhow::anyhow!("failed to submit splicing task: {}", e)
+                            })
+                        })?;
+                    splicing_submit_tx
+                        .send((chunk_count, splicing_handle))
+                        .map_err(|e| anyhow::anyhow!("failed to send splicing handle: {}", e))?;
 
                     chunk_count += 1;
                 }
@@ -236,33 +242,6 @@ where
         let memory =
             memory_rx.await.map_err(|_| anyhow::anyhow!("failed to receive unsafe memory"))?;
 
-        let (splicing_submit_tx, mut splicing_submit_rx) = mpsc::unbounded_channel();
-        join_set.spawn({
-            let splicing_engine = self.splicing_engine.clone();
-            async move {
-                while let Some((chunk_count, task)) = splicing_task_rx.recv().await {
-                    tracing::debug!(idx = chunk_count, "Submitting splicing task");
-                    let time = std::time::Instant::now();
-                    let splicing_handle = splicing_engine
-                        .submit(task)
-                        .instrument(tracing::debug_span!("splicing", idx = chunk_count))
-                        .await
-                        .map_err(|e| anyhow::anyhow!("failed to submit splicing task: {}", e))?;
-                    let elapsed = time.elapsed().as_secs_f64();
-                    tracing::debug!(
-                        trace_chunk = chunk_count,
-                        wait_time = elapsed,
-                        "Splicing task submitted"
-                    );
-                    splicing_submit_tx
-                        .send((chunk_count, splicing_handle))
-                        .map_err(|e| anyhow::anyhow!("failed to send splicing handle: {}", e))?;
-                }
-
-                Ok::<_, TaskError>(())
-            }
-            .instrument(tracing::debug_span!("submit splicers"))
-        });
         join_set.spawn({
             async move {
                 let mut splicing_handles = FuturesUnordered::new();
