@@ -485,6 +485,7 @@ pub struct CoreProverWorker<A, C: SP1ProverComponents> {
     core_prover: Arc<CoreProver<C>>,
     recursion_prover: SP1RecursionProver<A, C>,
     permits: ProverSemaphore,
+    verify_intermediates: bool,
 }
 
 impl<A, C: SP1ProverComponents> CoreProverWorker<A, C> {
@@ -493,8 +494,9 @@ impl<A, C: SP1ProverComponents> CoreProverWorker<A, C> {
         core_prover: Arc<CoreProver<C>>,
         recursion_prover: SP1RecursionProver<A, C>,
         permits: ProverSemaphore,
+        verify_intermediates: bool,
     ) -> Self {
-        Self { artifact_client, core_prover, recursion_prover, permits }
+        Self { artifact_client, core_prover, recursion_prover, permits, verify_intermediates }
     }
 }
 
@@ -538,12 +540,16 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
         let vk_clone = common_input.vk.vk.clone();
         let proof_clone = proof.clone();
 
-        let verify_future = tokio::spawn(async move {
-            let machine_proof = MachineProof::from(vec![proof_clone]);
-            C::core_verifier()
-                .verify(&vk_clone, &machine_proof)
-                .map_err(|e| TaskError::Retryable(anyhow!("shard verification failed: {e}")))
-        });
+        let maybe_verify_future = if self.verify_intermediates {
+            Some(tokio::spawn(async move {
+                let machine_proof = MachineProof::from(vec![proof_clone]);
+                C::core_verifier()
+                    .verify(&vk_clone, &machine_proof)
+                    .map_err(|e| TaskError::Retryable(anyhow!("shard verification failed: {e}")))
+            }))
+        } else {
+            None
+        };
 
         if common_input.mode != ProofMode::Core {
             let program = recursion_program_handle
@@ -587,7 +593,10 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
         if let Some(deferred_upload_handle) = deferred_upload_handle {
             deferred_upload_handle.await.map_err(|e| TaskError::Fatal(e.into()))??;
         }
-        verify_future.await.map_err(|e| TaskError::Retryable(e.into()))??;
+
+        if let Some(maybe_verify_future) = maybe_verify_future {
+            maybe_verify_future.await.map_err(|e| TaskError::Retryable(e.into()))??;
+        }
 
         // Get the metadata
         let metadata = metrics.to_metadata();
@@ -718,6 +727,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
         air_prover: Arc<CoreProver<C>>,
         permits: ProverSemaphore,
         recursion_prover: SP1RecursionProver<A, C>,
+        verify_intermediates: bool,
     ) -> Self {
         // Initialize the tracing engine
         let core_verifier = C::core_verifier();
@@ -758,6 +768,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
                     air_prover.clone(),
                     recursion_prover.clone(),
                     permits.clone(),
+                    verify_intermediates,
                 )
             })
             .collect::<Vec<_>>();
@@ -772,6 +783,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
                     air_prover.clone(),
                     recursion_prover.clone(),
                     permits.clone(),
+                    false,
                 )
             })
             .collect::<Vec<_>>();

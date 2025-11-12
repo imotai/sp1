@@ -191,6 +191,7 @@ pub struct RecursionProverWorker<A, C: SP1ProverComponents> {
     recursion_prover: Arc<RecursionProver<C>>,
     permits: ProverSemaphore,
     artifact_client: A,
+    verify_intermediates: bool,
 }
 
 impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
@@ -210,11 +211,14 @@ impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
                     .await;
                 let duration = permit.release();
                 metrics.increment_permit_time(duration);
-                C::compress_verifier()
-                    .verify(&vk, &MachineProof::from(vec![proof.clone()]))
-                    .map_err(|e| {
-                        TaskError::Retryable(anyhow::anyhow!("compress verify failed: {}", e))
-                    })?;
+
+                if self.verify_intermediates {
+                    C::compress_verifier()
+                        .verify(&vk, &MachineProof::from(vec![proof.clone()]))
+                        .map_err(|e| {
+                            TaskError::Retryable(anyhow::anyhow!("compress verify failed: {}", e))
+                        })?;
+                }
                 SP1RecursionProof { vk, proof }
             }
             RecursionKeys::Program(program) => {
@@ -231,11 +235,13 @@ impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
                     .await;
                 let duration = permit.release();
                 metrics.increment_permit_time(duration);
-                C::compress_verifier()
-                    .verify(&vk, &MachineProof::from(vec![proof.clone()]))
-                    .map_err(|e| {
-                        TaskError::Retryable(anyhow::anyhow!("compress verify failed: {}", e))
-                    })?;
+                if self.verify_intermediates {
+                    C::compress_verifier()
+                        .verify(&vk, &MachineProof::from(vec![proof.clone()]))
+                        .map_err(|e| {
+                            TaskError::Retryable(anyhow::anyhow!("compress verify failed: {}", e))
+                        })?;
+                }
                 SP1RecursionProof { vk, proof }
             }
         };
@@ -313,6 +319,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
         artifact_client: A,
         air_prover: Arc<RecursionProver<C>>,
         permits: ProverSemaphore,
+        verify_intermediates: bool,
     ) -> Self {
         tokio::task::spawn_blocking(move || {
             // Get the reduce shape.
@@ -419,6 +426,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
                     recursion_prover: air_prover.clone(),
                     permits: permits.clone(),
                     artifact_client: artifact_client.clone(),
+                    verify_intermediates,
                 })
                 .collect();
             let prove_engine =

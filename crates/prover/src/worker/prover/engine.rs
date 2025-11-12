@@ -19,6 +19,7 @@ use crate::{
 pub struct SP1ProverConfig {
     pub core_prover_config: SP1CoreProverConfig,
     pub recursion_prover_config: SP1RecursionProverConfig,
+    pub verify_intermediates: bool,
 }
 
 pub struct SP1ProverEngine<A, W, C: SP1ProverComponents> {
@@ -40,6 +41,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
             artifact_client.clone(),
             recursion_prover_and_permits.0,
             recursion_prover_and_permits.1,
+            config.verify_intermediates,
         )
         .await;
 
@@ -51,6 +53,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
             core_prover_and_permits.0,
             core_prover_and_permits.1,
             recursion_prover.clone(),
+            config.verify_intermediates,
         );
         Self { core_prover, recursion_prover }
     }
