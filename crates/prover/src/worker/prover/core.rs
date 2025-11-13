@@ -757,6 +757,10 @@ pub struct SP1CoreProverConfig {
     pub setup_buffer_size: usize,
     /// The size of the normalize program cache.
     pub normalize_program_cache_size: usize,
+    /// Whether to use a fixed public key.
+    pub use_fixed_pk: bool,
+    /// Whether to verify intermediates.
+    pub verify_intermediates: bool,
 }
 
 impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A, W, C> {
@@ -768,8 +772,6 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
         air_prover: Arc<CoreProver<C>>,
         permits: ProverSemaphore,
         recursion_prover: SP1RecursionProver<A, C>,
-        verify_intermediates: bool,
-        use_fixed_pk: bool,
     ) -> Self {
         // Initialize the tracing engine
         let core_verifier = C::core_verifier();
@@ -803,7 +805,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
             Arc::new(AsyncEngine::new(trace_workers, config.trace_executor_buffer_size));
 
         // Create a shared fixed PK cache if enabled
-        let pk_cache = if use_fixed_pk { Some(Arc::new(OnceCell::new())) } else { None };
+        let pk_cache = if config.use_fixed_pk { Some(Arc::new(OnceCell::new())) } else { None };
 
         // Initialize the core prove engine
         let core_prover_workers = (0..config.num_core_prover_workers)
@@ -814,7 +816,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
                     recursion_prover.clone(),
                     permits.clone(),
                     pk_cache.clone(),
-                    verify_intermediates,
+                    config.verify_intermediates,
                 )
             })
             .collect::<Vec<_>>();

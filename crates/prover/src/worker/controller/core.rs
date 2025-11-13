@@ -20,9 +20,9 @@ use tracing::Instrument;
 
 use crate::{
     worker::{
-        global_memory, precompile_channel, DeferredMessage, PrecompileArtifactSlice,
-        ProveShardTaskRequest, RawTaskRequest, SplicingEngine, SplicingTask, TaskContext,
-        TaskError, TaskId, WorkerClient,
+        global_memory, precompile_channel, DeferredMessage, MinimalExecutorCache,
+        PrecompileArtifactSlice, ProveShardTaskRequest, RawTaskRequest, SplicingEngine,
+        SplicingTask, TaskContext, TaskError, TaskId, WorkerClient,
     },
     SP1VerifyingKey,
 };
@@ -87,6 +87,7 @@ pub struct SP1CoreExecutor<A, W> {
     sender: mpsc::UnboundedSender<ProofData>,
     artifact_client: A,
     worker_client: W,
+    minimal_executor_cache: Option<MinimalExecutorCache>,
 }
 
 impl<A, W> SP1CoreExecutor<A, W> {
@@ -102,6 +103,7 @@ impl<A, W> SP1CoreExecutor<A, W> {
         sender: mpsc::UnboundedSender<ProofData>,
         artifact_client: A,
         worker_client: W,
+        minimal_executor_cache: Option<MinimalExecutorCache>,
     ) -> Self {
         Self {
             splicing_engine,
@@ -115,6 +117,7 @@ impl<A, W> SP1CoreExecutor<A, W> {
             sender,
             artifact_client,
             worker_client,
+            minimal_executor_cache,
         }
     }
 }
@@ -156,6 +159,19 @@ where
         // sent after being submitted to the splicing pipeline.
         let (splicing_submit_tx, mut splicing_submit_rx) = mpsc::unbounded_channel();
         let span = tracing::info_span!("minimal executor");
+
+        // Making the minimal executor blocks the rest of execution anyway, so we initialize it before spawning the rest of the tokio tasks.
+        let mut minimal_executor = if let Some(cache) = &self.minimal_executor_cache {
+            let mut optional_minimal_executor = cache.lock().await;
+            if let Some(minimal_executor) = optional_minimal_executor.take() {
+                tracing::info!("minimal executor cache hit");
+                minimal_executor
+            } else {
+                MinimalExecutor::tracing(program.clone(), opts.minimal_trace_chunk_threshold)
+            }
+        } else {
+            MinimalExecutor::tracing(program.clone(), opts.minimal_trace_chunk_threshold)
+        };
         join_set.spawn_blocking({
             let program = program.clone();
             let elf = self.elf.clone();
@@ -165,11 +181,9 @@ where
             let final_vm_state = final_vm_state.clone();
             let opts = opts.clone();
             let splicing_engine = self.splicing_engine.clone();
+
             move || {
                 let _guard = span.enter();
-                let max_trace_size = opts.minimal_trace_chunk_threshold;
-                let mut minimal_executor = tracing::info_span!("minimal executor initialization")
-                    .in_scope(|| MinimalExecutor::tracing(program.clone(), max_trace_size));
                 // Write input to the minimal executor.
                 for buf in stdin.buffer.iter() {
                     minimal_executor.with_input(buf);
@@ -279,6 +293,8 @@ where
                 let elf = self.elf.clone();
                 let common_input = self.common_input.clone();
                 let context = self.context.clone();
+                let minimal_executor_cache = self.minimal_executor_cache.clone();
+
                 async move {
                     global_memory_handler
                         .emit_global_memory_shards(
@@ -294,6 +310,7 @@ where
                             num_deferred_proofs,
                             artifact_client,
                             worker_client,
+                            minimal_executor_cache,
                         )
                         .await?;
                     Ok::<_, TaskError>(())

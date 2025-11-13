@@ -61,6 +61,8 @@ pub struct SP1RecursionProverConfig {
     pub max_compose_arity: usize,
     /// Whether to verify the recursion vks
     pub vk_verification: bool,
+    /// Whether or not to verify the proof result at the end.
+    pub verify_intermediates: bool,
 }
 
 pub struct ReduceTaskRequest {
@@ -319,7 +321,6 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
         artifact_client: A,
         air_prover: Arc<RecursionProver<C>>,
         permits: ProverSemaphore,
-        verify_intermediates: bool,
     ) -> Self {
         tokio::task::spawn_blocking(move || {
             // Get the reduce shape.
@@ -426,7 +427,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
                     recursion_prover: air_prover.clone(),
                     permits: permits.clone(),
                     artifact_client: artifact_client.clone(),
-                    verify_intermediates,
+                    verify_intermediates: config.verify_intermediates,
                 })
                 .collect();
             let prove_engine =

@@ -10,7 +10,7 @@ pub use global::*;
 pub use precompiles::*;
 
 use lru::LruCache;
-use sp1_core_executor::SP1CoreOpts;
+use sp1_core_executor::{MinimalExecutor, SP1CoreOpts};
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
 use sp1_hypercube::{
     air::{PublicValues, PROOF_NONCE_NUM_WORDS},
@@ -24,7 +24,7 @@ use sp1_verifier::{ProofFromNetwork, SP1Proof};
 pub use splicing::*;
 use std::{borrow::Borrow, sync::Arc};
 use tokio::{
-    sync::{mpsc, Mutex},
+    sync::{mpsc, Mutex, MutexGuard},
     task::JoinSet,
 };
 use tracing::Instrument;
@@ -35,6 +35,19 @@ use crate::{
 };
 
 #[derive(Clone)]
+pub struct MinimalExecutorCache(Arc<Mutex<Option<MinimalExecutor>>>);
+
+impl MinimalExecutorCache {
+    pub fn empty() -> Self {
+        Self(Arc::new(Mutex::new(None)))
+    }
+
+    pub async fn lock(&self) -> MutexGuard<'_, Option<MinimalExecutor>> {
+        self.0.lock().await
+    }
+}
+
+#[derive(Clone)]
 pub struct SP1ControllerConfig {
     pub opts: SP1CoreOpts,
     pub num_splicing_workers: usize,
@@ -42,6 +55,7 @@ pub struct SP1ControllerConfig {
     pub max_reduce_arity: usize,
     pub number_of_send_splice_workers_per_splice: usize,
     pub send_splice_input_buffer_size_per_splice: usize,
+    pub use_fixed_pk: bool,
     pub global_memory_buffer_size: usize,
 }
 
@@ -53,6 +67,7 @@ pub struct SP1Controller<A, W> {
     setup_cache: Arc<Mutex<LruCache<Artifact, SP1VerifyingKey>>>,
     pub(crate) artifact_client: A,
     pub(crate) worker_client: W,
+    minimal_executor_cache: Option<MinimalExecutorCache>,
 }
 
 impl<A, W> SP1Controller<A, W>
@@ -74,6 +89,8 @@ where
         let splicing_engine =
             Arc::new(SplicingEngine::new(splicing_workers, config.splicing_buffer_size));
         let reduce_batch_size = config.max_reduce_arity;
+        let minimal_executor_cache =
+            if config.use_fixed_pk { Some(MinimalExecutorCache::empty()) } else { None };
 
         Self {
             opts: config.opts,
@@ -83,6 +100,7 @@ where
             setup_cache: Arc::new(Mutex::new(LruCache::new(20.try_into().unwrap()))),
             artifact_client,
             worker_client,
+            minimal_executor_cache,
         }
     }
 
@@ -194,6 +212,7 @@ where
             core_proof_tx,
             self.artifact_client.clone(),
             self.worker_client.clone(),
+            self.minimal_executor_cache.clone(),
         );
         let mut join_set = JoinSet::<Result<(), TaskError>>::new();
         let result_artifact = self.artifact_client.create_artifact()?;

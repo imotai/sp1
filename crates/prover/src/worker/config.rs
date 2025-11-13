@@ -48,6 +48,18 @@ impl Default for SP1WorkerConfig {
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(2 * num_splicing_workers);
 
+        // Whether or not to operate in fixed pk mode.
+        let use_fixed_pk = env::var("SP1_WORKER_USE_FIXED_PK")
+            .ok()
+            .and_then(|s| s.parse::<bool>().ok())
+            .unwrap_or(false);
+
+        // Whether or not to verify intermediates in core proof and recursion proofs.
+        let verify_intermediates = env::var("SP1_WORKER_VERIFY_INTERMEDIATES")
+            .ok()
+            .and_then(|s| s.parse::<bool>().ok())
+            .unwrap_or(true);
+
         // Use default core options as a starting point.
         let opts = SP1CoreOpts::default();
         let controller_config = SP1ControllerConfig {
@@ -57,6 +69,7 @@ impl Default for SP1WorkerConfig {
             max_reduce_arity,
             number_of_send_splice_workers_per_splice,
             send_splice_input_buffer_size_per_splice,
+            use_fixed_pk,
             global_memory_buffer_size,
         };
 
@@ -98,6 +111,8 @@ impl Default for SP1WorkerConfig {
             num_setup_workers,
             setup_buffer_size,
             normalize_program_cache_size,
+            use_fixed_pk,
+            verify_intermediates,
         };
 
         // Build the recursion prover config.
@@ -133,6 +148,7 @@ impl Default for SP1WorkerConfig {
             .ok()
             .and_then(|s| s.parse::<bool>().ok())
             .unwrap_or(DEFAULT_VK_VERIFICATION);
+
         let recursion_prover_config = SP1RecursionProverConfig {
             num_prepare_reduce_workers,
             prepare_reduce_buffer_size,
@@ -142,23 +158,10 @@ impl Default for SP1WorkerConfig {
             recursion_prover_buffer_size,
             max_compose_arity,
             vk_verification,
-        };
-
-        let verify_intermediates = env::var("SP1_WORKER_VERIFY_INTERMEDIATES")
-            .ok()
-            .and_then(|s| s.parse::<bool>().ok())
-            .unwrap_or(true);
-        let use_fixed_pk = env::var("SP1_WORKER_USE_FIXED_PK")
-            .ok()
-            .and_then(|s| s.parse::<bool>().ok())
-            .unwrap_or(false);
-
-        let prover_config = SP1ProverConfig {
-            core_prover_config,
-            recursion_prover_config,
             verify_intermediates,
-            use_fixed_pk,
         };
+
+        let prover_config = SP1ProverConfig { core_prover_config, recursion_prover_config };
 
         // Get the local node config from parts above.
         SP1WorkerConfig { controller_config, prover_config }

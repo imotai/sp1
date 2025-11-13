@@ -17,8 +17,8 @@ use tokio::{
 use tracing::Instrument;
 
 use crate::worker::{
-    controller::create_core_proving_task, FinalVmState, GlobalMemoryShard, ProofData,
-    SpawnProveOutput, TaskContext, TaskError, TraceData, WorkerClient,
+    controller::create_core_proving_task, FinalVmState, GlobalMemoryShard, MinimalExecutorCache,
+    ProofData, SpawnProveOutput, TaskContext, TaskError, TraceData, WorkerClient,
 };
 
 pub struct SpliceAddresses {
@@ -82,6 +82,7 @@ impl GlobalMemoryHandler {
         num_deferred_proofs: usize,
         artifact_client: impl ArtifactClient,
         worker_client: impl WorkerClient,
+        minimal_executor_cache: Option<MinimalExecutorCache>,
     ) -> Result<(), TaskError> {
         let (shard_data_tx, mut shard_data_rx) =
             mpsc::unbounded_channel::<(ShardRange, TraceData)>();
@@ -322,7 +323,7 @@ impl GlobalMemoryHandler {
                     previous_finalize_page_idx = last_finalize_page_idx;
                 }
 
-                Ok(())
+                Ok(Some(minimal_executor))
             }
         });
 
@@ -363,14 +364,28 @@ impl GlobalMemoryHandler {
                         anyhow::anyhow!("failed to create a global memory shard task: {}", e)
                     })??;
                 }
-                Ok(())
+                Ok(None)
             }
             .instrument(tracing::debug_span!("create global memory shards")),
         );
 
         // Wait for the tasks to finish
         while let Some(result) = join_set.join_next().await {
-            result.map_err(|e| anyhow::anyhow!("global memory shards task panicked: {}", e))??;
+            let maybe_minimal_executor = result
+                .map_err(|e| anyhow::anyhow!("global memory shards task panicked: {}", e))??;
+            if let Some(mut minimal_executor) = maybe_minimal_executor {
+                if let Some(ref minimal_executor_cache) = minimal_executor_cache {
+                    minimal_executor.reset();
+                    let mut cache = minimal_executor_cache
+                        .lock()
+                        .instrument(tracing::debug_span!("wait for executor cache lock"))
+                        .await;
+                    if cache.is_some() {
+                        tracing::warn!("Unexpected minimal executor cache is not empty");
+                    }
+                    *cache = Some(minimal_executor);
+                }
+            }
         }
 
         Ok(())
