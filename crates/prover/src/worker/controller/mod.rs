@@ -1,11 +1,13 @@
 mod compress;
 mod core;
 mod global;
+mod precompiles;
 mod splicing;
 
 pub use compress::*;
 pub use core::*;
 pub use global::*;
+pub use precompiles::*;
 
 use lru::LruCache;
 use sp1_core_executor::SP1CoreOpts;
@@ -40,11 +42,13 @@ pub struct SP1ControllerConfig {
     pub max_reduce_arity: usize,
     pub number_of_send_splice_workers_per_splice: usize,
     pub send_splice_input_buffer_size_per_splice: usize,
+    pub global_memory_buffer_size: usize,
 }
 
 pub struct SP1Controller<A, W> {
     opts: SP1CoreOpts,
     splicing_engine: Arc<SplicingEngine<A, W>>,
+    global_memory_buffer_size: usize,
     max_reduce_arity: usize,
     setup_cache: Arc<Mutex<LruCache<Artifact, SP1VerifyingKey>>>,
     pub(crate) artifact_client: A,
@@ -74,6 +78,7 @@ where
         Self {
             opts: config.opts,
             splicing_engine,
+            global_memory_buffer_size: config.global_memory_buffer_size,
             max_reduce_arity: reduce_batch_size,
             setup_cache: Arc::new(Mutex::new(LruCache::new(20.try_into().unwrap()))),
             artifact_client,
@@ -179,6 +184,7 @@ where
 
         let executor = SP1CoreExecutor::new(
             self.splicing_engine.clone(),
+            self.global_memory_buffer_size,
             elf,
             stdin.clone(),
             common_input_artifact.clone(),

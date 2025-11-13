@@ -41,6 +41,12 @@ impl Default for SP1WorkerConfig {
                 .ok()
                 .and_then(|s| s.parse::<usize>().ok())
                 .unwrap_or(DEFAULT_SEND_SPLICE_INPUT_BUFFER_SIZE_PER_SPLICE);
+        // Set the default global memory buffer size to twice the number of splicing workers, this means
+        // no worker will be blocked when emitting global memory shards.
+        let global_memory_buffer_size = env::var("SP1_WORKER_GLOBAL_MEMORY_BUFFER_SIZE")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(2 * num_splicing_workers);
 
         // Use default core options as a starting point.
         let opts = SP1CoreOpts::default();
@@ -51,6 +57,7 @@ impl Default for SP1WorkerConfig {
             max_reduce_arity,
             number_of_send_splice_workers_per_splice,
             send_splice_input_buffer_size_per_splice,
+            global_memory_buffer_size,
         };
 
         // Build the core prover config.

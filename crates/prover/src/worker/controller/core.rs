@@ -1,22 +1,17 @@
 use std::sync::{Arc, OnceLock};
 
 use futures::{prelude::*, stream::FuturesUnordered};
-use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use slop_futures::pipeline::Pipeline;
 use sp1_core_executor::{
     events::{MemoryInitializeFinalizeEvent, MemoryRecord},
     syscalls::SyscallCode,
-    CoreVM, ExecutionError, ExecutionRecord, MinimalExecutor, Program, SP1CoreOpts, SplitOpts,
-    UnsafeMemory,
+    CoreVM, ExecutionError, MinimalExecutor, Program, SP1CoreOpts, UnsafeMemory,
 };
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
 use sp1_hypercube::air::{ShardRange, PROOF_NONCE_NUM_WORDS, PV_DIGEST_NUM_WORDS};
 use sp1_jit::MinimalTrace;
-use sp1_prover_types::{
-    await_scoped_vec, network_base_types::ProofMode, Artifact, ArtifactClient, ArtifactType,
-    TaskType,
-};
+use sp1_prover_types::{network_base_types::ProofMode, Artifact, ArtifactClient, TaskType};
 use tokio::{
     sync::{mpsc, oneshot},
     task::JoinSet,
@@ -25,15 +20,12 @@ use tracing::Instrument;
 
 use crate::{
     worker::{
-        global_memory, ProveShardTaskRequest, RawTaskRequest, SplicingEngine, SplicingTask,
-        TaskContext, TaskError, TaskId, WorkerClient,
+        global_memory, precompile_channel, DeferredMessage, PrecompileArtifactSlice,
+        ProveShardTaskRequest, RawTaskRequest, SplicingEngine, SplicingTask, TaskContext,
+        TaskError, TaskId, WorkerClient,
     },
     SP1VerifyingKey,
 };
-
-/// String used as key for add_ref to ensure precompile artifacts are not cleaned up before they
-/// are fully split into multiple shards.
-const CONTROLLER_PRECOMPILE_ARTIFACT_REF: &str = "_controller";
 
 #[derive(Debug)]
 pub struct ProofData {
@@ -85,6 +77,7 @@ pub struct CommonProverInput {
 
 pub struct SP1CoreExecutor<A, W> {
     splicing_engine: Arc<SplicingEngine<A, W>>,
+    global_memory_buffer_size: usize,
     elf: Artifact,
     stdin: Arc<SP1Stdin>,
     common_input: Artifact,
@@ -99,6 +92,7 @@ pub struct SP1CoreExecutor<A, W> {
 impl<A, W> SP1CoreExecutor<A, W> {
     pub fn new(
         splicing_engine: Arc<SplicingEngine<A, W>>,
+        global_memory_buffer_size: usize,
         elf: Artifact,
         stdin: Arc<SP1Stdin>,
         common_input: Artifact,
@@ -111,6 +105,7 @@ impl<A, W> SP1CoreExecutor<A, W> {
     ) -> Self {
         Self {
             splicing_engine,
+            global_memory_buffer_size,
             elf,
             stdin,
             common_input,
@@ -143,7 +138,9 @@ where
         })?);
 
         // Initialize the touched addresses map.
-        let (all_touched_addresses, global_memory_handler) = global_memory();
+        let (all_touched_addresses, global_memory_handler) =
+            global_memory(self.global_memory_buffer_size);
+        let (deferred_marker_tx, precompile_handler) = precompile_channel(&program, &opts);
         // Initialize the final vm state.
         let final_vm_state = FinalVmStateLock::new();
         let (final_state_tx, final_state_rx) = oneshot::channel::<FinalVmState>();
@@ -206,6 +203,7 @@ where
                         prove_shard_tx: sender.clone(),
                         context: context.clone(),
                         opts: opts.clone(),
+                        deferred_marker_tx: deferred_marker_tx.clone(),
                     };
 
                     let splicing_handle = tracing::debug_span!("splicing", idx = chunk_count)
@@ -271,6 +269,7 @@ where
             .instrument(tracing::debug_span!("wait for splicers"))
         });
 
+        // Emit the global memory shards.
         join_set.spawn(
             {
                 let artifact_client = self.artifact_client.clone();
@@ -302,6 +301,30 @@ where
             }
             .instrument(tracing::debug_span!("emit global memory shards")),
         );
+
+        // Emit the precompile shards.
+        join_set.spawn({
+            let artifact_client = self.artifact_client.clone();
+            let worker_client = self.worker_client.clone();
+            let sender = self.sender.clone();
+            let elf = self.elf.clone();
+            let common_input = self.common_input.clone();
+            let context = self.context.clone();
+            async move {
+                precompile_handler
+                    .emit_precompile_shards(
+                        elf,
+                        common_input,
+                        sender,
+                        artifact_client,
+                        worker_client,
+                        context,
+                    )
+                    .await?;
+                Ok::<_, TaskError>(())
+            }
+            .instrument(tracing::debug_span!("emit precompile shards"))
+        });
 
         // Wait for tasks to finish
         while let Some(result) = join_set.join_next().await {
@@ -356,160 +379,6 @@ impl FinalVmStateLock {
     pub fn get(&self) -> Option<&FinalVmState> {
         self.inner.get()
     }
-}
-
-/// An artifact of precompile events, and the range of indices to index into.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PrecompileArtifactSlice {
-    pub artifact: Artifact,
-    pub start_idx: usize,
-    pub end_idx: usize,
-}
-
-/// A lightweight container for the precompile events in a shard.
-///
-/// Rather than actually holding all of the events, the events are represented as `Artifact`s with
-/// start and end indices.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeferredEvents(pub HashMap<SyscallCode, Vec<PrecompileArtifactSlice>>);
-
-impl DeferredEvents {
-    /// Defer all events in an ExecutionRecord by uploading each precompile in chunks.
-    pub async fn defer_record<A: ArtifactClient>(
-        record: ExecutionRecord,
-        client: &A,
-        split_opts: SplitOpts,
-    ) -> Result<DeferredEvents, TaskError> {
-        let mut deferred: HashMap<SyscallCode, Vec<PrecompileArtifactSlice>> = HashMap::new();
-        let mut futures = Vec::new();
-        for (code, events) in record.precompile_events.events.iter() {
-            let threshold = split_opts.syscall_threshold[*code];
-            futures.extend(
-                events
-                    .chunks(threshold)
-                    .map(|chunk| {
-                        let client = client.clone();
-                        let artifact = client.create_artifact().unwrap();
-                        async move {
-                            client.upload(&artifact, chunk).await.unwrap();
-
-                            (*code, artifact.clone(), chunk.len())
-                        }
-                    })
-                    .collect::<Vec<_>>(),
-            );
-        }
-        let res =
-            await_scoped_vec(futures).await.map_err(|e| TaskError::Fatal(anyhow::anyhow!(e)))?;
-        for (code, artifact, count) in res {
-            deferred.entry(code).or_default().push(PrecompileArtifactSlice {
-                artifact,
-                start_idx: 0,
-                end_idx: count,
-            });
-        }
-        Ok(DeferredEvents(deferred))
-    }
-
-    /// Create an empty DeferredEvents.
-    pub fn empty() -> Self {
-        Self(HashMap::new())
-    }
-
-    /// Append the events from another DeferredEvents to self. Analogous to
-    /// `ExecutionRecord::append`.
-    pub async fn append(&mut self, other: DeferredEvents, client: &impl ArtifactClient) {
-        for (code, events) in other.0 {
-            // Add task references for artifacts so they are not cleaned up before they are fully
-            // split.
-            for PrecompileArtifactSlice { artifact, .. } in &events {
-                if let Err(e) = client.add_ref(artifact, CONTROLLER_PRECOMPILE_ARTIFACT_REF).await {
-                    tracing::error!("Failed to add ref to artifact {:?}: {:?}", artifact, e);
-                }
-            }
-            self.0.entry(code).or_default().extend(events);
-        }
-    }
-
-    /// Split the DeferredEvents into multiple TraceData. Similar to `ExecutionRecord::split`.
-    pub async fn split(
-        &mut self,
-        last: bool,
-        opts: SplitOpts,
-        client: &impl ArtifactClient,
-    ) -> Vec<TraceData> {
-        let mut shards = Vec::new();
-        let keys = self.0.keys().cloned().collect::<Vec<_>>();
-        for code in keys {
-            let threshold = opts.syscall_threshold[code];
-            // self.0[code] contains uploaded artifacts with start and end indices. start is
-            // initially 0. Create shards of precompiles from self.0[code] up to
-            // threshold, then update new [start, end) indices for future splits. If
-            // last is true, don't leave any remainder.
-            loop {
-                let mut count = 0;
-                // Loop through until we've found enough precompiles, and remove from self.0[code].
-                // `index` will be set such that artifacts [0, index) will be made into a shard.
-                let mut index = 0;
-                for (i, artifact_slice) in self.0[&code].iter().enumerate() {
-                    let PrecompileArtifactSlice { start_idx, end_idx, .. } = artifact_slice;
-                    count += end_idx - start_idx;
-                    // Break if we've found enough or it's the last Artifact and `last` is true.
-                    if count >= threshold || (last && i == self.0[&code].len() - 1) {
-                        index = i + 1;
-                        break;
-                    }
-                }
-                // If not enough was found, break.
-                if index == 0 {
-                    break;
-                }
-                // Otherwise remove the artifacts and handle remainder of last artifact if there is
-                // any.
-                let mut artifacts =
-                    self.0.get_mut(&code).unwrap().drain(..index).collect::<Vec<_>>();
-                // For each artifact, add refs for the range needed in prove_shard, and then remove
-                // the controller ref if it's been fully split.
-                for (i, slice) in artifacts.iter().enumerate() {
-                    let PrecompileArtifactSlice { artifact, start_idx, end_idx } = slice;
-                    if let Err(e) =
-                        client.add_ref(artifact, &format!("{:?}_{:?}", start_idx, end_idx)).await
-                    {
-                        tracing::error!("Failed to add ref to artifact {}: {:?}", artifact, e);
-                    }
-                    // If there's a remainder, don't remove the controller ref yet.
-                    if i == artifacts.len() - 1 && count > threshold {
-                        break;
-                    }
-                    if let Err(e) = client
-                        .remove_ref(
-                            artifact,
-                            ArtifactType::UnspecifiedArtifactType,
-                            CONTROLLER_PRECOMPILE_ARTIFACT_REF,
-                        )
-                        .await
-                    {
-                        tracing::error!("Failed to remove ref to artifact {}: {:?}", artifact, e);
-                    }
-                }
-                // If there's extra in the last artifact, truncate it and leave it in the front of
-                // self.0[code].
-                if count > threshold {
-                    let mut new_range = artifacts.last().cloned().unwrap();
-                    new_range.start_idx = new_range.end_idx - (count - threshold);
-                    artifacts[index - 1].end_idx = new_range.start_idx;
-                    self.0.get_mut(&code).unwrap().insert(0, new_range);
-                }
-                shards.push(TraceData::Precompile(artifacts, code));
-            }
-        }
-        shards
-    }
-}
-
-pub struct DeferredMessage {
-    pub task_id: TaskId,
-    pub record: Artifact,
 }
 
 pub struct SpawnProveOutput {

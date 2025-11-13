@@ -62,8 +62,8 @@ impl TouchedAddresses {
 
 pub struct GlobalMemoryHandler(mpsc::Receiver<SpliceAddresses>);
 
-pub fn global_memory() -> (TouchedAddresses, GlobalMemoryHandler) {
-    let (tx, rx) = mpsc::channel(1);
+pub fn global_memory(capacity: usize) -> (TouchedAddresses, GlobalMemoryHandler) {
+    let (tx, rx) = mpsc::channel(capacity);
     (TouchedAddresses { inner: tx }, GlobalMemoryHandler(rx))
 }
 
