@@ -1,5 +1,5 @@
 use csl_cuda::TaskScope;
-use csl_prover::{local_gpu_opts, CudaSP1ProverComponents, SP1CudaProverBuilder};
+use csl_prover::{local_gpu_opts, ProverCleanSP1ProverComponents, SP1ProverCleanBuilder};
 use sp1_core_executor::{Program, SP1Context, SP1RecursionProof};
 use sp1_core_machine::io::SP1Stdin;
 use sp1_cuda::{
@@ -17,7 +17,7 @@ use tokio::{
     net::{UnixListener, UnixStream},
 };
 
-type Prover = LocalProver<CudaSP1ProverComponents>;
+type Prover = LocalProver<ProverCleanSP1ProverComponents>;
 
 /// A cached proving key and verifying key.
 #[derive(Clone)]
@@ -40,6 +40,11 @@ struct ConnectionCtx {
 impl Server {
     /// Run the server, indefinitely.
     pub async fn run(self, task_scope: TaskScope) {
+        eprintln!(
+            "Running cuslop-server {} (prover-clean) with device {}",
+            sp1_primitives::SP1_VERSION,
+            self.cuda_device_id
+        );
         let socket_path = socket_path(self.cuda_device_id);
 
         // Try to remove the socket file socket incase the file was never cleaned up.
@@ -49,8 +54,10 @@ impl Server {
 
         let listener = UnixListener::bind(&socket_path).expect("Failed to bind to socket addr");
 
-        let prover = SP1CudaProverBuilder::new(task_scope).without_vk_verification().build().await;
-        let prover = LocalProver::new(prover, local_gpu_opts(csl_prover::ProverBackend::Old));
+        let prover =
+            SP1ProverCleanBuilder::new(task_scope).await.without_vk_verification().build().await;
+        let prover =
+            LocalProver::new(prover, local_gpu_opts(csl_prover::ProverBackend::ProverClean));
         let prover = Arc::new(prover);
 
         tracing::info!("Server listening @ {}", socket_path.display());
