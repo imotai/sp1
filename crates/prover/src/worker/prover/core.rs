@@ -14,7 +14,7 @@ use sp1_core_executor::{
 use sp1_core_machine::{executor::trace_chunk, riscv::RiscvAir};
 use sp1_hypercube::{
     air::MachineAir,
-    prover::{CoreProofShape, ProverSemaphore},
+    prover::{CoreProofShape, MachineProvingKey, ProverSemaphore},
     Machine, MachineProof, MachineVerifier, SP1RecursionProof, ShardProof,
 };
 use sp1_jit::TraceChunk;
@@ -25,7 +25,7 @@ use sp1_prover_types::{
 use sp1_recursion_circuit::shard::RecursiveShardVerifier;
 use sp1_recursion_compiler::config::InnerConfig;
 use sp1_recursion_executor::RecursionProgram;
-use tokio::task::JoinHandle;
+use tokio::{sync::OnceCell, task::JoinHandle};
 use tracing::Instrument;
 
 use crate::{
@@ -483,11 +483,21 @@ pub struct CoreProveOutput {
     pub proof: SP1CoreShardProof,
 }
 
+pub type CoreProvingKey<C> =
+    MachineProvingKey<SP1GlobalContext, <C as SP1ProverComponents>::CoreComponents>;
+
+/// The Core Proving Key cache is initialized once and shared across all CoreProverWorkers.
+pub type CoreProvingKeyCache<C> = Arc<OnceCell<Arc<CoreProvingKey<C>>>>;
+
 pub struct CoreProverWorker<A, C: SP1ProverComponents> {
     artifact_client: A,
     core_prover: Arc<CoreProver<C>>,
     recursion_prover: SP1RecursionProver<A, C>,
     permits: ProverSemaphore,
+    /// Optional fixed PK cache shared across workers.
+    /// When Some, workers will use get_or_init to ensure only one does setup.
+    /// The Arc is needed because OnceCell doesn't implement Clone.
+    pk: Option<CoreProvingKeyCache<C>>,
     verify_intermediates: bool,
 }
 
@@ -497,9 +507,10 @@ impl<A, C: SP1ProverComponents> CoreProverWorker<A, C> {
         core_prover: Arc<CoreProver<C>>,
         recursion_prover: SP1RecursionProver<A, C>,
         permits: ProverSemaphore,
+        pk: Option<CoreProvingKeyCache<C>>,
         verify_intermediates: bool,
     ) -> Self {
-        Self { artifact_client, core_prover, recursion_prover, permits, verify_intermediates }
+        Self { artifact_client, core_prover, recursion_prover, permits, pk, verify_intermediates }
     }
 }
 
@@ -526,16 +537,42 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
         let mut challenger = SP1GlobalContext::default_challenger();
 
         let permits = self.permits.clone();
-        let (_, proof, permit) = self
-            .core_prover
-            .setup_and_prove_shard(
-                program.clone(),
-                record,
-                Some(common_input.vk.vk.clone()),
-                permits,
-                &mut challenger,
-            )
-            .await;
+
+        let (proof, permit) = if let Some(pk_cache) = &self.pk {
+            // We have a fixed PK cache - use get_or_init to ensure only one worker does setup
+            let pk = pk_cache
+                .get_or_init(|| async {
+                    tracing::info!("Initializing fixed PK cache");
+                    let (pk, _vk) = self
+                        .core_prover
+                        .setup(program.clone(), permits.clone())
+                        .instrument(tracing::debug_span!("core setup"))
+                        .await;
+                    pk
+                })
+                .await;
+
+            tracing::debug!("Using fixed PK");
+            pk.vk.observe_into(&mut challenger);
+            self.core_prover
+                .prove_shard_with_pk(pk.clone(), record, permits, &mut challenger)
+                .instrument(tracing::debug_span!("core prove with pk"))
+                .await
+        } else {
+            // No fixed PK cache - always do setup and prove
+            let (_, proof, permit) = self
+                .core_prover
+                .setup_and_prove_shard(
+                    program.clone(),
+                    record,
+                    Some(common_input.vk.vk.clone()),
+                    permits,
+                    &mut challenger,
+                )
+                .instrument(tracing::debug_span!("core setup and prove"))
+                .await;
+            (proof, permit)
+        };
         // Release the permit and update the metrics
         let duration = permit.release();
         metrics.increment_permit_time(duration);
@@ -565,6 +602,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
             let witness = SP1CircuitWitness::Core(input);
             self.recursion_prover
                 .submit_prove_shard(program, witness, output, metrics.clone())
+                .instrument(tracing::debug_span!("normalize prove shard"))
                 .await?
                 .await
                 .map_err(|e| TaskError::Fatal(e.into()))??;
@@ -619,7 +657,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
         let program = Arc::new(program);
 
         let permits = self.permits.clone();
-        let vk = self.core_prover.setup(program, permits).await;
+        let (_pk, vk) = self.core_prover.setup(program, permits).await;
         tracing::info!("Setup completed for task {}", id);
 
         // Upload the vk
@@ -731,6 +769,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
         permits: ProverSemaphore,
         recursion_prover: SP1RecursionProver<A, C>,
         verify_intermediates: bool,
+        use_fixed_pk: bool,
     ) -> Self {
         // Initialize the tracing engine
         let core_verifier = C::core_verifier();
@@ -763,6 +802,9 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
         let trace_engine =
             Arc::new(AsyncEngine::new(trace_workers, config.trace_executor_buffer_size));
 
+        // Create a shared fixed PK cache if enabled
+        let pk_cache = if use_fixed_pk { Some(Arc::new(OnceCell::new())) } else { None };
+
         // Initialize the core prove engine
         let core_prover_workers = (0..config.num_core_prover_workers)
             .map(|_| {
@@ -771,6 +813,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
                     air_prover.clone(),
                     recursion_prover.clone(),
                     permits.clone(),
+                    pk_cache.clone(),
                     verify_intermediates,
                 )
             })
@@ -786,6 +829,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
                     air_prover.clone(),
                     recursion_prover.clone(),
                     permits.clone(),
+                    None,
                     false,
                 )
             })

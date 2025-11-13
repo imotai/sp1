@@ -141,6 +141,7 @@ where
             .instrument(tracing::info_span!("get splices to serialize")),
         );
 
+        // This task waits for prove shard tasks to be sent.
         join_set.spawn(
             {
                 async move {

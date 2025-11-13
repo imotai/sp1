@@ -143,13 +143,22 @@ impl Default for SP1WorkerConfig {
             max_compose_arity,
             vk_verification,
         };
+
         let verify_intermediates = env::var("SP1_WORKER_VERIFY_INTERMEDIATES")
             .ok()
             .and_then(|s| s.parse::<bool>().ok())
             .unwrap_or(true);
+        let use_fixed_pk = env::var("SP1_WORKER_USE_FIXED_PK")
+            .ok()
+            .and_then(|s| s.parse::<bool>().ok())
+            .unwrap_or(false);
 
-        let prover_config =
-            SP1ProverConfig { core_prover_config, recursion_prover_config, verify_intermediates };
+        let prover_config = SP1ProverConfig {
+            core_prover_config,
+            recursion_prover_config,
+            verify_intermediates,
+            use_fixed_pk,
+        };
 
         // Get the local node config from parts above.
         SP1WorkerConfig { controller_config, prover_config }

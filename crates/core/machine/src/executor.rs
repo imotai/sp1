@@ -71,11 +71,15 @@ impl<F: PrimeField32> MachineExecutor<F> {
         context: SP1Context<'static>,
     ) -> Result<(SP1PublicValues, [u8; 32], ExecutionReport), MachineExecutorError> {
         // Phase 1: Use MinimalExecutor for fast execution and public values stream
-        const MAX_NUMBER_TRACE_ENTRIES: u64 =
+        const MINIMAL_TRACE_CHUNK_THRESHOLD: u64 =
             2147483648 / std::mem::size_of::<sp1_jit::MemValue>() as u64;
+        let max_number_trace_entries = std::env::var("MINIMAL_TRACE_CHUNK_THRESHOLD").map_or_else(
+            |_| MINIMAL_TRACE_CHUNK_THRESHOLD,
+            |s| s.parse::<u64>().unwrap_or(MINIMAL_TRACE_CHUNK_THRESHOLD),
+        );
 
         let mut minimal_executor =
-            MinimalExecutor::new(program.clone(), false, Some(MAX_NUMBER_TRACE_ENTRIES));
+            MinimalExecutor::new(program.clone(), false, Some(max_number_trace_entries));
 
         // Feed stdin buffers to the executor
         for buf in stdin.buffer {
