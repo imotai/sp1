@@ -1024,14 +1024,17 @@ impl From<RiscvAirDiscriminants> for RiscvAirId {
 #[cfg(test)]
 pub mod tests {
 
-    use std::sync::Arc;
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        sync::Arc,
+    };
 
     use slop_air::BaseAir;
     use sp1_core_executor::{
         cost_and_height_per_syscall, rv64im_costs, syscalls::SyscallCode, Instruction, Opcode,
         Program, RiscvAirId, MAXIMUM_CYCLE_AREA, MAXIMUM_PADDING_AREA,
     };
-    use sp1_hypercube::air::MachineAir;
+    use sp1_hypercube::{air::MachineAir, InteractionBuilder, MachineRecord};
     use sp1_primitives::SP1Field;
 
     use crate::{
@@ -1069,6 +1072,49 @@ pub mod tests {
         let machine_costs = RiscvAir::<SP1Field>::costs();
         assert_eq!(costs, machine_costs);
     }
+
+    #[test]
+    fn test_interaction_counts() {
+        let interaction_sizes = RiscvAir::<SP1Field>::machine()
+            .chips()
+            .iter()
+            .flat_map(|chip| {
+                chip.sends()
+                    .iter()
+                    .chain(chip.receives().iter())
+                    .map(|interaction| (interaction.kind, interaction.values.len() as usize))
+            })
+            .collect::<BTreeSet<(InteractionKind, usize)>>();
+
+        for (kind, size) in interaction_sizes {
+            assert_eq!(kind.num_values() as usize, size);
+        }
+    }
+
+    #[test]
+    fn test_eval_public_values_interactions() {
+        let machine = RiscvAir::<SP1Field>::machine();
+        let kinds_and_counts = machine.chips().iter().flat_map(|chip| {
+            let mut builder = InteractionBuilder::<SP1Field>::new(chip.preprocessed_width(), chip.width());
+            <<RiscvAir<SP1Field> as MachineAir<SP1Field>>::Record as MachineRecord>::eval_public_values(&mut builder);
+            let (sends, receives) = builder.interactions();
+            sends.iter().chain(receives.iter()).map(|interaction| (interaction.kind, interaction.values.len())).collect::<BTreeSet<(InteractionKind, usize)>>()
+        }).collect::<BTreeMap<InteractionKind, usize>>();
+
+        let expected_kinds = InteractionKind::all_kinds()
+            .iter()
+            .filter_map(|kind| {
+                if kind.appears_in_eval_public_values() {
+                    Some((*kind, kind.num_values()))
+                } else {
+                    None
+                }
+            })
+            .collect::<BTreeMap<InteractionKind, usize>>();
+
+        assert_eq!(kinds_and_counts, expected_kinds);
+    }
+
     #[test]
     #[ignore = "should only be used to generate the artifact"]
     fn write_core_air_costs() {

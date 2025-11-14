@@ -4,7 +4,7 @@
       "BaseAlu": 584736,
       "ExtAlu": 1029952,
       "MemoryConst": 492608,
-      "MemoryVar": 663200,
+      "MemoryVar": 663168,
       "Poseidon2WideDeg3": 158400,
       "PrefixSumChecks": 258560,
       "PublicValues": 16,
