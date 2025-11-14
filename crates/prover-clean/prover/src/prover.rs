@@ -31,7 +31,7 @@ use sp1_hypercube::{
     prover::{AirProver, PreprocessedData, ProverPermit, ProverSemaphore, ProvingKey},
     Machine, MachineVerifyingKey, ShardProof,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::iter::once;
 use std::mem::MaybeUninit;
 use std::pin::Pin;
@@ -676,8 +676,6 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
             .await
             .unwrap();
 
-        let shard_chips = shard_chips.iter().map(MachineAir::name).collect::<BTreeSet<_>>();
-
         let proof = ShardProof {
             main_commitment: main_commit,
             opened_values: shard_open_values,
@@ -685,7 +683,6 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
             evaluation_proof,
             zerocheck_proof: zerocheck_partial_sumcheck_proof,
             public_values,
-            shard_chips,
         };
 
         (proof, permit)

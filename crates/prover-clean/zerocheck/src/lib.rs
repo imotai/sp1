@@ -704,7 +704,6 @@ where
             ChipOpenedValues {
                 preprocessed,
                 main,
-                local_cumulative_sum: Ext::zero(),
                 degree: Point::from_usize(
                     initial_heights[i] as usize,
                     (max_log_row_count + 1) as usize,
