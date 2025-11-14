@@ -89,8 +89,10 @@ async fn main() {
         opts.minimal_trace_chunk_threshold = chunk_size;
     }
     let task_context = TaskContext { proof_id, parent_id, parent_context, requester_id };
+    let global_memory_buffer_size = 2 * args.splice_workers;
     let executor = SP1CoreExecutor::new(
         splicing_engine,
+        global_memory_buffer_size,
         elf_artifact,
         stdin,
         common_input,
@@ -100,6 +102,7 @@ async fn main() {
         sender,
         artifact_client,
         worker_client,
+        None,
     );
 
     let counter_handle = tokio::task::spawn(async move {
