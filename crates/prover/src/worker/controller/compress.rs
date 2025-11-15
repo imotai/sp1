@@ -388,7 +388,13 @@ impl CompressTree {
                         self.insert(proofs);
                     }
                 }
-                Some((task_id, TaskStatus::Succeeded)) = event_stream.recv() => {
+                Some((task_id, status)) = event_stream.recv() => {
+                    if status != TaskStatus::Succeeded {
+                        return Err(
+                            TaskError::Fatal
+                            (anyhow::anyhow!("Reduction task {} failed", task_id))
+                        );
+                    }
                     let proof = proof_map.remove(&task_id);
                     if let Some(proof) = proof {
                         // Send the proof to the proof queue.
