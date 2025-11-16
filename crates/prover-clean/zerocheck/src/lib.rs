@@ -2038,6 +2038,7 @@ pub mod tests {
                 CORE_MAX_LOG_ROW_COUNT,
                 &t,
                 ProverSemaphore::new(1),
+                true,
             )
             .await;
             let chips = machine.smallest_cluster(&chips).unwrap();

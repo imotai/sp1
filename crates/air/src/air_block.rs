@@ -3,23 +3,18 @@ use crate::{
 };
 use itertools::Itertools;
 use slop_air::{Air, AirBuilder, PairBuilder};
-use slop_algebra::{AbstractExtensionField, AbstractField};
-use slop_koala_bear::KoalaBear;
+use slop_algebra::AbstractField;
 use slop_matrix::Matrix;
 use sp1_core_executor::events::FieldOperation;
 use sp1_core_executor::syscalls::SyscallCode;
-use sp1_core_executor::ByteOpcode;
-use sp1_core_machine::air::{MemoryAirBuilder, SP1CoreAirBuilder, WordAirBuilder};
-use sp1_core_machine::operations::{
-    AddrAddOperation, GlobalAccumulationOperation, SyscallAddrOperation,
-};
+use sp1_core_machine::air::{MemoryAirBuilder, SP1CoreAirBuilder};
+use sp1_core_machine::operations::{AddrAddOperation, SyscallAddrOperation};
 use sp1_core_machine::riscv::{WeierstrassAddAssignChip, WeierstrassDoubleAssignChip};
 use sp1_core_machine::syscall::precompiles::weierstrass::{
     WeierstrassAddAssignCols, WeierstrassDoubleAssignCols,
 };
 use sp1_core_machine::utils::limbs_to_words;
 use sp1_core_machine::{
-    global::{GlobalChip, GlobalCols},
     riscv::{KeccakPermuteChip, RiscvAir},
     syscall::precompiles::keccak256::{columns::KeccakMemCols, constants::rc_value_bit},
 };
@@ -28,13 +23,9 @@ use sp1_curves::params::FieldParameters;
 use sp1_curves::params::{Limbs, NumLimbs};
 use sp1_curves::weierstrass::WeierstrassParameters;
 use sp1_curves::{BigUint, CurveType, EllipticCurve};
-use sp1_hypercube::air::ByteAirBuilder;
-use sp1_hypercube::air::{InstructionAirBuilder, SepticExtensionAirBuilder};
+use sp1_hypercube::air::InstructionAirBuilder;
 use sp1_hypercube::operations::poseidon2::air::{eval_external_round, eval_internal_rounds};
-use sp1_hypercube::operations::poseidon2::permutation::Poseidon2Cols;
 use sp1_hypercube::operations::poseidon2::WIDTH;
-use sp1_hypercube::septic_curve::SepticCurve;
-use sp1_hypercube::septic_extension::SepticExtension;
 use sp1_hypercube::Word;
 use sp1_hypercube::{
     air::{AirInteraction, InteractionScope, MachineAir, MessageBuilder},
@@ -63,7 +54,6 @@ impl<'a> BlockAir<SymbolicProverFolder<'a>> for RiscvAir<F> {
     fn num_blocks(&self) -> usize {
         match self {
             RiscvAir::KeccakP(keccak) => keccak.num_blocks(),
-            // RiscvAir::Global(global) => global.num_blocks(),
             RiscvAir::Secp256k1Add(secp256k1_add) => secp256k1_add.num_blocks(),
             RiscvAir::Secp256k1Double(secp256k1_double) => secp256k1_double.num_blocks(),
             _ => 1,
@@ -73,7 +63,6 @@ impl<'a> BlockAir<SymbolicProverFolder<'a>> for RiscvAir<F> {
     fn eval_block(&self, builder: &mut SymbolicProverFolder<'a>, index: usize) {
         match self {
             RiscvAir::KeccakP(keccak) => keccak.eval_block(builder, index),
-            // RiscvAir::Global(global) => global.eval_block(builder, index),
             RiscvAir::Secp256k1Add(secp256k1_add) => secp256k1_add.eval_block(builder, index),
             RiscvAir::Secp256k1Double(secp256k1_double) => {
                 secp256k1_double.eval_block(builder, index)
@@ -300,181 +289,6 @@ impl<'a> BlockAir<SymbolicProverFolder<'a>> for KeccakPermuteChip {
             }
             _ => unreachable!(),
         };
-    }
-}
-
-impl<'a> BlockAir<SymbolicProverFolder<'a>> for GlobalChip {
-    fn num_blocks(&self) -> usize {
-        12
-    }
-
-    #[allow(clippy::needless_range_loop)]
-    fn eval_block(&self, builder: &mut SymbolicProverFolder<'a>, index: usize) {
-        let main = builder.main();
-        let local = main.row_slice(0);
-        let local: &GlobalCols<SymbolicVarF> = (*local).borrow();
-
-        match index {
-            0 => {
-                builder.assert_bool(local.is_real);
-
-                builder.receive(
-                    AirInteraction::new(
-                        vec![
-                            local.message[0],
-                            local.message[1],
-                            local.message[2],
-                            local.message[3],
-                            local.message[4],
-                            local.message[5],
-                            local.message[6],
-                            local.is_send,
-                            local.is_receive,
-                            local.kind,
-                        ],
-                        local.is_real,
-                        InteractionKind::Global,
-                    ),
-                    InteractionScope::Local,
-                );
-
-                // Constrain that the `is_real` is boolean.
-                builder.assert_bool(local.is_real);
-                builder
-                    .when(local.is_real)
-                    .assert_eq(local.is_receive + local.is_send, SymbolicExprF::one());
-                builder.assert_bool(local.is_receive);
-                builder.assert_bool(local.is_send);
-
-                // Compute the offset and range check each bits, ensuring that the offset is a byte.
-                let mut offset = SymbolicExprF::zero();
-                for i in 0..8 {
-                    builder.assert_bool(local.interaction.offset_bits[i]);
-                    offset = offset
-                        + local.interaction.offset_bits[i]
-                            * SymbolicExprF::from_canonical_u32(1 << i);
-                }
-
-                // Range check the first element in the message to be 24 bits so that we can encode the
-                // interaction kind in the upper bits.
-                builder.when(local.is_real).assert_eq(
-                    local.message[0],
-                    local.message_0_16bit_limb
-                        + local.message_0_8bit_limb * SymbolicExprF::from_canonical_u32(1 << 16),
-                );
-                builder.slice_range_check_u16(
-                    &[local.message_0_16bit_limb, local.message[7]],
-                    local.is_real,
-                );
-                builder.slice_range_check_u8(&[local.message_0_8bit_limb], local.is_real);
-                builder.send_byte(
-                    SymbolicExprF::from_canonical_u32(ByteOpcode::Range as u32),
-                    local.kind,
-                    SymbolicExprF::from_canonical_u32(6),
-                    SymbolicExprF::zero(),
-                    local.is_real,
-                );
-
-                // Turn the message into a hash input. Only the first 8 elements are non-zero, as the rate
-                // of the Poseidon2 hash is 8. Combining `values[0]` with `kind` is safe, as
-                // `values[0]` is range checked to be 24 bits, and `kind` is known to be small.
-                let m_trial = [
-                    local.message[0] + SymbolicExprF::from_canonical_u32(1 << 24) * local.kind,
-                    local.message[1].into(),
-                    local.message[2].into(),
-                    local.message[3].into(),
-                    local.message[4].into(),
-                    local.message[5].into(),
-                    local.message[6].into(),
-                    local.message[7] + SymbolicExprF::from_canonical_u32(1 << 16) * offset,
-                    SymbolicExprF::zero(),
-                    SymbolicExprF::zero(),
-                    SymbolicExprF::zero(),
-                    SymbolicExprF::zero(),
-                    SymbolicExprF::zero(),
-                    SymbolicExprF::zero(),
-                    SymbolicExprF::zero(),
-                    SymbolicExprF::zero(),
-                ];
-
-                // Constrain the input of the permutation to be the message.
-                for i in 0..16 {
-                    builder.when(local.is_real).assert_eq(
-                        local.interaction.permutation.permutation.external_rounds_state()[0][i],
-                        m_trial[i],
-                    );
-                }
-            }
-            1..9 => {
-                eval_external_round(builder, &local.interaction.permutation.permutation, index - 1);
-            }
-            9 => {
-                eval_internal_rounds(builder, &local.interaction.permutation.permutation);
-                let m_hash = local.interaction.permutation.permutation.perm_output();
-                for i in 0..7 {
-                    builder
-                        .when(local.is_real)
-                        .assert_eq(local.interaction.x_coordinate[i], m_hash[i]);
-                }
-            }
-            10 => {
-                let x = SepticExtension::<SymbolicExprF>::from_base_fn(|i| {
-                    Into::<SymbolicExprF>::into(local.interaction.x_coordinate[i])
-                });
-                let y = SepticExtension::<SymbolicExprF>::from_base_fn(|i| {
-                    Into::<SymbolicExprF>::into(local.interaction.y_coordinate[i])
-                });
-
-                // Constrain that `(x, y)` is a valid point on the curve.
-                let y2 = y.square();
-                let x3_45x_41z3 = SepticCurve::<SymbolicExprF>::curve_formula(x);
-                builder.assert_septic_ext_eq(y2, x3_45x_41z3);
-
-                // Constrain that `0 <= y6_value < (p - 1) / 2 = 2^30 - 2^23`.
-                // Decompose `y6_value` into 30 bits, and then constrain that the top 7 bits cannot be all
-                // 1. To do this, check that the sum of the top 7 bits is not equal to 7, which can
-                // be done by providing an inverse.
-                let mut y6_value = SymbolicExprF::zero();
-                let mut top_7_bits = SymbolicExprF::zero();
-                for i in 0..30 {
-                    builder.assert_bool(local.interaction.y6_bit_decomp[i]);
-                    y6_value = y6_value
-                        + local.interaction.y6_bit_decomp[i]
-                            * SymbolicExprF::from_canonical_u32(1 << i);
-                    if i >= 23 {
-                        top_7_bits = top_7_bits + local.interaction.y6_bit_decomp[i];
-                    }
-                }
-                // If `is_real` is true, check that `top_7_bits - 7` is non-zero, by checking
-                // `range_check_witness` is an inverse of it.
-                builder.when(local.is_real).assert_eq(
-                    local.interaction.range_check_witness
-                        * (top_7_bits - SymbolicExprF::from_canonical_u8(7)),
-                    SymbolicExprF::one(),
-                );
-
-                // Constrain that y has correct sign.
-                // If it's a receive: `1 <= y_6 <= (p - 1) / 2`, so `0 <= y_6 - 1 = y6_value < (p - 1) / 2`.
-                // If it's a send: `(p + 1) / 2 <= y_6 <= p - 1`, so `0 <= y_6 - (p + 1) / 2 = y6_value < (p
-                // - 1) / 2`.
-                builder.when(local.is_receive).assert_eq(y.0[6], SymbolicExprF::one() + y6_value);
-                builder.when(local.is_send).assert_eq(
-                    y.0[6],
-                    SymbolicExprF::from_canonical_u32((1 << 30) - (1 << 23) + 1) + y6_value,
-                );
-            }
-            11 => {
-                // Evaluate the accumulation.
-                GlobalAccumulationOperation::<KoalaBear>::eval_accumulation(
-                    builder,
-                    local.interaction,
-                    local.is_real,
-                    local.index,
-                    local.accumulation,
-                );
-            }
-            _ => unreachable!(),
-        }
     }
 }
 

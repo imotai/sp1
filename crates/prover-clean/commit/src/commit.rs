@@ -168,6 +168,7 @@ mod tests {
                 CORE_MAX_LOG_ROW_COUNT,
                 &scope,
                 ProverSemaphore::new(1),
+                false,
             )
             .await;
 

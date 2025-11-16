@@ -32,6 +32,7 @@ impl CudaTracegenAir<F> for GlobalChip {
         scope: &TaskScope,
     ) -> Result<Mle<F, TaskScope>, CopyError> {
         let events = &input.global_interaction_events;
+        let events_len = events.len();
 
         let events_device = {
             let mut buf = Buffer::try_with_capacity_in(events.len(), scope.clone()).unwrap();
@@ -219,7 +220,9 @@ impl CudaTracegenAir<F> for GlobalChip {
         let trace = Arc::new(trace);
 
         let global_sum = if height == 0 {
-            SepticDigest(SepticCurve::convert(SepticCurve::dummy(), |x| F::as_canonical_u32(&x)))
+            SepticDigest(SepticCurve::convert(SepticDigest::<F>::zero().0, |x| {
+                F::as_canonical_u32(&x)
+            }))
         } else {
             // // Copy the last digest of the last `CURVE_POINT_WIDTH` columns, which are the global digest columns.
             const CUMULATIVE_SUM_COL_START: usize =
@@ -230,7 +233,7 @@ impl CudaTracegenAir<F> for GlobalChip {
                 let scope = scope.clone();
                 tokio::task::spawn_blocking(move || {
                     // No need to synchronize, since the host memory is not pinned.
-                    trace[[i, height - 1]].copy_into_host(&scope)
+                    trace[[i, events_len - 1]].copy_into_host(&scope)
                 })
             }))
             .await;

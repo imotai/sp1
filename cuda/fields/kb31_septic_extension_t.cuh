@@ -490,15 +490,18 @@ class kb31_septic_extension_t {
 
     FUN bool is_receive() const {
         uint32_t limb = value[6].as_canonical_u32();
-        return 1 <= limb && limb <= (kb31_t::MOD - 1) / 2;
+        return 1 <= limb && limb <= 63 * (1 << 24);
     }
 
     FUN bool is_send() const {
         uint32_t limb = value[6].as_canonical_u32();
-        return (kb31_t::MOD + 1) / 2 <= limb && limb <= (kb31_t::MOD - 1);
+        return kb31_t::MOD - 63 * (1 << 24) <= limb && limb <= (kb31_t::MOD - 1);
     }
 
-    FUN bool is_exception() const { return value[6] == kb31_t::zero(); }
+    FUN bool is_exception() const { 
+        uint32_t limb = value[6].as_canonical_u32();
+        return limb == 0 || (63 * (1 << 24) < limb && limb < kb31_t::MOD - 63 * (1 << 24)); 
+    }
 };
 
 class bb31_septic_curve_t {

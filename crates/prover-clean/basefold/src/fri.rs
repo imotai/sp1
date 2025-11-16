@@ -581,6 +581,7 @@ mod tests {
                 CORE_MAX_LOG_ROW_COUNT,
                 &scope,
                 new_semaphore,
+                false,
             )
             .await;
 

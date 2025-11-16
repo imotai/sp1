@@ -53,6 +53,7 @@ zstd = "0.13.3"
 sp1-sdk = { workspace = true}
 sp1-recursion-circuit = { workspace = true }
 sp1-primitives = { workspace = true }
+sp1-core-executor = { workspace = true }
 
 [[bin]]
 name = "logup_gkr_bench"

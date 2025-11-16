@@ -292,6 +292,8 @@ mod tests {
     use slop_alloc::ToHost;
     use slop_challenger::{FieldChallenger, IopCtx};
     use slop_sumcheck::partially_verify_sumcheck_proof;
+    use sp1_core_executor::ExecutionRecord;
+    use sp1_hypercube::MachineRecord;
     use sp1_hypercube::{prover::ProverSemaphore, ShardVerifier};
     use sp1_primitives::fri_params::core_fri_config;
     use std::{mem::MaybeUninit, sync::Arc};
@@ -552,6 +554,7 @@ mod tests {
                 CORE_MAX_LOG_ROW_COUNT,
                 &scope,
                 ProverSemaphore::new(1),
+                true,
             )
             .await;
 
@@ -565,7 +568,17 @@ mod tests {
                 .map(|i| i.values.len() + 1)
                 .max()
                 .unwrap();
-            let beta_seed_dim = max_interaction_arity.next_power_of_two().ilog2();
+
+            let max_interaction_kinds_values = ExecutionRecord::interactions_in_public_values()
+                .iter()
+                .map(|kind| kind.num_values() + 1)
+                .max()
+                .unwrap_or(1);
+
+            let beta_seed_dim = std::cmp::max(max_interaction_arity, max_interaction_kinds_values)
+                .next_power_of_two()
+                .ilog2();
+
             let beta_seed = challenger.sample_point(beta_seed_dim);
             let pv_challenge: Ext = challenger.sample_ext_element();
 

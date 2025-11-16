@@ -36,7 +36,7 @@ pub mod tracegen_setup {
         stdin.write(&8_000u32);
 
         // 3. Create executor and channel
-        let opts = SP1CoreOpts::default();
+        let opts = SP1CoreOpts { global_dependencies_opt: true, ..Default::default() };
         let executor = MachineExecutor::<Felt>::new(
             2 * 1024 * 1024 * 1024, // 2GB buffer
             2,                      // 2 workers

@@ -442,6 +442,7 @@ mod tests {
                 CORE_MAX_LOG_ROW_COUNT,
                 &scope,
                 new_semaphore.clone(),
+                false,
             )
             .await;
             let new_traces = Arc::new(new_traces);

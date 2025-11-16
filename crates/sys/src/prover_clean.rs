@@ -12,6 +12,8 @@ extern "C" {
     pub fn generate_col_index() -> KernelPtr;
     pub fn generate_start_indices() -> KernelPtr;
     pub fn fill_buffer() -> KernelPtr;
+    pub fn count_and_add_kernel() -> KernelPtr;
+    pub fn sum_to_trace_kernel() -> KernelPtr;
 
     // Reduce kernels
     pub fn reduce_kernel_felt() -> KernelPtr;

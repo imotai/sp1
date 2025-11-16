@@ -66,9 +66,7 @@ __device__ void populate_global_interaction(
             if (y.is_receive() != event->is_receive) {
                 y = kb31_septic_extension_t::zero() - y;
             }
-            for (uint32_t idx = 0; idx < 8; idx++) {
-                cols->offset_bits[idx] = kb31_t::from_canonical_u32((offset >> idx) & 1);
-            }
+            cols->offset = kb31_t::from_canonical_u32(offset);
             for (uintptr_t i = 0; i < 7; i++) {
                 cols->x_coordinate._0[i] = x_trial.value[i];
                 cols->y_coordinate._0[i] = y.value[i];
@@ -77,27 +75,18 @@ __device__ void populate_global_interaction(
             if (event->is_receive) {
                 range_check_value = y.value[6].as_canonical_u32() - 1;
             } else {
-                range_check_value = y.value[6].as_canonical_u32() - (kb31_t::MOD + 1) / 2;
+                range_check_value = kb31_t::MOD - y.value[6].as_canonical_u32() - 1;
             }
-            kb31_t top_7_bits = kb31_t::zero();
-            for (uint32_t idx = 0; idx < 30; idx++) {
-                cols->y6_bit_decomp[idx] =
-                    kb31_t::from_canonical_u32((range_check_value >> idx) & 1);
-                if (idx >= 23) {
-                    top_7_bits += cols->y6_bit_decomp[idx];
-                }
+            for (uint32_t idx = 0; idx < 4; idx++) {
+                cols->y6_byte_decomp[idx] =
+                    kb31_t::from_canonical_u32((range_check_value >> (idx * 8)) & 0xFF);
             }
-            top_7_bits -= kb31_t::from_canonical_u32(7);
-            cols->range_check_witness = top_7_bits.reciprocal();
-
             kb31_t* input_row = reinterpret_cast<kb31_t*>(&cols->permutation);
             poseidon2_wide::event_to_row(m_trial, input_row, 0, 1);
 
             return;
         }
-        // x_start += kb31_t::from_canonical_u32(1 << 16);
     }
-    // assert(false);
 }
 
 __device__ void
@@ -227,23 +216,22 @@ __global__ void riscv_global_generate_trace_finalize_kernel(
             cols.accumulation.initial_digest[1]._0[k] = sum.y.value[k];
         }
 
-        if (event_idx < nb_events) {
-            for (int k = 0; k < 7; k++) {
-                cols.accumulation.sum_checker._0[k] = kb31_t::zero();
-            }
-        } else {
+        if (event_idx >= nb_events) {
             bb31_septic_curve_t dummy = bb31_septic_curve_t::dummy_point();
+            bb31_septic_curve_t start = bb31_septic_curve_t::start_point();
+            
             for (int k = 0; k < 7; k++) {
+                cols.accumulation.initial_digest[0]._0[k] = start.x.value[k];
+                cols.accumulation.initial_digest[1]._0[k] = start.y.value[k];
                 cols.interaction.x_coordinate._0[k] = dummy.x.value[k];
                 cols.interaction.y_coordinate._0[k] = dummy.y.value[k];
             }
-            bb31_septic_curve_t digest = bb31_septic_curve_t(
-                cols.accumulation.cumulative_sum[0]._0,
-                cols.accumulation.cumulative_sum[1]._0);
-            kb31_septic_extension_t sum_checker_x =
-                bb31_septic_curve_t::sum_checker_x(digest, dummy, digest);
+
+            start += dummy;
+
             for (int k = 0; k < 7; k++) {
-                cols.accumulation.sum_checker._0[k] = sum_checker_x.value[k];
+                cols.accumulation.cumulative_sum[0]._0[k] = start.x.value[k];
+                cols.accumulation.cumulative_sum[1]._0[k] = start.y.value[k];
             }
         }
 

@@ -157,6 +157,10 @@ pub fn local_gpu_opts(backend: ProverBackend) -> LocalProverOpts {
     println!("Shard threshold: {shard_threshold}");
     opts.core_opts.sharding_threshold.element_threshold = shard_threshold;
 
+    if let ProverBackend::ProverClean = backend {
+        opts.core_opts.global_dependencies_opt = true;
+    }
+
     opts
 }
 

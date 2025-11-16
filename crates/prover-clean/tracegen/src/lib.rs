@@ -3,6 +3,7 @@ use itertools::Itertools;
 use slop_alloc::mem::DeviceMemory;
 use slop_futures::queue::Worker;
 use slop_tensor::{Dimensions, Tensor};
+use sp1_core_machine::global::GLOBAL_OFFSET_POS_COPY;
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::ready;
 use std::marker::PhantomData;
@@ -13,7 +14,10 @@ use tokio::join;
 use tokio::sync::Mutex;
 use tracing::{instrument, Instrument};
 
-use csl_cuda::sys::prover_clean::{fill_buffer, generate_col_index, generate_start_indices};
+use csl_cuda::sys::prover_clean::{
+    count_and_add_kernel, fill_buffer, generate_col_index, generate_start_indices,
+    sum_to_trace_kernel,
+};
 use csl_cuda::{args, TaskScope};
 use csl_tracegen::CudaTracegenAir;
 use futures::stream::FuturesUnordered;
@@ -108,6 +112,32 @@ fn fill_buf(dst: *mut u32, val: u32, len: usize, max_log_row_count: u32, backend
         backend.launch_kernel(fill_buffer(), grid_dim, BLOCK_DIM, &args, 0).unwrap();
     }
 }
+
+fn count_and_add(dst: *mut u32, src: *const Felt, len: usize, backend: &TaskScope) {
+    let args = args!(dst, src, len);
+    const BLOCK_DIM: usize = 16;
+    const NUM_BINS: usize = 256;
+    let grid_dim: usize = 1024;
+
+    let shared_mem = NUM_BINS * std::mem::size_of::<u32>() * BLOCK_DIM;
+
+    unsafe {
+        backend
+            .launch_kernel(count_and_add_kernel(), grid_dim, BLOCK_DIM, &args, shared_mem)
+            .unwrap();
+    }
+}
+
+fn sum_to_trace(dst: *mut Felt, src: *const u32, backend: &TaskScope) {
+    let args = args!(dst, src);
+    const BLOCK_DIM: usize = 128;
+    let grid_dim: usize = 32;
+
+    unsafe {
+        backend.launch_kernel(sum_to_trace_kernel(), grid_dim, BLOCK_DIM, &args, 0).unwrap();
+    }
+}
+
 /// Sets up the jagged traces. TODO: can use fewer arguments by packing the mutable stuff into TraceDenseData.
 ///
 /// Returns the final offset, the final number of columns, the amount of padding, and the table index.
@@ -473,11 +503,39 @@ async fn allocate_and_initialize_traces(
     })
 }
 
+fn update_global_dependencies(
+    dense_data: &mut Buffer<Felt, TaskScope>,
+    main_table_index: &BTreeMap<String, TraceOffset>,
+) {
+    let global_trace_offset = main_table_index.get("Global").unwrap();
+    let global_dependencies_offset = global_trace_offset.dense_offset.start
+        + global_trace_offset.poly_size * GLOBAL_OFFSET_POS_COPY;
+    let len = global_trace_offset.poly_size;
+    let byte_trace_offset = main_table_index.get("Byte").unwrap().dense_offset.start;
+
+    let backend = dense_data.backend().clone();
+    let mut cnt_buf = Tensor::<u32, TaskScope>::zeros_in([320], backend.clone());
+
+    count_and_add(
+        cnt_buf.as_mut_ptr(),
+        unsafe { dense_data.as_ptr().add(global_dependencies_offset) },
+        len,
+        &backend,
+    );
+
+    sum_to_trace(
+        unsafe { dense_data.as_mut_ptr().add(byte_trace_offset) },
+        cnt_buf.as_ptr(),
+        &backend,
+    );
+}
+
 async fn copy_main_jagged_traces(
     traces: BTreeMap<String, Trace<TaskScope>>,
     jagged_traces: &mut JaggedTraceMle<Felt, TaskScope>,
     log_stacking_height: u32,
     max_log_row_count: u32,
+    global_dependencies_opt: bool,
 ) {
     // At this point, all traces are on device. Now we need to copy them into the Jagged MLE struct.
     let JaggedMle { dense_data: trace_dense_data, col_index, start_indices, column_heights } =
@@ -515,6 +573,10 @@ async fn copy_main_jagged_traces(
 
     *main_table_index = new_main_table_index;
     *main_padding = final_main_padding;
+
+    if main_table_index.contains_key("Global") && global_dependencies_opt {
+        update_global_dependencies(dense_data, main_table_index);
+    }
 
     // Shrink the len of the dense data to match the actual size.
     unsafe {
@@ -747,6 +809,7 @@ pub async fn main_tracegen<GC: IopCtx<F = Felt>, A: CudaTracegenAir<Felt>>(
     max_log_row_count: u32,
     backend: &TaskScope,
     prover_permit: ProverSemaphore,
+    global_dependencies_opt: bool,
 ) -> (Vec<Felt>, BTreeSet<Chip<Felt, A>>, ProverPermit) {
     // Start generating traces on host.
     let (host_phase_tracegen, host_phase_shape_info) =
@@ -770,6 +833,7 @@ pub async fn main_tracegen<GC: IopCtx<F = Felt>, A: CudaTracegenAir<Felt>>(
         &mut jagged_traces.preprocessed_traces,
         log_stacking_height,
         max_log_row_count,
+        global_dependencies_opt,
     )
     .await;
 
@@ -787,6 +851,7 @@ pub async fn main_tracegen_permit<GC: IopCtx<F = Felt>, A: CudaTracegenAir<Felt>
     max_log_row_count: u32,
     backend: &TaskScope,
     prover_permit: ProverSemaphore,
+    global_dependencies_opt: bool,
 ) -> (Vec<Felt>, BTreeSet<Chip<Felt, A>>, ProverPermit, Worker<Pin<Box<[MaybeUninit<Felt>]>>>) {
     let (public_values, chip_set, permit) = main_tracegen(
         machine,
@@ -797,6 +862,7 @@ pub async fn main_tracegen_permit<GC: IopCtx<F = Felt>, A: CudaTracegenAir<Felt>
         max_log_row_count,
         backend,
         prover_permit,
+        global_dependencies_opt,
     )
     .await;
 
@@ -818,6 +884,7 @@ pub async fn full_tracegen<A: CudaTracegenAir<Felt>>(
     max_log_row_count: u32,
     backend: &TaskScope,
     prover_permits: ProverSemaphore,
+    global_dependencies_opt: bool,
 ) -> (Vec<Felt>, JaggedTraceMle<Felt, TaskScope>, BTreeSet<Chip<Felt, A>>, ProverPermit) {
     let (prep_host_phase_tracegen, start_idx) =
         host_preprocessed_tracegen(machine, buffer_ptr, program.clone());
@@ -849,8 +916,14 @@ pub async fn full_tracegen<A: CudaTracegenAir<Felt>>(
     )
     .await;
 
-    copy_main_jagged_traces(main_traces, &mut jagged_mle, log_stacking_height, max_log_row_count)
-        .await;
+    copy_main_jagged_traces(
+        main_traces,
+        &mut jagged_mle,
+        log_stacking_height,
+        max_log_row_count,
+        global_dependencies_opt,
+    )
+    .await;
 
     (public_values, jagged_mle, chip_set, permit)
 }
@@ -867,6 +940,7 @@ pub async fn full_tracegen_permit<A: CudaTracegenAir<Felt>>(
     max_log_row_count: u32,
     backend: &TaskScope,
     prover_permits: ProverSemaphore,
+    global_dependencies_opt: bool,
 ) -> (
     Vec<Felt>,
     JaggedTraceMle<Felt, TaskScope>,
@@ -884,6 +958,7 @@ pub async fn full_tracegen_permit<A: CudaTracegenAir<Felt>>(
         max_log_row_count,
         backend,
         prover_permits,
+        global_dependencies_opt,
     )
     .await;
     (public_values, jagged_mle, chip_set, permit, guard)
@@ -913,8 +988,11 @@ fn log_chip_stats<A: CudaTracegenAir<Felt>>(
 
 #[cfg(test)]
 mod tests {
+    use slop_algebra::PrimeField32;
+    use slop_tensor::Tensor;
     use std::{mem::MaybeUninit, sync::Arc};
 
+    use csl_cuda::TaskScope;
     use csl_cuda::{run_in_place, sys::prover_clean::jagged_eval_kernel_chunked_felt, ToDevice};
     use csl_tracegen::CudaTraceGenerator;
     use cslpc_utils::{Ext, Felt};
@@ -926,7 +1004,7 @@ mod tests {
     use sp1_hypercube::prover::{ProverSemaphore, TraceGenerator};
 
     use crate::{
-        fill_buf, full_tracegen,
+        count_and_add, fill_buf, full_tracegen,
         test_utils::tracegen_setup::{self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT},
         CORE_MAX_TRACE_SIZE,
     };
@@ -1039,6 +1117,7 @@ mod tests {
                 CORE_MAX_LOG_ROW_COUNT,
                 &scope,
                 semaphore.clone(),
+                false,
             )
             .await;
 
@@ -1090,6 +1169,47 @@ mod tests {
             let host_generated_buf = generated_buf.into_host().await.unwrap();
 
             assert_eq!(host_copied_buf.as_slice(), host_generated_buf.as_slice());
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_count_and_add() {
+        let mut rng = StdRng::seed_from_u64(5);
+        let len = 1 << 20;
+        let mut randoms = Vec::with_capacity(len * 6);
+        for _ in 0..4 * len {
+            randoms.push(Felt::from_canonical_u8(rng.gen::<u8>()));
+        }
+        for _ in 0..len {
+            randoms.push(Felt::from_canonical_u8(rng.gen::<u8>() % 64));
+        }
+        for _ in 0..len {
+            randoms.push(Felt::from_canonical_u8(rng.gen::<u8>() % 2));
+        }
+        let mut cnt = vec![0u32; 320];
+        for i in 0..len {
+            if randoms[5 * len + i].as_canonical_u32() == 1 {
+                cnt[randoms[i].as_canonical_u32() as usize] += 1;
+                cnt[randoms[len + i].as_canonical_u32() as usize] += 1;
+                cnt[randoms[2 * len + i].as_canonical_u32() as usize] += 1;
+                cnt[randoms[3 * len + i].as_canonical_u32() as usize] += 1;
+                cnt[randoms[4 * len + i].as_canonical_u32() as usize + 256] += 1;
+            }
+        }
+
+        run_in_place(|scope| async move {
+            let random_buf = Buffer::from(randoms).to_device_in(&scope).await.unwrap();
+            scope.synchronize().await.unwrap();
+
+            let t = std::time::Instant::now();
+            let mut cnt_buf = Tensor::<u32, TaskScope>::zeros_in([320], scope.clone());
+            count_and_add(cnt_buf.as_mut_ptr(), random_buf.as_ptr(), len, &scope);
+            let final_cnt_host = cnt_buf.into_host().await.unwrap().into_buffer().to_vec();
+
+            println!("elapsed time for [1 << 20] x [6] elements: {:?}", t.elapsed());
+
+            assert_eq!(cnt, final_cnt_host);
         })
         .await;
     }

@@ -164,6 +164,7 @@ where
             self.max_log_row_count,
             &self.backend,
             prover_permits,
+            true,
         )
         .instrument(tracing::debug_span!("generate all traces"))
         .await;
@@ -223,6 +224,7 @@ where
             self.max_log_row_count,
             &self.backend,
             prover_permits,
+            true,
         )
         .instrument(tracing::debug_span!("generate main traces"))
         .await;
@@ -741,6 +743,7 @@ mod tests {
                 CORE_MAX_LOG_ROW_COUNT,
                 &scope,
                 ProverSemaphore::new(1),
+                true,
             )
             .await;
 
