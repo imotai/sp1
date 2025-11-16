@@ -130,8 +130,11 @@ impl<F: PrimeField32> MachineExecutor<F> {
         let (chunk_tx, mut chunk_rx) = mpsc::unbounded_channel::<TraceChunkRaw>();
         let (last_record_tx, mut last_record_rx) =
             tokio::sync::mpsc::channel::<(ExecutionRecord, [MemoryRecord; 32])>(1);
-        let deferred =
-            Arc::new(Mutex::new(ExecutionRecord::new(program.clone(), context.proof_nonce)));
+        let deferred = Arc::new(Mutex::new(ExecutionRecord::new(
+            program.clone(),
+            context.proof_nonce,
+            self.opts.global_dependencies_opt,
+        )));
         let mut record_worker_channels = Vec::with_capacity(self.num_record_workers);
 
         // todo: use page protection

@@ -42,7 +42,7 @@
   "KeccakPermute": 2640,
   "Subw": 32,
   "Secp256k1AddAssign": 1599,
-  "Global": 282,
+  "Global": 241,
   "StoreDouble": 39,
   "KeccakPermuteControl": 634,
   "Mul": 82,

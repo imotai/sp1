@@ -16,7 +16,6 @@ use sp1_hypercube::{
 #[repr(C)]
 pub struct GlobalAccumulationOperation<T> {
     pub initial_digest: [SepticBlock<T>; 2],
-    pub sum_checker: SepticBlock<T>,
     pub cumulative_sum: [SepticBlock<T>; 2],
 }
 
@@ -24,74 +23,31 @@ impl<T: Default> Default for GlobalAccumulationOperation<T> {
     fn default() -> Self {
         Self {
             initial_digest: core::array::from_fn(|_| SepticBlock::<T>::default()),
-            sum_checker: SepticBlock::<T>::default(),
             cumulative_sum: core::array::from_fn(|_| SepticBlock::<T>::default()),
         }
     }
 }
 
 impl<F: PrimeField32> GlobalAccumulationOperation<F> {
-    pub fn populate(
-        &mut self,
-        initial_digest: &mut SepticCurve<F>,
-        global_interaction_cols: GlobalInteractionOperation<F>,
-        is_real: F,
-    ) {
-        self.initial_digest[0] = SepticBlock::from(initial_digest.x.0);
-        self.initial_digest[1] = SepticBlock::from(initial_digest.y.0);
-
-        let point_cur = SepticCurve {
-            x: SepticExtension(global_interaction_cols.x_coordinate.0),
-            y: SepticExtension(global_interaction_cols.y_coordinate.0),
-        };
-        debug_assert!(is_real == F::one() || is_real == F::zero());
-        let sum_point = if is_real == F::one() {
-            point_cur.add_incomplete(*initial_digest)
-        } else {
-            *initial_digest
-        };
-        let sum_checker = if is_real == F::one() {
-            SepticExtension::<F>::zero()
-        } else {
-            SepticCurve::<F>::sum_checker_x(*initial_digest, point_cur, sum_point)
-        };
-        self.sum_checker = SepticBlock::from(sum_checker.0);
-        self.cumulative_sum[0] = SepticBlock::from(sum_point.x.0);
-        self.cumulative_sum[1] = SepticBlock::from(sum_point.y.0);
-        *initial_digest = sum_point;
-    }
-
     pub fn populate_dummy(
         &mut self,
-        final_digest: SepticCurve<F>,
-        final_sum_checker: SepticExtension<F>,
+        start_digest: SepticCurve<F>,
+        start_digest_plus_dummy: SepticCurve<F>,
     ) {
-        self.initial_digest[0] = SepticBlock::from(final_digest.x.0);
-        self.initial_digest[1] = SepticBlock::from(final_digest.y.0);
-        self.sum_checker = SepticBlock::from(final_sum_checker.0);
-        self.cumulative_sum[0] = SepticBlock::from(final_digest.x.0);
-        self.cumulative_sum[1] = SepticBlock::from(final_digest.y.0);
+        self.initial_digest[0] = SepticBlock::from(start_digest.x.0);
+        self.initial_digest[1] = SepticBlock::from(start_digest.y.0);
+        self.cumulative_sum[0] = SepticBlock::from(start_digest_plus_dummy.x.0);
+        self.cumulative_sum[1] = SepticBlock::from(start_digest_plus_dummy.y.0);
     }
 
-    pub fn populate_real(
-        &mut self,
-        sums: &[SepticCurveComplete<F>],
-        final_digest: SepticCurve<F>,
-        final_sum_checker: SepticExtension<F>,
-    ) {
+    pub fn populate_real(&mut self, sums: &[SepticCurveComplete<F>]) {
         let len = sums.len();
+        assert_eq!(len, 2);
         let sums = sums.iter().map(|complete_point| complete_point.point()).collect::<Vec<_>>();
         self.initial_digest[0] = SepticBlock::from(sums[0].x.0);
         self.initial_digest[1] = SepticBlock::from(sums[0].y.0);
-        if len >= 2 {
-            self.sum_checker = SepticBlock([F::zero(); 7]);
-            self.cumulative_sum[0] = SepticBlock::from(sums[1].x.0);
-            self.cumulative_sum[1] = SepticBlock::from(sums[1].y.0);
-        } else {
-            self.sum_checker = SepticBlock::from(final_sum_checker.0);
-            self.cumulative_sum[0] = SepticBlock::from(final_digest.x.0);
-            self.cumulative_sum[1] = SepticBlock::from(final_digest.y.0);
-        }
+        self.cumulative_sum[0] = SepticBlock::from(sums[1].x.0);
+        self.cumulative_sum[1] = SepticBlock::from(sums[1].y.0);
     }
 }
 
@@ -151,7 +107,6 @@ impl<F: Field> GlobalAccumulationOperation<F> {
             }),
         };
 
-        // Constrain that if `is_real = 0`, the sum remains the same.
         // If `is_real == 1`, initial_digest + point_to_add == cumulative_sum must hold.
         // Constrain that `sum_checker_x` and `sum_checker_y` are both zero when `is_real == 1`.
         let sum_checker_x = SepticCurve::<AB::Expr>::sum_checker_x(
@@ -164,25 +119,13 @@ impl<F: Field> GlobalAccumulationOperation<F> {
             point_to_add,
             cumulative_sum.clone(),
         );
-        let witnessed_sum_checker_x = SepticExtension::<AB::Expr>::from_base_fn(|idx| {
-            local_accumulation.sum_checker.0[idx].into()
-        });
-        // Since `sum_checker_x` is degree 3, we constrain it to be equal to
-        // `witnessed_sum_checker_x` first.
-        builder.assert_septic_ext_eq(sum_checker_x, witnessed_sum_checker_x.clone());
-        // Now we can constrain that when `is_real == 1`, the two `sum_checker` values are zero.
-        builder
-            .when(local_is_real)
-            .assert_septic_ext_eq(witnessed_sum_checker_x, SepticExtension::<AB::Expr>::zero());
+
+        // We enforce `sum_checker_x == 0` always, by putting appropriate dummy rows.
+        // If `local_is_real == 0`, then the state machine doesn't do anything already.
+        builder.assert_septic_ext_eq(sum_checker_x, SepticExtension::<AB::Expr>::zero());
         builder
             .when(local_is_real)
             .assert_septic_ext_eq(sum_checker_y, SepticExtension::<AB::Expr>::zero());
-
-        // If `is_real == 0`, initial_digest == cumulative_sum must hold.
-        builder
-            .when_not(local_is_real)
-            .assert_septic_ext_eq(initial_digest.x.clone(), cumulative_sum.x.clone());
-        builder.when_not(local_is_real).assert_septic_ext_eq(initial_digest.y, cumulative_sum.y);
 
         // Send the next digest, with the incremented `index`.
         builder.send(

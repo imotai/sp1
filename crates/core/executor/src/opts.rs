@@ -36,6 +36,8 @@ pub struct SP1CoreOpts {
     pub sharding_threshold: ShardingThreshold,
     /// Preset collections of events to retain in a shard instead of deferring.
     pub retained_events_presets: HashSet<RetainedEventsPreset>,
+    /// Use optimized `generate_dependencies` for global chip.
+    pub global_dependencies_opt: bool,
 }
 
 impl Default for SP1CoreOpts {
@@ -68,6 +70,7 @@ impl Default for SP1CoreOpts {
             shard_size,
             sharding_threshold,
             retained_events_presets,
+            global_dependencies_opt: false,
         }
     }
 }

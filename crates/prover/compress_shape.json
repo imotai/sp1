@@ -6,7 +6,7 @@
       "MemoryConst": 492512,
       "MemoryVar": 662144,
       "Poseidon2WideDeg3": 158400,
-      "PrefixSumChecks": 226272,
+      "PrefixSumChecks": 223808,
       "PublicValues": 16,
       "Select": 1087840
     },

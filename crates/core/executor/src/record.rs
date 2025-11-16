@@ -140,14 +140,21 @@ pub struct ExecutionRecord {
     pub next_pc: u64,
     /// The exit code.
     pub exit_code: u32,
+    /// Use optimized `generate_dependencies` for global chip.
+    pub global_dependencies_opt: bool,
 }
 
 impl ExecutionRecord {
     /// Create a new [`ExecutionRecord`].
     #[must_use]
-    pub fn new(program: Arc<Program>, proof_nonce: [u32; PROOF_NONCE_NUM_WORDS]) -> Self {
+    pub fn new(
+        program: Arc<Program>,
+        proof_nonce: [u32; PROOF_NONCE_NUM_WORDS],
+        global_dependencies_opt: bool,
+    ) -> Self {
         let mut result = Self { program, ..Default::default() };
         result.public_values.proof_nonce = proof_nonce;
+        result.global_dependencies_opt = global_dependencies_opt;
         result
     }
 
@@ -160,8 +167,11 @@ impl ExecutionRecord {
         &mut self,
         retain_presets: impl IntoIterator<Item = &'a RetainedEventsPreset>,
     ) -> ExecutionRecord {
-        let mut execution_record =
-            ExecutionRecord::new(self.program.clone(), self.public_values.proof_nonce);
+        let mut execution_record = ExecutionRecord::new(
+            self.program.clone(),
+            self.public_values.proof_nonce,
+            self.global_dependencies_opt,
+        );
         execution_record.precompile_events = std::mem::take(&mut self.precompile_events);
 
         // Take back the events that should be retained.
@@ -203,8 +213,11 @@ impl ExecutionRecord {
             if done {
                 let remainder = chunks.remainder().to_vec();
                 if !remainder.is_empty() {
-                    let mut execution_record =
-                        ExecutionRecord::new(self.program.clone(), self.public_values.proof_nonce);
+                    let mut execution_record = ExecutionRecord::new(
+                        self.program.clone(),
+                        self.public_values.proof_nonce,
+                        self.global_dependencies_opt,
+                    );
                     execution_record.precompile_events.insert(syscall_code, remainder);
                     execution_record.public_values.update_initialized_state(
                         self.program.pc_start_abs,
@@ -217,8 +230,11 @@ impl ExecutionRecord {
             }
             let mut event_shards = chunks
                 .map(|chunk| {
-                    let mut execution_record =
-                        ExecutionRecord::new(self.program.clone(), self.public_values.proof_nonce);
+                    let mut execution_record = ExecutionRecord::new(
+                        self.program.clone(),
+                        self.public_values.proof_nonce,
+                        self.global_dependencies_opt,
+                    );
                     execution_record.precompile_events.insert(syscall_code, chunk.to_vec());
                     execution_record.public_values.update_initialized_state(
                         self.program.pc_start_abs,
@@ -234,8 +250,11 @@ impl ExecutionRecord {
             // If there are no precompile shards, and `last_record` is Some, pack the memory events
             // into the last record.
             let pack_memory_events_into_last_record = can_pack_global_memory && shards.is_empty();
-            let mut blank_record =
-                ExecutionRecord::new(self.program.clone(), self.public_values.proof_nonce);
+            let mut blank_record = ExecutionRecord::new(
+                self.program.clone(),
+                self.public_values.proof_nonce,
+                self.global_dependencies_opt,
+            );
 
             // Clone the public values of the last record to update the last record's public values.
             let last_record_public_values = last_record.public_values;
@@ -304,6 +323,7 @@ impl ExecutionRecord {
 
                     // Ensure last record has same proof nonce as other shards
                     mem_record_ref.public_values.proof_nonce = self.public_values.proof_nonce;
+                    mem_record_ref.global_dependencies_opt = self.global_dependencies_opt;
 
                     if !pack_memory_events_into_last_record {
                         // If not packing memory events into the last record, add 'last_record_ref'
@@ -359,6 +379,9 @@ impl ExecutionRecord {
                     finalize_addr = last_event.addr;
                 }
                 mem_record_ref.public_values.last_finalize_addr = finalize_addr;
+
+                mem_record_ref.public_values.proof_nonce = self.public_values.proof_nonce;
+                mem_record_ref.global_dependencies_opt = self.global_dependencies_opt;
 
                 mem_init_remaining = &mem_init_remaining[init_to_take..];
                 mem_finalize_remaining = &mem_finalize_remaining[finalize_to_take..];

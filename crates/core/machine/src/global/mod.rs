@@ -42,7 +42,11 @@ const GLOBAL_COL_MAP: GlobalCols<usize> = make_col_map();
 
 pub const GLOBAL_INITIAL_DIGEST_POS: usize = GLOBAL_COL_MAP.accumulation.initial_digest[0].0[0];
 
-pub const GLOBAL_INITIAL_DIGEST_POS_COPY: usize = 247;
+const GLOBAL_OFFSET_POS: usize = GLOBAL_COL_MAP.interaction.offset;
+
+pub const GLOBAL_INITIAL_DIGEST_POS_COPY: usize = 213;
+
+pub const GLOBAL_OFFSET_POS_COPY: usize = 204;
 
 #[repr(C)]
 pub struct Ghost {
@@ -60,9 +64,9 @@ pub struct GlobalCols<T: Copy> {
     pub message_0_16bit_limb: T,
     pub message_0_8bit_limb: T,
     pub interaction: GlobalInteractionOperation<T>,
+    pub is_real: T,
     pub is_receive: T,
     pub is_send: T,
-    pub is_real: T,
     pub index: T,
     pub accumulation: GlobalAccumulationOperation<T>,
 }
@@ -74,6 +78,7 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
 
     fn name(&self) -> String {
         assert_eq!(GLOBAL_INITIAL_DIGEST_POS_COPY, GLOBAL_INITIAL_DIGEST_POS);
+        assert_eq!(GLOBAL_OFFSET_POS_COPY, GLOBAL_OFFSET_POS);
         "Global".to_string()
     }
 
@@ -87,6 +92,8 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
             .par_bridge()
             .map(|events| {
                 let mut blu: Vec<ByteLookupEvent> = Vec::new();
+                let mut row = [F::zero(); NUM_GLOBAL_COLS];
+                let cols: &mut GlobalCols<F> = row.as_mut_slice().borrow_mut();
                 events.iter().for_each(|event| {
                     let message0_16bit_limb = (event.message[0] & 0xffff) as u16;
                     let message0_8bit_limb = ((event.message[0] >> 16) & 0xff) as u8;
@@ -94,6 +101,15 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
                     blu.add_u16_range_check(event.message[7] as u16);
                     blu.add_u8_range_check(0, message0_8bit_limb);
                     blu.add_bit_range_check(event.kind as u16, 6);
+                    if !input.global_dependencies_opt {
+                        cols.interaction.populate(
+                            &mut blu,
+                            event.message,
+                            event.is_receive,
+                            true,
+                            event.kind,
+                        );
+                    }
                 });
                 blu
             })
@@ -121,6 +137,7 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
         let events = &input.global_interaction_events;
 
         let nb_rows = events.len();
+
         let padded_nb_rows = <GlobalChip as MachineAir<F>>::num_rows(self, input).unwrap();
         let chunk_size = std::cmp::max(nb_rows / num_cpus::get(), 0) + 1;
 
@@ -140,6 +157,7 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
                 if i == 0 {
                     point_chunks.push(SepticCurveComplete::Affine(SepticDigest::<F>::zero().0));
                 }
+                let mut blu = Vec::new();
                 rows.chunks_mut(NUM_GLOBAL_COLS).enumerate().for_each(|(j, row)| {
                     let idx = i * chunk_size + j;
                     let cols: &mut GlobalCols<F> = row.borrow_mut();
@@ -147,7 +165,13 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
                     cols.message = event.message.map(F::from_canonical_u32);
                     cols.kind = F::from_canonical_u8(event.kind);
                     cols.index = F::from_canonical_u32(idx as u32);
-                    cols.interaction.populate(event.message, event.is_receive, true, event.kind);
+                    cols.interaction.populate(
+                        &mut blu,
+                        event.message,
+                        event.is_receive,
+                        true,
+                        event.kind,
+                    );
                     cols.is_real = F::one();
                     if event.is_receive {
                         cols.is_receive = F::one();
@@ -178,15 +202,17 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
 
         let final_digest = match cumulative_sum.last() {
             Some(digest) => digest.point(),
-            None => SepticCurve::<F>::dummy(),
+            None => SepticDigest::<F>::zero().0,
         };
 
         let mut global_sum = input.global_cumulative_sum.lock().unwrap();
         *global_sum = SepticDigest(SepticCurve::convert(final_digest, |x| F::as_canonical_u32(&x)));
 
         output.global_interaction_event_count = nb_rows as u32;
+
+        let start_digest = SepticDigest::<F>::zero().0;
         let dummy = SepticCurve::<F>::dummy();
-        let final_sum_checker = SepticCurve::<F>::sum_checker_x(final_digest, dummy, final_digest);
+        let start_digest_plus_dummy = start_digest.add_incomplete(dummy);
 
         let chunk_size = std::cmp::max(padded_nb_rows / num_cpus::get(), 0) + 1;
         values.chunks_mut(chunk_size * NUM_GLOBAL_COLS).enumerate().par_bridge().for_each(
@@ -200,14 +226,10 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
                     }
                     let cols: &mut GlobalCols<F> = row.borrow_mut();
                     if idx < nb_rows {
-                        cols.accumulation.populate_real(
-                            &cumulative_sum[idx..idx + 2],
-                            final_digest,
-                            final_sum_checker,
-                        );
+                        cols.accumulation.populate_real(&cumulative_sum[idx..idx + 2]);
                     } else {
                         cols.interaction.populate_dummy();
-                        cols.accumulation.populate_dummy(final_digest, final_sum_checker);
+                        cols.accumulation.populate_dummy(start_digest, start_digest_plus_dummy);
                     }
                 });
             },

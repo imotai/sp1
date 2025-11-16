@@ -187,7 +187,8 @@ impl<'a> TracingVM<'a> {
         opts: SP1CoreOpts,
         proof_nonce: [u32; PROOF_NONCE_NUM_WORDS],
     ) -> Self {
-        let mut record = ExecutionRecord::new(program.clone(), proof_nonce);
+        let mut record =
+            ExecutionRecord::new(program.clone(), proof_nonce, opts.global_dependencies_opt);
         record.initial_timestamp = trace.clk_start();
 
         Self {
