@@ -5,7 +5,7 @@ use slop_whir::{Verifier, WhirJaggedConfig, WhirProofShape};
 use std::{
     cmp::max,
     collections::{BTreeMap, BTreeSet},
-    iter::{once, repeat_n},
+    iter::once,
     marker::PhantomData,
     ops::Deref,
 };
@@ -294,11 +294,7 @@ where
         // To verify the constraints, we need to check that the RLC'ed reduced eval in the zerocheck
         // proof is correct.
         let mut rlc_eval = GC::EF::zero();
-        for ((chip, (chip_name, openings)), zerocheck_eq_val) in shard_chips
-            .iter()
-            .zip_eq(opened_values.chips.iter())
-            .zip_eq(repeat_n(zerocheck_eq_val, shard_chips.len()))
-        {
+        for (chip, (chip_name, openings)) in shard_chips.iter().zip_eq(opened_values.chips.iter()) {
             assert_eq!(&chip.name(), chip_name);
             // Verify the shape of the opening arguments matches the expected values.
             Self::verify_opening_shape(chip, openings)?;

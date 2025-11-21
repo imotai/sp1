@@ -142,9 +142,7 @@ where
 
         let gkr_evaluations_point = IntoSymbolic::<C>::as_symbolic(&gkr_evaluations.point);
 
-        let zerocheck_eq_value = Mle::full_lagrange_eval(&gkr_evaluations_point, &point_symbolic);
-
-        let zerocheck_eq_vals = vec![zerocheck_eq_value; shard_chips.len()];
+        let zerocheck_eq_val = Mle::full_lagrange_eval(&gkr_evaluations_point, &point_symbolic);
 
         let max_elements = shard_chips
             .iter()
@@ -155,9 +153,7 @@ where
         let gkr_batch_open_challenge_powers =
             gkr_batch_open_challenge.powers().skip(1).take(max_elements).collect::<Vec<_>>();
 
-        for ((chip, openings), zerocheck_eq_val) in
-            shard_chips.iter().zip_eq(opened_values.chips.values()).zip_eq(zerocheck_eq_vals)
-        {
+        for (chip, openings) in shard_chips.iter().zip_eq(opened_values.chips.values()) {
             // Verify the shape of the opening arguments matches the expected values.
             verify_opening_shape::<C, A>(chip, openings).unwrap();
 
