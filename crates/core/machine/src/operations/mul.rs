@@ -336,15 +336,24 @@ impl<F: Field> MulOperation<F> {
 
 #[derive(Debug, Clone, InputExpr, InputParams)]
 pub struct MulOperationInput<AB: SP1AirBuilder> {
+    #[picus(output)]
     pub a_word: Word<AB::Expr>,
+    #[picus(input)]
     pub b_word: Word<AB::Expr>,
+    #[picus(input)]
     pub c_word: Word<AB::Expr>,
     pub cols: MulOperation<AB::Var>,
+    #[picus(input)]
     pub is_real: AB::Expr,
+    #[picus(input)]
     pub is_mul: AB::Expr,
+    #[picus(input)]
     pub is_mulh: AB::Expr,
+    #[picus(input)]
     pub is_mulw: AB::Expr,
+    #[picus(input)]
     pub is_mulhu: AB::Expr,
+    #[picus(input)]
     pub is_mulhsu: AB::Expr,
 }
 

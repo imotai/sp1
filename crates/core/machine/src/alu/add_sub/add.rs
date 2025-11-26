@@ -13,7 +13,7 @@ use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
     ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, PicusCols};
 use sp1_hypercube::air::MachineAir;
 
 use crate::{
@@ -34,13 +34,15 @@ pub const NUM_ADD_COLS: usize = size_of::<AddCols<u8>>();
 pub struct AddChip;
 
 /// The column layout for the `AddChip`.
-#[derive(AlignedBorrow, Default, Clone, Copy)]
+#[derive(AlignedBorrow, PicusCols, Default, Clone, Copy)]
 #[repr(C)]
 pub struct AddCols<T> {
     /// The current shard, timestamp, program counter of the CPU.
+    #[picus(input)]
     pub state: CPUState<T>,
 
     /// The adapter to read program and register information.
+    #[picus(input)]
     pub adapter: RTypeReader<T>,
 
     /// Instance of `AddOperation` to handle addition logic in `AddChip`'s ALU operations.
@@ -136,6 +138,10 @@ impl<F: PrimeField32> MachineAir<F> for AddChip {
         } else {
             !shard.add_events.is_empty()
         }
+    }
+
+    fn picus_info(&self) -> sp1_hypercube::air::PicusInfo {
+        AddCols::<u8>::picus_info()
     }
 }
 

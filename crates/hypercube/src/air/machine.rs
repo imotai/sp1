@@ -6,6 +6,49 @@ use slop_algebra::Field;
 use slop_matrix::dense::RowMajorMatrix;
 pub use sp1_derive::MachineAir;
 
+/// Trait for types that have Picus column annotations.
+pub trait PicusColumns {
+    /// Returns complete Picus annotation information.
+    fn picus_info() -> PicusInfo;
+
+    /// Collects Picus information with a given offset and prefix.
+    /// This is used for nested structs to aggregate their column information.
+    fn collect_picus_info(offset: usize, prefix: &str, info: &mut PicusInfo);
+}
+
+/// Information about Picus annotations on AIR columns.
+#[derive(Debug, Clone, Default)]
+pub struct PicusInfo {
+    /// Ranges of columns marked as inputs.
+    /// Each tuple contains (`start_index`, `end_index`, `field_name`) where:
+    /// - `start_index` is the first column index (inclusive)
+    /// - `end_index` is the last column index (exclusive)
+    /// - `field_name` is the name of the field
+    pub input_ranges: Vec<(usize, usize, String)>,
+
+    /// Ranges of columns marked as outputs.
+    /// Each tuple contains (`start_index`, `end_index`, `field_name`) where:
+    /// - `start_index` is the first column index (inclusive)
+    /// - `end_index` is the last column index (exclusive)
+    /// - `field_name` is the name of the field
+    pub output_ranges: Vec<(usize, usize, String)>,
+
+    /// Indices of columns marked as selectors.
+    /// Each tuple contains (`column_index`, `field_name`) where:
+    /// - `column_index` is the index of the selector column
+    /// - `field_name` is the name of the field
+    pub selector_indices: Vec<(usize, String)>,
+
+    /// Map of all fields to their column ranges.
+    /// Each tuple contains (`field_name`, `start_index`, `end_index`) where:
+    /// - `field_name` is the name of the field
+    /// - `start_index` is the first column index (inclusive)
+    /// - `end_index` is the last column index (exclusive)
+    ///
+    /// This Vec maintains the order of fields as they appear in the struct.
+    pub field_map: Vec<(String, usize, usize)>,
+}
+
 #[macro_export]
 /// Macro to get the name of a chip.
 macro_rules! chip_name {
@@ -104,6 +147,15 @@ pub trait MachineAir<F: Field>: BaseAir<F> + 'static + Send + Sync {
         }
 
         Some(RowMajorMatrix::new(values, num_columns))
+    }
+
+    /// Returns information about Picus annotations on AIR columns.
+    ///
+    /// This includes:
+    /// - Input ranges: columns marked with `#[picus(input)]`
+    /// - Selector indices: columns marked with `#[picus(selector)]`
+    fn picus_info(&self) -> PicusInfo {
+        PicusInfo::default()
     }
 }
 

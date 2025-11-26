@@ -25,7 +25,7 @@ use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
     ByteOpcode, ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, PicusCols};
 use sp1_hypercube::air::MachineAir;
 
 /// The number of main trace columns for `BitwiseChip`.
@@ -36,25 +36,30 @@ pub const NUM_BITWISE_COLS: usize = size_of::<BitwiseCols<u8>>();
 pub struct BitwiseChip;
 
 /// The column layout for the chip.
-#[derive(AlignedBorrow, Default, Clone, Copy)]
+#[derive(AlignedBorrow, PicusCols, Default, Clone, Copy)]
 #[repr(C)]
 pub struct BitwiseCols<T> {
     /// The current shard, timestamp, program counter of the CPU.
+    #[picus(input)]
     pub state: CPUState<T>,
 
     /// The adapter to read program and register information.
+    #[picus(input)]
     pub adapter: ALUTypeReader<T>,
 
     /// Instance of `BitwiseOperation` to handle bitwise logic in `BitwiseChip`'s ALU operations.
     pub bitwise_operation: BitwiseU16Operation<T>,
 
     /// If the opcode is XOR.
+    #[picus(input, selector)]
     pub is_xor: T,
 
     // If the opcode is OR.
+    #[picus(input, selector)]
     pub is_or: T,
 
     /// If the opcode is AND.
+    #[picus(input, selector)]
     pub is_and: T,
 }
 
@@ -136,6 +141,10 @@ impl<F: PrimeField32> MachineAir<F> for BitwiseChip {
         } else {
             !shard.bitwise_events.is_empty()
         }
+    }
+
+    fn picus_info(&self) -> sp1_hypercube::air::PicusInfo {
+        BitwiseCols::<u8>::picus_info()
     }
 }
 

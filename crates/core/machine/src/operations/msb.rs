@@ -74,8 +74,11 @@ impl<F: Field> U16MSBOperation<F> {
 
 #[derive(Clone, Debug, InputExpr, InputParams)]
 pub struct U16MSBOperationInput<AB: SP1AirBuilder> {
+    #[picus(input)]
     pub a: AB::Expr,
+    #[picus(output)]
     pub cols: U16MSBOperation<AB::Var>,
+    #[picus(input)]
     pub is_real: AB::Expr,
 }
 

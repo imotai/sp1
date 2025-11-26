@@ -7,7 +7,7 @@ use crate::ir::{FuncCtx, IrVar};
 
 /// The `AB::Expr` of the constraint compiler. Note that for the constraint
 /// compiler, this is also `AB::Var`.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExprRef<F> {
     /// An [`IrVar`], usually this comes from the chip/inputs.
     IrVar(IrVar<F>),

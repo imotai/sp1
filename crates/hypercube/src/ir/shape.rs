@@ -40,4 +40,15 @@ impl<Expr, ExprExt> Shape<Expr, ExprExt> {
             Shape::Struct(name, _) => name.clone(),
         }
     }
+
+    /// Gets the size of the shape
+    pub fn width(&self) -> usize {
+        match self {
+            Shape::Unit => 0,
+            Shape::Expr(_) | Shape::ExprExt(_) => 1,
+            Shape::Word(_) => WORD_SIZE,
+            Shape::Array(v) => v.iter().fold(0, |acc: usize, e| acc + e.width()),
+            Shape::Struct(_, v) => v.iter().fold(0, |acc, (_, s)| acc + s.width()),
+        }
+    }
 }

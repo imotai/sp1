@@ -76,6 +76,7 @@ pub struct AddOperationInput<AB: SP1AirBuilder> {
     pub b: Word<AB::Expr>,
     #[picus(output)]
     pub cols: AddOperation<AB::Var>,
+    #[picus(input)]
     pub is_real: AB::Expr,
 }
 

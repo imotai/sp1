@@ -4,7 +4,7 @@ use slop_air::{Air, AirBuilder, BaseAir, PairBuilder};
 use slop_algebra::{Field, PrimeField32};
 use slop_matrix::Matrix;
 use slop_maybe_rayon::prelude::{IndexedParallelIterator, ParallelIterator, ParallelSliceMut};
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, PicusCols};
 use sp1_hypercube::{air::MachineAir, next_multiple_of_32};
 use sp1_primitives::SP1Field;
 use sp1_recursion_executor::{
@@ -44,7 +44,7 @@ pub struct BaseAluPreprocessedCols<F: Copy> {
 
 pub const NUM_BASE_ALU_ACCESS_COLS: usize = core::mem::size_of::<BaseAluAccessCols<u8>>();
 
-#[derive(AlignedBorrow, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, PicusCols, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct BaseAluAccessCols<F: Copy> {
     pub addrs: BaseAluIo<Address<F>>,
@@ -68,6 +68,10 @@ impl<F: PrimeField32> MachineAir<F> for BaseAluChip {
 
     fn name(&self) -> String {
         "BaseAlu".to_string()
+    }
+
+    fn picus_info(&self) -> sp1_hypercube::air::PicusInfo {
+        BaseAluAccessCols::<u8>::picus_info()
     }
 
     fn preprocessed_width(&self) -> usize {

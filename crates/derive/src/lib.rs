@@ -33,6 +33,7 @@ use syn::{
 mod input_expr;
 mod input_params;
 mod into_shape;
+mod picus_cols;
 mod sp1_operation_builder;
 
 #[proc_macro_derive(AlignedBorrow)]
@@ -210,6 +211,13 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
                 }
             });
 
+            let picus_info_arms = variants.iter().map(|(variant_name, field)| {
+                let field_ty = &field.ty;
+                quote! {
+                    #name::#variant_name(x) => <#field_ty as sp1_hypercube::air::MachineAir<F>>::picus_info(x)
+                }
+            });
+
             let num_rows_arms = variants.iter().map(|(variant_name, field)| {
                 let field_ty = &field.ty;
                 quote! {
@@ -300,8 +308,14 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
                     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
                         match self {
                             #(#num_rows_arms,)*
+                        }
                     }
-                }
+
+                    fn picus_info(&self) -> sp1_hypercube::air::PicusInfo {
+                        match self {
+                            #(#picus_info_arms,)*
+                        }
+                    }
                 }
             };
 
@@ -474,4 +488,9 @@ pub fn input_params_derive(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(SP1OperationBuilder)]
 pub fn sp1_operation_builder_derive(input: TokenStream) -> TokenStream {
     sp1_operation_builder::sp1_operation_builder_derive(input)
+}
+
+#[proc_macro_derive(PicusCols, attributes(picus))]
+pub fn picus_cols_derive(input: TokenStream) -> TokenStream {
+    picus_cols::picus_cols_derive(input)
 }

@@ -13,7 +13,7 @@ use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
     ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, PicusCols};
 use sp1_hypercube::{air::MachineAir, Word};
 
 use crate::{
@@ -34,7 +34,7 @@ pub const NUM_LT_COLS: usize = size_of::<LtCols<u8>>();
 pub struct LtChip;
 
 /// The column layout for the chip.
-#[derive(AlignedBorrow, Default, Clone, Copy)]
+#[derive(AlignedBorrow, PicusCols, Default, Clone, Copy)]
 #[repr(C)]
 pub struct LtCols<T> {
     /// The current shard, timestamp, program counter of the CPU.
@@ -44,9 +44,11 @@ pub struct LtCols<T> {
     pub adapter: ALUTypeReader<T>,
 
     /// If the opcode is SLT.
+    #[picus(selector)]
     pub is_slt: T,
 
     /// If the opcode is SLTU.
+    #[picus(selector)]
     pub is_sltu: T,
 
     /// Instance of `LtOperationSigned` to handle comparison logic in `LtChip`'s ALU operations.
@@ -68,6 +70,10 @@ impl<F: PrimeField32> MachineAir<F> for LtChip {
 
     fn name(&self) -> String {
         "Lt".to_string()
+    }
+
+    fn picus_info(&self) -> sp1_hypercube::air::PicusInfo {
+        LtCols::<u8>::picus_info()
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

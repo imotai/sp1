@@ -13,7 +13,7 @@ use sp1_core_executor::{
     is_unsigned_64bit_operation, is_unsigned_word_operation, is_word_operation, ExecutionRecord,
     Opcode, Program, CLK_INC, PC_INC,
 };
-use sp1_derive::AlignedBorrow;
+use sp1_derive::{AlignedBorrow, PicusCols};
 use sp1_hypercube::{air::MachineAir, Word};
 use sp1_primitives::consts::WORD_SIZE;
 
@@ -32,24 +32,25 @@ use crate::{
     utils::next_multiple_of_32,
 };
 
+pub const LONG_WORD_SIZE: usize = 2 * WORD_SIZE;
+
 /// The number of main trace columns for `DivRemChip`.
 pub const NUM_DIVREM_COLS: usize = size_of::<DivRemCols<u8>>();
-
-/// The size of a 128-bit in limbs.
-const LONG_WORD_SIZE: usize = 2 * WORD_SIZE;
 
 /// A chip that implements division for the opcodes DIV/REM.
 #[derive(Default)]
 pub struct DivRemChip;
 
 /// The column layout for the chip.
-#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, PicusCols, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct DivRemCols<T> {
     /// The current shard, timestamp, program counter of the CPU.
+    #[picus(input)]
     pub state: CPUState<T>,
 
     /// The adapter to read program and register information.
+    #[picus(input)]
     pub adapter: RTypeReader<T>,
 
     /// The output operand.
@@ -109,27 +110,35 @@ pub struct DivRemCols<T> {
     pub is_c_0: IsZeroWordOperation<T>,
 
     /// Flag to indicate whether the opcode is DIV.
+    #[picus(input, selector)]
     pub is_div: T,
 
     /// Flag to indicate whether the opcode is DIVU.
+    #[picus(input, selector)]
     pub is_divu: T,
 
     /// Flag to indicate whether the opcode is REM.
+    #[picus(input, selector)]
     pub is_rem: T,
 
     /// Flag to indicate whether the opcode is REMU.
+    #[picus(input, selector)]
     pub is_remu: T,
 
     /// Flag to indicate whether the opcode is DIVW.
+    #[picus(input, selector)]
     pub is_divw: T,
 
     /// Flag to indicate whether the opcode is REMW.
+    #[picus(input, selector)]
     pub is_remw: T,
 
     /// Flag to indicate whether the opcode is DIVUW.
+    #[picus(input, selector)]
     pub is_divuw: T,
 
     /// Flag to indicate whether the opcode is REMUW.
+    #[picus(input, selector)]
     pub is_remuw: T,
 
     /// Flag to indicate whether the division operation overflows.
@@ -548,6 +557,10 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
         } else {
             !shard.divrem_events.is_empty()
         }
+    }
+
+    fn picus_info(&self) -> sp1_hypercube::air::PicusInfo {
+        DivRemCols::<u8>::picus_info()
     }
 }
 
