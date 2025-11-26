@@ -34,12 +34,15 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
         worker_client: W,
         core_prover_and_permits: (Arc<CoreProver<C>>, ProverSemaphore),
         recursion_prover_and_permits: (Arc<RecursionProver<C>>, ProverSemaphore),
+        shrink_air_prover_and_permits: (Arc<RecursionProver<C>>, ProverSemaphore),
+        wrap_air_prover_and_permits: (Arc<crate::components::WrapProver<C>>, ProverSemaphore),
     ) -> Self {
         let recursion_prover = SP1RecursionProver::new(
             config.recursion_prover_config,
             artifact_client.clone(),
-            recursion_prover_and_permits.0,
-            recursion_prover_and_permits.1,
+            recursion_prover_and_permits,
+            shrink_air_prover_and_permits,
+            wrap_air_prover_and_permits,
         )
         .await;
 
@@ -77,5 +80,17 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
         request: RawTaskRequest,
     ) -> Result<ReduceSubmitHandle<A, C>, TaskError> {
         self.recursion_prover.submit_recursion_reduce(request).await
+    }
+
+    pub async fn run_shrink_wrap(&self, request: RawTaskRequest) -> Result<(), TaskError> {
+        self.recursion_prover.run_shrink_wrap(request).await
+    }
+
+    pub async fn run_plonk(&self, request: RawTaskRequest) -> Result<(), TaskError> {
+        self.recursion_prover.run_plonk(request).await
+    }
+
+    pub async fn run_groth16(&self, request: RawTaskRequest) -> Result<(), TaskError> {
+        self.recursion_prover.run_groth16(request).await
     }
 }

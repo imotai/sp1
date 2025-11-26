@@ -5,6 +5,7 @@ use sp1_prover_types::{
     ArtifactClient, ArtifactType, InMemoryArtifactClient, TaskStatus, TaskType,
 };
 use tokio::{sync::mpsc, task::JoinSet};
+use tracing::Instrument;
 
 use crate::{
     components::{CoreProver, RecursionProver, WrapProver},
@@ -100,7 +101,6 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                     // Run the controller task
                     if let Err(e) = worker.controller().run(request.clone()).await {
                         tracing::error!("Controller: task failed: {e:?}");
-                        continue;
                     }
 
                     // Complete the task
@@ -147,7 +147,6 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                             let output = outputs[0].clone();
                             // TODO: handle errors
                             let handle = worker.prover_engine().submit_setup(id, elf, output).await.unwrap();
-                            let proof_id = proof_id.clone();
                             let tx = task_tx.clone();
                             task_set.spawn(async move {
                                 let task_id = handle.await.unwrap().unwrap();
@@ -188,7 +187,6 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                                 )
                                 .await
                                 .unwrap();
-                            let proof_id = proof_id.clone();
                             let tx = task_tx.clone();
                             let task_id = id;
                             task_set.spawn(async move {
@@ -275,20 +273,74 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         // Spawn the shrink wrap handler
         tokio::task::spawn({
             let mut shrink_wrap_rx = channels.task_receivers.remove(&TaskType::ShrinkWrap).unwrap();
-            async move { while let Some((_task_id, _request)) = shrink_wrap_rx.recv().await {} }
+            let worker = worker.clone();
+            let worker_client = worker.worker_client().clone();
+            async move {
+                while let Some((id, request)) = shrink_wrap_rx.recv().await {
+                    let worker_client = worker_client.clone();
+                    let worker = worker.clone();
+                    let proof_id = request.context.proof_id.clone();
+                    tokio::task::spawn(
+                        async move {
+                            worker.prover_engine().run_shrink_wrap(request).await.unwrap();
+                            worker_client
+                                .complete_task(proof_id, id, TaskMetadata::default())
+                                .await
+                                .unwrap();
+                        }
+                        .instrument(tracing::info_span!("shrinkwrap")),
+                    );
+                }
+            }
         });
 
         // Spawn the plonk wrap handler
         tokio::task::spawn({
             let mut plonk_wrap_rx = channels.task_receivers.remove(&TaskType::PlonkWrap).unwrap();
-            async move { while let Some((_task_id, _request)) = plonk_wrap_rx.recv().await {} }
+            let worker = worker.clone();
+            let worker_client = worker.worker_client().clone();
+            async move {
+                while let Some((id, request)) = plonk_wrap_rx.recv().await {
+                    let worker = worker.clone();
+                    let worker_client = worker_client.clone();
+                    let proof_id = request.context.proof_id.clone();
+                    tokio::task::spawn(
+                        async move {
+                            worker.prover_engine().run_plonk(request).await.unwrap();
+                            worker_client
+                                .complete_task(proof_id, id, TaskMetadata::default())
+                                .await
+                                .unwrap();
+                        }
+                        .instrument(tracing::info_span!("plonkwrap")),
+                    );
+                }
+            }
         });
 
         // Spawn the groth16 wrap handler
         tokio::task::spawn({
             let mut groth16_wrap_rx =
                 channels.task_receivers.remove(&TaskType::Groth16Wrap).unwrap();
-            async move { while let Some((_task_id, _request)) = groth16_wrap_rx.recv().await {} }
+            let worker = worker.clone();
+            let worker_client = worker.worker_client().clone();
+            async move {
+                while let Some((id, request)) = groth16_wrap_rx.recv().await {
+                    let worker = worker.clone();
+                    let worker_client = worker_client.clone();
+                    let proof_id = request.context.proof_id.clone();
+                    tokio::task::spawn(
+                        async move {
+                            worker.prover_engine().run_groth16(request).await.unwrap();
+                            worker_client
+                                .complete_task(proof_id, id, TaskMetadata::default())
+                                .await
+                                .unwrap();
+                        }
+                        .instrument(tracing::info_span!("groth16wrap")),
+                    );
+                }
+            }
         });
 
         // Get the verifier, artifact client, and worker client from the worker

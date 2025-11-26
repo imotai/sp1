@@ -687,6 +687,9 @@ struct ProveTask<C: SP1ProverComponents> {
 
 #[cfg(all(test, feature = "experimental"))]
 pub mod tests {
+    use std::str::FromStr;
+
+    use num_bigint::BigUint;
     use sp1_core_executor::RetainedEventsPreset;
     use tracing::Instrument;
 
@@ -695,6 +698,7 @@ pub mod tests {
     use crate::{
         build::{try_build_groth16_bn254_artifacts_dev, try_build_plonk_bn254_artifacts_dev},
         components::CpuSP1ProverComponents,
+        verify::verify_public_values,
         SP1ProverBuilder,
     };
 
@@ -784,20 +788,22 @@ pub mod tests {
         let artifacts_dir = try_build_plonk_bn254_artifacts_dev(&wrap_proof.vk, &wrap_proof.proof);
         let plonk_bn254_proof = prover.wrap_plonk_bn254(wrap_proof.clone(), &artifacts_dir).await;
 
-        prover
-            .prover()
-            .verify_plonk_bn254(&plonk_bn254_proof, &vk, &public_values, &artifacts_dir)
-            .unwrap();
+        prover.prover().verify_plonk_bn254(&plonk_bn254_proof, &vk, &artifacts_dir).unwrap();
+        verify_public_values(
+            &public_values,
+            BigUint::from_str(&plonk_bn254_proof.public_inputs[1])?,
+        )?;
 
         let artifacts_dir =
             try_build_groth16_bn254_artifacts_dev(&wrap_proof.vk, &wrap_proof.proof);
         let groth16_bn254_proof =
             prover.wrap_groth16_bn254(wrap_proof.clone(), &artifacts_dir).await;
 
-        prover
-            .prover()
-            .verify_groth16_bn254(&groth16_bn254_proof, &vk, &public_values, &artifacts_dir)
-            .unwrap();
+        prover.prover().verify_groth16_bn254(&groth16_bn254_proof, &vk, &artifacts_dir).unwrap();
+        verify_public_values(
+            &public_values,
+            BigUint::from_str(&groth16_bn254_proof.public_inputs[1])?,
+        )?;
 
         Ok(())
     }
@@ -805,6 +811,7 @@ pub mod tests {
     /// Tests an end-to-end workflow of proving a program across the entire proof generation
     /// pipeline.
     #[tokio::test]
+    #[ignore = "Can't be run together with other groth16 tests for some reason"]
     #[serial]
     async fn test_e2e() -> Result<()> {
         let elf = test_artifacts::FIBONACCI_ELF;

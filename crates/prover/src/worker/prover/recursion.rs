@@ -1,22 +1,22 @@
-use slop_algebra::AbstractField;
-use slop_challenger::IopCtx;
-use std::{
-    borrow::Borrow,
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    sync::Arc,
-};
-
 use crate::{
+    build::{try_build_groth16_bn254_artifacts_dev, try_build_plonk_bn254_artifacts_dev},
     components::RecursionProver,
-    recursion::{compose_program_from_input, recursive_verifier, RecursionConfig},
+    components::WrapProver as InnerWrapProver,
+    recursion::{
+        compose_program_from_input, recursive_verifier, shrink_program_from_input,
+        wrap_program_from_input, RecursionConfig,
+    },
     shapes::SP1RecursionProofShape,
     worker::{
         CommonProverInput, ProverMetrics, RangeProofs, RawTaskRequest, TaskContext, TaskError,
         TaskMetadata,
     },
-    CompressAir, CoreSC, HashableKey, InnerSC, SP1CircuitWitness, SP1ProverComponents,
+    CompressAir, CoreSC, HashableKey, InnerSC, OuterSC, SP1CircuitWitness, SP1ProverComponents,
 };
 use slop_algebra::PrimeField32;
+use slop_algebra::{AbstractField, PrimeField};
+use slop_bn254::Bn254Fr;
+use slop_challenger::IopCtx;
 use slop_futures::pipeline::{
     AsyncEngine, AsyncWorker, BlockingEngine, BlockingWorker, Chain, Pipeline, SubmitError,
     SubmitHandle,
@@ -24,10 +24,10 @@ use slop_futures::pipeline::{
 use sp1_hypercube::{
     air::SP1CorePublicValues,
     inner_perm,
-    prover::{AirProver, MachineProvingKey, ProverSemaphore},
+    prover::{AirProver, MachineProverComponents, MachineProvingKey, ProverSemaphore},
     MachineProof, MachineVerifier, MachineVerifyingKey, SP1RecursionProof, ShardProof, DIGEST_SIZE,
 };
-use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
+use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_prover_types::{Artifact, ArtifactClient, ArtifactId};
 use sp1_recursion_circuit::{
     basefold::merkle_tree::MerkleTree,
@@ -35,12 +35,26 @@ use sp1_recursion_circuit::{
         SP1CompressWithVKeyWitnessValues, SP1MerkleProofWitnessValues, SP1NormalizeWitnessValues,
         SP1ShapedWitnessValues,
     },
-    witness::Witnessable,
+    utils::{
+        koalabear_bytes_to_bn254, koalabears_proof_nonce_to_bn254, koalabears_to_bn254,
+        words_to_bytes,
+    },
+    witness::{OuterWitness, Witnessable},
     WrapConfig,
 };
 use sp1_recursion_compiler::config::InnerConfig;
-use sp1_recursion_executor::{Block, ExecutionRecord, Executor, RecursionProgram};
+use sp1_recursion_executor::{
+    shape::RecursionShape, Block, ExecutionRecord, Executor, RecursionProgram,
+    RecursionPublicValues,
+};
+use sp1_recursion_gnark_ffi::{Groth16Bn254Prover, PlonkBn254Prover};
+use std::{
+    borrow::Borrow,
+    collections::{BTreeMap, BTreeSet, VecDeque},
+    sync::Arc,
+};
 use tokio::sync::oneshot;
+use tracing::Instrument;
 
 /// Configuration for the core prover.
 #[derive(Debug, Clone)]
@@ -303,14 +317,20 @@ pub type ReduceSubmitHandle<A, C> = SubmitHandle<ReducePipeline<A, C>>;
 
 pub struct SP1RecursionProver<A, C: SP1ProverComponents> {
     reduce_pipeline: Arc<ReducePipeline<A, C>>,
+    shrink_prover: Arc<ShrinkProver<C>>,
+    wrap_prover: Arc<WrapProver<C>>,
     prover_data: Arc<RecursionProverData<C>>,
+    artifact_client: A,
 }
 
-impl<A, C: SP1ProverComponents> Clone for SP1RecursionProver<A, C> {
+impl<A: Clone, C: SP1ProverComponents> Clone for SP1RecursionProver<A, C> {
     fn clone(&self) -> Self {
         Self {
             reduce_pipeline: self.reduce_pipeline.clone(),
+            shrink_prover: self.shrink_prover.clone(),
+            wrap_prover: self.wrap_prover.clone(),
             prover_data: self.prover_data.clone(),
+            artifact_client: self.artifact_client.clone(),
         }
     }
 }
@@ -319,8 +339,9 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
     pub async fn new(
         config: SP1RecursionProverConfig,
         artifact_client: A,
-        air_prover: Arc<RecursionProver<C>>,
-        permits: ProverSemaphore,
+        (air_prover, air_prover_permits): (Arc<RecursionProver<C>>, ProverSemaphore),
+        (shrink_prover, shrink_prover_permits): (Arc<RecursionProver<C>>, ProverSemaphore),
+        (wrap_prover, wrap_prover_permits): (Arc<InnerWrapProver<C>>, ProverSemaphore),
     ) -> Self {
         tokio::task::spawn_blocking(move || {
             // Get the reduce shape.
@@ -383,7 +404,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
                 compose_programs.insert(arity, program);
             }
 
-            let prover_data = RecursionProverData {
+            let prover_data = Arc::new(RecursionProverData {
                 vk_root,
                 allowed_vk_map,
                 recursion_vk_tree,
@@ -391,8 +412,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
                 compose_programs,
                 compose_keys,
                 vk_verification: config.vk_verification,
-            };
-            let prover_data = Arc::new(prover_data);
+            });
 
             let compress_verifier = C::compress_verifier();
 
@@ -425,7 +445,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
             let prove_workers = (0..config.num_recursion_prover_workers)
                 .map(|_| RecursionProverWorker {
                     recursion_prover: air_prover.clone(),
-                    permits: permits.clone(),
+                    permits: air_prover_permits.clone(),
                     artifact_client: artifact_client.clone(),
                     verify_intermediates: config.verify_intermediates,
                 })
@@ -439,7 +459,22 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
             // Make the reduce pipeline.
             let reduce_pipeline = Arc::new(Chain::new(prepare_reduce_engine, recursion_pipeline));
 
-            Self { reduce_pipeline, prover_data }
+            let shrink_prover = Arc::new(ShrinkProver::new(
+                shrink_prover,
+                shrink_prover_permits,
+                prover_data.clone(),
+                config.clone(),
+            ));
+
+            let wrap_prover = Arc::new(WrapProver::new(
+                wrap_prover,
+                wrap_prover_permits,
+                prover_data.clone(),
+                config.clone(),
+                shrink_prover.proving_key.clone(),
+            ));
+
+            Self { reduce_pipeline, shrink_prover, wrap_prover, prover_data, artifact_client }
         })
         .await
         .unwrap()
@@ -468,6 +503,169 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
         let input = ReduceTaskRequest::from_raw(request)?;
         let handle = self.reduce_pipeline.submit(input).await?;
         Ok(handle)
+    }
+
+    pub async fn run_shrink_wrap(&self, request: RawTaskRequest) -> Result<(), TaskError> {
+        let RawTaskRequest { inputs, outputs, .. } = request;
+        let [compress_proof_artifact] = inputs.try_into().unwrap();
+        let [wrap_proof_artifact] = outputs.try_into().unwrap();
+
+        let compress_proof = self
+            .artifact_client
+            .download(&compress_proof_artifact)
+            .instrument(tracing::debug_span!("download compress proof"))
+            .await?;
+
+        let shrink_proof = self
+            .shrink_prover
+            .prove(compress_proof)
+            .instrument(tracing::info_span!("prove shrink"))
+            .await?;
+
+        tracing::debug_span!("verify shrink proof")
+            .in_scope(|| self.shrink_prover.verify(&shrink_proof))?;
+
+        let wrap_proof = self
+            .wrap_prover
+            .prove(shrink_proof)
+            .instrument(tracing::info_span!("prove wrap"))
+            .await?;
+
+        tracing::debug_span!("verify wrap proof")
+            .in_scope(|| self.wrap_prover.verify(&wrap_proof))?;
+
+        self.artifact_client
+            .upload(&wrap_proof_artifact, wrap_proof)
+            .instrument(tracing::debug_span!("upload wrap proof"))
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn run_groth16(&self, request: RawTaskRequest) -> Result<(), TaskError> {
+        let RawTaskRequest { inputs, outputs, .. } = request;
+        let [wrap_proof_artifact] = inputs.try_into().unwrap();
+        let [groth16_proof_artifact] = outputs.try_into().unwrap();
+
+        let wrap_proof: SP1RecursionProof<SP1OuterGlobalContext, OuterSC> = self
+            .artifact_client
+            .download(&wrap_proof_artifact)
+            .instrument(tracing::debug_span!("download wrap proof"))
+            .await?;
+
+        let groth16_proof = tokio::task::spawn_blocking(|| {
+            // TODO: Change this after v6.0.0 binary release
+            let build_dir =
+                try_build_groth16_bn254_artifacts_dev(&wrap_proof.vk, &wrap_proof.proof);
+            let SP1RecursionProof { vk, proof } = wrap_proof;
+            let input = SP1ShapedWitnessValues {
+                vks_and_proofs: vec![(vk, proof.clone())],
+                is_complete: true,
+            };
+            let pv: &RecursionPublicValues<SP1Field> = proof.public_values.as_slice().borrow();
+            let vkey_hash = koalabears_to_bn254(&pv.sp1_vk_digest);
+            let committed_values_digest_bytes: [SP1Field; 32] =
+                words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
+            let committed_values_digest = koalabear_bytes_to_bn254(&committed_values_digest_bytes);
+            let exit_code = Bn254Fr::from_canonical_u32(pv.exit_code.as_canonical_u32());
+            let proof_nonce = koalabears_proof_nonce_to_bn254(&pv.proof_nonce);
+            let vk_root = koalabears_to_bn254(&pv.vk_root);
+            let witness = {
+                let mut witness = OuterWitness::default();
+                input.write(&mut witness);
+                witness.write_committed_values_digest(committed_values_digest);
+                witness.write_vkey_hash(vkey_hash);
+                witness.write_exit_code(exit_code);
+                witness.write_vk_root(vk_root);
+                witness.write_proof_nonce(proof_nonce);
+                witness
+            };
+            let prover = Groth16Bn254Prover::new();
+            let proof = prover.prove(witness, build_dir.to_path_buf());
+            prover
+                .verify(
+                    &proof,
+                    &vkey_hash.as_canonical_biguint(),
+                    &committed_values_digest.as_canonical_biguint(),
+                    &exit_code.as_canonical_biguint(),
+                    &vk_root.as_canonical_biguint(),
+                    &proof_nonce.as_canonical_biguint(),
+                    &build_dir,
+                )
+                .expect("Failed to verify wrap proof");
+            proof
+        })
+        .instrument(tracing::info_span!("prove groth16"))
+        .await
+        .unwrap();
+
+        self.artifact_client
+            .upload(&groth16_proof_artifact, groth16_proof)
+            .instrument(tracing::debug_span!("upload groth16 proof"))
+            .await?;
+        Ok(())
+    }
+
+    pub async fn run_plonk(&self, request: RawTaskRequest) -> Result<(), TaskError> {
+        let RawTaskRequest { inputs, outputs, .. } = request;
+        let [wrap_proof_artifact] = inputs.try_into().unwrap();
+        let [plonk_proof_artifact] = outputs.try_into().unwrap();
+        let wrap_proof: SP1RecursionProof<SP1OuterGlobalContext, OuterSC> = self
+            .artifact_client
+            .download(&wrap_proof_artifact)
+            .instrument(tracing::debug_span!("download wrap proof"))
+            .await?;
+
+        let plonk_proof = tokio::task::spawn_blocking(|| {
+            // TODO: Change this after v6.0.0 binary release
+            let build_dir = try_build_plonk_bn254_artifacts_dev(&wrap_proof.vk, &wrap_proof.proof);
+            let SP1RecursionProof { vk: wrap_vk, proof: wrap_proof } = wrap_proof;
+            let input = SP1ShapedWitnessValues {
+                vks_and_proofs: vec![(wrap_vk.clone(), wrap_proof.clone())],
+                is_complete: true,
+            };
+            let pv: &RecursionPublicValues<SP1Field> = wrap_proof.public_values.as_slice().borrow();
+            let vkey_hash = koalabears_to_bn254(&pv.sp1_vk_digest);
+            let committed_values_digest_bytes: [SP1Field; 32] =
+                words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
+            let committed_values_digest = koalabear_bytes_to_bn254(&committed_values_digest_bytes);
+            let exit_code = Bn254Fr::from_canonical_u32(pv.exit_code.as_canonical_u32());
+            let vk_root = koalabears_to_bn254(&pv.vk_root);
+            let proof_nonce = koalabears_proof_nonce_to_bn254(&pv.proof_nonce);
+            let witness = {
+                let mut witness = OuterWitness::default();
+                input.write(&mut witness);
+                witness.write_committed_values_digest(committed_values_digest);
+                witness.write_vkey_hash(vkey_hash);
+                witness.write_exit_code(exit_code);
+                witness.write_vk_root(vk_root);
+                witness.write_proof_nonce(proof_nonce);
+                witness
+            };
+            let prover = PlonkBn254Prover::new();
+            let proof = prover.prove(witness, build_dir.to_path_buf());
+            prover
+                .verify(
+                    &proof,
+                    &vkey_hash.as_canonical_biguint(),
+                    &committed_values_digest.as_canonical_biguint(),
+                    &exit_code.as_canonical_biguint(),
+                    &vk_root.as_canonical_biguint(),
+                    &proof_nonce.as_canonical_biguint(),
+                    &build_dir,
+                )
+                .expect("Failed to verify proof");
+            proof
+        })
+        .instrument(tracing::info_span!("prove plonk"))
+        .await
+        .unwrap();
+
+        self.artifact_client
+            .upload(&plonk_proof_artifact, plonk_proof)
+            .instrument(tracing::debug_span!("upload plonk proof"))
+            .await?;
+        Ok(())
     }
 
     #[inline]
@@ -515,7 +713,7 @@ type CompressKeys<C> = (
     MachineVerifyingKey<SP1GlobalContext, RecursionConfig<C>>,
 );
 
-struct RecursionProverData<C: SP1ProverComponents> {
+pub struct RecursionProverData<C: SP1ProverComponents> {
     vk_root: [SP1Field; DIGEST_SIZE],
     allowed_vk_map: BTreeMap<[SP1Field; DIGEST_SIZE], usize>,
     recursion_vk_tree: MerkleTree<SP1GlobalContext>,
@@ -605,18 +803,215 @@ fn dummy_compose_input<C: SP1ProverComponents>(
     height: usize,
 ) -> SP1CompressWithVKeyWitnessValues<InnerSC> {
     let verifier = C::compress_verifier();
-    let chips =
-        verifier.shard_verifier().machine().chips().iter().cloned().collect::<BTreeSet<_>>();
-
-    let max_log_row_count = verifier.max_log_row_count();
-    let log_stacking_height = verifier.log_stacking_height() as usize;
-
     shape.dummy_input(
         arity,
         height,
-        chips,
-        max_log_row_count,
+        verifier.shard_verifier().machine().chips().iter().cloned().collect::<BTreeSet<_>>(),
+        verifier.max_log_row_count(),
         *verifier.fri_config(),
-        log_stacking_height,
+        verifier.log_stacking_height() as usize,
     )
+}
+
+pub struct ShrinkProver<C: SP1ProverComponents> {
+    prover: Arc<RecursionProver<C>>,
+    permits: ProverSemaphore,
+    program: Arc<RecursionProgram<SP1Field>>,
+    proving_key: Arc<MachineProvingKey<SP1GlobalContext, C::RecursionComponents>>,
+    verifying_key: MachineVerifyingKey<SP1GlobalContext, RecursionConfig<C>>,
+    prover_data: Arc<RecursionProverData<C>>,
+}
+
+impl<C: SP1ProverComponents> ShrinkProver<C> {
+    fn new(
+        prover: Arc<RecursionProver<C>>,
+        permits: ProverSemaphore,
+        prover_data: Arc<RecursionProverData<C>>,
+        config: SP1RecursionProverConfig,
+    ) -> Self {
+        let verifier = C::compress_verifier();
+        let input = prover_data.reduce_shape.dummy_input(
+            1,
+            prover_data.recursion_vk_tree.height,
+            verifier.shard_verifier().machine().chips().iter().cloned().collect::<BTreeSet<_>>(),
+            verifier.max_log_row_count(),
+            *verifier.fri_config(),
+            verifier.log_stacking_height() as usize,
+        );
+        let program = Arc::new(shrink_program_from_input(
+            &recursive_verifier(verifier.shard_verifier()),
+            config.vk_verification,
+            &input,
+        ));
+        let (pk, vk) = {
+            let (prover, program, permits) = (prover.clone(), program.clone(), permits.clone());
+            let (tx, rx) = oneshot::channel();
+            tokio::task::spawn(async move {
+                tx.send(prover.setup(program.clone(), permits.clone()).await).ok()
+            });
+            rx.blocking_recv().unwrap()
+        };
+        Self {
+            prover,
+            permits,
+            program,
+            proving_key: unsafe { pk.into_inner() },
+            verifying_key: vk,
+            prover_data,
+        }
+    }
+
+    async fn prove(
+        &self,
+        compressed_proof: SP1RecursionProof<SP1GlobalContext, InnerSC>,
+    ) -> Result<SP1RecursionProof<SP1GlobalContext, InnerSC>, TaskError> {
+        let execution_record = {
+            let mut runtime =
+                Executor::<SP1Field, SP1ExtensionField, _>::new(self.program.clone(), inner_perm());
+            runtime.witness_stream = self.prover_data.witness_stream(&{
+                let SP1RecursionProof { vk, proof } = compressed_proof;
+                let input =
+                    SP1ShapedWitnessValues { vks_and_proofs: vec![(vk, proof)], is_complete: true };
+                SP1CircuitWitness::Shrink(self.prover_data.make_merkle_proofs(input)?)
+            })?;
+            runtime.run().map_err(|e| TaskError::Fatal(e.into()))?;
+            runtime.record
+        };
+
+        let mut challenger = SP1GlobalContext::default_challenger();
+        self.verifying_key.observe_into(&mut challenger);
+
+        let (proof, _permit) = self
+            .prover
+            .prove_shard_with_pk(
+                self.proving_key.clone(),
+                execution_record,
+                self.permits.clone(),
+                &mut challenger,
+            )
+            .await;
+        Ok(SP1RecursionProof { vk: self.verifying_key.clone(), proof })
+    }
+
+    fn verify(
+        &self,
+        compressed_proof: &SP1RecursionProof<SP1GlobalContext, InnerSC>,
+    ) -> Result<(), TaskError> {
+        let SP1RecursionProof { vk, proof } = compressed_proof;
+        let mut challenger = SP1GlobalContext::default_challenger();
+        vk.observe_into(&mut challenger);
+        C::shrink_verifier()
+            .verify_shard(vk, proof, &mut challenger)
+            .map_err(|e| TaskError::Fatal(e.into()))?;
+        Ok(())
+    }
+}
+
+pub struct WrapProver<C: SP1ProverComponents> {
+    prover: Arc<InnerWrapProver<C>>,
+    permits: ProverSemaphore,
+    program: Arc<RecursionProgram<SP1Field>>,
+    proving_key: Arc<MachineProvingKey<SP1OuterGlobalContext, C::WrapComponents>>,
+    verifying_key: MachineVerifyingKey<SP1OuterGlobalContext, crate::recursion::WrapConfig<C>>,
+    prover_data: Arc<RecursionProverData<C>>,
+}
+
+impl<C: SP1ProverComponents> WrapProver<C> {
+    fn new(
+        prover: Arc<InnerWrapProver<C>>,
+        permits: ProverSemaphore,
+        prover_data: Arc<RecursionProverData<C>>,
+        config: SP1RecursionProverConfig,
+        shrink_proving_key: Arc<MachineProvingKey<SP1GlobalContext, C::RecursionComponents>>,
+    ) -> Self {
+        let verifier = C::shrink_verifier();
+        let heights = {
+            let (tx, rx) = oneshot::channel();
+            tokio::task::spawn(async move {
+                let heights = <C::RecursionComponents as MachineProverComponents<
+                    SP1GlobalContext,
+                >>::preprocessed_table_heights(shrink_proving_key)
+                .await;
+                tx.send(heights).ok();
+            });
+            rx.blocking_recv().unwrap()
+        };
+        let shrink_proof_shape = SP1RecursionProofShape { shape: RecursionShape::new(heights) };
+        let wrap_input = shrink_proof_shape.dummy_input(
+            1,
+            prover_data.recursion_vk_tree.height,
+            verifier.shard_verifier().machine().chips().iter().cloned().collect::<BTreeSet<_>>(),
+            verifier.max_log_row_count(),
+            *verifier.fri_config(),
+            verifier.log_stacking_height() as usize,
+        );
+
+        let program = Arc::new(wrap_program_from_input(
+            &recursive_verifier(verifier.shard_verifier()),
+            config.vk_verification,
+            &wrap_input,
+        ));
+        let (proving_key, verifying_key) = {
+            let (prover, program, permits) = (prover.clone(), program.clone(), permits.clone());
+            let (tx, rx) = oneshot::channel();
+            tokio::task::spawn(async move {
+                tx.send(prover.setup(program.clone(), permits).await).ok();
+            });
+            rx.blocking_recv().unwrap()
+        };
+
+        Self {
+            prover,
+            permits,
+            program,
+            proving_key: unsafe { proving_key.into_inner() },
+            verifying_key,
+            prover_data,
+        }
+    }
+
+    pub async fn prove(
+        &self,
+        shrunk_proof: SP1RecursionProof<SP1GlobalContext, InnerSC>,
+    ) -> Result<SP1RecursionProof<SP1OuterGlobalContext, OuterSC>, TaskError> {
+        let execution_record = {
+            let mut runtime =
+                Executor::<SP1Field, SP1ExtensionField, _>::new(self.program.clone(), inner_perm());
+            runtime.witness_stream = self.prover_data.witness_stream(&{
+                let SP1RecursionProof { vk, proof } = shrunk_proof;
+                let input =
+                    SP1ShapedWitnessValues { vks_and_proofs: vec![(vk, proof)], is_complete: true };
+                SP1CircuitWitness::Wrap(self.prover_data.make_merkle_proofs(input)?)
+            })?;
+            runtime.run().map_err(|e| TaskError::Fatal(e.into()))?;
+            runtime.record
+        };
+
+        let mut challenger = SP1OuterGlobalContext::default_challenger();
+        self.verifying_key.observe_into(&mut challenger);
+
+        let (proof, _permit) = self
+            .prover
+            .prove_shard_with_pk(
+                self.proving_key.clone(),
+                execution_record,
+                self.permits.clone(),
+                &mut challenger,
+            )
+            .await;
+        Ok(SP1RecursionProof { vk: self.verifying_key.clone(), proof })
+    }
+
+    fn verify(
+        &self,
+        wrapped_proof: &SP1RecursionProof<SP1OuterGlobalContext, OuterSC>,
+    ) -> Result<(), TaskError> {
+        let SP1RecursionProof { vk, proof } = wrapped_proof;
+        let mut challenger = SP1OuterGlobalContext::default_challenger();
+        vk.observe_into(&mut challenger);
+        C::wrap_verifier()
+            .verify_shard(vk, proof, &mut challenger)
+            .map_err(|e| TaskError::Fatal(e.into()))?;
+        Ok(())
+    }
 }

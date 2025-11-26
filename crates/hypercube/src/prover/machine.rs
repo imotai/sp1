@@ -31,7 +31,7 @@ pub trait MachineProverComponents<GC: IopCtx>: 'static + Send + Sync {
     /// A function which deduces preprocessed table heights from the proving key.
     fn preprocessed_table_heights(
         pk: Arc<ProvingKey<GC, Self::Config, Self::Air, Self::Prover>>,
-    ) -> impl Future<Output = BTreeMap<String, usize>>;
+    ) -> impl Future<Output = BTreeMap<String, usize>> + Send;
 }
 
 /// The type of program this prover can make proofs for.

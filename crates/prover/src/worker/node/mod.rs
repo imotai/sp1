@@ -256,11 +256,15 @@ impl SP1LocalNode {
             SP1Proof::Compressed(proof) => {
                 self.verifier().verify_compressed(proof, vk)?;
             }
-            SP1Proof::Plonk(_) => {
-                todo!()
+            SP1Proof::Plonk(proof) => {
+                // TODO: Change this after v6.0.0 binary release
+                let build_dir = crate::build::plonk_bn254_artifacts_dev_dir();
+                self.verifier().verify_plonk_bn254(proof, vk, &build_dir)?;
             }
-            SP1Proof::Groth16(_) => {
-                todo!()
+            SP1Proof::Groth16(proof) => {
+                // TODO: Change this after v6.0.0 binary release
+                let build_dir = crate::build::groth16_bn254_artifacts_dev_dir();
+                self.verifier().verify_groth16_bn254(proof, vk, &build_dir)?;
             }
         }
 
@@ -321,6 +325,46 @@ mod tests {
 
         // Verify the proof
         client.verify(&vk, &proof.proof).unwrap();
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_e2e_node_groth16() -> anyhow::Result<()> {
+        setup_logger();
+
+        let elf = test_artifacts::FIBONACCI_ELF;
+        let stdin = SP1Stdin::default();
+        let mode = ProofMode::Groth16;
+
+        let client = SP1LocalNodeBuilder::from_worker_client_builder(cpu_worker_builder())
+            .build()
+            .await
+            .unwrap();
+
+        let time = tokio::time::Instant::now();
+        let context = SP1Context::default();
+        let (_, _, report) = client.execute(&elf, stdin.clone(), context.clone()).await.unwrap();
+        let execute_time = time.elapsed();
+        let cycles = report.total_instruction_count() as usize;
+        tracing::info!(
+            "execute time: {:?}, cycles: {}, gas: {:?}",
+            execute_time,
+            cycles,
+            report.gas()
+        );
+
+        let time = tokio::time::Instant::now();
+        let setup_time = time.elapsed();
+        tracing::info!("setup time: {:?}", setup_time);
+
+        let time = tokio::time::Instant::now();
+
+        tracing::info!("proving with mode: {mode:?}");
+        let _proof = client.prove_with_mode(&elf, stdin, context, mode).await.unwrap();
+        let proof_time = time.elapsed();
+        tracing::info!("proof time: {:?}", proof_time);
 
         Ok(())
     }

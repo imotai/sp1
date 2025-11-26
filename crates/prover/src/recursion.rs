@@ -66,9 +66,10 @@ pub(crate) type RecursionConfig<C> =
 
 // type SP1Field = SP1Field;
 
-type WrapConfig<C> = <<C as SP1ProverComponents>::WrapComponents as MachineProverComponents<
-    SP1OuterGlobalContext,
->>::Config;
+pub(crate) type WrapConfig<C> =
+    <<C as SP1ProverComponents>::WrapComponents as MachineProverComponents<
+        SP1OuterGlobalContext,
+    >>::Config;
 
 #[allow(clippy::type_complexity)]
 pub struct SP1RecursionProver<C: SP1ProverComponents> {
@@ -783,7 +784,7 @@ pub(crate) fn shrink_program_from_input(
 }
 
 /// The "wrap" program, which only verifies the single root shard.
-fn wrap_program_from_input(
+pub(crate) fn wrap_program_from_input(
     recursive_verifier: &RecursiveShardVerifier<
         SP1GlobalContext,
         CompressAir<InnerVal>,

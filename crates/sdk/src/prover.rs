@@ -13,6 +13,7 @@ use sp1_primitives::{types::Elf, SP1GlobalContext};
 use sp1_prover::{
     components::{CpuSP1ProverComponents, SP1ProverComponents},
     local::LocalProver,
+    verify::verify_public_values,
     CoreSC, InnerSC, SP1CoreProofData, SP1Prover, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
 };
 use std::{
@@ -246,9 +247,13 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
                 .verify_plonk_bn254(
                     proof,
                     vkey,
-                    &bundle.public_values,
                     &sp1_prover::build::plonk_bn254_artifacts_dev_dir(),
                 )
+                .map_err(SP1VerificationError::Plonk)?;
+
+            let public_values_hash = BigUint::from_str(&proof.public_inputs[1])
+                .map_err(|e| SP1VerificationError::Plonk(anyhow::anyhow!(e)))?;
+            verify_public_values(&bundle.public_values, public_values_hash)
                 .map_err(SP1VerificationError::Plonk)
         }
 
@@ -267,9 +272,13 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
                 .verify_groth16_bn254(
                     proof,
                     vkey,
-                    &bundle.public_values,
                     &sp1_prover::build::groth16_bn254_artifacts_dev_dir(),
                 )
+                .map_err(SP1VerificationError::Groth16)?;
+
+            let public_values_hash = BigUint::from_str(&proof.public_inputs[1])
+                .map_err(|e| SP1VerificationError::Groth16(anyhow::anyhow!(e)))?;
+            verify_public_values(&bundle.public_values, public_values_hash)
                 .map_err(SP1VerificationError::Groth16)
         }
     }

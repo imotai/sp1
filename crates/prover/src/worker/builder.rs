@@ -176,8 +176,8 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
             config,
             core_air_prover_and_permits,
             compress_air_prover_and_permits,
-            shrink_air_prover_and_permits: _,
-            wrap_air_prover_and_permits: _,
+            shrink_air_prover_and_permits,
+            wrap_air_prover_and_permits,
             vk_map_path: _,
             artifact_client,
             worker_client,
@@ -201,6 +201,12 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
         let compress_air_prover_and_permits = compress_air_prover_and_permits
             .ok_or(anyhow::anyhow!("Compress air prover and permit are required"))?;
 
+        let shrink_air_prover_and_permits = shrink_air_prover_and_permits
+            .ok_or(anyhow::anyhow!("Shrink air prover and permit are required"))?;
+
+        let wrap_air_prover_and_permits = wrap_air_prover_and_permits
+            .ok_or(anyhow::anyhow!("Wrap air prover and permit are required"))?;
+
         let prover_engine = SP1ProverEngine::new(
             config.prover_config,
             opts,
@@ -208,6 +214,8 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
             worker_client.clone(),
             core_air_prover_and_permits,
             compress_air_prover_and_permits,
+            shrink_air_prover_and_permits,
+            wrap_air_prover_and_permits,
         )
         .await;
 
@@ -250,16 +258,16 @@ pub fn cpu_worker_builder() -> SP1WorkerBuilder<CpuSP1ProverComponents> {
     let recursion_air_prover =
         Arc::new(CpuShardProver::new(recursion_verifier.shard_verifier().clone()));
 
-    // let shrink_verifier = CudaSP1ProverComponents::shrink_verifier();
-    // let shrink_prover =
-    //     new_cuda_prover_sumcheck_eval(shrink_verifier.shard_verifier().clone(), scope.clone());
+    let shrink_verifier = CpuSP1ProverComponents::shrink_verifier();
+    let shrink_prover = Arc::new(CpuShardProver::new(shrink_verifier.shard_verifier().clone()));
 
-    // let wrap_verifier = CudaSP1ProverComponents::wrap_verifier();
-    // let wrap_prover =
-    //     new_cuda_prover_sumcheck_eval(wrap_verifier.shard_verifier().clone(), scope.clone());
+    let wrap_verifier = CpuSP1ProverComponents::wrap_verifier();
+    let wrap_prover = Arc::new(CpuShardProver::new(wrap_verifier.shard_verifier().clone()));
 
     SP1WorkerBuilder::new()
         .with_core_opts(opts)
         .with_core_air_prover(core_air_prover, prover_permits.clone())
-        .with_compress_air_prover(recursion_air_prover, prover_permits)
+        .with_compress_air_prover(recursion_air_prover, prover_permits.clone())
+        .with_shrink_air_prover(shrink_prover, prover_permits.clone())
+        .with_wrap_air_prover(wrap_prover, prover_permits)
 }

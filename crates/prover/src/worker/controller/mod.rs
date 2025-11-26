@@ -215,40 +215,113 @@ where
             self.minimal_executor_cache.clone(),
         );
         let mut join_set = JoinSet::<Result<(), TaskError>>::new();
-        let result_artifact = self.artifact_client.create_artifact()?;
-        match mode {
-            ProofMode::Core => {
-                join_set.spawn(collect_core_proofs(
-                    self.worker_client.clone(),
-                    self.artifact_client.clone(),
-                    result_artifact.clone(),
-                    context,
-                    core_proof_rx,
-                ));
-            }
-            // If the proof is not a core proof, we first need to reduce the core proofs into a
-            // compressed proof.
-            _ => {
-                join_set.spawn({
-                    let mut tree = CompressTree::new(self.max_reduce_arity);
-                    let artifact_client = self.artifact_client.clone();
-                    let worker_client = self.worker_client.clone();
-                    let result_artifact = result_artifact.clone();
-                    async move {
-                        tree.reduce_proofs(
-                            context,
-                            result_artifact,
-                            core_proof_rx,
-                            &artifact_client,
-                            &worker_client,
-                        )
-                        .await?;
 
-                        Ok(())
-                    }
-                    .instrument(tracing::debug_span!("reduce"))
+        let mut core_proof_artifact = None;
+        let mut compress_proof_artifact = None;
+        let mut shrinkwrap_proof_artifact = None;
+        let mut groth16_proof_artifact = None;
+        let mut plonk_proof_artifact = None;
+
+        let (compress_complete_tx, compress_complete_rx) = tokio::sync::oneshot::channel();
+
+        if mode == ProofMode::Core {
+            core_proof_artifact = Some(self.artifact_client.create_artifact()?);
+            join_set.spawn(collect_core_proofs(
+                self.worker_client.clone(),
+                self.artifact_client.clone(),
+                core_proof_artifact.clone().unwrap(),
+                context.clone(),
+                core_proof_rx,
+            ));
+        } else {
+            let mut tree = CompressTree::new(self.max_reduce_arity);
+            let artifact_client = self.artifact_client.clone();
+            let worker_client = self.worker_client.clone();
+            let context = context.clone();
+            compress_proof_artifact = Some(self.artifact_client.create_artifact()?);
+            let compress_proof_artifact = compress_proof_artifact.clone().unwrap();
+            join_set.spawn(
+                async move {
+                    tree.reduce_proofs(
+                        context,
+                        compress_proof_artifact.clone(),
+                        core_proof_rx,
+                        &artifact_client,
+                        &worker_client,
+                    )
+                    .await?;
+                    compress_complete_tx.send(()).unwrap();
+                    Ok(())
+                }
+                .instrument(tracing::debug_span!("reduce")),
+            );
+        }
+
+        match mode {
+            ProofMode::Groth16 => {
+                shrinkwrap_proof_artifact = Some(self.artifact_client.create_artifact()?);
+                groth16_proof_artifact = Some(self.artifact_client.create_artifact()?);
+
+                let shrinkwrap_task = RawTaskRequest {
+                    inputs: vec![compress_proof_artifact.clone().unwrap()],
+                    outputs: vec![shrinkwrap_proof_artifact.clone().unwrap()],
+                    context: context.clone(),
+                };
+
+                let groth16_task = RawTaskRequest {
+                    inputs: vec![shrinkwrap_proof_artifact.clone().unwrap()],
+                    outputs: vec![groth16_proof_artifact.clone().unwrap()],
+                    context: context.clone(),
+                };
+
+                let subscriber =
+                    self.worker_client.subscriber(context.proof_id.clone()).await?.per_task();
+                let worker_client = self.worker_client.clone();
+                join_set.spawn(async move {
+                    compress_complete_rx.await.unwrap();
+
+                    let shrinkwrap_task_id =
+                        worker_client.submit_task(TaskType::ShrinkWrap, shrinkwrap_task).await?;
+                    subscriber.wait_task(shrinkwrap_task_id).await?;
+
+                    let groth16_task_id =
+                        worker_client.submit_task(TaskType::Groth16Wrap, groth16_task).await?;
+                    subscriber.wait_task(groth16_task_id).await?;
+                    Ok(())
                 });
             }
+            ProofMode::Plonk => {
+                shrinkwrap_proof_artifact = Some(self.artifact_client.create_artifact()?);
+                plonk_proof_artifact = Some(self.artifact_client.create_artifact()?);
+
+                let shrinkwrap_task = RawTaskRequest {
+                    inputs: vec![compress_proof_artifact.clone().unwrap()],
+                    outputs: vec![shrinkwrap_proof_artifact.clone().unwrap()],
+                    context: context.clone(),
+                };
+                let plonk_task = RawTaskRequest {
+                    inputs: vec![shrinkwrap_proof_artifact.clone().unwrap()],
+                    outputs: vec![plonk_proof_artifact.clone().unwrap()],
+                    context: context.clone(),
+                };
+
+                let subscriber =
+                    self.worker_client.subscriber(context.proof_id.clone()).await?.per_task();
+                let worker_client = self.worker_client.clone();
+                join_set.spawn(async move {
+                    compress_complete_rx.await.unwrap();
+
+                    let shrinkwrap_task_id =
+                        worker_client.submit_task(TaskType::ShrinkWrap, shrinkwrap_task).await?;
+                    subscriber.wait_task(shrinkwrap_task_id).await?;
+
+                    let plonk_task_id =
+                        worker_client.submit_task(TaskType::PlonkWrap, plonk_task).await?;
+                    subscriber.wait_task(plonk_task_id).await?;
+                    Ok(())
+                });
+            }
+            _ => {}
         }
 
         // Spawn a task for the executor and get a result handle rx.
@@ -273,18 +346,26 @@ where
         // Get the proof and wrap it if the mode is either groth16 or plonk.
         let inner_proof = match mode {
             ProofMode::Core => {
-                let shard_proofs = self.artifact_client.download(&result_artifact).await?;
+                let shard_proofs =
+                    self.artifact_client.download(&core_proof_artifact.clone().unwrap()).await?;
                 SP1Proof::Core(shard_proofs)
             }
             ProofMode::Compressed => {
-                let proof = self.artifact_client.download(&result_artifact).await?;
+                let proof = self
+                    .artifact_client
+                    .download(&compress_proof_artifact.clone().unwrap())
+                    .await?;
                 SP1Proof::Compressed(Box::new(proof))
             }
             ProofMode::Plonk => {
-                unimplemented!("plonk proof mode not supported yet");
+                let proof =
+                    self.artifact_client.download(&plonk_proof_artifact.clone().unwrap()).await?;
+                SP1Proof::Plonk(proof)
             }
             ProofMode::Groth16 => {
-                unimplemented!("groth16 proof mode not supported yet");
+                let proof =
+                    self.artifact_client.download(&groth16_proof_artifact.clone().unwrap()).await?;
+                SP1Proof::Groth16(proof)
             }
             _ => unimplemented!("proof mode not supported: {:?}", mode),
         };
@@ -305,7 +386,19 @@ where
         self.artifact_client.upload_proof(&output, proof).await?;
 
         // Clean up artifacts
-        let artifacts_to_cleanup = [result_artifact, common_input_artifact, stdin_artifact];
+        let artifacts_to_cleanup = vec![
+            Some(common_input_artifact),
+            Some(stdin_artifact),
+            core_proof_artifact,
+            compress_proof_artifact,
+            shrinkwrap_proof_artifact,
+            groth16_proof_artifact,
+            plonk_proof_artifact,
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+
         self.artifact_client
             .delete_batch(&artifacts_to_cleanup, ArtifactType::UnspecifiedArtifactType)
             .await?;

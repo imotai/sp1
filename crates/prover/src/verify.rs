@@ -633,7 +633,6 @@ impl SP1VerifierRef<'_> {
         &self,
         proof: &PlonkBn254Proof,
         vk: &SP1VerifyingKey,
-        public_values: &SP1PublicValues,
         build_dir: &Path,
     ) -> Result<()> {
         let prover = PlonkBn254Prover::new();
@@ -660,7 +659,9 @@ impl SP1VerifierRef<'_> {
             build_dir,
         )?;
 
-        verify_plonk_bn254_public_inputs(vk, public_values, &proof.public_inputs)?;
+        if vk.hash_bn254().as_canonical_biguint() != vkey_hash {
+            return Err(PlonkVerificationError::InvalidVerificationKey.into());
+        }
 
         Ok(())
     }
@@ -670,7 +671,6 @@ impl SP1VerifierRef<'_> {
         &self,
         proof: &Groth16Bn254Proof,
         vk: &SP1VerifyingKey,
-        public_values: &SP1PublicValues,
         build_dir: &Path,
     ) -> Result<()> {
         let prover = Groth16Bn254Prover::new();
@@ -697,50 +697,12 @@ impl SP1VerifierRef<'_> {
             build_dir,
         )?;
 
-        verify_groth16_bn254_public_inputs(vk, public_values, &proof.public_inputs)?;
+        if vk.hash_bn254().as_canonical_biguint() != vkey_hash {
+            return Err(Groth16VerificationError::InvalidVerificationKey.into());
+        }
 
         Ok(())
     }
-}
-
-/// Verify the vk_hash and public_values_hash in the public inputs of the PlonkBn254Proof match
-/// the expected values.
-pub fn verify_plonk_bn254_public_inputs(
-    vk: &SP1VerifyingKey,
-    public_values: &SP1PublicValues,
-    plonk_bn254_public_inputs: &[String],
-) -> Result<()> {
-    let expected_vk_hash = BigUint::from_str(&plonk_bn254_public_inputs[0])?;
-    let expected_public_values_hash = BigUint::from_str(&plonk_bn254_public_inputs[1])?;
-
-    let vk_hash = vk.hash_bn254().as_canonical_biguint();
-    if vk_hash != expected_vk_hash {
-        return Err(PlonkVerificationError::InvalidVerificationKey.into());
-    }
-
-    verify_public_values(public_values, expected_public_values_hash)?;
-
-    Ok(())
-}
-
-/// Verify the vk_hash and public_values_hash in the public inputs of the Groth16Bn254Proof
-/// match the expected values.
-pub fn verify_groth16_bn254_public_inputs(
-    vk: &SP1VerifyingKey,
-    public_values: &SP1PublicValues,
-    groth16_bn254_public_inputs: &[String],
-) -> Result<()> {
-    let expected_vk_hash = BigUint::from_str(&groth16_bn254_public_inputs[0])?;
-    let expected_public_values_hash = BigUint::from_str(&groth16_bn254_public_inputs[1])?;
-
-    let vk_hash = vk.hash_bn254().as_canonical_biguint();
-    if vk_hash != expected_vk_hash {
-        return Err(Groth16VerificationError::InvalidVerificationKey.into());
-    }
-
-    verify_public_values(public_values, expected_public_values_hash)?;
-
-    Ok(())
 }
 
 /// In SP1, a proof's public values can either be hashed with SHA2 or Blake3. In SP1 V4, there is no
@@ -752,7 +714,7 @@ pub fn verify_groth16_bn254_public_inputs(
 /// designed to be collision resistant. It is computationally infeasible to find an input i1 for
 /// SHA256 and an input i2 for Blake3 that the same hash value. Doing so would require breaking both
 /// algorithms simultaneously.
-fn verify_public_values(
+pub fn verify_public_values(
     public_values: &SP1PublicValues,
     expected_public_values_hash: BigUint,
 ) -> Result<()> {
@@ -824,20 +786,18 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         &self,
         proof: &PlonkBn254Proof,
         vk: &SP1VerifyingKey,
-        public_values: &SP1PublicValues,
         build_dir: &Path,
     ) -> Result<()> {
-        self.verifier().verify_plonk_bn254(proof, vk, public_values, build_dir)
+        self.verifier().verify_plonk_bn254(proof, vk, build_dir)
     }
 
     pub fn verify_groth16_bn254(
         &self,
         proof: &Groth16Bn254Proof,
         vk: &SP1VerifyingKey,
-        public_values: &SP1PublicValues,
         build_dir: &Path,
     ) -> Result<()> {
-        self.verifier().verify_groth16_bn254(proof, vk, public_values, build_dir)
+        self.verifier().verify_groth16_bn254(proof, vk, build_dir)
     }
 }
 
@@ -905,20 +865,18 @@ impl SP1Verifier {
         &self,
         proof: &PlonkBn254Proof,
         vk: &SP1VerifyingKey,
-        public_values: &SP1PublicValues,
         build_dir: &Path,
     ) -> Result<()> {
-        self.verifier().verify_plonk_bn254(proof, vk, public_values, build_dir)
+        self.verifier().verify_plonk_bn254(proof, vk, build_dir)
     }
 
     pub fn verify_groth16_bn254(
         &self,
         proof: &Groth16Bn254Proof,
         vk: &SP1VerifyingKey,
-        public_values: &SP1PublicValues,
         build_dir: &Path,
     ) -> Result<()> {
-        self.verifier().verify_groth16_bn254(proof, vk, public_values, build_dir)
+        self.verifier().verify_groth16_bn254(proof, vk, build_dir)
     }
 }
 
