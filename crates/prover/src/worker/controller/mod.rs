@@ -246,20 +246,24 @@ where
 
                         Ok(())
                     }
+                    .instrument(tracing::debug_span!("reduce"))
                 });
             }
         }
 
         // Spawn a task for the executor and get a result handle rx.
         let (executor_result_tx, executor_result_rx) = oneshot::channel();
-        join_set.spawn(async move {
-            let result = executor.execute().await?;
-            tracing::trace!("executor finished");
-            executor_result_tx
-                .send(result)
-                .map_err(|_| TaskError::Fatal(anyhow::anyhow!("Controller panicked")))?;
-            Ok(())
-        });
+        join_set.spawn(
+            async move {
+                let result = executor.execute().await?;
+                tracing::trace!("executor finished");
+                executor_result_tx
+                    .send(result)
+                    .map_err(|_| TaskError::Fatal(anyhow::anyhow!("Controller panicked")))?;
+                Ok(())
+            }
+            .instrument(tracing::debug_span!("execute")),
+        );
 
         // Wait for the executor and proof tasks to finish
         while let Some(result) = join_set.join_next().await {

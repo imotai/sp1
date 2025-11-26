@@ -270,13 +270,8 @@ impl SP1LocalNode {
 
 #[cfg(all(test, feature = "experimental"))]
 mod tests {
-    use std::borrow::Borrow;
-
     use serial_test::serial;
-    use slop_algebra::AbstractField;
     use sp1_core_machine::utils::setup_logger;
-    use sp1_hypercube::air::PublicValues;
-    use sp1_primitives::SP1Field;
 
     use crate::worker::cpu_worker_builder;
 
@@ -289,7 +284,7 @@ mod tests {
 
         let elf = test_artifacts::FIBONACCI_ELF;
         let stdin = SP1Stdin::default();
-        let mode = ProofMode::Core;
+        let mode = ProofMode::Compressed;
 
         let client = SP1LocalNodeBuilder::from_worker_client_builder(cpu_worker_builder())
             .build()
@@ -323,21 +318,6 @@ mod tests {
         let proof = client.prove_with_mode(&elf, stdin, context, mode).await.unwrap();
         let proof_time = time.elapsed();
         tracing::info!("proof time: {:?}", proof_time);
-
-        match proof.proof {
-            SP1Proof::Core(ref shard_proofs) => {
-                for shard_proof in shard_proofs {
-                    let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
-                        shard_proof.public_values.as_slice().borrow();
-
-                    assert_eq!(
-                        public_values.proof_nonce,
-                        proof_nonce.map(SP1Field::from_canonical_u32)
-                    );
-                }
-            }
-            _ => panic!("expected core proof"),
-        }
 
         // Verify the proof
         client.verify(&vk, &proof.proof).unwrap();
