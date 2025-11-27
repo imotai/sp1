@@ -243,12 +243,12 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
                 return Err(SP1VerificationError::UnexpectedExitCode(exit_code_u32));
             }
 
+            let artifacts_dir = {
+                let (_, wrap_vk) = prover.recursion().get_wrap_keys();
+                sp1_prover::build::plonk_bn254_artifacts_dev_dir(&wrap_vk)
+            };
             prover
-                .verify_plonk_bn254(
-                    proof,
-                    vkey,
-                    &sp1_prover::build::plonk_bn254_artifacts_dev_dir(),
-                )
+                .verify_plonk_bn254(proof, vkey, &artifacts_dir)
                 .map_err(SP1VerificationError::Plonk)?;
 
             let public_values_hash = BigUint::from_str(&proof.public_inputs[1])
@@ -268,12 +268,12 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
                 return Err(SP1VerificationError::UnexpectedExitCode(exit_code_u32));
             }
 
+            let artifacts_dir = {
+                let (_, wrap_vk) = prover.recursion().get_wrap_keys();
+                sp1_prover::build::groth16_bn254_artifacts_dev_dir(&wrap_vk)
+            };
             prover
-                .verify_groth16_bn254(
-                    proof,
-                    vkey,
-                    &sp1_prover::build::groth16_bn254_artifacts_dev_dir(),
-                )
+                .verify_groth16_bn254(proof, vkey, &artifacts_dir)
                 .map_err(SP1VerificationError::Groth16)?;
 
             let public_values_hash = BigUint::from_str(&proof.public_inputs[1])

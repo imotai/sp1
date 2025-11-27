@@ -5,7 +5,7 @@ use slop_algebra::{AbstractField, PrimeField32};
 use slop_bn254::Bn254Fr;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_hypercube::{MachineVerifyingKey, ShardProof};
-use sp1_primitives::{SP1Field, SP1OuterGlobalContext};
+use sp1_primitives::{io::sha256_hash, SP1Field, SP1OuterGlobalContext};
 use sp1_recursion_circuit::{
     hash::FieldHasherVariable,
     machine::{SP1ShapedWitnessValues, SP1WrapVerifier},
@@ -34,12 +34,16 @@ pub fn try_build_plonk_bn254_artifacts_dev(
     template_vk: &MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
     template_proof: &ShardProof<SP1OuterGlobalContext, OuterSC>,
 ) -> PathBuf {
-    let build_dir = plonk_bn254_artifacts_dev_dir();
-    println!(
-        "[sp1] building plonk bn254 artifacts in development mode (build_dir: {})",
-        build_dir.display()
-    );
-    build_plonk_bn254_artifacts(template_vk, template_proof, &build_dir);
+    let build_dir = plonk_bn254_artifacts_dev_dir(template_vk);
+    if build_dir.exists() {
+        tracing::info!("[sp1] plonk bn254 found (build_dir: {})", build_dir.display());
+    } else {
+        tracing::info!(
+            "[sp1] building plonk bn254 artifacts in development mode (build_dir: {})",
+            build_dir.display()
+        );
+        build_plonk_bn254_artifacts(template_vk, template_proof, &build_dir);
+    }
     build_dir
 }
 
@@ -48,23 +52,47 @@ pub fn try_build_groth16_bn254_artifacts_dev(
     template_vk: &MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
     template_proof: &ShardProof<SP1OuterGlobalContext, OuterSC>,
 ) -> PathBuf {
-    let build_dir = groth16_bn254_artifacts_dev_dir();
-    println!(
-        "[sp1] building groth16 bn254 artifacts in development mode (build_dir: {})",
-        build_dir.display()
-    );
-    build_groth16_bn254_artifacts(template_vk, template_proof, &build_dir);
+    let build_dir = groth16_bn254_artifacts_dev_dir(template_vk);
+    if build_dir.exists() {
+        tracing::info!("[sp1] groth16 bn254 found (build_dir: {})", build_dir.display());
+    } else {
+        tracing::info!(
+            "[sp1] building groth16 bn254 artifacts in development mode (build_dir: {})",
+            build_dir.display()
+        );
+        build_groth16_bn254_artifacts(template_vk, template_proof, &build_dir);
+    }
     build_dir
 }
 
 /// Gets the directory where the PLONK artifacts are installed in development mode.
-pub fn plonk_bn254_artifacts_dev_dir() -> PathBuf {
-    dirs::home_dir().unwrap().join(".sp1").join("circuits").join("dev")
+pub fn plonk_bn254_artifacts_dev_dir(
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
+) -> PathBuf {
+    let serialized_vk = bincode::serialize(template_vk).unwrap();
+    let vk_hash_prefix = hex_prefix(sha256_hash(&serialized_vk));
+    dirs::home_dir()
+        .unwrap()
+        .join(".sp1")
+        .join("circuits")
+        .join(format!("{vk_hash_prefix}-groth16-dev"))
 }
 
 /// Gets the directory where the groth16 artifacts are installed in development mode.
-pub fn groth16_bn254_artifacts_dev_dir() -> PathBuf {
-    dirs::home_dir().unwrap().join(".sp1").join("circuits").join("dev")
+pub fn groth16_bn254_artifacts_dev_dir(
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
+) -> PathBuf {
+    let serialized_vk = bincode::serialize(template_vk).unwrap();
+    let vk_hash_prefix = hex_prefix(sha256_hash(&serialized_vk));
+    dirs::home_dir()
+        .unwrap()
+        .join(".sp1")
+        .join("circuits")
+        .join(format!("{vk_hash_prefix}-plonk-dev"))
+}
+
+fn hex_prefix(input: Vec<u8>) -> String {
+    format!("{:016x}", u64::from_be_bytes(input[..8].try_into().unwrap()))
 }
 
 /// Build the plonk bn254 artifacts to the given directory for the given verification key and

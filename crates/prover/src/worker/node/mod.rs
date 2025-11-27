@@ -258,12 +258,14 @@ impl SP1LocalNode {
             }
             SP1Proof::Plonk(proof) => {
                 // TODO: Change this after v6.0.0 binary release
-                let build_dir = crate::build::plonk_bn254_artifacts_dev_dir();
+                let wrap_vk = self.inner.verifier.wrap_vk.as_ref().unwrap();
+                let build_dir = crate::build::plonk_bn254_artifacts_dev_dir(wrap_vk);
                 self.verifier().verify_plonk_bn254(proof, vk, &build_dir)?;
             }
             SP1Proof::Groth16(proof) => {
                 // TODO: Change this after v6.0.0 binary release
-                let build_dir = crate::build::groth16_bn254_artifacts_dev_dir();
+                let wrap_vk = self.inner.verifier.wrap_vk.as_ref().unwrap();
+                let build_dir = crate::build::groth16_bn254_artifacts_dev_dir(wrap_vk);
                 self.verifier().verify_groth16_bn254(proof, vk, &build_dir)?;
             }
         }
