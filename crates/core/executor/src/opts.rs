@@ -30,7 +30,7 @@ pub struct ShardingThreshold {
 pub struct SP1CoreOpts {
     /// The maximum size of a minimal trace chunk in terms of memory entries.
     pub minimal_trace_chunk_threshold: u64,
-    /// The size of a shard in terms of cycles.
+    /// The size of a shard in terms of cycles. Used for estimating event counts when allocating records.
     pub shard_size: usize,
     /// The threshold that determines when to split the shard.
     pub sharding_threshold: ShardingThreshold,

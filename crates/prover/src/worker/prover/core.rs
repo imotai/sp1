@@ -244,11 +244,22 @@ where
                                 chunk.clk_start,
                                 chunk.clk_end
                             );
+                            // Here, we reserve 1/8 of the shard size for common events. In other words,
+                            // we assume that no event will take up more than 1/8 of the shard's events.
+                            let record = tracing::info_span!("allocating record").in_scope(|| {
+                                ExecutionRecord::new_preallocated(
+                                    program.clone(),
+                                    common_input.nonce,
+                                    opts.global_dependencies_opt,
+                                    opts.shard_size >> 3,
+                                )
+                            });
                             let (_, mut record, _) = trace_chunk::<SP1Field>(
                                 program.clone(),
                                 opts.clone(),
                                 chunk,
                                 common_input.nonce,
+                                record,
                             )
                             .map_err(|e| {
                                 TaskError::Fatal(anyhow::anyhow!("failed to trace chunk: {}", e))
