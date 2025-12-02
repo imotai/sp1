@@ -224,18 +224,32 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> RecursiveBasefoldVerifier<
         // Compute the batch evaluations from the openings of the component polynomials.
         let zero = SymbolicExt::<SP1Field, SP1ExtensionField>::zero();
         let mut batch_evals = vec![zero; query_indices.len()];
-        let mut batch_challenge_power = SymbolicExt::from(one);
+        let mut batch_challenge_power = one;
         for opening in proof.component_polynomials_query_openings_and_proofs.iter() {
             let values = &opening.values;
+            let beta_powers_symbolic = batching_challenge
+                .shifted_powers(SymbolicExt::from(batch_challenge_power))
+                .take(values.get(0).unwrap().as_slice().len());
+            let mut beta_powers = Vec::new();
+
+            for beta_power in beta_powers_symbolic {
+                let power = builder.eval(beta_power);
+                builder.reduce_e(power);
+                beta_powers.push(power);
+            }
             for (batch_eval, values) in batch_evals.iter_mut().zip_eq(values.split()) {
-                let beta_powers = batching_challenge.shifted_powers(batch_challenge_power);
-                for (value, beta_power) in values.as_slice().iter().zip(beta_powers) {
-                    *batch_eval += beta_power * *value;
+                for (value, beta_power) in values.as_slice().iter().zip(beta_powers.iter()) {
+                    *batch_eval += *beta_power * *value;
                 }
             }
             let count = values.get(0).unwrap().as_slice().len();
-            batch_challenge_power =
-                batching_challenge.shifted_powers(batch_challenge_power).nth(count).unwrap();
+            batch_challenge_power = builder.eval(
+                batching_challenge
+                    .shifted_powers(SymbolicExt::from(batch_challenge_power))
+                    .nth(count)
+                    .unwrap(),
+            );
+            builder.reduce_e(batch_challenge_power);
         }
         let batch_evals: Vec<Ext<SP1Field, SP1ExtensionField>> =
             batch_evals.into_iter().map(|x| builder.eval(x)).collect_vec();

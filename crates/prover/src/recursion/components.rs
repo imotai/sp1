@@ -12,6 +12,8 @@ pub const RECURSION_LOG_TRACE_AREA: usize = 27;
 const SHRINK_LOG_STACKING_HEIGHT: u32 = 18;
 pub(crate) const SHRINK_MAX_LOG_ROW_COUNT: usize = 19;
 
+pub(crate) const WRAP_LOG_STACKING_HEIGHT: u32 = 21;
+
 pub trait RecursionProverComponents:
     MachineProverComponents<SP1GlobalContext, Config = InnerSC, Air = CompressAir<SP1Field>>
 {
@@ -50,7 +52,7 @@ pub trait WrapProverComponents:
     MachineProverComponents<SP1OuterGlobalContext, Config = OuterSC, Air = WrapAir<SP1Field>>
 {
     fn wrap_verifier() -> MachineVerifier<SP1OuterGlobalContext, OuterSC, WrapAir<InnerVal>> {
-        let wrap_log_stacking_height = RECURSION_LOG_STACKING_HEIGHT;
+        let wrap_log_stacking_height = WRAP_LOG_STACKING_HEIGHT;
         let wrap_max_log_row_count = RECURSION_MAX_LOG_ROW_COUNT;
 
         let machine = WrapAir::<SP1Field>::wrap_machine();
