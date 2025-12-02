@@ -52,7 +52,7 @@ jobs:
           RUST_BACKTRACE: 1   
         with:
           command: test
-          args: --release -p sp1-prover -- --exact tests::test_e2e --nocapture
+          args: --release -p sp1-prover --features experimental -- --exact worker::node::tests::test_e2e_node_groth16 --nocapture
 
       - name: Make sure the contracts were modified
         run: |

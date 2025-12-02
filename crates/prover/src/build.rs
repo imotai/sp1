@@ -75,7 +75,7 @@ pub fn plonk_bn254_artifacts_dev_dir(
         .unwrap()
         .join(".sp1")
         .join("circuits")
-        .join(format!("{vk_hash_prefix}-groth16-dev"))
+        .join(format!("{vk_hash_prefix}-plonk-dev"))
 }
 
 /// Gets the directory where the groth16 artifacts are installed in development mode.
@@ -88,7 +88,7 @@ pub fn groth16_bn254_artifacts_dev_dir(
         .unwrap()
         .join(".sp1")
         .join("circuits")
-        .join(format!("{vk_hash_prefix}-plonk-dev"))
+        .join(format!("{vk_hash_prefix}-groth16-dev"))
 }
 
 fn hex_prefix(input: Vec<u8>) -> String {

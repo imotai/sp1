@@ -471,7 +471,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
                 wrap_prover_permits,
                 prover_data.clone(),
                 config.clone(),
-                shrink_prover.proving_key.clone(),
+                shrink_prover.shrink_shape.clone(),
             ));
 
             Self { reduce_pipeline, shrink_prover, wrap_prover, prover_data, artifact_client }
@@ -817,9 +817,9 @@ pub struct ShrinkProver<C: SP1ProverComponents> {
     prover: Arc<RecursionProver<C>>,
     permits: ProverSemaphore,
     program: Arc<RecursionProgram<SP1Field>>,
-    pub proving_key: Arc<MachineProvingKey<SP1GlobalContext, C::RecursionComponents>>,
     pub verifying_key: MachineVerifyingKey<SP1GlobalContext, RecursionConfig<C>>,
     prover_data: Arc<RecursionProverData<C>>,
+    pub shrink_shape: BTreeMap<String, usize>,
 }
 
 impl<C: SP1ProverComponents> ShrinkProver<C> {
@@ -843,6 +843,7 @@ impl<C: SP1ProverComponents> ShrinkProver<C> {
             config.vk_verification,
             &input,
         ));
+
         let (pk, vk) = {
             let (prover, program, permits) = (prover.clone(), program.clone(), permits.clone());
             let (tx, rx) = oneshot::channel();
@@ -851,14 +852,18 @@ impl<C: SP1ProverComponents> ShrinkProver<C> {
             });
             rx.blocking_recv().unwrap()
         };
-        Self {
-            prover,
-            permits,
-            program,
-            proving_key: unsafe { pk.into_inner() },
-            verifying_key: vk,
-            prover_data,
-        }
+        let shrink_shape = {
+            let (tx, rx) = oneshot::channel();
+            tokio::task::spawn(async move {
+                let heights = <C::RecursionComponents as MachineProverComponents<
+                    SP1GlobalContext,
+                >>::preprocessed_table_heights(pk.pk)
+                .await;
+                tx.send(heights).ok();
+            });
+            rx.blocking_recv().unwrap()
+        };
+        Self { prover, permits, program, verifying_key: vk, prover_data, shrink_shape }
     }
 
     async fn prove(
@@ -879,13 +884,13 @@ impl<C: SP1ProverComponents> ShrinkProver<C> {
         };
 
         let mut challenger = SP1GlobalContext::default_challenger();
-        self.verifying_key.observe_into(&mut challenger);
 
-        let (proof, _permit) = self
+        let (_vk, proof, _permit) = self
             .prover
-            .prove_shard_with_pk(
-                self.proving_key.clone(),
+            .setup_and_prove_shard(
+                self.program.clone(),
                 execution_record,
+                Some(self.verifying_key.clone()),
                 self.permits.clone(),
                 &mut challenger,
             )
@@ -911,32 +916,21 @@ pub struct WrapProver<C: SP1ProverComponents> {
     prover: Arc<InnerWrapProver<C>>,
     permits: ProverSemaphore,
     program: Arc<RecursionProgram<SP1Field>>,
-    pub proving_key: Arc<MachineProvingKey<SP1OuterGlobalContext, C::WrapComponents>>,
     pub verifying_key: MachineVerifyingKey<SP1OuterGlobalContext, crate::recursion::WrapConfig<C>>,
     prover_data: Arc<RecursionProverData<C>>,
 }
 
 impl<C: SP1ProverComponents> WrapProver<C> {
-    fn new(
+    pub fn new(
         prover: Arc<InnerWrapProver<C>>,
         permits: ProverSemaphore,
         prover_data: Arc<RecursionProverData<C>>,
         config: SP1RecursionProverConfig,
-        shrink_proving_key: Arc<MachineProvingKey<SP1GlobalContext, C::RecursionComponents>>,
+        shrink_shape: BTreeMap<String, usize>,
     ) -> Self {
         let verifier = C::shrink_verifier();
-        let heights = {
-            let (tx, rx) = oneshot::channel();
-            tokio::task::spawn(async move {
-                let heights = <C::RecursionComponents as MachineProverComponents<
-                    SP1GlobalContext,
-                >>::preprocessed_table_heights(shrink_proving_key)
-                .await;
-                tx.send(heights).ok();
-            });
-            rx.blocking_recv().unwrap()
-        };
-        let shrink_proof_shape = SP1RecursionProofShape { shape: RecursionShape::new(heights) };
+        let shrink_proof_shape =
+            SP1RecursionProofShape { shape: RecursionShape::new(shrink_shape) };
         let wrap_input = shrink_proof_shape.dummy_input(
             1,
             prover_data.recursion_vk_tree.height,
@@ -951,7 +945,7 @@ impl<C: SP1ProverComponents> WrapProver<C> {
             config.vk_verification,
             &wrap_input,
         ));
-        let (proving_key, verifying_key) = {
+        let (_, verifying_key) = {
             let (prover, program, permits) = (prover.clone(), program.clone(), permits.clone());
             let (tx, rx) = oneshot::channel();
             tokio::task::spawn(async move {
@@ -960,14 +954,7 @@ impl<C: SP1ProverComponents> WrapProver<C> {
             rx.blocking_recv().unwrap()
         };
 
-        Self {
-            prover,
-            permits,
-            program,
-            proving_key: unsafe { proving_key.into_inner() },
-            verifying_key,
-            prover_data,
-        }
+        Self { prover, permits, program, verifying_key, prover_data }
     }
 
     pub async fn prove(
@@ -988,13 +975,13 @@ impl<C: SP1ProverComponents> WrapProver<C> {
         };
 
         let mut challenger = SP1OuterGlobalContext::default_challenger();
-        self.verifying_key.observe_into(&mut challenger);
 
-        let (proof, _permit) = self
+        let (_, proof, _permit) = self
             .prover
-            .prove_shard_with_pk(
-                self.proving_key.clone(),
+            .setup_and_prove_shard(
+                self.program.clone(),
                 execution_record,
+                Some(self.verifying_key.clone()),
                 self.permits.clone(),
                 &mut challenger,
             )
