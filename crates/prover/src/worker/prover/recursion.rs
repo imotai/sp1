@@ -317,8 +317,8 @@ pub type ReduceSubmitHandle<A, C> = SubmitHandle<ReducePipeline<A, C>>;
 
 pub struct SP1RecursionProver<A, C: SP1ProverComponents> {
     reduce_pipeline: Arc<ReducePipeline<A, C>>,
-    shrink_prover: Arc<ShrinkProver<C>>,
-    wrap_prover: Arc<WrapProver<C>>,
+    pub shrink_prover: Arc<ShrinkProver<C>>,
+    pub wrap_prover: Arc<WrapProver<C>>,
     prover_data: Arc<RecursionProverData<C>>,
     artifact_client: A,
 }
@@ -817,8 +817,8 @@ pub struct ShrinkProver<C: SP1ProverComponents> {
     prover: Arc<RecursionProver<C>>,
     permits: ProverSemaphore,
     program: Arc<RecursionProgram<SP1Field>>,
-    proving_key: Arc<MachineProvingKey<SP1GlobalContext, C::RecursionComponents>>,
-    verifying_key: MachineVerifyingKey<SP1GlobalContext, RecursionConfig<C>>,
+    pub proving_key: Arc<MachineProvingKey<SP1GlobalContext, C::RecursionComponents>>,
+    pub verifying_key: MachineVerifyingKey<SP1GlobalContext, RecursionConfig<C>>,
     prover_data: Arc<RecursionProverData<C>>,
 }
 
@@ -911,8 +911,8 @@ pub struct WrapProver<C: SP1ProverComponents> {
     prover: Arc<InnerWrapProver<C>>,
     permits: ProverSemaphore,
     program: Arc<RecursionProgram<SP1Field>>,
-    proving_key: Arc<MachineProvingKey<SP1OuterGlobalContext, C::WrapComponents>>,
-    verifying_key: MachineVerifyingKey<SP1OuterGlobalContext, crate::recursion::WrapConfig<C>>,
+    pub proving_key: Arc<MachineProvingKey<SP1OuterGlobalContext, C::WrapComponents>>,
+    pub verifying_key: MachineVerifyingKey<SP1OuterGlobalContext, crate::recursion::WrapConfig<C>>,
     prover_data: Arc<RecursionProverData<C>>,
 }
 

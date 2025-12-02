@@ -11,7 +11,6 @@ use std::sync::Arc;
 
 use crate::{
     blocking::{cpu::CpuProver, prover::BaseProveRequest, Prover},
-    cpu::{prove_groth16, prove_plonk},
     SP1Proof, SP1ProofMode, SP1ProofWithPublicValues,
 };
 
@@ -20,9 +19,7 @@ use sp1_core_executor::SP1Context;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_cuda::{CudaClientError, CudaProver as CudaProverImpl, CudaProvingKey};
 use sp1_primitives::Elf;
-use sp1_prover::{
-    components::CpuSP1ProverComponents, local::LocalProver, SP1CoreProofData, SP1ProofWithMetadata,
-};
+use sp1_prover::{worker::SP1LocalNode, SP1CoreProofData, SP1ProofWithMetadata};
 
 /// A prover that uses the CPU for execution and the CUDA for proving.
 #[derive(Clone)]
@@ -36,7 +33,7 @@ impl Prover for CudaProver {
     type Error = CudaClientError;
     type ProveRequest<'a> = CudaProveRequest<'a>;
 
-    fn inner(&self) -> Arc<LocalProver<CpuSP1ProverComponents>> {
+    fn inner(&self) -> Arc<SP1LocalNode> {
         self.cpu_prover.inner()
     }
 
@@ -86,15 +83,12 @@ impl CudaProver {
                 ));
             }
 
-            let shrink_proof =
-                crate::blocking::block_on(self.prover.clone().shrink(compressed_proof))?;
-            let wrap_proof = crate::blocking::block_on(self.prover.clone().wrap(shrink_proof))?;
+            let shrink_proof = self.prover.clone().shrink(compressed_proof).await?;
+            let wrap_proof = self.prover.clone().wrap(shrink_proof).await?;
             match mode {
                 SP1ProofMode::Groth16 => {
-                    let groth16_proof = crate::blocking::block_on(prove_groth16(
-                        &self.cpu_prover.prover,
-                        wrap_proof,
-                    ));
+                    let groth16_proof =
+                        self.cpu_prover.prover.wrap_groth16(wrap_proof).await.unwrap();
                     Ok(SP1ProofWithPublicValues::new(
                         SP1Proof::Groth16(groth16_proof),
                         public_values,
@@ -102,8 +96,7 @@ impl CudaProver {
                     ))
                 }
                 SP1ProofMode::Plonk => {
-                    let plonk_proof =
-                        crate::blocking::block_on(prove_plonk(&self.cpu_prover.prover, wrap_proof));
+                    let plonk_proof = self.cpu_prover.prover.wrap_plonk(wrap_proof).await.unwrap();
                     Ok(SP1ProofWithPublicValues::new(
                         SP1Proof::Plonk(plonk_proof),
                         public_values,

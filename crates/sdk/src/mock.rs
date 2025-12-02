@@ -5,15 +5,12 @@
 use std::pin::Pin;
 
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::{
-    components::CpuSP1ProverComponents, local::LocalProver, Groth16Bn254Proof, PlonkBn254Proof,
-    SP1VerifyingKey,
-};
+use sp1_prover::{worker::SP1LocalNode, Groth16Bn254Proof, PlonkBn254Proof, SP1VerifyingKey};
 
 use crate::{
-    cpu::{CPUProverError, CPUProvingKey, CpuProver},
+    cpu::CpuProver,
     prover::{BaseProveRequest, ProveRequest},
-    Prover, SP1Proof, SP1ProofWithPublicValues, SP1VerificationError, StatusCode,
+    Prover, SP1Proof, SP1ProofWithPublicValues, SP1ProvingKey, SP1VerificationError, StatusCode,
 };
 use std::{
     future::{Future, IntoFuture},
@@ -35,13 +32,13 @@ impl MockProver {
 }
 
 impl Prover for MockProver {
-    type ProvingKey = CPUProvingKey;
+    type ProvingKey = SP1ProvingKey;
 
-    type Error = CPUProverError;
+    type Error = anyhow::Error;
 
     type ProveRequest<'a> = MockProveRequest<'a>;
 
-    fn inner(&self) -> Arc<LocalProver<CpuSP1ProverComponents>> {
+    fn inner(&self) -> Arc<SP1LocalNode> {
         self.inner.inner()
     }
 
@@ -90,7 +87,7 @@ impl<'a> ProveRequest<'a, MockProver> for MockProveRequest<'a> {
 }
 
 impl<'a> IntoFuture for MockProveRequest<'a> {
-    type Output = Result<SP1ProofWithPublicValues, CPUProverError>;
+    type Output = Result<SP1ProofWithPublicValues, anyhow::Error>;
     type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + Send + 'a>>;
 
     fn into_future(self) -> Self::IntoFuture {

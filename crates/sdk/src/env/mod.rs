@@ -20,7 +20,7 @@ pub use pk::EnvProvingKey;
 use prove::EnvProveRequest;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::Elf;
-use sp1_prover::{components::CpuSP1ProverComponents, local::LocalProver};
+use sp1_prover::worker::SP1LocalNode;
 use std::sync::Arc;
 
 /// A prover that can execute programs and generate proofs with a different implementation based on
@@ -109,7 +109,7 @@ impl Prover for EnvProver {
     type ProvingKey = EnvProvingKey;
     type ProveRequest<'a> = prove::EnvProveRequest<'a>;
 
-    fn inner(&self) -> Arc<LocalProver<CpuSP1ProverComponents>> {
+    fn inner(&self) -> Arc<SP1LocalNode> {
         match self {
             Self::Cpu(prover) => prover.inner(),
             Self::Cuda(prover) => prover.inner(),

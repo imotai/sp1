@@ -810,8 +810,8 @@ pub struct SP1Verifier {
     pub recursion_vk_root: <SP1GlobalContext as IopCtx>::Digest,
     pub recursion_vk_map: BTreeMap<<SP1GlobalContext as IopCtx>::Digest, usize>,
     pub vk_verification: bool,
-    pub shrink_vk: Option<MachineVerifyingKey<SP1GlobalContext, InnerSC>>,
-    pub wrap_vk: Option<MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>>,
+    pub shrink_vk: MachineVerifyingKey<SP1GlobalContext, InnerSC>,
+    pub wrap_vk: MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
 }
 
 impl SP1Verifier {
@@ -824,8 +824,8 @@ impl SP1Verifier {
             recursion_vk_root: &self.recursion_vk_root,
             recursion_vk_map: &self.recursion_vk_map,
             vk_verification: &self.vk_verification,
-            shrink_vk: self.shrink_vk.clone(),
-            wrap_vk: self.wrap_vk.clone(),
+            shrink_vk: Some(self.shrink_vk.clone()),
+            wrap_vk: Some(self.wrap_vk.clone()),
         }
     }
 

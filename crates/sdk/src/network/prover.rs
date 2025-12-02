@@ -10,7 +10,7 @@ use std::{
 
 use super::prove::NetworkProveBuilder;
 use crate::{
-    cpu::{CPUProvingKey, CpuProver},
+    cpu::CpuProver,
     network::{
         client::NetworkClient,
         proto::{
@@ -26,7 +26,8 @@ use crate::{
         RESERVED_EXPLORER_URL, RESERVED_RPC_URL, TEE_NETWORK_RPC_URL,
     },
     prover::{verify_proof, BaseProveRequest, SendFutureResult},
-    ProofFromNetwork, Prover, SP1ProofMode, SP1ProofWithPublicValues, SP1VerifyingKey,
+    ProofFromNetwork, Prover, SP1ProofMode, SP1ProofWithPublicValues, SP1ProvingKey,
+    SP1VerifyingKey,
 };
 
 use crate::network::proto::GetProofRequestParamsResponse;
@@ -36,7 +37,7 @@ use anyhow::{Context, Result};
 use sp1_build::Elf;
 use sp1_core_executor::{SP1Context, StatusCode};
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::{local::LocalProver, CpuSP1ProverComponents, SP1_CIRCUIT_VERSION};
+use sp1_prover::{worker::SP1LocalNode, SP1_CIRCUIT_VERSION};
 
 use tokio::time::sleep;
 
@@ -51,11 +52,11 @@ pub struct NetworkProver {
 
 impl Prover for NetworkProver {
     // todo!(n): Remove usage of anyhow.
-    type ProvingKey = CPUProvingKey;
+    type ProvingKey = SP1ProvingKey;
     type Error = anyhow::Error;
     type ProveRequest<'a> = NetworkProveBuilder<'a>;
 
-    fn inner(&self) -> Arc<LocalProver<CpuSP1ProverComponents>> {
+    fn inner(&self) -> Arc<SP1LocalNode> {
         self.prover.prover.clone()
     }
 
@@ -98,7 +99,7 @@ impl Prover for NetworkProver {
             verify_tee_proof(&self.tee_signers, tee_proof, vkey, proof.public_values.as_ref())?;
         }
 
-        verify_proof(self.inner().prover(), self.version(), proof, vkey, status_code)
+        verify_proof(&self.inner(), self.version(), proof, vkey, status_code)
     }
 }
 
@@ -550,7 +551,7 @@ impl NetworkProver {
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn request_proof_impl(
         &self,
-        pk: &CPUProvingKey,
+        pk: &SP1ProvingKey,
         stdin: &SP1Stdin,
         mode: SP1ProofMode,
         strategy: FulfillmentStrategy,
@@ -567,8 +568,9 @@ impl NetworkProver {
         max_price_per_pgu: Option<u64>,
     ) -> Result<B256> {
         let vk_hash = self.register_program(&pk.vk, &pk.elf).await?;
-        let (cycle_limit, gas_limit, public_values_hash) =
-            self.get_execution_limits(cycle_limit, gas_limit, &pk.elf, stdin, skip_simulation)?;
+        let (cycle_limit, gas_limit, public_values_hash) = self
+            .get_execution_limits(cycle_limit, gas_limit, &pk.elf, stdin, skip_simulation)
+            .await?;
         let (auctioneer, executor, verifier, treasury, max_price_per_pgu, base_fee, domain) = self
             .get_auction_request_params(
                 mode,
@@ -605,7 +607,7 @@ impl NetworkProver {
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn prove_impl(
         &self,
-        pk: &CPUProvingKey,
+        pk: &SP1ProvingKey,
         stdin: &SP1Stdin,
         mode: SP1ProofMode,
         strategy: FulfillmentStrategy,
@@ -742,7 +744,7 @@ impl NetworkProver {
     ///    program. This is the default behavior.
     /// 3. Otherwise, use the default limits ([`MAINNET_DEFAULT_CYCLE_LIMIT`] or
     ///    [`RESERVED_DEFAULT_CYCLE_LIMIT`] and [`DEFAULT_GAS_LIMIT`]).
-    fn get_execution_limits(
+    async fn get_execution_limits(
         &self,
         cycle_limit: Option<u64>,
         gas_limit: Option<u64>,
@@ -778,7 +780,8 @@ impl NetworkProver {
         let execute_result = self
             .prover
             .inner()
-            .execute(elf, stdin, SP1Context::builder().calculate_gas(true).build())
+            .execute(elf, stdin.clone(), SP1Context::builder().calculate_gas(true).build())
+            .await
             .map_err(|_| Error::SimulationFailed)?;
 
         let (_, committed_value_digest, report) = execute_result;

@@ -54,7 +54,7 @@ pub use proof::*;
 pub mod prover;
 
 /// The traits that define how to interact with the prover.
-pub use prover::{ProveRequest, Prover, ProvingKey, SP1VerificationError};
+pub use prover::{ProveRequest, Prover, ProvingKey, SP1ProvingKey, SP1VerificationError};
 
 // Re-export the build utilities and executor primitives.
 pub use sp1_build::include_elf;

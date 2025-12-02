@@ -11,10 +11,10 @@ use anyhow::Result;
 // use sp1_core_executor::IoWriter;
 use sp1_core_machine::io::SP1Stdin;
 
-use super::{CPUProverError, CPUProvingKey, CpuProver};
+use super::{CPUProverError, CpuProver};
 use crate::{
     prover::{BaseProveRequest, ProveRequest},
-    SP1ProofWithPublicValues,
+    SP1ProofWithPublicValues, SP1ProvingKey,
 };
 
 /// A builder for proving a program on the CPU.
@@ -26,7 +26,7 @@ pub struct CpuProveBuilder<'a> {
 }
 
 impl<'a> CpuProveBuilder<'a> {
-    pub(super) const fn new(prover: &'a CpuProver, pk: &'a CPUProvingKey, stdin: SP1Stdin) -> Self {
+    pub(super) const fn new(prover: &'a CpuProver, pk: &'a SP1ProvingKey, stdin: SP1Stdin) -> Self {
         Self { base: BaseProveRequest::new(prover, pk, stdin) }
     }
 

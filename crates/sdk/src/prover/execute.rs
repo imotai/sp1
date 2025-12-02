@@ -212,17 +212,15 @@ impl<'a, P: Prover> IntoFuture for ExecuteRequest<'a, P> {
             let Self { prover, elf, stdin, mut context_builder } = self;
             let inner = prover.inner();
             let context = context_builder.build();
-
-            let result_handle = tokio::task::spawn_blocking(move || {
-                let (pv, _, report) = inner.execute(&elf, &stdin, context)?;
-                Ok((pv, report))
-            });
+            let (pv, _, report) = inner
+                .execute(&elf, stdin, context)
+                .await
+                .map_err(|e| ExecutionError::Other(e.to_string()))?;
 
             // todo!(n): if there exists stdout/stderr pipes can just forward them with an mpsc
             // here, and then write to the actual stdout/stderr writers from this
             // future.
-
-            result_handle.await.unwrap()
+            Ok((pv, report))
         };
         Box::pin(task)
     }

@@ -50,7 +50,7 @@ thiserror = { workspace = true }
 sp1-core-executor = { workspace = true }
 sp1-hypercube = { workspace = true }
 sp1-primitives = { workspace = true }
-sp1-prover-types = { workspace = true, optional = true }
+sp1-prover-types = { workspace = true }
 itertools = { workspace = true }
 tonic = { workspace = true, features = ["tls", "tls-roots"], optional = true }
 aws-config = { workspace = true, optional = true }
@@ -98,7 +98,7 @@ network = [
 ]
 native-cuda = ["sp1-cuda/native"]
 tee-2fa = []
-reserved-capacity = ["network", "dep:sp1-prover-types"]
+reserved-capacity = ["network"]
 cuda = []
 bigint-rug = ["sp1-core-machine/bigint-rug"]
 experimental = ["sp1-prover/experimental"]

@@ -53,7 +53,7 @@ impl<'a> IntoFuture for EnvProveRequest<'a> {
                     req.base.mode = mode;
                     req.base.context_builder = context_builder;
 
-                    Box::pin(async move { Ok(req.await?) })
+                    Box::pin(async move { req.await })
                 }
                 _ => panic!("Invalid proving key type for Mock prover"),
             },

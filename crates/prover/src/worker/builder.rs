@@ -235,8 +235,8 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
             recursion_vk_root,
             recursion_vk_map,
             vk_verification,
-            shrink_vk: None,
-            wrap_vk: None,
+            shrink_vk: prover_engine.recursion_prover.shrink_prover.verifying_key.clone(),
+            wrap_vk: prover_engine.recursion_prover.wrap_prover.verifying_key.clone(),
         };
 
         Ok(SP1Worker::new(controller, prover_engine, verifier))

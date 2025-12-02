@@ -8,9 +8,7 @@ use crate::{prover::verify_proof, ProvingKey, SP1VerificationError, StatusCode};
 use anyhow::Result;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::types::Elf;
-use sp1_prover::{
-    components::CpuSP1ProverComponents, local::LocalProver, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
-};
+use sp1_prover::{worker::SP1LocalNode, SP1VerifyingKey, SP1_CIRCUIT_VERSION};
 
 /// The module that exposes the [`ExecuteRequest`] type.
 mod execute;
@@ -38,7 +36,7 @@ pub trait Prover: Clone + Send + Sync {
         Self: 'a;
 
     /// The inner [`LocalProver`] struct used by the prover.
-    fn inner(&self) -> Arc<LocalProver<CpuSP1ProverComponents>>;
+    fn inner(&self) -> Arc<SP1LocalNode>;
 
     /// The version of the current SP1 circuit.
     fn version(&self) -> &str {
@@ -65,6 +63,6 @@ pub trait Prover: Clone + Send + Sync {
         vkey: &SP1VerifyingKey,
         status_code: Option<StatusCode>,
     ) -> Result<(), SP1VerificationError> {
-        verify_proof(self.inner().prover(), self.version(), proof, vkey, status_code)
+        verify_proof(&self.inner(), self.version(), proof, vkey, status_code)
     }
 }

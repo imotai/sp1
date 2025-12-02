@@ -8,13 +8,10 @@ use itertools::Itertools;
 use num_bigint::BigUint;
 use slop_algebra::PrimeField32;
 use sp1_core_machine::io::SP1Stdin;
-use sp1_hypercube::{air::PublicValues, MachineVerifierConfigError, PROOF_MAX_NUM_PVS};
-use sp1_primitives::{types::Elf, SP1GlobalContext};
+use sp1_hypercube::{air::PublicValues, PROOF_MAX_NUM_PVS};
+use sp1_primitives::types::Elf;
 use sp1_prover::{
-    components::{CpuSP1ProverComponents, SP1ProverComponents},
-    local::LocalProver,
-    verify::verify_public_values,
-    CoreSC, InnerSC, SP1CoreProofData, SP1Prover, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
+    verify::verify_public_values, worker::SP1LocalNode, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
 };
 use std::{
     borrow::Borrow,
@@ -33,7 +30,7 @@ mod prove;
 
 pub use execute::ExecuteRequest;
 pub(crate) use prove::BaseProveRequest;
-pub use prove::ProveRequest;
+pub use prove::{ProveRequest, SP1ProvingKey};
 
 use crate::{SP1Proof, SP1ProofWithPublicValues};
 
@@ -51,7 +48,7 @@ pub trait Prover: Clone + Send + Sync {
         Self: 'a;
 
     /// The inner [`LocalProver`] struct used by the prover.
-    fn inner(&self) -> Arc<LocalProver<CpuSP1ProverComponents>>;
+    fn inner(&self) -> Arc<SP1LocalNode>;
 
     /// The version of the current SP1 circuit.
     fn version(&self) -> &str {
@@ -78,7 +75,7 @@ pub trait Prover: Clone + Send + Sync {
         vkey: &SP1VerifyingKey,
         status_code: Option<StatusCode>,
     ) -> Result<(), SP1VerificationError> {
-        verify_proof(self.inner().prover(), self.version(), proof, vkey, status_code)
+        verify_proof(&self.inner(), self.version(), proof, vkey, status_code)
     }
 }
 
@@ -116,10 +113,10 @@ pub enum SP1VerificationError {
     VersionMismatch(String),
     /// An error that occurs when the core machine verification fails.
     #[error("Core machine verification error: {0}")]
-    Core(MachineVerifierConfigError<SP1GlobalContext, CoreSC>),
+    Core(anyhow::Error),
     /// An error that occurs when the recursion verification fails.
     #[error("Recursion verification error: {0}")]
-    Recursion(MachineVerifierConfigError<SP1GlobalContext, InnerSC>),
+    Recursion(anyhow::Error),
     /// An error that occurs when the Plonk verification fails.
     #[error("Plonk verification error: {0}")]
     Plonk(anyhow::Error),
@@ -143,8 +140,8 @@ pub enum SP1VerificationError {
 /// designed to be collision resistant. It is computationally infeasible to find an input i1 for
 /// SHA256 and an input i2 for Blake3 that the same hash value. Doing so would require breaking both
 /// algorithms simultaneously.
-pub(crate) fn verify_proof<C: SP1ProverComponents>(
-    prover: &SP1Prover<C>,
+pub(crate) fn verify_proof(
+    prover: &SP1LocalNode,
     version: &str,
     bundle: &SP1ProofWithPublicValues,
     vkey: &SP1VerifyingKey,
@@ -160,9 +157,7 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
     match &bundle.proof {
         SP1Proof::Core(proof) => {
             if proof.is_empty() {
-                return Err(SP1VerificationError::Core(
-                    sp1_hypercube::MachineVerifierError::EmptyProof,
-                ));
+                return Err(SP1VerificationError::Core(anyhow::anyhow!("Empty core proof")));
             }
 
             if proof.last().unwrap().public_values.len() != PROOF_MAX_NUM_PVS {
@@ -194,11 +189,6 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
                 tracing::error!("committed value digest doesnt match");
                 return Err(SP1VerificationError::InvalidPublicValues);
             }
-
-            // Verify the core proof.
-            prover
-                .verify(&SP1CoreProofData(proof.clone()), vkey)
-                .map_err(SP1VerificationError::Core)
         }
         SP1Proof::Compressed(proof) => {
             if proof.proof.public_values.len() != PROOF_MAX_NUM_PVS {
@@ -229,8 +219,6 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
             {
                 return Err(SP1VerificationError::InvalidPublicValues);
             }
-
-            prover.verify_compressed(proof, vkey).map_err(SP1VerificationError::Recursion)
         }
         SP1Proof::Plonk(proof) => {
             let exit_code = BigUint::from_str(&proof.public_inputs[2])
@@ -243,18 +231,10 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
                 return Err(SP1VerificationError::UnexpectedExitCode(exit_code_u32));
             }
 
-            let artifacts_dir = {
-                let (_, wrap_vk) = prover.recursion().get_wrap_keys();
-                sp1_prover::build::plonk_bn254_artifacts_dev_dir(&wrap_vk)
-            };
-            prover
-                .verify_plonk_bn254(proof, vkey, &artifacts_dir)
-                .map_err(SP1VerificationError::Plonk)?;
-
             let public_values_hash = BigUint::from_str(&proof.public_inputs[1])
                 .map_err(|e| SP1VerificationError::Plonk(anyhow::anyhow!(e)))?;
             verify_public_values(&bundle.public_values, public_values_hash)
-                .map_err(SP1VerificationError::Plonk)
+                .map_err(SP1VerificationError::Plonk)?;
         }
 
         SP1Proof::Groth16(proof) => {
@@ -268,18 +248,16 @@ pub(crate) fn verify_proof<C: SP1ProverComponents>(
                 return Err(SP1VerificationError::UnexpectedExitCode(exit_code_u32));
             }
 
-            let artifacts_dir = {
-                let (_, wrap_vk) = prover.recursion().get_wrap_keys();
-                sp1_prover::build::groth16_bn254_artifacts_dev_dir(&wrap_vk)
-            };
-            prover
-                .verify_groth16_bn254(proof, vkey, &artifacts_dir)
-                .map_err(SP1VerificationError::Groth16)?;
-
             let public_values_hash = BigUint::from_str(&proof.public_inputs[1])
                 .map_err(|e| SP1VerificationError::Groth16(anyhow::anyhow!(e)))?;
             verify_public_values(&bundle.public_values, public_values_hash)
-                .map_err(SP1VerificationError::Groth16)
+                .map_err(SP1VerificationError::Groth16)?;
         }
     }
+    prover.verify(vkey, &bundle.proof).map_err(|e| match bundle.proof {
+        SP1Proof::Core(_) => SP1VerificationError::Core(e),
+        SP1Proof::Compressed(_) => SP1VerificationError::Recursion(e),
+        SP1Proof::Plonk(_) => SP1VerificationError::Plonk(e),
+        SP1Proof::Groth16(_) => SP1VerificationError::Groth16(e),
+    })
 }

@@ -1,19 +1,19 @@
 #![allow(missing_docs)]
 
-use crate::{cpu::CPUProvingKey, ProvingKey};
+use crate::{ProvingKey, SP1ProvingKey};
 use sp1_cuda::CudaProvingKey;
 use sp1_primitives::Elf;
 use sp1_prover::SP1VerifyingKey;
 
 #[derive(Clone)]
 pub enum EnvProvingKey {
-    Cpu { pk: CPUProvingKey, seal: sealed::Seal },
+    Cpu { pk: SP1ProvingKey, seal: sealed::Seal },
     Cuda { pk: CudaProvingKey, seal: sealed::Seal },
-    Mock { pk: CPUProvingKey, seal: sealed::Seal },
+    Mock { pk: SP1ProvingKey, seal: sealed::Seal },
 }
 
 impl EnvProvingKey {
-    pub(crate) const fn cpu(inner: CPUProvingKey) -> Self {
+    pub(crate) const fn cpu(inner: SP1ProvingKey) -> Self {
         Self::Cpu { pk: inner, seal: sealed::Seal::new() }
     }
 
@@ -21,7 +21,7 @@ impl EnvProvingKey {
         Self::Cuda { pk: inner, seal: sealed::Seal::new() }
     }
 
-    pub(crate) const fn mock(inner: CPUProvingKey) -> Self {
+    pub(crate) const fn mock(inner: SP1ProvingKey) -> Self {
         Self::Mock { pk: inner, seal: sealed::Seal::new() }
     }
 }

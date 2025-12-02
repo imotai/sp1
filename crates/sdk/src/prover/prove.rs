@@ -1,7 +1,30 @@
 use super::{IntoSendFutureResult, Prover};
-use crate::{SP1ProofMode, SP1ProofWithPublicValues, StatusCode};
+use crate::{ProvingKey, SP1ProofMode, SP1ProofWithPublicValues, StatusCode};
+use sp1_build::Elf;
 use sp1_core_executor::SP1ContextBuilder;
 use sp1_core_machine::io::SP1Stdin;
+use sp1_prover::SP1VerifyingKey;
+
+#[derive(Clone)]
+/// A proving key for the SP1 prover.
+///
+/// Contains only the minimal information required to implement the `ProvingKey` trait.
+pub struct SP1ProvingKey {
+    /// Verifying key for verifying a proof created with this proving key
+    pub(crate) vk: SP1VerifyingKey,
+    /// ELF of the program to be proven
+    pub(crate) elf: Elf,
+}
+
+impl ProvingKey for SP1ProvingKey {
+    fn verifying_key(&self) -> &SP1VerifyingKey {
+        &self.vk
+    }
+
+    fn elf(&self) -> &Elf {
+        &self.elf
+    }
+}
 
 /// A unified collection of methods for all prover types.
 pub trait ProveRequest<'a, P>

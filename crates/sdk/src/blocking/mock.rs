@@ -3,18 +3,14 @@
 //! A mock prover that can be used for testing.
 
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::{
-    components::CpuSP1ProverComponents, local::LocalProver, Groth16Bn254Proof, PlonkBn254Proof,
-    SP1VerifyingKey,
-};
+use sp1_prover::{worker::SP1LocalNode, Groth16Bn254Proof, PlonkBn254Proof, SP1VerifyingKey};
 
 use crate::{
     blocking::{
         cpu::{CPUProverError, CpuProver},
         prover::{BaseProveRequest, ProveRequest, Prover},
     },
-    cpu::CPUProvingKey,
-    SP1Proof, SP1ProofWithPublicValues, SP1VerificationError, StatusCode,
+    SP1Proof, SP1ProofWithPublicValues, SP1ProvingKey, SP1VerificationError, StatusCode,
 };
 use std::sync::Arc;
 
@@ -33,13 +29,13 @@ impl MockProver {
 }
 
 impl Prover for MockProver {
-    type ProvingKey = CPUProvingKey;
+    type ProvingKey = SP1ProvingKey;
 
     type Error = CPUProverError;
 
     type ProveRequest<'a> = MockProveRequest<'a>;
 
-    fn inner(&self) -> Arc<LocalProver<CpuSP1ProverComponents>> {
+    fn inner(&self) -> Arc<SP1LocalNode> {
         self.inner.inner()
     }
 

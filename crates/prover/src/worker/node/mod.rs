@@ -9,18 +9,20 @@ use sp1_core_executor::{
     SP1CoreOpts,
 };
 use sp1_core_machine::io::SP1Stdin;
-use sp1_primitives::io::SP1PublicValues;
+use sp1_hypercube::SP1RecursionProof;
+use sp1_primitives::{io::SP1PublicValues, SP1OuterGlobalContext};
 use sp1_prover_types::{
     network_base_types::ProofMode, Artifact, ArtifactClient, ArtifactType, InMemoryArtifactClient,
     TaskStatus, TaskType,
 };
+use sp1_verifier::{Groth16Bn254Proof, PlonkBn254Proof};
 pub use sp1_verifier::{ProofFromNetwork, SP1Proof};
 use tracing::{instrument, Instrument};
 
 use crate::{
     verify::SP1Verifier,
     worker::{LocalWorkerClient, ProofId, RawTaskRequest, RequesterId, TaskContext, WorkerClient},
-    SP1CoreProofData, SP1VerifyingKey,
+    OuterSC, SP1CoreProofData, SP1VerifyingKey,
 };
 
 pub(crate) struct SP1NodeInner {
@@ -239,6 +241,87 @@ impl SP1LocalNode {
         Ok(proof)
     }
 
+    pub async fn wrap_groth16(
+        &self,
+        proof: SP1RecursionProof<SP1OuterGlobalContext, OuterSC>,
+    ) -> anyhow::Result<Groth16Bn254Proof> {
+        let groth16_proof_artifact = self.inner.artifact_client.create_artifact()?;
+        let wrap_proof_artifact = self.inner.artifact_client.create_artifact()?;
+        self.inner.artifact_client.upload(&wrap_proof_artifact, proof.clone()).await?;
+        let request = RawTaskRequest {
+            inputs: vec![wrap_proof_artifact.clone()],
+            outputs: vec![groth16_proof_artifact.clone()],
+            context: TaskContext {
+                proof_id: ProofId::new("groth16proof"),
+                parent_id: None,
+                parent_context: None,
+                requester_id: RequesterId::new("local-node"),
+            },
+        };
+        let proof_id = request.context.proof_id.clone();
+        let task_id = self.inner.worker_client.submit_task(TaskType::Groth16Wrap, request).await?;
+        let subscriber = self.inner.worker_client.subscriber(proof_id).await?.per_task();
+        let status = subscriber.wait_task(task_id).await?;
+        if status != TaskStatus::Succeeded {
+            return Err(anyhow::anyhow!("groth16 wrap task failed"));
+        }
+
+        let groth16_proof = self
+            .inner
+            .artifact_client
+            .download::<Groth16Bn254Proof>(&groth16_proof_artifact)
+            .await?;
+
+        self.inner
+            .artifact_client
+            .delete_batch(
+                &[wrap_proof_artifact, groth16_proof_artifact],
+                ArtifactType::UnspecifiedArtifactType,
+            )
+            .await?;
+
+        Ok(groth16_proof)
+    }
+
+    pub async fn wrap_plonk(
+        &self,
+        proof: SP1RecursionProof<SP1OuterGlobalContext, OuterSC>,
+    ) -> anyhow::Result<PlonkBn254Proof> {
+        let plonk_proof_artifact = self.inner.artifact_client.create_artifact()?;
+        let wrap_proof_artifact = self.inner.artifact_client.create_artifact()?;
+        self.inner.artifact_client.upload(&wrap_proof_artifact, proof.clone()).await?;
+        let request = RawTaskRequest {
+            inputs: vec![wrap_proof_artifact.clone()],
+            outputs: vec![plonk_proof_artifact.clone()],
+            context: TaskContext {
+                proof_id: ProofId::new("plonkproof"),
+                parent_id: None,
+                parent_context: None,
+                requester_id: RequesterId::new("local-node"),
+            },
+        };
+        let proof_id = request.context.proof_id.clone();
+        let task_id = self.inner.worker_client.submit_task(TaskType::PlonkWrap, request).await?;
+        let subscriber = self.inner.worker_client.subscriber(proof_id).await?.per_task();
+        let status = subscriber.wait_task(task_id).await?;
+        if status != TaskStatus::Succeeded {
+            return Err(anyhow::anyhow!("plonk wrap task failed"));
+        }
+
+        let plonk_proof =
+            self.inner.artifact_client.download::<PlonkBn254Proof>(&plonk_proof_artifact).await?;
+
+        self.inner
+            .artifact_client
+            .delete_batch(
+                &[wrap_proof_artifact, plonk_proof_artifact],
+                ArtifactType::UnspecifiedArtifactType,
+            )
+            .await?;
+
+        Ok(plonk_proof)
+    }
+
     /// Get a reference to the verifier.
     #[must_use]
     #[inline]
@@ -258,13 +341,13 @@ impl SP1LocalNode {
             }
             SP1Proof::Plonk(proof) => {
                 // TODO: Change this after v6.0.0 binary release
-                let wrap_vk = self.inner.verifier.wrap_vk.as_ref().unwrap();
+                let wrap_vk = &self.inner.verifier.wrap_vk;
                 let build_dir = crate::build::plonk_bn254_artifacts_dev_dir(wrap_vk);
                 self.verifier().verify_plonk_bn254(proof, vk, &build_dir)?;
             }
             SP1Proof::Groth16(proof) => {
                 // TODO: Change this after v6.0.0 binary release
-                let wrap_vk = self.inner.verifier.wrap_vk.as_ref().unwrap();
+                let wrap_vk = &self.inner.verifier.wrap_vk;
                 let build_dir = crate::build::groth16_bn254_artifacts_dev_dir(wrap_vk);
                 self.verifier().verify_groth16_bn254(proof, vk, &build_dir)?;
             }

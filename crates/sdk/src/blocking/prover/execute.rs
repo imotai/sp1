@@ -192,7 +192,8 @@ impl<'a, P: Prover> ExecuteRequest<'a, P> {
         let Self { prover, elf, stdin, mut context_builder } = self;
         let inner = prover.inner();
         let context = context_builder.build();
-        let (pv, _, report) = inner.execute(&elf, &stdin, context)?;
+        let (pv, _, report) = crate::blocking::block_on(inner.execute(&elf, stdin, context))
+            .map_err(|e| ExecutionError::Other(e.to_string()))?;
         Ok((pv, report))
     }
 }
