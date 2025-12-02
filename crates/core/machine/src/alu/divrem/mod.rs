@@ -32,7 +32,7 @@ use crate::{
     utils::next_multiple_of_32,
 };
 
-pub const LONG_WORD_SIZE: usize = 2 * WORD_SIZE;
+const LONG_WORD_SIZE: usize = 2 * WORD_SIZE;
 
 /// The number of main trace columns for `DivRemChip`.
 pub const NUM_DIVREM_COLS: usize = size_of::<DivRemCols<u8>>();
