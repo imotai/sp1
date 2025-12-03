@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use clap::Parser;
-use csl_perf::{get_program_and_input, telemetry, Measurement, Stage};
+use csl_perf::{get_program_and_input, telemetry, Measurement};
 use csl_prover::{cuda_worker_builder, prover_clean_worker_builder, ProverBackend};
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
@@ -19,18 +19,20 @@ struct Args {
     #[arg(long, default_value = "false")]
     pub telemetry: bool,
     #[arg(long, default_value = "core")]
-    pub stage: Stage,
+    pub mode: String,
     #[arg(long, short, default_value = "1")]
     pub num_iterations: usize,
     #[arg(long, default_value = "prover-clean")]
     pub backend: ProverBackend,
 }
 
-fn proof_mode_from_stage(stage: Stage) -> ProofMode {
-    match stage {
-        Stage::Core => ProofMode::Core,
-        Stage::Compress => ProofMode::Compressed,
-        _ => panic!("invalid stage provided: {stage:?}"),
+fn proof_mode_from_string(s: &str) -> ProofMode {
+    match s {
+        "core" => ProofMode::Core,
+        "compressed" => ProofMode::Compressed,
+        "groth16" => ProofMode::Groth16,
+        "plonk" => ProofMode::Plonk,
+        _ => panic!("invalid proof mode provided: {s}"),
     }
 }
 
@@ -86,7 +88,7 @@ async fn main() {
         // Run the prover for a number of iterations.
         let mut measurements = Vec::with_capacity(args.num_iterations);
         for _ in 0..args.num_iterations {
-            let mode = proof_mode_from_stage(args.stage);
+            let mode = proof_mode_from_string(&args.mode);
             let stdin = stdin.clone();
             let context = context.clone();
             let time = tokio::time::Instant::now();
@@ -102,10 +104,12 @@ async fn main() {
                 0
             };
 
-            let (core_time, compress_time) = match mode {
-                ProofMode::Core => (Some(proof_time), None),
-                ProofMode::Compressed => (None, Some(proof_time)),
-                _ => (None, None),
+            let (core_time, compress_time, shrink_time, wrap_time) = match mode {
+                ProofMode::Core => (Some(proof_time), None, Duration::ZERO, Duration::ZERO),
+                ProofMode::Compressed => (None, Some(proof_time), Duration::ZERO, Duration::ZERO),
+                ProofMode::Groth16 => (None, None, Duration::ZERO, proof_time),
+                ProofMode::Plonk => (None, None, Duration::ZERO, proof_time),
+                _ => panic!("invalid proof mode: {mode:?}"),
             };
 
             let measurement = Measurement {
@@ -114,8 +118,8 @@ async fn main() {
                 num_shards,
                 core_time,
                 compress_time,
-                shrink_time: Duration::ZERO,
-                wrap_time: Duration::ZERO,
+                shrink_time,
+                wrap_time,
             };
             println!("{measurement}");
             measurements.push(measurement);

@@ -6,12 +6,14 @@ use csl_jagged::{
 use csl_logup_gkr::LogupGkrCudaProverComponents;
 use csl_tracegen::{CudaTraceGenerator, CudaTracegenAir};
 use csl_zerocheck::ZerocheckEvalProgramProverData;
+use cslpc_basefold::ProverCleanFriCudaProver;
 use cslpc_merkle_tree::{Poseidon2Bn254CudaProver, Poseidon2KoalaBear16CudaProver, TcsProverClean};
 use cslpc_prover::{
     CudaShardProver, Ext, Felt, ProverCleanMachineProverComponents, ProverCleanProverComponents,
 };
 use serde::{Deserialize, Serialize};
 use slop_algebra::extension::BinomialExtensionField;
+use slop_basefold::BasefoldVerifier;
 use slop_basefold::{Poseidon2Bn254FrBasefoldConfig, Poseidon2KoalaBear16BasefoldConfig};
 use slop_challenger::IopCtx;
 use slop_futures::queue::WorkerQueue;
@@ -84,7 +86,7 @@ impl ProverCleanProverComponents<KoalaBearDegree4Duplex> for ProverCleanRecursio
     type C = SP1CoreJaggedConfig;
 }
 
-/// Wrap prover comp    onents for prover-clean.
+/// Wrap prover components for prover-clean.
 pub struct ProverCleanWrapProverComponents;
 
 impl ProverCleanProverComponents<SP1OuterGlobalContext> for ProverCleanWrapProverComponents {
@@ -188,9 +190,6 @@ where
         + ZerocheckAir<GC::F, GC::EF>
         + std::fmt::Debug,
 {
-    use cslpc_basefold::ProverCleanFriCudaProver;
-    use slop_basefold::BasefoldVerifier;
-
     let machine = verifier.machine().clone();
 
     let mut cache = BTreeMap::new();

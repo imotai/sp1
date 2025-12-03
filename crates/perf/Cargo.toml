@@ -44,14 +44,10 @@ bigint-rug = [
     "sp1-core-machine/bigint-rug",
     "csl-prover/bigint-rug",
 ]
+native-gnark = ["sp1-prover/native-gnark"]
 
 [lints]
 workspace = true
-
-
-[[bin]]
-name = "e2e"
-path = "src/bin/e2e.rs"
 
 [[bin]]
 name = "reduce"

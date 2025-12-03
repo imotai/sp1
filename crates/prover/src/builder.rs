@@ -23,7 +23,9 @@ pub enum ProverBackend {
 
 pub const RECURSION_TRACE_ALLOCATION: usize = 1 << 27;
 pub const SHRINK_TRACE_ALLOCATION: usize = 1 << 25;
-pub const WRAP_TRACE_ALLOCATION: usize = 1 << 25;
+
+/// Taken from "Total number of Cells" when generating traces for wrap. Plus an extra 5%.
+pub const WRAP_TRACE_ALLOCATION: usize = 85_376_340;
 
 use crate::{
     new_cuda_prover_sumcheck_eval, new_prover_clean_prover, CudaSP1ProverComponents,
@@ -169,6 +171,8 @@ pub struct SP1ProverCleanBuilder {
 }
 
 impl SP1ProverCleanBuilder {
+    /// The core trace area allocated for all traces. A buffer of this size will be allocated and reused for all
+    /// core traces.
     pub fn num_elts() -> usize {
         // Convert bytes to GB.
         let gb = 1024.0 * 1024.0 * 1024.0;
@@ -359,26 +363,22 @@ pub async fn prover_clean_worker_builder(
         .await,
     );
 
-    // let shrink_verifier = ProverCleanSP1ProverComponents::shrink_verifier();
-    // let shrink_prover = new_prover_clean_prover(
-    //     shrink_verifier.clone(),
-    //     SHRINK_TRACE_ALLOCATION,
-    //     SHRINK_LOG_BLOWUP,
-    //     scope.clone(),
-    // )
-    // .await;
+    let shrink_verifier = ProverCleanSP1ProverComponents::shrink_verifier();
+    let shrink_prover = Arc::new(
+        new_prover_clean_prover(shrink_verifier.clone(), SHRINK_TRACE_ALLOCATION, 1, scope.clone())
+            .await,
+    );
 
-    // let wrap_verifier = ProverCleanSP1ProverComponents::wrap_verifier();
-    // let wrap_prover = new_prover_clean_prover(
-    //     wrap_verifier.clone(),
-    //     WRAP_TRACE_ALLOCATION,
-    //     WRAP_LOG_BLOWUP,
-    //     scope.clone(),
-    // )
-    // .await;
+    let wrap_verifier = ProverCleanSP1ProverComponents::wrap_verifier();
+    let wrap_prover = Arc::new(
+        new_prover_clean_prover(wrap_verifier.clone(), WRAP_TRACE_ALLOCATION, 1, scope.clone())
+            .await,
+    );
 
     SP1WorkerBuilder::new()
         .with_core_opts(opts)
         .with_core_air_prover(core_prover, prover_permits.clone())
-        .with_compress_air_prover(recursion_prover, prover_permits)
+        .with_compress_air_prover(recursion_prover, prover_permits.clone())
+        .with_shrink_air_prover(shrink_prover, prover_permits.clone())
+        .with_wrap_air_prover(wrap_prover, prover_permits)
 }

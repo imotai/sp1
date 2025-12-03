@@ -164,7 +164,10 @@ sp1-prover-types = { git = "https://github.com/succinctlabs/sp1-wip.git", branch
 # sp1-curves = { path = "../sp1-wip/crates/curves" }
 # sp1-cuda = { path = "../sp1-wip/crates/cuda" }
 # sp1-derive = { path = "../sp1-wip/crates/derive" }
-# sp1-sdk = { path = "../sp1-wip/crates/sdk" }
+# sp1-sdk = { path = "../sp1-wip/crates/sdk", features = [
+#     "experimental",
+#     "native-gnark",
+# ] }
 # sp1-prover-types = { path = "../sp1-wip/crates/prover-types" }
 
 # async/concurrency
