@@ -222,7 +222,8 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         let wrap_program = Arc::new(wrap_program);
 
         //  Make the deferred program and proving key.
-        let deferred_input = dummy_deferred_input(&prover, &reduce_shape, merkle_tree.height);
+        let deferred_input =
+            dummy_deferred_input(prover.verifier(), &reduce_shape, merkle_tree.height);
         let mut program = deferred_program_from_input(
             &recursive_compress_verifier,
             vk_verification,
@@ -850,29 +851,23 @@ pub(crate) fn dummy_compose_input<C: RecursionProverComponents>(
     )
 }
 
-pub(crate) fn dummy_deferred_input<C: RecursionProverComponents>(
-    prover: &MachineProver<SP1GlobalContext, C>,
+pub(crate) fn dummy_deferred_input(
+    verifier: &MachineVerifier<SP1GlobalContext, InnerSC, CompressAir<InnerVal>>,
     shape: &SP1RecursionProofShape,
     height: usize,
 ) -> SP1DeferredWitnessValues<SP1GlobalContext, InnerSC> {
-    let chips = prover
-        .verifier()
-        .shard_verifier()
-        .machine()
-        .chips()
-        .iter()
-        .cloned()
-        .collect::<BTreeSet<_>>();
+    let chips =
+        verifier.shard_verifier().machine().chips().iter().cloned().collect::<BTreeSet<_>>();
 
-    let max_log_row_count = prover.verifier().max_log_row_count();
-    let log_stacking_height = prover.verifier().log_stacking_height() as usize;
+    let max_log_row_count = verifier.max_log_row_count();
+    let log_stacking_height = verifier.log_stacking_height() as usize;
 
     let compress_input = shape.dummy_input(
         1,
         height,
         chips,
         max_log_row_count,
-        *prover.verifier().fri_config(),
+        *verifier.fri_config(),
         log_stacking_height,
     );
 

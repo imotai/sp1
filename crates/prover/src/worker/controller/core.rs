@@ -9,7 +9,10 @@ use sp1_core_executor::{
     CoreVM, ExecutionError, MinimalExecutor, Program, SP1CoreOpts, UnsafeMemory,
 };
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
-use sp1_hypercube::air::{ShardRange, PROOF_NONCE_NUM_WORDS, PV_DIGEST_NUM_WORDS};
+use sp1_hypercube::{
+    air::{ShardRange, PROOF_NONCE_NUM_WORDS, PV_DIGEST_NUM_WORDS},
+    DIGEST_SIZE,
+};
 use sp1_jit::MinimalTrace;
 use sp1_prover_types::{network_base_types::ProofMode, Artifact, ArtifactClient, TaskType};
 use tokio::{
@@ -70,7 +73,7 @@ pub struct ProveShardInput {
 pub struct CommonProverInput {
     pub vk: SP1VerifyingKey,
     pub mode: ProofMode,
-    pub deferred_digest: [u32; 8],
+    pub deferred_digest: [u32; DIGEST_SIZE],
     pub num_deferred_proofs: usize,
     pub nonce: [u32; PROOF_NONCE_NUM_WORDS],
 }

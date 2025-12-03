@@ -258,15 +258,52 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
             }
         });
 
+        // Spawn the deferred handler
         tokio::task::spawn({
             let mut recursion_deferred_rx =
                 channels.task_receivers.remove(&TaskType::RecursionDeferred).unwrap();
-            async move { while let Some((_task_id, _request)) = recursion_deferred_rx.recv().await {} }
+            let worker = worker.clone();
+            let worker_client = worker.worker_client().clone();
+            async move {
+                let mut task_set = JoinSet::new();
+                let (task_tx, mut task_rx) = mpsc::unbounded_channel();
+                loop {
+                    tokio::select! {
+                        Some((id, request)) = recursion_deferred_rx.recv() => {
+                            let proof_id = request.context.proof_id.clone();
+                            let handle = worker.prover_engine().submit_prove_deferred(request).await.unwrap();
+                            let tx = task_tx.clone();
+                            task_set.spawn(async move {
+                                match handle.await {
+                                    Ok(Ok(task_metadata)) => {
+                                        tx.send((proof_id, (id, task_metadata), TaskStatus::Succeeded)).ok();
+                                    }
+                                    Ok(Err(e)) => {
+                                        tracing::error!("Failed to prove deferred: {:?}", e);
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Panicked in prove deferred: {:?}", e);
+                                    }
+                                }
+                            });
+                        }
+                        Some((proof_id, (task_id, task_metadata), status)) = task_rx.recv() => {
+                            assert_eq!(status, TaskStatus::Succeeded);
+                            worker_client.complete_task(proof_id, task_id, task_metadata).await.unwrap();
+                        }
+                        else => {
+                            break;
+                        }
+                    }
+                }
+            }
         });
 
         tokio::task::spawn({
             let mut marker_deferred_task_rx =
                 channels.task_receivers.remove(&TaskType::MarkerDeferredRecord).unwrap();
+            // Marker deferred tasks are completed by the [TaskType::ProveShard] task so no need to
+            // handle them here.
             async move { while let Some((_task_id, _request)) = marker_deferred_task_rx.recv().await {} }
         });
 

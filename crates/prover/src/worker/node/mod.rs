@@ -362,7 +362,9 @@ mod tests {
     use serial_test::serial;
     use sp1_core_machine::utils::setup_logger;
 
-    use crate::worker::cpu_worker_builder;
+    use slop_algebra::PrimeField32;
+
+    use crate::{worker::cpu_worker_builder, HashableKey};
 
     use super::*;
 
@@ -450,6 +452,84 @@ mod tests {
         let _proof = client.prove_with_mode(&elf, stdin, context, mode).await.unwrap();
         let proof_time = time.elapsed();
         tracing::info!("proof time: {:?}", proof_time);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_node_deferred_compress() -> anyhow::Result<()> {
+        setup_logger();
+
+        let client = SP1LocalNodeBuilder::from_worker_client_builder(cpu_worker_builder())
+            .build()
+            .await
+            .unwrap();
+
+        // Test program which proves the Keccak-256 hash of various inputs.
+        let keccak_elf = test_artifacts::KECCAK256_ELF;
+
+        // Test program which verifies proofs of a vkey and a list of committed inputs.
+        let verify_elf = test_artifacts::VERIFY_PROOF_ELF;
+
+        tracing::info!("setup keccak elf");
+        let keccak_vk = client.setup(&keccak_elf).await?;
+
+        tracing::info!("setup verify elf");
+        let verify_vk = client.setup(&verify_elf).await?;
+
+        tracing::info!("prove subproof 1");
+        let mut stdin = SP1Stdin::new();
+        stdin.write(&1usize);
+        stdin.write(&vec![0u8, 0, 0]);
+        let context = SP1Context::default();
+        let deferred_proof_1 = client
+            .prove_with_mode(&keccak_elf, stdin, context.clone(), ProofMode::Compressed)
+            .await?;
+        let pv_1 = deferred_proof_1.public_values.as_slice().to_vec().clone();
+
+        // Generate a second proof of keccak of various inputs.
+        tracing::info!("prove subproof 2");
+        let mut stdin = SP1Stdin::new();
+        stdin.write(&3usize);
+        stdin.write(&vec![0u8, 1, 2]);
+        stdin.write(&vec![2, 3, 4]);
+        stdin.write(&vec![5, 6, 7]);
+        let deferred_proof_2 = client
+            .prove_with_mode(&keccak_elf, stdin, context.clone(), ProofMode::Compressed)
+            .await?;
+        let pv_2 = deferred_proof_2.public_values.as_slice().to_vec().clone();
+
+        let deferred_reduce_1 = match deferred_proof_1.proof {
+            SP1Proof::Compressed(proof) => *proof,
+            _ => return Err(anyhow::anyhow!("deferred proof 1 is not a compressed proof")),
+        };
+        let deferred_reduce_2 = match deferred_proof_2.proof {
+            SP1Proof::Compressed(proof) => *proof,
+            _ => return Err(anyhow::anyhow!("deferred proof 2 is not a compressed proof")),
+        };
+
+        // Run verify program with keccak vkey, subproofs, and their committed values.
+        let mut stdin = SP1Stdin::new();
+        let vkey_digest = keccak_vk.hash_koalabear();
+        let vkey_digest: [u32; 8] = vkey_digest
+            .iter()
+            .map(|n| n.as_canonical_u32())
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        stdin.write(&vkey_digest);
+        stdin.write(&vec![pv_1.clone(), pv_2.clone(), pv_2.clone()]);
+        stdin.write_proof(deferred_reduce_1.clone(), keccak_vk.vk.clone());
+        stdin.write_proof(deferred_reduce_2.clone(), keccak_vk.vk.clone());
+        stdin.write_proof(deferred_reduce_2.clone(), keccak_vk.vk.clone());
+
+        tracing::info!("proving verify program (core)");
+        let verify_proof =
+            client.prove_with_mode(&verify_elf, stdin, context, ProofMode::Compressed).await?;
+
+        tracing::info!("verifying verify proof");
+        client.verify(&verify_vk, &verify_proof.proof)?;
 
         Ok(())
     }

@@ -1,10 +1,9 @@
 use crate::{
     build::{try_build_groth16_bn254_artifacts_dev, try_build_plonk_bn254_artifacts_dev},
-    components::RecursionProver,
-    components::WrapProver as InnerWrapProver,
+    components::{RecursionProver, WrapProver as InnerWrapProver},
     recursion::{
-        compose_program_from_input, recursive_verifier, shrink_program_from_input,
-        wrap_program_from_input, RecursionConfig,
+        compose_program_from_input, deferred_program_from_input, dummy_deferred_input,
+        recursive_verifier, shrink_program_from_input, wrap_program_from_input, RecursionConfig,
     },
     shapes::SP1RecursionProofShape,
     worker::{
@@ -181,6 +180,17 @@ impl<C: SP1ProverComponents>
                 )?;
                 anyhow::Ok(RecursionKeys::Exists(pk, vk))
             }
+            SP1CircuitWitness::Deferred(_) => {
+                let keys = self
+                    .prover_data
+                    .deferred_keys
+                    .clone()
+                    .map(|(pk, vk)| RecursionKeys::Exists(pk, vk))
+                    .unwrap_or_else(|| {
+                        RecursionKeys::Program(self.prover_data.deferred_program.clone())
+                    });
+                anyhow::Ok(keys)
+            }
             _ => unimplemented!(),
         })?;
 
@@ -319,7 +329,7 @@ pub struct SP1RecursionProver<A, C: SP1ProverComponents> {
     reduce_pipeline: Arc<ReducePipeline<A, C>>,
     pub shrink_prover: Arc<ShrinkProver<C>>,
     pub wrap_prover: Arc<WrapProver<C>>,
-    prover_data: Arc<RecursionProverData<C>>,
+    pub prover_data: Arc<RecursionProverData<C>>,
     artifact_client: A,
 }
 
@@ -339,7 +349,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
     pub async fn new(
         config: SP1RecursionProverConfig,
         artifact_client: A,
-        (air_prover, air_prover_permits): (Arc<RecursionProver<C>>, ProverSemaphore),
+        (compress_prover, compress_prover_permits): (Arc<RecursionProver<C>>, ProverSemaphore),
         (shrink_prover, shrink_prover_permits): (Arc<RecursionProver<C>>, ProverSemaphore),
         (wrap_prover, wrap_prover_permits): (Arc<InnerWrapProver<C>>, ProverSemaphore),
     ) -> Self {
@@ -391,7 +401,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
                 let (tx, rx) = oneshot::channel();
                 tokio::task::spawn({
                     let program = program.clone();
-                    let air_prover = air_prover.clone();
+                    let air_prover = compress_prover.clone();
                     async move {
                         let permits = ProverSemaphore::new(1);
                         let (pk, vk) = air_prover.setup(program, permits).await;
@@ -404,6 +414,30 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
                 compose_programs.insert(arity, program);
             }
 
+            // Make the deferred program and keys.
+            let deferred_input =
+                dummy_deferred_input(&compress_verifier, &reduce_shape, recursion_vk_tree.height);
+            let mut deferred_program = deferred_program_from_input(
+                &recursive_compress_verifier,
+                config.vk_verification,
+                &deferred_input,
+            );
+            deferred_program.shape = Some(reduce_shape.shape.clone());
+            let deferred_program = Arc::new(deferred_program);
+            let (tx, rx) = oneshot::channel();
+            tokio::task::spawn({
+                let program = deferred_program.clone();
+                let air_prover = compress_prover.clone();
+                async move {
+                    let permits = ProverSemaphore::new(1);
+                    let (pk, vk) = air_prover.setup(program, permits).await;
+                    tx.send((pk, vk)).ok();
+                }
+            });
+            let (pk, vk) = rx.blocking_recv().unwrap();
+            let pk = unsafe { pk.into_inner() };
+            let deferred_keys = (pk, vk);
+
             let prover_data = Arc::new(RecursionProverData {
                 vk_root,
                 allowed_vk_map,
@@ -411,6 +445,8 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
                 reduce_shape,
                 compose_programs,
                 compose_keys,
+                deferred_program,
+                deferred_keys: Some(deferred_keys),
                 vk_verification: config.vk_verification,
             });
 
@@ -444,8 +480,8 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
             // Initialize the prove engine.
             let prove_workers = (0..config.num_recursion_prover_workers)
                 .map(|_| RecursionProverWorker {
-                    recursion_prover: air_prover.clone(),
-                    permits: air_prover_permits.clone(),
+                    recursion_prover: compress_prover.clone(),
+                    permits: compress_prover_permits.clone(),
                     artifact_client: artifact_client.clone(),
                     verify_intermediates: config.verify_intermediates,
                 })
@@ -720,6 +756,8 @@ pub struct RecursionProverData<C: SP1ProverComponents> {
     reduce_shape: SP1RecursionProofShape,
     compose_programs: BTreeMap<usize, Arc<RecursionProgram<SP1Field>>>,
     compose_keys: BTreeMap<usize, CompressKeys<C>>,
+    deferred_program: Arc<RecursionProgram<SP1Field>>,
+    deferred_keys: Option<CompressKeys<C>>,
     vk_verification: bool,
 }
 
@@ -794,6 +832,10 @@ impl<C: SP1ProverComponents> RecursionProverData<C> {
             }
         }
         Ok(witness_stream.into())
+    }
+
+    pub fn deferred_program(&self) -> &Arc<RecursionProgram<SP1Field>> {
+        &self.deferred_program
     }
 }
 

@@ -3,7 +3,8 @@ use std::env;
 use sp1_core_executor::SP1CoreOpts;
 
 use crate::worker::{
-    SP1ControllerConfig, SP1CoreProverConfig, SP1ProverConfig, SP1RecursionProverConfig,
+    SP1ControllerConfig, SP1CoreProverConfig, SP1DeferredProverConfig, SP1ProverConfig,
+    SP1RecursionProverConfig,
 };
 
 #[derive(Clone)]
@@ -161,7 +162,21 @@ impl Default for SP1WorkerConfig {
             verify_intermediates,
         };
 
-        let prover_config = SP1ProverConfig { core_prover_config, recursion_prover_config };
+        // Build the deferred prover config.
+        let num_deferred_workers = env::var("SP1_WORKER_NUM_DEFERRED_WORKERS")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(DEFAULT_NUM_DEFERRED_WORKERS);
+        let deferred_buffer_size = env::var("SP1_WORKER_DEFERRED_BUFFER_SIZE")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(DEFAULT_DEFERRED_BUFFER_SIZE);
+
+        let deferred_prover_config =
+            SP1DeferredProverConfig { num_deferred_workers, deferred_buffer_size };
+
+        let prover_config =
+            SP1ProverConfig { core_prover_config, recursion_prover_config, deferred_prover_config };
 
         // Get the local node config from parts above.
         SP1WorkerConfig { controller_config, prover_config }
@@ -193,3 +208,7 @@ pub(crate) const DEFAULT_RECURSION_EXECUTOR_BUFFER_SIZE: usize = 4;
 pub(crate) const DEFAULT_NUM_RECURSION_PROVER_WORKERS: usize = 8;
 pub(crate) const DEFAULT_RECURSION_PROVER_BUFFER_SIZE: usize = 8;
 pub(crate) const DEFAULT_VK_VERIFICATION: bool = false;
+
+// Default values for the deferred prover config.
+pub(crate) const DEFAULT_NUM_DEFERRED_WORKERS: usize = 4;
+pub(crate) const DEFAULT_DEFERRED_BUFFER_SIZE: usize = 2;

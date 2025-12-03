@@ -1,22 +1,27 @@
 mod compress;
 mod core;
+mod deferred;
 mod global;
 mod precompiles;
 mod splicing;
 
 pub use compress::*;
 pub use core::*;
+pub use deferred::*;
 pub use global::*;
 pub use precompiles::*;
 
 use lru::LruCache;
+
+use slop_algebra::{AbstractField, PrimeField32};
+
 use sp1_core_executor::{MinimalExecutor, SP1CoreOpts};
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
 use sp1_hypercube::{
     air::{PublicValues, PROOF_NONCE_NUM_WORDS},
-    ShardProof,
+    ShardProof, DIGEST_SIZE,
 };
-use sp1_primitives::{io::SP1PublicValues, SP1GlobalContext};
+use sp1_primitives::{io::SP1PublicValues, SP1Field, SP1GlobalContext};
 use sp1_prover_types::{
     network_base_types::ProofMode, Artifact, ArtifactClient, ArtifactType, TaskStatus, TaskType,
 };
@@ -117,10 +122,6 @@ where
             ProofMode::try_from(parsed).map_err(|e| TaskError::Fatal(e.into()))?
         };
 
-        // For now, assume no deferred proofs
-        let deferred_digest = [0; 8];
-        let num_deferred_proofs = 0usize;
-
         let stdin_download_handle =
             self.artifact_client.download_stdin::<SP1Stdin>(&stdin_artifact);
 
@@ -184,6 +185,11 @@ where
 
         let stdin = Arc::new(stdin);
 
+        let deferred_proofs = stdin.proofs.iter().map(|(proof, _)| proof.clone());
+        let deferred_inputs = DeferredInputs::new(deferred_proofs, [SP1Field::zero(); DIGEST_SIZE]);
+
+        let num_deferred_proofs = deferred_inputs.num_deferred_proofs();
+        let deferred_digest = deferred_inputs.deferred_digest().map(|x| x.as_canonical_u32());
         // Create the common input
         let common_input = CommonProverInput {
             vk,
@@ -207,7 +213,7 @@ where
             self.opts.clone(),
             num_deferred_proofs,
             context.clone(),
-            core_proof_tx,
+            core_proof_tx.clone(),
             self.artifact_client.clone(),
             self.worker_client.clone(),
             self.minimal_executor_cache.clone(),
@@ -321,6 +327,15 @@ where
             }
             _ => {}
         }
+
+        // Spawn a task to spawn the deferred tasks
+        join_set.spawn(deferred_inputs.emit_deferred_tasks(
+            common_input_artifact.clone(),
+            context.clone(),
+            core_proof_tx,
+            self.artifact_client.clone(),
+            self.worker_client.clone(),
+        ));
 
         // Spawn a task for the executor and get a result handle rx.
         let (executor_result_tx, executor_result_rx) = oneshot::channel();

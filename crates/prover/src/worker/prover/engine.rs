@@ -9,8 +9,9 @@ use crate::{
     components::{CoreProver, RecursionProver},
     worker::{
         CoreProveSubmitHandle, RawTaskRequest, ReduceSubmitHandle, SP1CoreProver,
-        SP1CoreProverConfig, SP1RecursionProver, SP1RecursionProverConfig, SetupSubmitHandle,
-        SetupTask, TaskError, TaskId, WorkerClient,
+        SP1CoreProverConfig, SP1DeferredProver, SP1DeferredProverConfig, SP1DeferredSubmitHandle,
+        SP1RecursionProver, SP1RecursionProverConfig, SetupSubmitHandle, SetupTask, TaskError,
+        TaskId, WorkerClient,
     },
     SP1ProverComponents,
 };
@@ -19,11 +20,13 @@ use crate::{
 pub struct SP1ProverConfig {
     pub core_prover_config: SP1CoreProverConfig,
     pub recursion_prover_config: SP1RecursionProverConfig,
+    pub deferred_prover_config: SP1DeferredProverConfig,
 }
 
 pub struct SP1ProverEngine<A, W, C: SP1ProverComponents> {
     pub core_prover: SP1CoreProver<A, W, C>,
     pub recursion_prover: SP1RecursionProver<A, C>,
+    pub deferred_prover: SP1DeferredProver<A, C>,
 }
 
 impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine<A, W, C> {
@@ -49,13 +52,20 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
         let core_prover = SP1CoreProver::new(
             config.core_prover_config,
             opts,
-            artifact_client,
+            artifact_client.clone(),
             worker_client,
             core_prover_and_permits.0,
             core_prover_and_permits.1,
             recursion_prover.clone(),
         );
-        Self { core_prover, recursion_prover }
+
+        let deferred_prover = SP1DeferredProver::new(
+            config.deferred_prover_config,
+            recursion_prover.clone(),
+            artifact_client,
+        );
+
+        Self { core_prover, recursion_prover, deferred_prover }
     }
 
     pub async fn submit_prove_core_shard(
@@ -80,6 +90,13 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
         request: RawTaskRequest,
     ) -> Result<ReduceSubmitHandle<A, C>, TaskError> {
         self.recursion_prover.submit_recursion_reduce(request).await
+    }
+
+    pub async fn submit_prove_deferred(
+        &self,
+        request: RawTaskRequest,
+    ) -> Result<SP1DeferredSubmitHandle<A, C>, TaskError> {
+        self.deferred_prover.submit(request).await
     }
 
     pub async fn run_shrink_wrap(&self, request: RawTaskRequest) -> Result<(), TaskError> {

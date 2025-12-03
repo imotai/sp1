@@ -439,7 +439,7 @@ pub async fn build_vk_map<C: SP1ProverComponents + 'static>(
                         }
                         SP1RecursionProgramShape::Deferred => {
                             let dummy_input = dummy_deferred_input(
-                                &prover.recursion().prover,
+                                prover.recursion().prover.verifier(),
                                 &SP1RecursionProofShape::compress_proof_shape_from_arity(max_arity)
                                     .expect("max arity not supported"),
                                 height,
