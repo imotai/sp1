@@ -149,7 +149,7 @@ pub fn local_gpu_opts(backend: ProverBackend) -> LocalProverOpts {
         ProverBackend::Old => ELEMENT_THRESHOLD - (1 << 26),
         ProverBackend::ProverClean => {
             if gpu_memory_gb <= 30 {
-                ELEMENT_THRESHOLD - (1 << 27)
+                ELEMENT_THRESHOLD - (1 << 27) - (1 << 26)
             } else {
                 ELEMENT_THRESHOLD
             }
@@ -182,7 +182,7 @@ impl SP1ProverCleanBuilder {
             (((cuda_memory_info().unwrap().1 as f64) / gb).ceil() as usize) + 4;
 
         if gpu_memory_gb <= 30 {
-            (ELEMENT_THRESHOLD - (1 << 25)) as usize
+            (ELEMENT_THRESHOLD - (1 << 26)) as usize
         } else {
             ELEMENT_THRESHOLD as usize
         }
