@@ -93,7 +93,7 @@ where
 
         let nb_byte_sends = sends.iter().filter(|s| s.kind == InteractionKind::Byte).count();
         let nb_byte_receives = receives.iter().filter(|r| r.kind == InteractionKind::Byte).count();
-        tracing::debug!(
+        tracing::trace!(
             "chip {} has {} byte interactions",
             air.name(),
             nb_byte_sends + nb_byte_receives
