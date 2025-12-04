@@ -16,7 +16,6 @@ mod func;
 mod lean;
 mod op;
 mod output;
-mod picus;
 mod shape;
 mod var;
 
@@ -26,6 +25,5 @@ pub use expr::*;
 pub use func::*;
 pub use op::*;
 pub use output::*;
-pub use picus::*;
 pub use shape::*;
 pub use var::*;

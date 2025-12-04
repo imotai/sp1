@@ -268,13 +268,9 @@ impl<F: Field> LtOperationUnsigned<F> {
 
 #[derive(Clone, InputExpr, InputParams)]
 pub struct LtOperationUnsignedInput<AB: SP1AirBuilder> {
-    #[picus(input)]
     pub b: Word<AB::Expr>,
-    #[picus(input)]
     pub c: Word<AB::Expr>,
-    #[picus(output)]
     pub cols: LtOperationUnsigned<AB::Var>,
-    #[picus(input)]
     pub is_real: AB::Expr,
 }
 
@@ -292,15 +288,10 @@ where
 
 #[derive(Clone, InputExpr, InputParams)]
 pub struct LtOperationSignedInput<AB: SP1AirBuilder> {
-    #[picus(input)]
     pub b: Word<AB::Expr>,
-    #[picus(input)]
     pub c: Word<AB::Expr>,
-    #[picus(output)]
     pub cols: LtOperationSigned<AB::Var>,
-    #[picus(input)]
     pub is_signed: AB::Expr,
-    #[picus(input)]
     pub is_real: AB::Expr,
 }
 

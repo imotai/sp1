@@ -13,7 +13,7 @@ use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
     ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
-use sp1_derive::{AlignedBorrow, PicusCols};
+use sp1_derive::AlignedBorrow;
 use sp1_hypercube::air::MachineAir;
 
 use crate::{
@@ -34,7 +34,7 @@ pub const NUM_SUB_COLS: usize = size_of::<SubCols<u8>>();
 pub struct SubChip;
 
 /// The column layout for the chip.
-#[derive(AlignedBorrow, PicusCols, Default, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Clone, Copy)]
 #[repr(C)]
 pub struct SubCols<T> {
     /// The current shard, timestamp, program counter of the CPU.
@@ -57,10 +57,6 @@ impl<F: PrimeField32> MachineAir<F> for SubChip {
 
     fn name(&self) -> String {
         "Sub".to_string()
-    }
-
-    fn picus_info(&self) -> sp1_hypercube::air::PicusInfo {
-        SubCols::<u8>::picus_info()
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

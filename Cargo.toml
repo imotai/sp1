@@ -11,7 +11,7 @@ include = ["SP1_VERSION"]
 members = [
   "crates/build",
   "crates/cli",
-  "crates/compiler",
+  "crates/core/compiler",
   "crates/core/executor",
   "crates/core/jit",
   "crates/core/machine",
@@ -103,7 +103,6 @@ sp1-recursion-machine = { path = "crates/recursion/machine", default-features = 
 sp1-sdk = { path = "crates/sdk", default-features = false }
 sp1-verifier = { path = "crates/verifier", default-features = false }
 sp1-zkvm = { path = "crates/zkvm/entrypoint", default-features = false }
-sp1-compiler = { path = "crates/compiler", default-features = false }
 
 p3-air = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6" }
 p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3/", branch = "sp1-v6", features = [

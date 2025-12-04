@@ -12,7 +12,7 @@ use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
     ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
-use sp1_derive::{AlignedBorrow, PicusCols};
+use sp1_derive::AlignedBorrow;
 use sp1_hypercube::{air::MachineAir, Word};
 
 use crate::{
@@ -33,7 +33,7 @@ pub const NUM_MUL_COLS: usize = size_of::<MulCols<u8>>();
 pub struct MulChip;
 
 /// The column layout for the chip.
-#[derive(AlignedBorrow, Default, PicusCols, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct MulCols<T> {
     /// The current shard, timestamp, program counter of the CPU.
@@ -49,23 +49,18 @@ pub struct MulCols<T> {
     pub mul_operation: MulOperation<T>,
 
     /// Whether the operation is MUL.
-    #[picus(selector)]
     pub is_mul: T,
 
     /// Whether the operation is MULH.
-    #[picus(selector)]
     pub is_mulh: T,
 
     /// Whether the operation is MULHU.
-    #[picus(selector)]
     pub is_mulhu: T,
 
     /// Whether the operation is MULHSU.
-    #[picus(selector)]
     pub is_mulhsu: T,
 
     /// Whether the operation is MULW.
-    #[picus(selector)]
     pub is_mulw: T,
 }
 
@@ -82,10 +77,6 @@ impl<F: PrimeField32> MachineAir<F> for MulChip {
         let nb_rows =
             next_multiple_of_32(input.mul_events.len(), input.fixed_log2_rows::<F, _>(self));
         Some(nb_rows)
-    }
-
-    fn picus_info(&self) -> sp1_hypercube::air::PicusInfo {
-        MulCols::<u8>::picus_info()
     }
 
     fn generate_trace_into(

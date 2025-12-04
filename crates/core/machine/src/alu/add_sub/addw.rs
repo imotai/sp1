@@ -17,7 +17,7 @@ use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
     ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
-use sp1_derive::{AlignedBorrow, PicusCols};
+use sp1_derive::AlignedBorrow;
 use sp1_hypercube::{air::MachineAir, Word};
 
 use crate::{
@@ -37,7 +37,7 @@ pub const NUM_ADDW_COLS: usize = size_of::<AddwCols<u8>>();
 pub struct AddwChip;
 
 /// The column layout for the `AddwChip`.
-#[derive(AlignedBorrow, Default, PicusCols, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Clone, Copy)]
 #[repr(C)]
 pub struct AddwCols<T> {
     /// The current shard, timestamp, program counter of the CPU.
@@ -60,10 +60,6 @@ impl<F: PrimeField32> MachineAir<F> for AddwChip {
 
     fn name(&self) -> String {
         "Addw".to_string()
-    }
-
-    fn picus_info(&self) -> sp1_hypercube::air::PicusInfo {
-        AddwCols::<u8>::picus_info()
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

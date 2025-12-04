@@ -1,5 +1,5 @@
 use crate::adapter::{register::i_type::ITypeReader, state::CPUState};
-use sp1_derive::{AlignedBorrow, PicusCols};
+use sp1_derive::AlignedBorrow;
 use sp1_hypercube::Word;
 use std::mem::size_of;
 
@@ -7,7 +7,7 @@ use crate::operations::AddOperation;
 
 pub const NUM_JALR_COLS: usize = size_of::<JalrColumns<u8>>();
 
-#[derive(AlignedBorrow, PicusCols, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct JalrColumns<T> {
     /// The current shard, timestamp, program counter of the CPU.

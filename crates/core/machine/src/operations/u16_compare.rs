@@ -72,13 +72,9 @@ impl<F: Field> U16CompareOperation<F> {
 
 #[derive(Clone, InputParams, InputExpr)]
 pub struct U16CompareOperationInput<AB: SP1AirBuilder> {
-    #[picus(input)]
     pub a: AB::Expr,
-    #[picus(input)]
     pub b: AB::Expr,
-    #[picus(output)]
     pub cols: U16CompareOperation<AB::Var>,
-    #[picus(input)]
     pub is_real: AB::Expr,
 }
 

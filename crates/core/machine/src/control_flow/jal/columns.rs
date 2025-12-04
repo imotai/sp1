@@ -2,12 +2,12 @@ use crate::{
     adapter::{register::j_type::JTypeReader, state::CPUState},
     operations::AddOperation,
 };
-use sp1_derive::{AlignedBorrow, PicusCols};
+use sp1_derive::AlignedBorrow;
 use std::mem::size_of;
 
 pub const NUM_JAL_COLS: usize = size_of::<JalColumns<u8>>();
 
-#[derive(AlignedBorrow, PicusCols, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct JalColumns<T> {
     /// The current shard, timestamp, program counter of the CPU.

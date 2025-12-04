@@ -23,10 +23,6 @@ impl<F: PrimeField32> MachineAir<F> for JalChip {
         "Jal".to_string()
     }
 
-    fn picus_info(&self) -> sp1_hypercube::air::PicusInfo {
-        JalColumns::<u8>::picus_info()
-    }
-
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {
         let nb_rows =
             next_multiple_of_32(input.jal_events.len(), input.fixed_log2_rows::<F, _>(self));

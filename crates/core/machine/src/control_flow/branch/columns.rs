@@ -1,4 +1,4 @@
-use sp1_derive::{AlignedBorrow, PicusCols};
+use sp1_derive::AlignedBorrow;
 use std::mem::size_of;
 
 use crate::{
@@ -9,7 +9,7 @@ use crate::{
 pub const NUM_BRANCH_COLS: usize = size_of::<BranchColumns<u8>>();
 
 /// The column layout for branching.
-#[derive(AlignedBorrow, PicusCols, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct BranchColumns<T> {
     /// The current shard, timestamp, program counter of the CPU.
@@ -22,17 +22,11 @@ pub struct BranchColumns<T> {
     pub next_pc: [T; 3],
 
     /// Branch Instructions.
-    #[picus(selector)]
     pub is_beq: T,
-    #[picus(selector)]
     pub is_bne: T,
-    #[picus(selector)]
     pub is_blt: T,
-    #[picus(selector)]
     pub is_bge: T,
-    #[picus(selector)]
     pub is_bltu: T,
-    #[picus(selector)]
     pub is_bgeu: T,
 
     /// The is_branching column is equal to:

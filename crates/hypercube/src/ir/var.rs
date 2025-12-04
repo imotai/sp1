@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use slop_algebra::Field;
 
 /// The underlying values that back the constraint compiler.
-#[derive(Debug, Clone, Hash, PartialEq, Copy, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum IrVar<F> {
     /// Public inputs.
     Public(usize),

@@ -30,8 +30,7 @@ pub static GLOBAL_AST: LazyLock<Arc<Mutex<AstType>>> =
 pub struct Ast<Expr, ExprExt> {
     assignments: Vec<usize>,
     ext_assignments: Vec<usize>,
-    /// the ops defined in the AST
-    pub operations: Vec<OpExpr<Expr, ExprExt>>,
+    operations: Vec<OpExpr<Expr, ExprExt>>,
 }
 
 impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
@@ -176,6 +175,7 @@ impl<F: Field, EF: ExtensionField<F>> Ast<ExprRef<F>, ExprExtRef<EF>> {
         let op = OpExpr::Call(func);
         self.operations.push(op);
     }
+
     /// Go through the AST and returns a tuple that contains:
     /// 1. All the evaluation steps and function calls.
     /// 2. All the constraints.

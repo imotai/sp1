@@ -13,7 +13,7 @@ use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
     ALUTypeRecord, ByteOpcode, ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
-use sp1_derive::{AlignedBorrow, PicusCols};
+use sp1_derive::AlignedBorrow;
 use sp1_hypercube::{air::MachineAir, Word};
 use sp1_primitives::consts::{u32_to_u16_limbs, u64_to_u16_limbs, WORD_SIZE};
 
@@ -38,7 +38,7 @@ pub const BYTE_SIZE: usize = 8;
 pub struct ShiftLeft;
 
 /// The column layout for the chip.
-#[derive(AlignedBorrow, PicusCols, Default, Debug, Clone, Copy)]
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct ShiftLeftCols<T> {
     /// The current shard, timestamp, program counter of the CPU.
@@ -78,11 +78,9 @@ pub struct ShiftLeftCols<T> {
     pub sllw_msb: U16MSBOperation<T>,
 
     /// If the opcode is SLL.
-    #[picus(selector)]
     pub is_sll: T,
 
     /// If the opcode is SLLW.
-    #[picus(selector)]
     pub is_sllw: T,
 
     /// If the opcode is SLLW and immediate.
@@ -96,10 +94,6 @@ impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
 
     fn name(&self) -> String {
         "ShiftLeft".to_string()
-    }
-
-    fn picus_info(&self) -> sp1_hypercube::air::PicusInfo {
-        ShiftLeftCols::<u8>::picus_info()
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

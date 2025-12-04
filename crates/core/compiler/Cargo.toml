@@ -14,7 +14,6 @@ slop-air = { workspace = true }
 sp1-core-machine = { workspace = true }
 sp1-hypercube = { workspace = true }
 sp1-primitives = { workspace = true }
-sp1-prover = { workspace = true }
 
 # dependencies for the binary
 
