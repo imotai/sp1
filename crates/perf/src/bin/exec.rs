@@ -1,15 +1,24 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use clap::Parser;
 use csl_perf::{get_program_and_input, telemetry};
 use csl_prover::{local_gpu_opts, ProverBackend};
+
+use slop_algebra::AbstractField;
+
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
-use sp1_prover::worker::{
-    ProofId, RequesterId, SP1CoreExecutor, SplicingEngine, SplicingWorker, TaskContext,
-    TrivialWorkerClient,
+
+use sp1_hypercube::{septic_digest::SepticDigest, MachineVerifyingKey};
+use sp1_primitives::SP1Field;
+use sp1_prover::{
+    worker::{
+        CommonProverInput, ProofId, RequesterId, SP1CoreExecutor, SplicingEngine, SplicingWorker,
+        TaskContext, TrivialWorkerClient,
+    },
+    SP1VerifyingKey,
 };
-use sp1_prover_types::{ArtifactClient, InMemoryArtifactClient};
+use sp1_prover_types::{network_base_types::ProofMode, ArtifactClient, InMemoryArtifactClient};
 use tokio::sync::mpsc;
 
 #[derive(Parser, Debug)]
@@ -33,7 +42,7 @@ struct Args {
     pub task_capacity: usize,
     #[arg(long, default_value = "false")]
     pub telemetry: bool,
-    #[arg(long, default_value = "old")]
+    #[arg(long, default_value = "prover-clean")]
     pub backend: ProverBackend,
 }
 
@@ -74,7 +83,30 @@ async fn main() {
     let parent_id = None;
     let parent_context = None;
     let requester_id = RequesterId::new("bench_pure_execution");
-    let common_input = artifact_client.create_artifact().expect("failed to create artifact");
+
+    let dummy_vk = MachineVerifyingKey {
+        pc_start: [SP1Field::zero(); 3],
+        initial_global_cumulative_sum: SepticDigest::zero(),
+        preprocessed_commit: [SP1Field::zero(); 8],
+        preprocessed_chip_information: BTreeMap::new(),
+        marker: std::marker::PhantomData,
+        enable_untrusted_programs: SP1Field::zero(),
+    };
+    let dummy_vk = SP1VerifyingKey { vk: dummy_vk };
+
+    let common_input = CommonProverInput {
+        vk: dummy_vk,
+        deferred_digest: [0; 8],
+        mode: ProofMode::Core,
+        num_deferred_proofs: 0,
+        nonce: [0; 4],
+    };
+    let common_input_artifact =
+        artifact_client.create_artifact().expect("failed to create artifact");
+    artifact_client
+        .upload(&common_input_artifact, common_input)
+        .await
+        .expect("failed to upload common input");
 
     let (sender, mut receiver) = mpsc::unbounded_channel();
 
@@ -95,7 +127,7 @@ async fn main() {
         global_memory_buffer_size,
         elf_artifact,
         stdin,
-        common_input,
+        common_input_artifact,
         opts,
         0,
         task_context,

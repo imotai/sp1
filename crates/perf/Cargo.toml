@@ -16,7 +16,11 @@ sp1-core-machine = { workspace = true }
 sp1-core-executor = { workspace = true }
 sp1-prover = { workspace = true, features = ["experimental"] }
 sp1-hypercube = { workspace = true }
+
 sp1-prover-types = { workspace = true }
+sp1-primitives = { workspace = true }
+
+slop-algebra = { workspace = true }
 
 csv = "1.3.0"
 tracing = { workspace = true }
