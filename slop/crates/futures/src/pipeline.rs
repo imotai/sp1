@@ -143,6 +143,12 @@ impl<T> TaskHandle<T> {
     }
 }
 
+impl<T> Drop for TaskHandle<T> {
+    fn drop(&mut self) {
+        self.abort();
+    }
+}
+
 impl<T> Future for TaskHandle<T> {
     type Output = Result<T, TaskJoinError>;
 
@@ -171,7 +177,7 @@ impl<R, O> PipelineHandle<R, O> {
         self.handle.abort();
     }
 
-    pub fn into_inner(self) -> TaskHandle<(R, O)> {
+    fn into_inner(self) -> TaskHandle<(R, O)> {
         self.handle
     }
 }
@@ -1016,32 +1022,42 @@ mod tests {
 
     use super::*;
 
+    #[derive(Debug, Clone)]
+    struct TestWorker;
+
+    #[derive(Debug, Clone)]
+    struct TestTask {
+        time: Duration,
+        hanging_probability: f64,
+    }
+
+    impl AsyncWorker<TestTask, ()> for TestWorker {
+        async fn call(&self, input: TestTask) {
+            tokio::time::sleep(input.time).await;
+
+            let should_hang = rand::thread_rng().gen_bool(input.hanging_probability);
+            if should_hang {
+                loop {
+                    tokio::task::yield_now().await;
+                }
+            }
+        }
+    }
+
     #[tokio::test]
     #[allow(clippy::print_stdout)]
     async fn test_async_engine() {
-        #[derive(Debug, Clone)]
-        struct TestWorker;
-
-        #[derive(Debug, Clone)]
-        struct TestTask {
-            time: Duration,
-        }
-
-        impl AsyncWorker<TestTask, ()> for TestWorker {
-            async fn call(&self, input: TestTask) {
-                tokio::time::sleep(input.time).await;
-            }
-        }
-        let num_workers = 10;
-        let task_queue_length = 20;
+        let num_workers = 5;
+        let task_queue_length = 5;
         let num_tasks_spawned = 10;
         let wait_duration = Duration::from_millis(10);
 
         let workers = (0..num_workers).map(|_| TestWorker).collect();
         let engine = Arc::new(AsyncEngine::new(workers, task_queue_length));
 
-        let tasks =
-            (0..num_tasks_spawned).map(|_| TestTask { time: wait_duration }).collect::<Vec<_>>();
+        let tasks = (0..num_tasks_spawned)
+            .map(|_| TestTask { time: wait_duration, hanging_probability: 0.0 })
+            .collect::<Vec<_>>();
 
         // Submit all tasks concurrently and wait for them to complete
         let mut join_set = JoinSet::new();
@@ -1068,6 +1084,43 @@ mod tests {
         join_set.join_all().await;
         let duration = time.elapsed();
         println!("Time taken for complete parallelism: {:?}", duration);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::print_stdout)]
+    async fn test_hanging_task_async_engine() {
+        let num_workers = 1;
+        let task_queue_length = 2;
+        let num_tasks_spawned = 100;
+        let wait_duration = Duration::from_millis(1);
+        let hanging_probability = 0.5;
+        let timeout = Duration::from_millis(100);
+
+        let workers = (0..num_workers).map(|_| TestWorker).collect();
+        let engine = Arc::new(AsyncEngine::new(workers, task_queue_length));
+
+        let tasks = (0..num_tasks_spawned)
+            .map(|_| TestTask { time: wait_duration, hanging_probability })
+            .collect::<Vec<_>>();
+
+        // Submit all tasks concurrently and wait for them to complete
+        let mut join_set = JoinSet::new();
+        let time = tokio::time::Instant::now();
+        for task in tasks {
+            let handle = engine.submit(task).await.unwrap();
+            let future = async move { handle.await.unwrap() };
+            join_set.spawn(async move { tokio::time::timeout(timeout, future).await });
+        }
+
+        let mut success_count = 0;
+        while let Some(result) = join_set.join_next().await {
+            let result = result.unwrap();
+            if result.is_ok() {
+                success_count += 1;
+            }
+        }
+        let duration = time.elapsed();
+        println!("Time taken for async engine: {:?}, success count: {success_count}", duration);
     }
 
     #[tokio::test]

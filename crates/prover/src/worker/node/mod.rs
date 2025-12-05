@@ -418,7 +418,7 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn test_e2e_node_groth16() -> anyhow::Result<()> {
+    async fn test_e2e_groth16_node() -> anyhow::Result<()> {
         setup_logger();
 
         let elf = test_artifacts::FIBONACCI_ELF;

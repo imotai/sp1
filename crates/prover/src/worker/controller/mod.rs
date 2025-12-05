@@ -65,10 +65,7 @@ pub struct SP1ControllerConfig {
 }
 
 pub struct SP1Controller<A, W> {
-    opts: SP1CoreOpts,
-    splicing_engine: Arc<SplicingEngine<A, W>>,
-    global_memory_buffer_size: usize,
-    max_reduce_arity: usize,
+    config: SP1ControllerConfig,
     setup_cache: Arc<Mutex<LruCache<Artifact, SP1VerifyingKey>>>,
     pub(crate) artifact_client: A,
     pub(crate) worker_client: W,
@@ -81,32 +78,45 @@ where
     W: WorkerClient,
 {
     pub fn new(config: SP1ControllerConfig, artifact_client: A, worker_client: W) -> Self {
-        let splicing_workers = (0..config.num_splicing_workers)
-            .map(|_| {
-                SplicingWorker::new(
-                    artifact_client.clone(),
-                    worker_client.clone(),
-                    config.number_of_send_splice_workers_per_splice,
-                    config.send_splice_input_buffer_size_per_splice,
-                )
-            })
-            .collect();
-        let splicing_engine =
-            Arc::new(SplicingEngine::new(splicing_workers, config.splicing_buffer_size));
-        let reduce_batch_size = config.max_reduce_arity;
         let minimal_executor_cache =
             if config.use_fixed_pk { Some(MinimalExecutorCache::empty()) } else { None };
 
         Self {
-            opts: config.opts,
-            splicing_engine,
-            global_memory_buffer_size: config.global_memory_buffer_size,
-            max_reduce_arity: reduce_batch_size,
+            config,
             setup_cache: Arc::new(Mutex::new(LruCache::new(20.try_into().unwrap()))),
             artifact_client,
             worker_client,
             minimal_executor_cache,
         }
+    }
+
+    #[inline]
+    pub const fn opts(&self) -> &SP1CoreOpts {
+        &self.config.opts
+    }
+
+    #[inline]
+    pub const fn max_reduce_arity(&self) -> usize {
+        self.config.max_reduce_arity
+    }
+
+    #[inline]
+    pub const fn global_memory_buffer_size(&self) -> usize {
+        self.config.global_memory_buffer_size
+    }
+
+    pub fn initialize_splicing_engine(&self) -> Arc<SplicingEngine<A, W>> {
+        let splicing_workers = (0..self.config.num_splicing_workers)
+            .map(|_| {
+                SplicingWorker::new(
+                    self.artifact_client.clone(),
+                    self.worker_client.clone(),
+                    self.config.number_of_send_splice_workers_per_splice,
+                    self.config.send_splice_input_buffer_size_per_splice,
+                )
+            })
+            .collect();
+        Arc::new(SplicingEngine::new(splicing_workers, self.config.splicing_buffer_size))
     }
 
     pub async fn run(&self, request: RawTaskRequest) -> Result<ExecutionOutput, TaskError> {
@@ -204,13 +214,14 @@ where
 
         let (core_proof_tx, core_proof_rx) = mpsc::unbounded_channel();
 
+        let splicing_engine = self.initialize_splicing_engine();
         let executor = SP1CoreExecutor::new(
-            self.splicing_engine.clone(),
-            self.global_memory_buffer_size,
+            splicing_engine,
+            self.global_memory_buffer_size(),
             elf,
             stdin.clone(),
             common_input_artifact.clone(),
-            self.opts.clone(),
+            self.opts().clone(),
             num_deferred_proofs,
             context.clone(),
             core_proof_tx.clone(),
@@ -238,7 +249,7 @@ where
                 core_proof_rx,
             ));
         } else {
-            let mut tree = CompressTree::new(self.max_reduce_arity);
+            let mut tree = CompressTree::new(self.max_reduce_arity());
             let artifact_client = self.artifact_client.clone();
             let worker_client = self.worker_client.clone();
             let context = context.clone();
