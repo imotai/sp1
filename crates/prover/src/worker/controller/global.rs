@@ -356,6 +356,7 @@ impl GlobalMemoryHandler {
                                 .map_err(|e| anyhow::anyhow!("failed to send task id: {}", e))?;
                             Ok::<(), TaskError>(())
                         }
+                        .in_current_span()
                     });
                 }
                 // Wait for all the shard task to be created
