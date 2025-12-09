@@ -598,10 +598,16 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
         let proof_clone = proof.clone();
 
         if self.verify_intermediates {
-            let machine_proof = MachineProof::from(vec![proof_clone]);
-            C::core_verifier()
-                .verify(&vk_clone, &machine_proof)
-                .map_err(|e| TaskError::Retryable(anyhow!("shard verification failed: {e}")))?
+            let parent = tracing::Span::current();
+            tokio::task::spawn_blocking(move || {
+                let _guard = parent.enter();
+                let machine_proof = MachineProof::from(vec![proof_clone]);
+                C::core_verifier()
+                    .verify(&vk_clone, &machine_proof)
+                    .map_err(|e| TaskError::Retryable(anyhow!("shard verification failed: {e}")))
+            })
+            .await
+            .map_err(|e| TaskError::Fatal(e.into()))??;
         }
 
         if common_input.mode != ProofMode::Core {

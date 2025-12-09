@@ -239,11 +239,22 @@ impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
                 metrics.increment_permit_time(duration);
 
                 if self.verify_intermediates {
-                    C::compress_verifier()
-                        .verify(&vk, &MachineProof::from(vec![proof.clone()]))
-                        .map_err(|e| {
-                            TaskError::Retryable(anyhow::anyhow!("compress verify failed: {}", e))
-                        })?;
+                    let proof = proof.clone();
+                    let vk = vk.clone();
+                    let parent = tracing::Span::current();
+                    tokio::task::spawn_blocking(move || {
+                        let _guard = parent.enter();
+                        C::compress_verifier()
+                            .verify(&vk, &MachineProof::from(vec![proof]))
+                            .map_err(|e| {
+                                TaskError::Retryable(anyhow::anyhow!(
+                                    "compress verify failed: {}",
+                                    e
+                                ))
+                            })
+                    })
+                    .await
+                    .map_err(|e| TaskError::Fatal(e.into()))??;
                 }
                 SP1RecursionProof { vk, proof }
             }
@@ -262,16 +273,26 @@ impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
                 let duration = permit.release();
                 metrics.increment_permit_time(duration);
                 if self.verify_intermediates {
-                    C::compress_verifier()
-                        .verify(&vk, &MachineProof::from(vec![proof.clone()]))
-                        .map_err(|e| {
-                            TaskError::Retryable(anyhow::anyhow!("compress verify failed: {}", e))
-                        })?;
+                    let proof = proof.clone();
+                    let vk = vk.clone();
+                    let parent = tracing::Span::current();
+                    tokio::task::spawn_blocking(move || {
+                        let _guard = parent.enter();
+                        C::compress_verifier()
+                            .verify(&vk, &MachineProof::from(vec![proof.clone()]))
+                            .map_err(|e| {
+                                TaskError::Retryable(anyhow::anyhow!(
+                                    "compress verify failed: {}",
+                                    e
+                                ))
+                            })
+                    })
+                    .await
+                    .map_err(|e| TaskError::Fatal(e.into()))??;
                 }
                 SP1RecursionProof { vk, proof }
             }
         };
-
         Ok(proof)
     }
 }
