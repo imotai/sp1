@@ -67,6 +67,25 @@ impl LocalWorkerClient {
         let (inner, channels) = LocalWorkerClientInner::init();
         (Self { inner: Arc::new(inner) }, channels)
     }
+
+    pub async fn update_task_status(
+        &self,
+        task_id: TaskId,
+        status: TaskStatus,
+    ) -> anyhow::Result<()> {
+        // Get the sender for this task
+        let (status_tx, _) = self
+            .inner
+            .db
+            .read()
+            .await
+            .get(&task_id)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("task does not exist"))?;
+
+        status_tx.send(status).map_err(|_| anyhow::anyhow!("failed to send status to task"))?;
+        Ok(())
+    }
 }
 
 impl Clone for LocalWorkerClient {
@@ -104,20 +123,7 @@ impl WorkerClient for LocalWorkerClient {
         task_id: TaskId,
         _metadata: TaskMetadata,
     ) -> anyhow::Result<()> {
-        // Get the sender for this task
-        let (status_tx, _) = self
-            .inner
-            .db
-            .read()
-            .await
-            .get(&task_id)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("task does not exist"))?;
-
-        status_tx
-            .send(TaskStatus::Succeeded)
-            .map_err(|_| anyhow::anyhow!("failed to send status to task"))?;
-        Ok(())
+        self.update_task_status(task_id, TaskStatus::Succeeded).await
     }
 
     async fn complete_proof(

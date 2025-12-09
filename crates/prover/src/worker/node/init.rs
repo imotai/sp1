@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use slop_futures::pipeline::TaskJoinError;
 use sp1_hypercube::prover::ProverSemaphore;
 use sp1_prover_types::{
     ArtifactClient, ArtifactType, InMemoryArtifactClient, TaskStatus, TaskType,
@@ -10,8 +11,8 @@ use tracing::Instrument;
 use crate::{
     components::{CoreProver, RecursionProver, WrapProver},
     worker::{
-        LocalWorkerClient, LocalWorkerClientChannels, RawTaskRequest, SP1LocalNode, SP1NodeInner,
-        SP1WorkerBuilder, TaskMetadata, WorkerClient,
+        LocalWorkerClient, LocalWorkerClientChannels, ProofId, RawTaskRequest, SP1LocalNode,
+        SP1NodeInner, SP1WorkerBuilder, TaskError, TaskId, TaskMetadata, WorkerClient,
     },
     SP1ProverComponents,
 };
@@ -98,8 +99,10 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
             let worker = worker.clone();
             async move {
                 while let Some((task_id, request)) = controller_rx.recv().await {
+                    let span = tracing::debug_span!("Controller", proof_id = %request.context.proof_id, task_id = %task_id);
                     // Run the controller task
-                    if let Err(e) = worker.controller().run(request.clone()).await {
+                    if let Err(e) = worker.controller().run(request.clone()).instrument(span).await
+                    {
                         tracing::error!("Controller: task failed: {e:?}");
                     }
 
@@ -141,23 +144,27 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                 loop {
                     tokio::select! {
                         Some((id, request)) = setup_rx.recv() => {
-                            let RawTaskRequest { inputs, outputs, context } = request;
+                            let span = tracing::debug_span!("SetupVkey", proof_id = %request.context.proof_id, task_id = %id);
+                            let RawTaskRequest { inputs, outputs, context } = request.clone();
                             let proof_id = context.proof_id.clone();
                             let elf = inputs[0].clone();
                             let output = outputs[0].clone();
-                            // TODO: handle errors
-                            let handle = worker.prover_engine().submit_setup(id, elf, output).await.unwrap();
+                            let handle = worker
+                                    .prover_engine()
+                                    .submit_setup(id.clone(), elf, output)
+                                    .instrument(span.clone())
+                                    .await
+                                    .unwrap();
                             let tx = task_tx.clone();
                             task_set.spawn(async move {
-                                let task_id = handle.await.unwrap().unwrap();
-                                tx.send((proof_id, task_id, TaskStatus::Succeeded)).ok();
-                            });
-
+                                let result = handle.await.map(|res| res.map(|(_, metadata)| metadata));
+                                TaskOutput::handle_worker_result(result, &tx, proof_id, id, request, TaskType::SetupVkey);
+                            }.in_current_span()
+                          );
                         }
 
-                        Some((proof_id, (id, task_metadata), status)) = task_rx.recv() => {
-                            assert_eq!(status, TaskStatus::Succeeded);
-                            worker_client.complete_task(proof_id, id, task_metadata).await.unwrap();
+                        Some(output) = task_rx.recv() => {
+                            output.handle_task_output(&worker_client).await;
                         }
                         else => {
                             break;
@@ -179,34 +186,27 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                 loop {
                     tokio::select! {
                         Some((id, request)) = core_prover_rx.recv() => {
+                            let span = tracing::debug_span!("ProveShard", proof_id = %request.context.proof_id, task_id = %id);
                             let proof_id = request.context.proof_id.clone();
                             let handle = worker
                                 .prover_engine()
                                 .submit_prove_core_shard(
-                                    request,
+                                    request.clone(),
                                 )
+                                .instrument(span.clone())
                                 .await
                                 .unwrap();
                             let tx = task_tx.clone();
-                            let task_id = id;
-                            task_set.spawn(async move {
-                                match handle.await {
-                                    Ok(Ok(task_metadata)) => {
-                                        tx.send((proof_id, (task_id, task_metadata), TaskStatus::Succeeded)).ok();
-                                    }
-                                    Ok(Err(e)) => {
-                                        tracing::error!("Failed to prove core shard: {:?}", e);
-                                    }
-                                    Err(e) => {
-                                        tracing::error!("Panicked in prove core shard: {:?}", e);
-                                    }
-                                }
-                            });
+                            task_set.spawn(
+                                async move {
+                                    let result = handle.await;
+                                    TaskOutput::handle_worker_result(result, &tx, proof_id, id, request, TaskType::ProveShard);
+                                }.instrument(span)
+                           );
                         }
 
-                        Some((proof_id, (task_id, task_metadata), status)) = task_rx.recv() => {
-                            assert_eq!(status, TaskStatus::Succeeded);
-                            worker_client.complete_task(proof_id, task_id, task_metadata).await.unwrap();
+                        Some(output) = task_rx.recv() => {
+                            output.handle_task_output(&worker_client).await;
                         }
                         else => {
                             break;
@@ -228,27 +228,24 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                 loop {
                     tokio::select! {
                         Some((id, request)) = recursion_reduce_rx.recv() => {
+                            let span = tracing::debug_span!("RecursionReduce", proof_id = %request.context.proof_id, task_id = %id);
                             let proof_id = request.context.proof_id.clone();
-                            let handle = worker.prover_engine().submit_recursion_reduce(request).await.unwrap();
+                            let handle = worker
+                                .prover_engine()
+                                .submit_recursion_reduce(request.clone())
+                                .instrument(span.clone())
+                                .await
+                                .unwrap();
                             let tx = task_tx.clone();
                             task_set.spawn(async move {
-                                match handle.await {
-                                    Ok(Ok(task_metadata)) => {
-                                        tx.send((proof_id, (id, task_metadata), TaskStatus::Succeeded)).ok();
-                                    }
-                                    Ok(Err(e)) => {
-                                        tracing::error!("Failed to reduce recursion: {:?}", e);
-                                    }
-                                    Err(e) => {
-                                        tracing::error!("Panicked in reduce recursion: {:?}", e);
-                                    }
-                                }
-                            });
+                                let result = handle.await;
+                                TaskOutput::handle_worker_result(result, &tx, proof_id, id, request, TaskType::RecursionReduce);
+                            }.instrument(span)
+                          );
                         }
 
-                        Some((proof_id, (task_id, task_metadata), status)) = task_rx.recv() => {
-                            assert_eq!(status, TaskStatus::Succeeded);
-                            worker_client.complete_task(proof_id, task_id, task_metadata).await.unwrap();
+                        Some(output) = task_rx.recv() => {
+                            output.handle_task_output(&worker_client).await;
                         }
                         else => {
                             break;
@@ -270,26 +267,23 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
                 loop {
                     tokio::select! {
                         Some((id, request)) = recursion_deferred_rx.recv() => {
+                            let span = tracing::debug_span!("RecursionDeferred", proof_id = %request.context.proof_id, task_id = %id);
                             let proof_id = request.context.proof_id.clone();
-                            let handle = worker.prover_engine().submit_prove_deferred(request).await.unwrap();
+                            let handle = worker
+                                .prover_engine()
+                                .submit_prove_deferred(request.clone())
+                                .instrument(span.clone())
+                                .await
+                                .unwrap();
                             let tx = task_tx.clone();
                             task_set.spawn(async move {
-                                match handle.await {
-                                    Ok(Ok(task_metadata)) => {
-                                        tx.send((proof_id, (id, task_metadata), TaskStatus::Succeeded)).ok();
-                                    }
-                                    Ok(Err(e)) => {
-                                        tracing::error!("Failed to prove deferred: {:?}", e);
-                                    }
-                                    Err(e) => {
-                                        tracing::error!("Panicked in prove deferred: {:?}", e);
-                                    }
-                                }
-                            });
+                                let result = handle.await;
+                                TaskOutput::handle_worker_result(result, &tx, proof_id, id, request, TaskType::RecursionDeferred);
+                            }.instrument(span)
+                          );
                         }
-                        Some((proof_id, (task_id, task_metadata), status)) = task_rx.recv() => {
-                            assert_eq!(status, TaskStatus::Succeeded);
-                            worker_client.complete_task(proof_id, task_id, task_metadata).await.unwrap();
+                        Some(output) = task_rx.recv() => {
+                            output.handle_task_output(&worker_client).await;
                         }
                         else => {
                             break;
@@ -308,74 +302,103 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         });
 
         // Spawn the shrink wrap handler
+        //
+        // In the local node, we only allow one of these tasks to be run at a time.
         tokio::task::spawn({
             let mut shrink_wrap_rx = channels.task_receivers.remove(&TaskType::ShrinkWrap).unwrap();
             let worker = worker.clone();
             let worker_client = worker.worker_client().clone();
             async move {
-                while let Some((id, request)) = shrink_wrap_rx.recv().await {
-                    let worker_client = worker_client.clone();
-                    let worker = worker.clone();
-                    let proof_id = request.context.proof_id.clone();
-                    tokio::task::spawn(
-                        async move {
-                            worker.prover_engine().run_shrink_wrap(request).await.unwrap();
-                            worker_client
-                                .complete_task(proof_id, id, TaskMetadata::default())
+                let (task_tx, mut task_rx) = mpsc::unbounded_channel();
+                loop {
+                    tokio::select! {
+                        Some((id, request)) = shrink_wrap_rx.recv() => {
+                            let span = tracing::debug_span!("ShrinkWrap", proof_id = %request.context.proof_id, task_id = %id);
+                            let worker = worker.clone();
+                            let proof_id = request.context.proof_id.clone();
+                            let result = worker
+                                .prover_engine()
+                                .run_shrink_wrap(request.clone())
+                                .instrument(span)
                                 .await
-                                .unwrap();
+                                .map(|_| TaskMetadata::default());
+                            TaskOutput::handle_worker_result(Ok(result), &task_tx, proof_id, id, request, TaskType::ShrinkWrap);
                         }
-                        .instrument(tracing::info_span!("shrinkwrap")),
-                    );
+                        Some(output) = task_rx.recv() => {
+                            output.handle_task_output(&worker_client).await;
+                        }
+                        else => {
+                            break;
+                        }
+                    }
                 }
             }
         });
 
         // Spawn the plonk wrap handler
+        //
+        // in the local node, we only allow one of these tasks to be run at a time.
         tokio::task::spawn({
             let mut plonk_wrap_rx = channels.task_receivers.remove(&TaskType::PlonkWrap).unwrap();
             let worker = worker.clone();
             let worker_client = worker.worker_client().clone();
             async move {
-                while let Some((id, request)) = plonk_wrap_rx.recv().await {
-                    let worker = worker.clone();
-                    let worker_client = worker_client.clone();
-                    let proof_id = request.context.proof_id.clone();
-                    tokio::task::spawn(
-                        async move {
-                            worker.prover_engine().run_plonk(request).await.unwrap();
-                            worker_client
-                                .complete_task(proof_id, id, TaskMetadata::default())
+                let (task_tx, mut task_rx) = mpsc::unbounded_channel();
+                loop {
+                    tokio::select! {
+                        Some((id, request)) = plonk_wrap_rx.recv() => {
+                            let span = tracing::debug_span!("PlonkWrap", proof_id = %request.context.proof_id, task_id = %id);
+                            let worker = worker.clone();
+                            let proof_id = request.context.proof_id.clone();
+                            let result = worker
+                                .prover_engine()
+                                .run_plonk(request.clone())
+                                .instrument(span)
                                 .await
-                                .unwrap();
+                                .map(|_| TaskMetadata::default());
+                            TaskOutput::handle_worker_result(Ok(result), &task_tx, proof_id, id, request, TaskType::PlonkWrap);
                         }
-                        .instrument(tracing::info_span!("plonkwrap")),
-                    );
+                        Some(output) = task_rx.recv() => {
+                            output.handle_task_output(&worker_client).await;
+                        }
+                        else => {
+                            break;
+                        }
+                    }
                 }
             }
         });
 
         // Spawn the groth16 wrap handler
+        //
+        // In the local node, we only allow one of these tasks to be run at a time.
         tokio::task::spawn({
             let mut groth16_wrap_rx =
                 channels.task_receivers.remove(&TaskType::Groth16Wrap).unwrap();
             let worker = worker.clone();
-            let worker_client = worker.worker_client().clone();
             async move {
-                while let Some((id, request)) = groth16_wrap_rx.recv().await {
-                    let worker = worker.clone();
-                    let worker_client = worker_client.clone();
-                    let proof_id = request.context.proof_id.clone();
-                    tokio::task::spawn(
-                        async move {
-                            worker.prover_engine().run_groth16(request).await.unwrap();
-                            worker_client
-                                .complete_task(proof_id, id, TaskMetadata::default())
+                let (task_tx, mut task_rx) = mpsc::unbounded_channel();
+                loop {
+                    tokio::select! {
+                        Some((id, request)) = groth16_wrap_rx.recv() => {
+                            let span = tracing::debug_span!("Groth16Wrap", proof_id = %request.context.proof_id, task_id = %id);
+                            let worker = worker.clone();
+                            let proof_id = request.context.proof_id.clone();
+                            let result = worker
+                                .prover_engine()
+                                .run_groth16(request.clone())
+                                .instrument(span)
                                 .await
-                                .unwrap();
+                                .map(|_| TaskMetadata::default());
+                            TaskOutput::handle_worker_result(Ok(result), &task_tx, proof_id, id, request, TaskType::Groth16Wrap);
                         }
-                        .instrument(tracing::info_span!("groth16wrap")),
-                    );
+                        Some(output) = task_rx.recv() => {
+                            output.handle_task_output(worker.worker_client()).await;
+                        }
+                        else => {
+                            break;
+                        }
+                    }
                 }
             }
         });
@@ -386,5 +409,106 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         let worker_client = worker.worker_client().clone();
         let inner = Arc::new(SP1NodeInner { artifact_client, worker_client, verifier, opts });
         Ok(SP1LocalNode { inner })
+    }
+}
+
+struct TaskOutput {
+    proof_id: ProofId,
+    task_id: TaskId,
+    status: TaskStatus,
+    task_metadata: TaskMetadata,
+    task_data: Option<RawTaskRequest>,
+    task_type: TaskType,
+}
+
+impl TaskOutput {
+    fn handle_worker_result(
+        result: Result<Result<TaskMetadata, TaskError>, TaskJoinError>,
+        tx: &mpsc::UnboundedSender<TaskOutput>,
+        proof_id: ProofId,
+        task_id: TaskId,
+        request: RawTaskRequest,
+        task_type: TaskType,
+    ) {
+        match result {
+            Ok(Ok(task_metadata)) => {
+                tracing::debug!("task succeeded");
+                let task_output = TaskOutput {
+                    proof_id,
+                    task_id,
+                    status: TaskStatus::Succeeded,
+                    task_metadata,
+                    task_data: None,
+                    task_type,
+                };
+                tx.send(task_output).ok();
+            }
+            Ok(Err(TaskError::Retryable(e))) => {
+                tracing::error!("task failed with retryable error: {:?}", e);
+                let task_output = TaskOutput {
+                    proof_id,
+                    task_id,
+                    status: TaskStatus::FailedRetryable,
+                    task_metadata: TaskMetadata::default(),
+                    task_data: Some(request),
+                    task_type,
+                };
+                tx.send(task_output).ok();
+            }
+            Ok(Err(TaskError::Fatal(e))) => {
+                tracing::error!("task failed with fatal error: {:?}", e);
+                let task_output = TaskOutput {
+                    proof_id,
+                    task_id,
+                    status: TaskStatus::FailedFatal,
+                    task_metadata: TaskMetadata::default(),
+                    task_data: None,
+                    task_type,
+                };
+                tx.send(task_output).ok();
+            }
+            Ok(Err(TaskError::Execution(e))) => {
+                tracing::error!("task failed with fatal error: {:?}", e);
+                let task_output = TaskOutput {
+                    proof_id,
+                    task_id,
+                    status: TaskStatus::FailedFatal,
+                    task_metadata: TaskMetadata::default(),
+                    task_data: None,
+                    task_type,
+                };
+                tx.send(task_output).ok();
+            }
+            Err(e) => {
+                tracing::error!("task panicked: {:?}", e);
+            }
+        }
+    }
+
+    async fn handle_task_output(self, worker_client: &LocalWorkerClient) {
+        let TaskOutput { proof_id, task_id, status, task_metadata, task_data, task_type } = self;
+        match status {
+            TaskStatus::Succeeded => {
+                let result = worker_client
+                    .complete_task(proof_id.clone(), task_id.clone(), task_metadata)
+                    .await;
+                if let Err(e) = result {
+                    tracing::error!(
+                        "Failed to complete task, proof_id: {:?}, task_id: {:?}, error: {:?}",
+                        proof_id,
+                        task_id,
+                        e
+                    );
+                }
+            }
+            TaskStatus::FailedRetryable => {
+                let task = task_data.unwrap();
+                let res = worker_client.submit_task(task_type, task).await;
+                if let Err(e) = res {
+                    tracing::error!("Failed to submit retry, task: {:?}, error: {:?}", task_id, e);
+                }
+            }
+            _ => {}
+        }
     }
 }
