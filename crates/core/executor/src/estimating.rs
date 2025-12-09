@@ -268,10 +268,14 @@ impl<'a> GasEstimatingVM<'a> {
     pub fn execute_ecall(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
         let code = self.core.read_code();
 
-        let _ = CoreVM::execute_ecall(self, instruction, code)?;
+        let result = CoreVM::execute_ecall(self, instruction, code)?;
 
         if code == SyscallCode::HINT_LEN {
             self.hint_lens_idx += 1;
+        }
+
+        if code == SyscallCode::HALT {
+            self.gas_calculator.set_exit_code(result.b);
         }
 
         if code.should_send() == 1 {

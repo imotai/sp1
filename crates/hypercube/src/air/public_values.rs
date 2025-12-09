@@ -280,6 +280,7 @@ impl PublicValues<u32, u64, u64, u32> {
         self.prev_deferred_proofs_digest = deferred_proofs_digest;
         self.deferred_proofs_digest = deferred_proofs_digest;
         self.is_untrusted_programs_enabled = is_untrusted_programs_enabled;
+        self.prev_exit_code = exit_code;
         self.prev_commit_syscall = 1;
         self.commit_syscall = 1;
         self.prev_commit_deferred_syscall = 1;

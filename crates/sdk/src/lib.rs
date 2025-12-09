@@ -91,7 +91,8 @@ mod tests {
         let elf = test_artifacts::FIBONACCI_ELF;
         let mut stdin = SP1Stdin::new();
         stdin.write(&10usize);
-        let (_, _) = client.execute(elf, stdin).await.unwrap();
+        let (_, report) = client.execute(elf, stdin).await.unwrap();
+        assert_eq!(report.exit_code, 0);
     }
 
     #[tokio::test]
@@ -101,8 +102,8 @@ mod tests {
         let elf = test_artifacts::PANIC_ELF;
         let mut stdin = SP1Stdin::new();
         stdin.write(&10usize);
-        client.execute(elf, stdin).await.unwrap();
-        // TODO: once the exit code is exposed to the SDK, check its value, both here and elsewhere.
+        let (_, report) = client.execute(elf, stdin).await.unwrap();
+        assert_eq!(report.exit_code, 1);
     }
 
     #[should_panic]
@@ -133,6 +134,32 @@ mod tests {
         proof.public_values = SP1PublicValues::from(&[255, 4, 84]);
         if client.verify(&proof, &pk.vk, None).is_ok() {
             panic!("verified proof with invalid public values")
+        }
+    }
+
+    #[cfg(feature = "experimental")]
+    #[tokio::test]
+    async fn test_e2e_core_panic() {
+        use sp1_core_executor::StatusCode;
+
+        use crate::{prover::ProveRequest, CpuProver};
+
+        utils::setup_logger();
+        let client = CpuProver::new_experimental().await;
+        let elf = test_artifacts::PANIC_ELF;
+        let pk = client.setup(elf).await.unwrap();
+        let stdin = SP1Stdin::new();
+
+        // Generate proof & verify.
+        let proof = client.prove(&pk, stdin).core().await.unwrap();
+        client.verify(&proof, &pk.vk, StatusCode::new(1)).unwrap();
+
+        if client.verify(&proof, &pk.vk, None).is_ok() {
+            panic!("verified proof with invalid exit code")
+        }
+
+        if client.verify(&proof, &pk.vk, StatusCode::new(0)).is_ok() {
+            panic!("verified proof with invalid exit code")
         }
     }
 
@@ -174,6 +201,32 @@ mod tests {
         proof.public_values = SP1PublicValues::from(&[255, 4, 84]);
         if client.verify(&proof, &pk.vk, None).is_ok() {
             panic!("verified proof with invalid public values")
+        }
+    }
+
+    #[cfg(feature = "experimental")]
+    #[tokio::test]
+    async fn test_e2e_compressed_panic() {
+        use sp1_core_executor::StatusCode;
+
+        use crate::{prover::ProveRequest, CpuProver};
+
+        utils::setup_logger();
+        let client = CpuProver::new_experimental().await;
+        let elf = test_artifacts::PANIC_ELF;
+        let pk = client.setup(elf).await.unwrap();
+        let stdin = SP1Stdin::new();
+
+        // Generate proof & verify.
+        let proof = client.prove(&pk, stdin).compressed().await.unwrap();
+        client.verify(&proof, &pk.vk, StatusCode::new(1)).unwrap();
+
+        if client.verify(&proof, &pk.vk, None).is_ok() {
+            panic!("verified proof with invalid exit code")
+        }
+
+        if client.verify(&proof, &pk.vk, StatusCode::new(0)).is_ok() {
+            panic!("verified proof with invalid exit code")
         }
     }
 

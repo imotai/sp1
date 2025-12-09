@@ -13,6 +13,7 @@ use sp1_primitives::types::Elf;
 use sp1_prover::{
     verify::verify_public_values, worker::SP1LocalNode, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
 };
+use sp1_recursion_executor::RecursionPublicValues;
 use std::{
     borrow::Borrow,
     fmt,
@@ -195,7 +196,7 @@ pub(crate) fn verify_proof(
                 return Err(SP1VerificationError::InvalidPublicValues);
             }
 
-            let public_values: &PublicValues<[_; 4], [_; 3], [_; 4], _> =
+            let public_values: &RecursionPublicValues<_> =
                 proof.proof.public_values.as_slice().borrow();
 
             if !status_code.is_accepted_code(public_values.exit_code.as_canonical_u32()) {

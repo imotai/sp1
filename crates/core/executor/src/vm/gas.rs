@@ -22,6 +22,7 @@ pub struct ReportGenerator {
     trace_cost_lookup: EnumMap<RiscvAirId, u64>,
 
     shard_start_clk: u64,
+    exit_code: u64,
 }
 
 impl ReportGenerator {
@@ -41,6 +42,7 @@ impl ReportGenerator {
             local_mem_counts: 0,
             is_last_read_external: CompressedMemory::new(),
             shard_start_clk,
+            exit_code: 0,
         }
     }
 
@@ -76,7 +78,13 @@ impl ReportGenerator {
             invocation_tracker: HashMap::new(),
             touched_memory_addresses: 0,
             gas: Some(gas),
+            exit_code: self.exit_code,
         }
+    }
+
+    // Set the exit code which will be returned when the `ExecutionReport` is generated.
+    pub fn set_exit_code(&mut self, exit_code: u64) {
+        self.exit_code = exit_code;
     }
 
     /// Helper method to filter out opcode counts with zero values

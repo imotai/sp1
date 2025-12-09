@@ -29,6 +29,8 @@ pub struct ExecutionReport {
     pub invocation_tracker: HashMap<String, u64>,
     /// The unique memory address counts.
     pub touched_memory_addresses: u64,
+    /// The final exit code of the execution.
+    pub exit_code: u64,
     /// The unnormalized gas, if it was calculated. Should not be accessed directly. Use `gas()` instead.
     pub(crate) gas: Option<u64>,
 }
@@ -105,6 +107,9 @@ impl AddAssign for ExecutionReport {
             (Some(g), None) | (None, Some(g)) => Some(g),
             (None, None) => None,
         };
+
+        // The exit code value must either be `0` or the final exit code, so taking an `OR` works.
+        self.exit_code |= rhs.exit_code;
     }
 }
 

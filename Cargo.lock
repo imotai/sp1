@@ -6975,6 +6975,7 @@ dependencies = [
  "sp1-primitives 6.0.0",
  "sp1-prover",
  "sp1-prover-types",
+ "sp1-recursion-executor",
  "sp1-verifier",
  "strum",
  "tempfile",
