@@ -45,11 +45,8 @@ impl SP1ProofWithPublicValues {
     /// Creates a new [`SP1ProofWithPublicValues`] from the proof, public values, and SP1 version.
     ///
     /// If the [`tee`] feature is enabled, the proof field is set to none.
-    pub(crate) const fn new(
-        proof: SP1Proof,
-        public_values: SP1PublicValues,
-        sp1_version: String,
-    ) -> Self {
+    #[must_use]
+    pub const fn new(proof: SP1Proof, public_values: SP1PublicValues, sp1_version: String) -> Self {
         Self { proof, public_values, sp1_version, tee_proof: None }
     }
 

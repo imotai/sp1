@@ -14,6 +14,7 @@ use sp1_core_machine::io::SP1Stdin;
 use super::{CPUProverError, CpuProver};
 use crate::{
     prover::{BaseProveRequest, ProveRequest},
+    utils::proof_mode,
     SP1ProofWithPublicValues, SP1ProvingKey,
 };
 
@@ -93,12 +94,12 @@ impl<'a> CpuProveBuilder<'a> {
     async fn run(self) -> Result<SP1ProofWithPublicValues, CPUProverError> {
         // Get the arguments.
         let BaseProveRequest { prover, pk, stdin, mode, mut context_builder } = self.base;
-        let context = context_builder.build();
 
         // Dump the program and stdin to files for debugging if `SP1_DUMP` is set.
         crate::utils::sp1_dump(&pk.elf, &stdin);
 
-        prover.prove_impl(pk, stdin, context, mode).await
+        let context = context_builder.build();
+        Ok(prover.prover.prove_with_mode(&pk.elf, stdin, context, proof_mode(mode)).await?.into())
     }
 }
 

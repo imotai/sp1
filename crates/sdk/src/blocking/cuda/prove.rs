@@ -5,7 +5,11 @@ use sp1_cuda::CudaClientError;
 
 use super::CudaProver;
 use crate::{
-    blocking::prover::{BaseProveRequest, ProveRequest},
+    blocking::{
+        block_on,
+        prover::{BaseProveRequest, ProveRequest},
+    },
+    utils::proof_mode,
     SP1ProofWithPublicValues,
 };
 
@@ -25,6 +29,6 @@ impl<'a> ProveRequest<'a, CudaProver> for CudaProveRequest<'a> {
     fn run(self) -> Result<SP1ProofWithPublicValues, CudaClientError> {
         let BaseProveRequest { prover, pk, stdin, mode, mut context_builder } = self.base;
         let context = context_builder.build();
-        prover.prove_impl(pk, stdin, context, mode)
+        Ok(block_on(prover.prover.prove_with_mode(pk, stdin, context, proof_mode(mode)))?.into())
     }
 }

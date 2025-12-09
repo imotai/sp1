@@ -4,6 +4,8 @@
 
 use sp1_core_machine::io::SP1Stdin;
 pub use sp1_core_machine::utils::setup_logger;
+use sp1_prover_types::network_base_types::ProofMode;
+use sp1_verifier::SP1ProofMode;
 
 /// Dump the program and stdin to files for debugging if `SP1_DUMP` is set.
 pub(crate) fn sp1_dump(elf: &[u8], stdin: &SP1Stdin) {
@@ -15,6 +17,15 @@ pub(crate) fn sp1_dump(elf: &[u8], stdin: &SP1Stdin) {
         eprintln!("Dumped program.bin and stdin.bin.");
         // Exit with the success status.
         std::process::exit(0);
+    }
+}
+
+pub(crate) fn proof_mode(mode: SP1ProofMode) -> ProofMode {
+    match mode {
+        SP1ProofMode::Core => ProofMode::Core,
+        SP1ProofMode::Compressed => ProofMode::Compressed,
+        SP1ProofMode::Groth16 => ProofMode::Groth16,
+        SP1ProofMode::Plonk => ProofMode::Plonk,
     }
 }
 

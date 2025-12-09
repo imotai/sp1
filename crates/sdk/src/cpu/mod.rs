@@ -7,21 +7,18 @@ pub mod prove;
 
 use std::sync::Arc;
 
-use anyhow::Result;
 use prove::CpuProveBuilder;
-use sp1_core_executor::{ExecutionError, SP1Context};
+use sp1_core_executor::ExecutionError;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::Elf;
 use sp1_prover::{
     error::SP1ProverError,
     worker::{cpu_worker_builder, SP1LocalNode, SP1LocalNodeBuilder},
 };
-use sp1_prover_types::network_base_types::ProofMode;
-use sp1_verifier::ProofFromNetwork;
 
 use crate::{
-    prover::{Prover, ProvingKey, SendFutureResult},
-    SP1ProofMode, SP1ProofWithPublicValues, SP1ProvingKey,
+    prover::{Prover, SendFutureResult},
+    SP1ProvingKey,
 };
 
 use thiserror::Error;
@@ -100,23 +97,5 @@ impl CpuProver {
     #[must_use]
     pub async fn new_experimental() -> Self {
         Self::new_with_opts(None).await
-    }
-
-    pub(crate) async fn prove_impl(
-        &self,
-        pk: &SP1ProvingKey,
-        stdin: SP1Stdin,
-        context: SP1Context<'static>,
-        mode: SP1ProofMode,
-    ) -> Result<SP1ProofWithPublicValues, CPUProverError> {
-        let mode = match mode {
-            SP1ProofMode::Core => ProofMode::Core,
-            SP1ProofMode::Compressed => ProofMode::Compressed,
-            SP1ProofMode::Groth16 => ProofMode::Groth16,
-            SP1ProofMode::Plonk => ProofMode::Plonk,
-        };
-        let ProofFromNetwork { proof, public_values, sp1_version } =
-            self.prover.prove_with_mode(pk.elf(), stdin, context, mode).await?;
-        Ok(SP1ProofWithPublicValues::new(proof, public_values, sp1_version))
     }
 }

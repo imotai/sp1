@@ -9,17 +9,13 @@ pub mod prove;
 
 use std::sync::Arc;
 
-use crate::{
-    blocking::{cpu::CpuProver, prover::BaseProveRequest, Prover},
-    SP1Proof, SP1ProofMode, SP1ProofWithPublicValues,
-};
+use crate::blocking::{cpu::CpuProver, prover::BaseProveRequest, Prover};
 
 use prove::CudaProveRequest;
-use sp1_core_executor::SP1Context;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_cuda::{CudaClientError, CudaProver as CudaProverImpl, CudaProvingKey};
 use sp1_primitives::Elf;
-use sp1_prover::{worker::SP1LocalNode, SP1CoreProofData, SP1ProofWithMetadata};
+use sp1_prover::worker::SP1LocalNode;
 
 /// A prover that uses the CPU for execution and the CUDA for proving.
 #[derive(Clone)]
@@ -43,68 +39,5 @@ impl Prover for CudaProver {
 
     fn prove<'a>(&'a self, pk: &'a Self::ProvingKey, stdin: SP1Stdin) -> Self::ProveRequest<'a> {
         CudaProveRequest { base: BaseProveRequest::new(self, pk, stdin) }
-    }
-}
-
-impl CudaProver {
-    #[allow(clippy::needless_pass_by_value)]
-    fn prove_impl(
-        &self,
-        pk: &CudaProvingKey,
-        stdin: SP1Stdin,
-        context: SP1Context<'static>,
-        mode: SP1ProofMode,
-    ) -> Result<SP1ProofWithPublicValues, CudaClientError> {
-        crate::blocking::block_on(async move {
-            // Collect the deferred proofs
-            let deferred_proofs =
-                stdin.proofs.iter().map(|(reduce_proof, _)| reduce_proof.clone()).collect();
-
-            // Generate the core proof.
-            let proof: SP1ProofWithMetadata<SP1CoreProofData> =
-                self.prover.core(pk, stdin, context.proof_nonce).await?;
-            if mode == SP1ProofMode::Core {
-                return Ok(SP1ProofWithPublicValues::new(
-                    SP1Proof::Core(proof.proof.0),
-                    proof.public_values,
-                    self.version().to_string(),
-                ));
-            }
-
-            // Generate the compressed proof.
-            let public_values = proof.public_values.clone();
-            let compressed_proof =
-                self.prover.compress(pk.verifying_key(), proof, deferred_proofs).await?;
-            if mode == SP1ProofMode::Compressed {
-                return Ok(SP1ProofWithPublicValues::new(
-                    SP1Proof::Compressed(Box::new(compressed_proof)),
-                    public_values,
-                    self.version().to_string(),
-                ));
-            }
-
-            let shrink_proof = self.prover.clone().shrink(compressed_proof).await?;
-            let wrap_proof = self.prover.clone().wrap(shrink_proof).await?;
-            match mode {
-                SP1ProofMode::Groth16 => {
-                    let groth16_proof =
-                        self.cpu_prover.prover.wrap_groth16(wrap_proof).await.unwrap();
-                    Ok(SP1ProofWithPublicValues::new(
-                        SP1Proof::Groth16(groth16_proof),
-                        public_values,
-                        self.version().to_string(),
-                    ))
-                }
-                SP1ProofMode::Plonk => {
-                    let plonk_proof = self.cpu_prover.prover.wrap_plonk(wrap_proof).await.unwrap();
-                    Ok(SP1ProofWithPublicValues::new(
-                        SP1Proof::Plonk(plonk_proof),
-                        public_values,
-                        self.version().to_string(),
-                    ))
-                }
-                _ => unreachable!(),
-            }
-        })
     }
 }

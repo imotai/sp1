@@ -9,20 +9,18 @@ use sp1_core_executor::{
     SP1CoreOpts,
 };
 use sp1_core_machine::io::SP1Stdin;
-use sp1_hypercube::SP1RecursionProof;
-use sp1_primitives::{io::SP1PublicValues, SP1OuterGlobalContext};
+use sp1_primitives::io::SP1PublicValues;
 use sp1_prover_types::{
     network_base_types::ProofMode, Artifact, ArtifactClient, ArtifactType, InMemoryArtifactClient,
     TaskStatus, TaskType,
 };
-use sp1_verifier::{Groth16Bn254Proof, PlonkBn254Proof};
 pub use sp1_verifier::{ProofFromNetwork, SP1Proof};
 use tracing::{instrument, Instrument};
 
 use crate::{
     verify::SP1Verifier,
     worker::{LocalWorkerClient, ProofId, RawTaskRequest, RequesterId, TaskContext, WorkerClient},
-    OuterSC, SP1CoreProofData, SP1VerifyingKey,
+    SP1CoreProofData, SP1VerifyingKey,
 };
 
 pub(crate) struct SP1NodeInner {
@@ -169,25 +167,16 @@ impl SP1LocalNode {
         &self,
         elf: &[u8],
         stdin: SP1Stdin,
-        sp1_context: SP1Context<'static>,
+        context: SP1Context<'static>,
         mode: ProofMode,
     ) -> anyhow::Result<ProofFromNetwork> {
-        // Create a request for the controller task.
-        let pid = std::process::id();
-        let context = TaskContext {
-            proof_id: ProofId::new("proof".create_type_id::<V7>().to_string()),
-            parent_id: None,
-            parent_context: None,
-            requester_id: RequesterId::new(format!("local-node-{pid}")),
-        };
-
         let elf_artifact = self.inner.artifact_client.create_artifact()?;
         self.inner.artifact_client.upload_program(&elf_artifact, elf.to_vec()).await?;
 
         let proof_nonce_artifact = self.inner.artifact_client.create_artifact()?;
         self.inner
             .artifact_client
-            .upload::<[u32; 4]>(&proof_nonce_artifact, sp1_context.proof_nonce)
+            .upload::<[u32; 4]>(&proof_nonce_artifact, context.proof_nonce)
             .await?;
 
         let stdin_artifact = self.inner.artifact_client.create_artifact()?;
@@ -201,6 +190,7 @@ impl SP1LocalNode {
         // Create an artifact for the output
         let output_artifact = self.inner.artifact_client.create_artifact()?;
 
+        let proof_id = ProofId::new("proof".create_type_id::<V7>().to_string());
         let request = RawTaskRequest {
             inputs: vec![
                 elf_artifact.clone(),
@@ -209,12 +199,16 @@ impl SP1LocalNode {
                 proof_nonce_artifact.clone(),
             ],
             outputs: vec![output_artifact.clone()],
-            context: context.clone(),
+            context: TaskContext {
+                proof_id: proof_id.clone(),
+                parent_id: None,
+                parent_context: None,
+                requester_id: RequesterId::new(format!("local-node-{}", std::process::id())),
+            },
         };
 
         let task_id = self.inner.worker_client.submit_task(TaskType::Controller, request).await?;
-        let subscriber =
-            self.inner.worker_client.subscriber(context.proof_id.clone()).await?.per_task();
+        let subscriber = self.inner.worker_client.subscriber(proof_id).await?.per_task();
         let status = subscriber.wait_task(task_id).await?;
         if status != TaskStatus::Succeeded {
             return Err(anyhow::anyhow!("controller task failed"));
@@ -239,87 +233,6 @@ impl SP1LocalNode {
             .await?;
 
         Ok(proof)
-    }
-
-    pub async fn wrap_groth16(
-        &self,
-        proof: SP1RecursionProof<SP1OuterGlobalContext, OuterSC>,
-    ) -> anyhow::Result<Groth16Bn254Proof> {
-        let groth16_proof_artifact = self.inner.artifact_client.create_artifact()?;
-        let wrap_proof_artifact = self.inner.artifact_client.create_artifact()?;
-        self.inner.artifact_client.upload(&wrap_proof_artifact, proof.clone()).await?;
-        let request = RawTaskRequest {
-            inputs: vec![wrap_proof_artifact.clone()],
-            outputs: vec![groth16_proof_artifact.clone()],
-            context: TaskContext {
-                proof_id: ProofId::new("groth16proof"),
-                parent_id: None,
-                parent_context: None,
-                requester_id: RequesterId::new("local-node"),
-            },
-        };
-        let proof_id = request.context.proof_id.clone();
-        let task_id = self.inner.worker_client.submit_task(TaskType::Groth16Wrap, request).await?;
-        let subscriber = self.inner.worker_client.subscriber(proof_id).await?.per_task();
-        let status = subscriber.wait_task(task_id).await?;
-        if status != TaskStatus::Succeeded {
-            return Err(anyhow::anyhow!("groth16 wrap task failed"));
-        }
-
-        let groth16_proof = self
-            .inner
-            .artifact_client
-            .download::<Groth16Bn254Proof>(&groth16_proof_artifact)
-            .await?;
-
-        self.inner
-            .artifact_client
-            .delete_batch(
-                &[wrap_proof_artifact, groth16_proof_artifact],
-                ArtifactType::UnspecifiedArtifactType,
-            )
-            .await?;
-
-        Ok(groth16_proof)
-    }
-
-    pub async fn wrap_plonk(
-        &self,
-        proof: SP1RecursionProof<SP1OuterGlobalContext, OuterSC>,
-    ) -> anyhow::Result<PlonkBn254Proof> {
-        let plonk_proof_artifact = self.inner.artifact_client.create_artifact()?;
-        let wrap_proof_artifact = self.inner.artifact_client.create_artifact()?;
-        self.inner.artifact_client.upload(&wrap_proof_artifact, proof.clone()).await?;
-        let request = RawTaskRequest {
-            inputs: vec![wrap_proof_artifact.clone()],
-            outputs: vec![plonk_proof_artifact.clone()],
-            context: TaskContext {
-                proof_id: ProofId::new("plonkproof"),
-                parent_id: None,
-                parent_context: None,
-                requester_id: RequesterId::new("local-node"),
-            },
-        };
-        let proof_id = request.context.proof_id.clone();
-        let task_id = self.inner.worker_client.submit_task(TaskType::PlonkWrap, request).await?;
-        let subscriber = self.inner.worker_client.subscriber(proof_id).await?.per_task();
-        let status = subscriber.wait_task(task_id).await?;
-        if status != TaskStatus::Succeeded {
-            return Err(anyhow::anyhow!("plonk wrap task failed"));
-        }
-
-        let plonk_proof =
-            self.inner.artifact_client.download::<PlonkBn254Proof>(&plonk_proof_artifact).await?;
-
-        self.inner
-            .artifact_client
-            .delete_batch(
-                &[wrap_proof_artifact, plonk_proof_artifact],
-                ArtifactType::UnspecifiedArtifactType,
-            )
-            .await?;
-
-        Ok(plonk_proof)
     }
 
     /// Get a reference to the verifier.

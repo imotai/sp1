@@ -17,9 +17,11 @@ use std::path::PathBuf;
 
 pub use pk::CudaProvingKey;
 use semver::Version;
-use sp1_core_machine::{io::SP1Stdin, recursion::SP1RecursionProof};
-use sp1_primitives::{Elf, SP1GlobalContext, SP1OuterGlobalContext};
-use sp1_prover::{InnerSC, OuterSC, SP1CoreProof, SP1VerifyingKey};
+use sp1_core_executor::SP1Context;
+use sp1_core_machine::io::SP1Stdin;
+use sp1_primitives::Elf;
+use sp1_prover::worker::ProofFromNetwork;
+use sp1_prover_types::network_base_types::ProofMode;
 
 use crate::client::CudaClient;
 
@@ -45,36 +47,14 @@ impl CudaProver {
         self.client.setup(elf).await
     }
 
-    pub async fn core(
+    pub async fn prove_with_mode(
         &self,
-        key: &CudaProvingKey,
+        pk: &CudaProvingKey,
         stdin: SP1Stdin,
-        proof_nonce: [u32; 4],
-    ) -> Result<SP1CoreProof, CudaClientError> {
-        self.client.core(key, stdin, proof_nonce).await
-    }
-
-    pub async fn compress(
-        &self,
-        vk: &SP1VerifyingKey,
-        proof: SP1CoreProof,
-        deferred: Vec<SP1RecursionProof<SP1GlobalContext, InnerSC>>,
-    ) -> Result<SP1RecursionProof<SP1GlobalContext, InnerSC>, CudaClientError> {
-        self.client.compress(vk, proof, deferred).await
-    }
-
-    pub async fn shrink(
-        &self,
-        proof: SP1RecursionProof<SP1GlobalContext, InnerSC>,
-    ) -> Result<SP1RecursionProof<SP1GlobalContext, InnerSC>, CudaClientError> {
-        self.client.shrink(proof).await
-    }
-
-    pub async fn wrap(
-        &self,
-        proof: SP1RecursionProof<SP1GlobalContext, InnerSC>,
-    ) -> Result<SP1RecursionProof<SP1OuterGlobalContext, OuterSC>, CudaClientError> {
-        self.client.wrap(proof).await
+        context: SP1Context<'static>,
+        mode: ProofMode,
+    ) -> Result<ProofFromNetwork, CudaClientError> {
+        self.client.prove_with_mode(pk, stdin, context, mode).await
     }
 }
 
