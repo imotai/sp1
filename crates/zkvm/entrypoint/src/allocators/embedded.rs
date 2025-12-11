@@ -1,4 +1,3 @@
-use crate::EMBEDDED_RESERVED_INPUT_START;
 use alloc::alloc::{GlobalAlloc, Layout};
 use critical_section::RawRestoreState;
 use embedded_alloc::TlsfHeap as Heap;
@@ -7,6 +6,8 @@ use embedded_alloc::TlsfHeap as Heap;
 static HEAP: EmbeddedAlloc = EmbeddedAlloc;
 
 pub static INNER_HEAP: Heap = Heap::empty();
+
+static mut EMBEDDED_RESERVED_INPUT_START: usize = 0;
 
 struct CriticalSection;
 critical_section::set_impl!(CriticalSection);
@@ -17,16 +18,18 @@ unsafe impl critical_section::Impl for CriticalSection {
     unsafe fn release(_token: RawRestoreState) {}
 }
 
-pub fn init() {
+pub fn init(start: usize) {
+    unsafe { EMBEDDED_RESERVED_INPUT_START = start }
+
     extern "C" {
         // https://lld.llvm.org/ELF/linker_script.html#sections-command
         static _end: u8;
     }
     let heap_pos: usize = unsafe { (&_end) as *const u8 as usize };
-    assert!(heap_pos <= EMBEDDED_RESERVED_INPUT_START);
+    assert!(heap_pos <= start);
     // The heap size that is available for the program is the total memory minus the reserved input
     // region and the heap position.
-    let heap_size: usize = EMBEDDED_RESERVED_INPUT_START - heap_pos;
+    let heap_size: usize = start - heap_pos;
     unsafe { INNER_HEAP.init(heap_pos, heap_size) };
 }
 
