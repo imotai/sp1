@@ -24,7 +24,7 @@ mod local;
 
 pub use local::*;
 
-use crate::worker::TaskError;
+use crate::worker::{ProveShardTaskRequest, TaskError};
 
 pub trait WorkerClient: Send + Sync + Clone + 'static {
     fn submit_task(
@@ -336,11 +336,10 @@ impl TrivialWorkerClient {
             while let Some((kind, task)) = task_receiver.recv().await {
                 match kind {
                     TaskType::ProveShard => {
-                        let input = task.inputs;
-                        let record_artifact = input.last().unwrap();
+                        let request = ProveShardTaskRequest::from_raw(task).unwrap();
                         // remove the record artifact from the client
                         artifact_client
-                            .delete(record_artifact, ArtifactType::UnspecifiedArtifactType)
+                            .delete(&request.record, ArtifactType::UnspecifiedArtifactType)
                             .await
                             .unwrap();
                     }
