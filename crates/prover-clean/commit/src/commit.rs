@@ -86,11 +86,9 @@ pub async fn commit_multilinears<GC: IopCtx<F = Felt, EF = Ext>, P: TcsProverCle
 
 #[cfg(test)]
 mod tests {
-
-    use std::mem::MaybeUninit;
     use std::sync::Arc;
 
-    use csl_cuda::run_in_place;
+    use csl_cuda::{run_in_place, PinnedBuffer};
     use csl_jagged::Poseidon2KoalaBearJaggedCudaProverComponents;
     use csl_tracegen::CudaTraceGenerator;
     use cslpc_basefold::ProverCleanFriCudaProver;
@@ -102,6 +100,7 @@ mod tests {
     use cslpc_utils::{Felt, TestGC};
     use serial_test::serial;
     use slop_challenger::IopCtx;
+    use slop_futures::queue::WorkerQueue;
     use slop_jagged::{JaggedPcsVerifier, JaggedProver, KoalaBearPoseidon2};
     use sp1_hypercube::prover::{ProverSemaphore, TraceGenerator};
     use sp1_primitives::fri_params::core_fri_config;
@@ -154,15 +153,14 @@ mod tests {
             // Do tracegen with the new setup.
             let record = Arc::new(record);
             let capacity = CORE_MAX_TRACE_SIZE as usize;
-            let mut buffer: Vec<MaybeUninit<Felt>> = Vec::with_capacity(capacity);
-            unsafe { buffer.set_len(capacity) };
-            let boxed: Box<[MaybeUninit<Felt>]> = buffer.into_boxed_slice();
-            let buffer = Box::into_pin(boxed);
+            let buffer = PinnedBuffer::<Felt>::with_capacity(capacity);
+            let queue = Arc::new(WorkerQueue::new(vec![buffer]));
+            let buffer = queue.pop().await.unwrap();
             let (_public_values, jagged_trace_data, _chip_set, _permit) = full_tracegen(
                 &machine,
                 program.clone(),
                 record.clone(),
-                buffer.as_ptr() as usize,
+                buffer,
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT,

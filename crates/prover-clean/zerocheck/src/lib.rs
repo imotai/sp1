@@ -725,7 +725,7 @@ where
 
 #[cfg(test)]
 pub mod tests {
-    use csl_cuda::run_in_place;
+    use csl_cuda::{run_in_place, PinnedBuffer};
     use itertools::Itertools;
     use rand::Rng;
     use serial_test::serial;
@@ -733,6 +733,7 @@ pub mod tests {
     use slop_algebra::{AbstractField, PrimeField32};
     use slop_alloc::{Buffer, CpuBackend};
     use slop_challenger::{CanObserve, CanSample, FieldChallenger, IopCtx};
+    use slop_futures::queue::WorkerQueue;
     use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
     use slop_matrix::{dense::RowMajorMatrix, dense::RowMajorMatrixView, Matrix};
     use slop_multilinear::{full_geq, Mle, MleEval, Point};
@@ -744,7 +745,6 @@ pub mod tests {
         prover::ProverSemaphore, Chip, ChipEvaluation, ChipOpenedValues, ConstraintSumcheckFolder,
         LogUpEvaluations, ShardOpenedValues, VerifierConstraintFolder,
     };
-    use std::mem::MaybeUninit;
 
     use csl_air::codegen_cuda_eval;
     use std::collections::{BTreeMap, BTreeSet};
@@ -2023,16 +2023,15 @@ pub mod tests {
             let mut rng = rand::thread_rng();
 
             let capacity = CORE_MAX_TRACE_SIZE as usize;
-            let mut buffer: Vec<MaybeUninit<Felt>> = Vec::with_capacity(capacity);
-            unsafe { buffer.set_len(capacity) };
-            let boxed: Box<[MaybeUninit<Felt>]> = buffer.into_boxed_slice();
-            let buffer = Box::into_pin(boxed);
+            let buffer = PinnedBuffer::<Felt>::with_capacity(capacity);
+            let queue = Arc::new(WorkerQueue::new(vec![buffer]));
+            let buffer = queue.pop().await.unwrap();
 
             let (public_values, trace_mle, chips, _permit) = full_tracegen(
                 &machine,
                 program.clone(),
                 Arc::new(record),
-                buffer.as_ptr() as usize,
+                buffer,
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT,

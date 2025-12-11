@@ -1,5 +1,5 @@
 use csl_air::{air_block::BlockAir, codegen_cuda_eval, SymbolicProverFolder};
-use csl_cuda::{TaskScope, ToDevice};
+use csl_cuda::{PinnedBuffer, TaskScope, ToDevice};
 use csl_jagged::{
     Poseidon2Bn254JaggedCudaProverComponents, Poseidon2KoalaBearJaggedCudaProverComponents,
 };
@@ -31,7 +31,7 @@ use sp1_hypercube::{
 };
 use sp1_primitives::{SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_prover::{components::SP1ProverComponents, CompressAir, WrapAir};
-use std::{collections::BTreeMap, marker::PhantomData, mem::MaybeUninit, sync::Arc};
+use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
 
 pub struct CudaSP1ProverComponents;
 
@@ -222,24 +222,8 @@ where
 
     let mut trace_buffers = Vec::with_capacity(num_workers);
     for _ in 0..num_workers {
-        let mut v: Vec<MaybeUninit<GC::F>> = Vec::with_capacity(max_trace_size);
-        unsafe { v.set_len(max_trace_size) };
-        let boxed: Box<[MaybeUninit<GC::F>]> = v.into_boxed_slice();
-        let pinned = Box::into_pin(boxed);
-
-        unsafe {
-            let ptr = pinned.as_ptr() as *const std::ffi::c_void;
-            let size = std::mem::size_of::<GC::F>() * max_trace_size;
-            let result = csl_cuda::sys::runtime::cuda_host_register(ptr, size);
-            if result != csl_cuda::sys::runtime::CUDA_SUCCESS_CSL {
-                tracing::warn!(
-                    "Failed to register buffer {} as pinned memory",
-                    trace_buffers.len()
-                );
-            }
-        }
-
-        trace_buffers.push(pinned);
+        let pinned_buffer = PinnedBuffer::<GC::F>::with_capacity(max_trace_size);
+        trace_buffers.push(pinned_buffer);
     }
 
     CudaShardProver {

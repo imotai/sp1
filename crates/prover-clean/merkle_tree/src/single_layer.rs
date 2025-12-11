@@ -365,13 +365,12 @@ unsafe impl MerkleTreeSingleLayerKernels<BNGC<KoalaBear, BinomialExtensionField<
 
 #[cfg(test)]
 mod tests {
-    use std::mem::MaybeUninit;
-
     use std::sync::Arc;
 
-    use csl_cuda::run_in_place;
+    use csl_cuda::{run_in_place, PinnedBuffer};
     use csl_tracegen::CudaTraceGenerator;
     use slop_commit::Message;
+    use slop_futures::queue::WorkerQueue;
     use slop_multilinear::Mle;
     use slop_stacked::{FixedRateInterleave, InterleaveMultilinears};
     use sp1_hypercube::prover::{ProverSemaphore, TraceGenerator};
@@ -427,16 +426,15 @@ mod tests {
 
             let new_semaphore = ProverSemaphore::new(1);
             let capacity = CORE_MAX_TRACE_SIZE as usize;
-            let mut buffer: Vec<MaybeUninit<Felt>> = Vec::with_capacity(capacity);
-            unsafe { buffer.set_len(capacity) };
-            let boxed: Box<[MaybeUninit<Felt>]> = buffer.into_boxed_slice();
-            let buffer = Box::into_pin(boxed);
+            let buffer = PinnedBuffer::<Felt>::with_capacity(capacity);
+            let queue = Arc::new(WorkerQueue::new(vec![buffer]));
+            let buffer = queue.pop().await.unwrap();
 
             let (_, new_traces, _, _) = full_tracegen(
                 &machine,
                 program,
                 Arc::new(record),
-                buffer.as_ptr() as usize,
+                buffer,
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT,

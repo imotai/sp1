@@ -280,7 +280,7 @@ mod tests {
         generate_test_data, get_polys_from_layer, jagged_first_gkr_layer_to_device,
         jagged_gkr_layer_to_device, jagged_gkr_layer_to_host, random_first_layer, GkrTestData,
     };
-    use csl_cuda::run_in_place;
+    use csl_cuda::{run_in_place, PinnedBuffer};
     use cslpc_tracegen::{
         full_tracegen,
         test_utils::tracegen_setup::{self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT},
@@ -291,12 +291,13 @@ mod tests {
     use serial_test::serial;
     use slop_alloc::ToHost;
     use slop_challenger::{FieldChallenger, IopCtx};
+    use slop_futures::queue::WorkerQueue;
     use slop_sumcheck::partially_verify_sumcheck_proof;
     use sp1_core_executor::ExecutionRecord;
     use sp1_hypercube::MachineRecord;
     use sp1_hypercube::{prover::ProverSemaphore, ShardVerifier};
     use sp1_primitives::fri_params::core_fri_config;
-    use std::{mem::MaybeUninit, sync::Arc};
+    use std::sync::Arc;
 
     use crate::execution::{extract_outputs, gkr_transition, layer_transition};
 
@@ -540,15 +541,14 @@ mod tests {
         run_in_place(|scope| async move {
             // *********** Generate traces using the host tracegen. ***********
             let capacity = CORE_MAX_TRACE_SIZE as usize;
-            let mut buffer: Vec<MaybeUninit<Felt>> = Vec::with_capacity(capacity);
-            unsafe { buffer.set_len(capacity) };
-            let boxed: Box<[MaybeUninit<Felt>]> = buffer.into_boxed_slice();
-            let buffer = Box::into_pin(boxed);
+            let buffer = PinnedBuffer::<Felt>::with_capacity(capacity);
+            let queue = Arc::new(WorkerQueue::new(vec![buffer]));
+            let buffer = queue.pop().await.unwrap();
             let (public_values, jagged_trace_data, shard_chips, _permit) = full_tracegen(
                 &machine,
                 program.clone(),
                 Arc::new(record),
-                buffer.as_ptr() as usize,
+                buffer,
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT,

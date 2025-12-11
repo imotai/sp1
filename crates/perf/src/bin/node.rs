@@ -111,7 +111,6 @@ async fn main() {
                 ProofMode::Plonk => (None, None, Duration::ZERO, proof_time),
                 _ => panic!("invalid proof mode: {mode:?}"),
             };
-
             let measurement = Measurement {
                 name: args.program.clone(),
                 cycles,

@@ -490,17 +490,17 @@ unsafe impl MleFlattenKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> fo
 
 #[cfg(test)]
 mod tests {
-    use std::mem::MaybeUninit;
     use std::sync::Arc;
 
     use csl_basefold::Poseidon2KoalaBear16BasefoldCudaProverComponents;
-    use csl_cuda::{run_in_place, ToDevice};
+    use csl_cuda::{run_in_place, PinnedBuffer, ToDevice};
     use csl_tracegen::CudaTraceGenerator;
     use cslpc_merkle_tree::Poseidon2KoalaBear16CudaProver;
     use slop_alloc::ToHost;
     use slop_basefold::BasefoldVerifier;
     use slop_basefold_prover::BasefoldProver;
     use slop_commit::Message;
+    use slop_futures::queue::WorkerQueue;
     use slop_koala_bear::KoalaBearDegree4Duplex;
     use slop_multilinear::{Mle, MultilinearPcsBatchVerifier};
     use slop_stacked::{FixedRateInterleave, InterleaveMultilinears};
@@ -567,15 +567,14 @@ mod tests {
 
             let new_semaphore = ProverSemaphore::new(1);
             let capacity = CORE_MAX_TRACE_SIZE as usize;
-            let mut buffer: Vec<MaybeUninit<Felt>> = Vec::with_capacity(capacity);
-            unsafe { buffer.set_len(capacity) };
-            let boxed: Box<[MaybeUninit<Felt>]> = buffer.into_boxed_slice();
-            let buffer = Box::into_pin(boxed);
+            let buffer = PinnedBuffer::<Felt>::with_capacity(capacity);
+            let queue = Arc::new(WorkerQueue::new(vec![buffer]));
+            let buffer = queue.pop().await.unwrap();
             let (_, new_traces, _, _) = full_tracegen(
                 &machine,
                 program,
                 Arc::new(record),
-                buffer.as_ptr() as usize,
+                buffer,
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT,

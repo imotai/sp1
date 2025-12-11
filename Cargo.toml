@@ -58,6 +58,12 @@ incremental = true
 [profile.release]
 lto = true
 
+# Profiling profile - release optimizations with debug symbols for heap profiling
+[profile.profiling]
+inherits = "release"
+debug = true
+lto = false
+
 [workspace.dependencies]
 # cuslop
 csl-sys = { path = "crates/sys" }

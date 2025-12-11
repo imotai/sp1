@@ -8,7 +8,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::future::ready;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
-use std::pin::Pin;
 use std::sync::Arc;
 use tokio::join;
 use tokio::sync::Mutex;
@@ -18,7 +17,7 @@ use csl_cuda::sys::prover_clean::{
     count_and_add_kernel, fill_buffer, generate_col_index, generate_start_indices,
     sum_to_trace_kernel,
 };
-use csl_cuda::{args, TaskScope};
+use csl_cuda::{args, PinnedBuffer, TaskScope};
 use csl_tracegen::CudaTracegenAir;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -371,7 +370,7 @@ fn host_preprocessed_tracegen<A: CudaTracegenAir<Felt>>(
     // Spawn a rayon task to generate the traces on the CPU.
     // `traces` is a futures Stream that will immediately begin buffering traces.
     let (host_traces_tx, host_traces) = futures::channel::mpsc::unbounded();
-    slop_futures::rayon::spawn(move || {
+    tokio::task::spawn_blocking(move || {
         jobs.into_par_iter().for_each_with(host_traces_tx, |tx, (air, offset, height, width)| {
             let base_ptr = buffer_ptr as *mut MaybeUninit<Felt>;
             if let Some(height) = height {
@@ -436,7 +435,7 @@ async fn device_preprocessed_tracegen<A: CudaTracegenAir<Felt>>(
 
     // If we're the last users of the program, expensively drop it in a separate task.
     // TODO: in general, figure out the best way to drop expensive-to-drop things.
-    rayon::spawn(move || drop(program));
+    tokio::task::spawn_blocking(move || drop(program));
 
     named_traces
 }
@@ -625,18 +624,17 @@ pub async fn setup_tracegen<A: CudaTracegenAir<Felt>>(
 pub async fn setup_tracegen_permit<A: CudaTracegenAir<Felt>>(
     machine: &Machine<Felt, A>,
     program: Arc<<A as MachineAir<Felt>>::Program>,
-    buffer_ptr: usize,
-    guard: Worker<Pin<Box<[MaybeUninit<Felt>]>>>,
+    buffer: Worker<PinnedBuffer<Felt>>,
     max_trace_size: usize,
     log_stacking_height: u32,
     max_log_row_count: u32,
     prover_permit: ProverSemaphore,
     backend: &TaskScope,
-) -> (JaggedTraceMle<Felt, TaskScope>, ProverPermit, Worker<Pin<Box<[MaybeUninit<Felt>]>>>) {
+) -> (JaggedTraceMle<Felt, TaskScope>, ProverPermit) {
     let (jagged_traces, permit) = setup_tracegen(
         machine,
         program,
-        buffer_ptr,
+        buffer.as_ptr() as usize,
         max_trace_size,
         log_stacking_height,
         max_log_row_count,
@@ -644,7 +642,7 @@ pub async fn setup_tracegen_permit<A: CudaTracegenAir<Felt>>(
         backend,
     )
     .await;
-    (jagged_traces, permit, guard)
+    (jagged_traces, permit)
 }
 
 /// Returns a tuple of (host phase tracegen, shape info).
@@ -681,10 +679,10 @@ where
 
     let outer_span = tracing::Span::current();
 
-    // Spawn a rayon task to generate the traces on the CPU.
+    // Spawn a blocking task to generate the traces on the CPU.
     // `host_traces` is a futures Stream that will immediately begin buffering traces.
     let (host_traces_tx, host_traces) = futures::channel::mpsc::unbounded();
-    slop_futures::rayon::spawn(move || {
+    tokio::task::spawn_blocking(move || {
         {
             jobs.into_par_iter().for_each_with(host_traces_tx, |tx, (air, offset)| {
                 tracing::trace_span!(parent: &outer_span, "chip host main tracegen", chip = %air.name()).in_scope(
@@ -804,7 +802,7 @@ pub async fn main_tracegen<GC: IopCtx<F = Felt>, A: CudaTracegenAir<Felt>>(
     machine: &Machine<Felt, A>,
     record: Arc<<A as MachineAir<Felt>>::Record>,
     jagged_traces: &Mutex<CudaShardProverData<GC, A>>,
-    buffer_ptr: usize,
+    buffer: Worker<PinnedBuffer<Felt>>,
     log_stacking_height: u32,
     max_log_row_count: u32,
     backend: &TaskScope,
@@ -813,7 +811,7 @@ pub async fn main_tracegen<GC: IopCtx<F = Felt>, A: CudaTracegenAir<Felt>>(
 ) -> (Vec<Felt>, BTreeSet<Chip<Felt, A>>, ProverPermit) {
     // Start generating traces on host.
     let (host_phase_tracegen, host_phase_shape_info) =
-        host_main_tracegen(machine, buffer_ptr, 0, record.clone());
+        host_main_tracegen(machine, buffer.as_ptr() as usize, 0, record.clone());
 
     let HostPhaseShapeInfo { traces_by_name: initial_traces, chip_set } = host_phase_shape_info;
     let permit =
@@ -845,19 +843,18 @@ pub async fn main_tracegen_permit<GC: IopCtx<F = Felt>, A: CudaTracegenAir<Felt>
     machine: &Machine<Felt, A>,
     record: Arc<<A as MachineAir<Felt>>::Record>,
     jagged_traces: &Mutex<CudaShardProverData<GC, A>>,
-    buffer_ptr: usize,
-    guard: Worker<Pin<Box<[MaybeUninit<Felt>]>>>,
+    buffer: Worker<PinnedBuffer<Felt>>,
     log_stacking_height: u32,
     max_log_row_count: u32,
     backend: &TaskScope,
     prover_permit: ProverSemaphore,
     global_dependencies_opt: bool,
-) -> (Vec<Felt>, BTreeSet<Chip<Felt, A>>, ProverPermit, Worker<Pin<Box<[MaybeUninit<Felt>]>>>) {
+) -> (Vec<Felt>, BTreeSet<Chip<Felt, A>>, ProverPermit) {
     let (public_values, chip_set, permit) = main_tracegen(
         machine,
         record,
         jagged_traces,
-        buffer_ptr,
+        buffer,
         log_stacking_height,
         max_log_row_count,
         backend,
@@ -866,7 +863,7 @@ pub async fn main_tracegen_permit<GC: IopCtx<F = Felt>, A: CudaTracegenAir<Felt>
     )
     .await;
 
-    (public_values, chip_set, permit, guard)
+    (public_values, chip_set, permit)
 }
 
 /// Does tracegen for both preprocessed and main.
@@ -878,7 +875,7 @@ pub async fn full_tracegen<A: CudaTracegenAir<Felt>>(
     machine: &Machine<Felt, A>,
     program: Arc<<A as MachineAir<Felt>>::Program>,
     record: Arc<<A as MachineAir<Felt>>::Record>,
-    buffer_ptr: usize,
+    buffer: Worker<PinnedBuffer<Felt>>,
     max_trace_size: usize,
     log_stacking_height: u32,
     max_log_row_count: u32,
@@ -887,10 +884,10 @@ pub async fn full_tracegen<A: CudaTracegenAir<Felt>>(
     global_dependencies_opt: bool,
 ) -> (Vec<Felt>, JaggedTraceMle<Felt, TaskScope>, BTreeSet<Chip<Felt, A>>, ProverPermit) {
     let (prep_host_phase_tracegen, start_idx) =
-        host_preprocessed_tracegen(machine, buffer_ptr, program.clone());
+        host_preprocessed_tracegen(machine, buffer.as_ptr() as usize, program.clone());
 
     let (main_host_phase_tracegen, HostPhaseShapeInfo { traces_by_name: initial_traces, chip_set }) =
-        host_main_tracegen(machine, buffer_ptr, start_idx, record.clone());
+        host_main_tracegen(machine, buffer.as_ptr() as usize, start_idx, record.clone());
 
     // Wait for a prover to be available.
     let permit =
@@ -933,26 +930,19 @@ pub async fn full_tracegen_permit<A: CudaTracegenAir<Felt>>(
     machine: &Machine<Felt, A>,
     program: Arc<<A as MachineAir<Felt>>::Program>,
     record: Arc<<A as MachineAir<Felt>>::Record>,
-    buffer_ptr: usize,
-    guard: Worker<Pin<Box<[MaybeUninit<Felt>]>>>,
+    buffer: Worker<PinnedBuffer<Felt>>,
     max_trace_size: usize,
     log_stacking_height: u32,
     max_log_row_count: u32,
     backend: &TaskScope,
     prover_permits: ProverSemaphore,
     global_dependencies_opt: bool,
-) -> (
-    Vec<Felt>,
-    JaggedTraceMle<Felt, TaskScope>,
-    BTreeSet<Chip<Felt, A>>,
-    ProverPermit,
-    Worker<Pin<Box<[MaybeUninit<Felt>]>>>,
-) {
+) -> (Vec<Felt>, JaggedTraceMle<Felt, TaskScope>, BTreeSet<Chip<Felt, A>>, ProverPermit) {
     let (public_values, jagged_mle, chip_set, permit) = full_tracegen(
         machine,
         program,
         record,
-        buffer_ptr,
+        buffer,
         max_trace_size,
         log_stacking_height,
         max_log_row_count,
@@ -961,7 +951,7 @@ pub async fn full_tracegen_permit<A: CudaTracegenAir<Felt>>(
         global_dependencies_opt,
     )
     .await;
-    (public_values, jagged_mle, chip_set, permit, guard)
+    (public_values, jagged_mle, chip_set, permit)
 }
 
 fn log_chip_stats<A: CudaTracegenAir<Felt>>(
@@ -989,11 +979,12 @@ fn log_chip_stats<A: CudaTracegenAir<Felt>>(
 #[cfg(test)]
 mod tests {
     use slop_algebra::PrimeField32;
+    use slop_futures::queue::WorkerQueue;
     use slop_tensor::Tensor;
-    use std::{mem::MaybeUninit, sync::Arc};
+    use std::sync::Arc;
 
-    use csl_cuda::TaskScope;
     use csl_cuda::{run_in_place, sys::prover_clean::jagged_eval_kernel_chunked_felt, ToDevice};
+    use csl_cuda::{PinnedBuffer, TaskScope};
     use csl_tracegen::CudaTraceGenerator;
     use cslpc_utils::{Ext, Felt};
     use cslpc_zerocheck::primitives::evaluate_jagged_mle_chunked;
@@ -1101,17 +1092,16 @@ mod tests {
             let now = std::time::Instant::now();
 
             let capacity = CORE_MAX_TRACE_SIZE as usize;
-            let mut buffer: Vec<MaybeUninit<Felt>> = Vec::with_capacity(capacity);
-            unsafe { buffer.set_len(capacity) };
-            let boxed: Box<[MaybeUninit<Felt>]> = buffer.into_boxed_slice();
-            let buffer = Box::into_pin(boxed);
+            let buffer = PinnedBuffer::<Felt>::with_capacity(capacity);
+            let queue = Arc::new(WorkerQueue::new(vec![buffer]));
+            let buffer = queue.pop().await.unwrap();
 
             // Do tracegen with the new setup.
             let (_public_values, jagged_trace_data, _chip_set_, _permit) = full_tracegen(
                 &machine,
                 program.clone(),
                 record,
-                buffer.as_ptr() as usize,
+                buffer,
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT,

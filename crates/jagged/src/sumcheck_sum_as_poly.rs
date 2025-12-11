@@ -77,11 +77,8 @@ where
         curr_prefix_sum_tensor.reshape_in_place([num_columns, prefix_sum_length]);
         next_prefix_sum_tensor.reshape_in_place([num_columns, prefix_sum_length]);
 
-        let curr_prefix_sums_device = t.to_device(&curr_prefix_sum_tensor).await.unwrap();
-        let next_prefix_sums_device = t.to_device(&next_prefix_sum_tensor).await.unwrap();
-
-        std::mem::forget(curr_prefix_sum_tensor);
-        std::mem::forget(next_prefix_sum_tensor);
+        let curr_prefix_sums_device = t.into_device(curr_prefix_sum_tensor).await.unwrap();
+        let next_prefix_sums_device = t.into_device(next_prefix_sum_tensor).await.unwrap();
 
         let curr_prefix_sums_device = curr_prefix_sums_device.transpose();
         let next_prefix_sums_device = next_prefix_sums_device.transpose();

@@ -50,13 +50,12 @@ where
         let pc_start = program.pc_start();
         let enable_untrusted_programs = program.enable_untrusted_programs();
 
-        let (base_ptr, guard) = self.get_buffer().await;
+        let buffer = self.get_buffer().await;
 
-        let (preprocessed_data, permit, _) = setup_tracegen_permit(
+        let (preprocessed_data, permit) = setup_tracegen_permit(
             &self.machine,
             program,
-            base_ptr,
-            guard,
+            buffer,
             self.max_trace_size,
             self.basefold_prover.log_height,
             self.max_log_row_count,

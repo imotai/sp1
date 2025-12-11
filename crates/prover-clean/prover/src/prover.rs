@@ -2,6 +2,7 @@ use crate::{MainTraceData, ShardData};
 use csl_air::air_block::BlockAir;
 use csl_air::SymbolicProverFolder;
 use csl_basefold::{BasefoldCudaProverComponents, DeviceGrindingChallenger};
+use csl_cuda::PinnedBuffer;
 use csl_cuda::{partial_lagrange, TaskScope, ToDevice};
 use csl_jagged::JaggedAssistSumAsPolyGPUImpl;
 use csl_tracegen::CudaTracegenAir;
@@ -33,8 +34,6 @@ use sp1_hypercube::{
 };
 use std::collections::BTreeMap;
 use std::iter::once;
-use std::mem::MaybeUninit;
-use std::pin::Pin;
 use std::{marker::PhantomData, sync::Arc};
 use thiserror::Error;
 use tokio::sync::Mutex;
@@ -51,7 +50,7 @@ pub trait ProverCleanProverComponents<GC: IopCtx>: Send + Sync + 'static {
 /// A prover for the hypercube STARK, given a configuration.
 pub struct CudaShardProver<GC: IopCtx, PC: ProverCleanProverComponents<GC>> {
     #[allow(clippy::type_complexity)]
-    pub trace_buffers: Arc<WorkerQueue<Pin<Box<[MaybeUninit<GC::F>]>>>>,
+    pub trace_buffers: Arc<WorkerQueue<PinnedBuffer<GC::F>>>,
     pub max_log_row_count: u32,
     pub basefold_prover: ProverCleanFriCudaProver<GC, PC::P, GC::F>,
     pub machine: Machine<GC::F, PC::Air>,
@@ -63,11 +62,8 @@ pub struct CudaShardProver<GC: IopCtx, PC: ProverCleanProverComponents<GC>> {
 }
 
 impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaShardProver<GC, PC> {
-    pub async fn get_buffer(&self) -> (usize, Worker<Pin<Box<[MaybeUninit<Felt>]>>>) {
-        let mut guard = self.trace_buffers.clone().pop().await.expect("buffer pool exhausted");
-        let whole: &mut [MaybeUninit<GC::F>] = Pin::get_mut(Pin::as_mut(&mut *guard));
-        let base_ptr = whole.as_mut_ptr() as usize;
-        (base_ptr, guard)
+    pub async fn get_buffer(&self) -> Worker<PinnedBuffer<GC::F>> {
+        self.trace_buffers.clone().pop().await.expect("buffer pool exhausted")
     }
 }
 
@@ -148,17 +144,16 @@ where
                 .unwrap()
         };
 
-        let (base_ptr, guard) = self.get_buffer().await;
+        let buffer = self.get_buffer().await;
 
         let record = Arc::new(record);
 
         // Generate trace.
-        let (public_values, trace_data, chip_set, permit, _) = full_tracegen_permit(
+        let (public_values, trace_data, chip_set, permit) = full_tracegen_permit(
             &self.machine,
             program,
             record,
-            base_ptr,
-            guard,
+            buffer,
             self.max_trace_size,
             self.basefold_prover.log_height,
             self.max_log_row_count,
@@ -212,14 +207,13 @@ where
         // Generate the traces.
         let record = Arc::new(record);
 
-        let (base_ptr, guard) = self.get_buffer().await;
+        let buffer = self.get_buffer().await;
 
-        let (public_values, chip_set, permit, _) = main_tracegen_permit(
+        let (public_values, chip_set, permit) = main_tracegen_permit(
             &self.machine,
             record,
             &pk.preprocessed_data,
-            base_ptr,
-            guard,
+            buffer,
             self.basefold_prover.log_height,
             self.max_log_row_count,
             &self.backend,
@@ -711,7 +705,6 @@ mod tests {
     use sp1_core_machine::riscv::RiscvAir;
     use sp1_hypercube::SP1CoreJaggedConfig;
     use sp1_primitives::fri_params::core_fri_config;
-    use std::mem::MaybeUninit;
 
     pub struct ProverCleanTestProverComponentsImpl {}
 
@@ -729,15 +722,14 @@ mod tests {
         run_in_place(|scope| async move {
             // *********** Generate traces using the host tracegen. ***********
             let capacity = CORE_MAX_TRACE_SIZE as usize;
-            let mut buffer: Vec<MaybeUninit<Felt>> = Vec::with_capacity(capacity);
-            unsafe { buffer.set_len(capacity) };
-            let boxed: Box<[MaybeUninit<Felt>]> = buffer.into_boxed_slice();
-            let buffer = Box::into_pin(boxed);
+            let buffer = PinnedBuffer::<Felt>::with_capacity(capacity);
+            let queue = Arc::new(WorkerQueue::new(vec![buffer]));
+            let buffer = queue.pop().await.unwrap();
             let (_public_values, jagged_trace_data, _shard_chips, _permit) = full_tracegen(
                 &machine,
                 program.clone(),
                 Arc::new(record),
-                buffer.as_ptr() as usize,
+                buffer,
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT,
@@ -775,12 +767,8 @@ mod tests {
             let num_workers = 1;
             let mut trace_buffers = Vec::with_capacity(num_workers);
             for _ in 0..num_workers {
-                let mut v: Vec<MaybeUninit<Felt>> =
-                    Vec::with_capacity(CORE_MAX_TRACE_SIZE as usize);
-                unsafe { v.set_len(CORE_MAX_TRACE_SIZE as usize) };
-                let boxed: Box<[MaybeUninit<Felt>]> = v.into_boxed_slice();
-                let pinned = Box::into_pin(boxed);
-                trace_buffers.push(pinned);
+                let buffer = PinnedBuffer::<Felt>::with_capacity(CORE_MAX_TRACE_SIZE as usize);
+                trace_buffers.push(buffer);
             }
 
             let shard_prover: CudaShardProver<TestGC, ProverCleanTestProverComponentsImpl> =
