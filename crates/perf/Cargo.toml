@@ -31,6 +31,7 @@ clap = { version = "4.5.7", features = ["derive", "env"] }
 bincode = "1.3.3"
 prettytable = "0.10.0"
 dotenv = { workspace = true }
+either = { version = "1.8.0", features = ["serde"] }
 
 # telemetry
 opentelemetry = "^0.23.0"
@@ -65,3 +66,7 @@ path = "src/bin/exec.rs"
 [[bin]]
 name = "node"
 path = "src/bin/node.rs"
+
+[[bin]]
+name = "vk-gen"
+path = "src/bin/vk_gen.rs"
