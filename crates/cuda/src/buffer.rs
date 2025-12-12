@@ -96,8 +96,6 @@ impl<T: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for SmallBuffer<'_, T
             self.buffer.copy_into_host(vec.spare_capacity_mut())?;
             vec.set_len(self.buffer.len());
             let host_buffer = Buffer::from(vec);
-
-            self.buffer.backend().synchronize().await.unwrap();
             Ok(host_buffer)
         }
     }
@@ -108,7 +106,6 @@ impl<T: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for SmallBuffer<'_, T
     async fn copy_into_backend(self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
         let mut buffer = Buffer::with_capacity_in(self.buffer.len(), backend.clone());
         buffer.extend_from_host_slice(self.buffer)?;
-        backend.synchronize().await.unwrap();
         Ok(buffer)
     }
 }

@@ -9,8 +9,9 @@ use slop_algebra::AbstractField;
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
 
+use sp1_core_machine::io::SP1Stdin;
 use sp1_hypercube::{septic_digest::SepticDigest, MachineVerifyingKey};
-use sp1_primitives::SP1Field;
+use sp1_primitives::{Elf, SP1Field};
 use sp1_prover::{
     worker::{
         CommonProverInput, ProofId, RequesterId, SP1CoreExecutor, SplicingEngine, SplicingWorker,
@@ -19,9 +20,10 @@ use sp1_prover::{
     SP1VerifyingKey,
 };
 use sp1_prover_types::{network_base_types::ProofMode, ArtifactClient, InMemoryArtifactClient};
+use sp1_sdk::{MockProver, Prover};
 use tokio::sync::mpsc;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     #[arg(long, default_value = "local-fibonacci")]
@@ -44,24 +46,12 @@ struct Args {
     pub telemetry: bool,
     #[arg(long, default_value = "prover-clean")]
     pub backend: ProverBackend,
+    #[arg(long, default_value = "gas")]
+    pub mode: String,
 }
 
-#[tokio::main]
-#[allow(clippy::field_reassign_with_default)]
-async fn main() {
-    let args = Args::parse();
-
-    // Initialize the tracer.
-    if args.telemetry {
-        let resource = Resource::new(vec![KeyValue::new("service.name", "csl-execute")]);
-        telemetry::init(resource);
-    } else {
-        csl_tracing::init_tracer();
-    }
-
-    // Get the program and input.
-    let (elf, stdin) = get_program_and_input(args.program, args.param);
-
+// Executes a program similarly to the cluster controller.
+async fn execute_node(args: Args, elf: Vec<u8>, stdin: SP1Stdin) {
     // Initialize the artifact and worker clients
     let artifact_client = InMemoryArtifactClient::new();
     let worker_client = TrivialWorkerClient::new(args.task_capacity, artifact_client.clone());
@@ -158,4 +148,42 @@ async fn main() {
 
     // Make sure the counter is finished before exiting
     counter_handle.await.expect("counter task panicked");
+}
+
+// Executes a program while measuring gas and prints the gas report.
+async fn execute_gas(elf: Vec<u8>, stdin: SP1Stdin) {
+    let prover = MockProver::new().await;
+
+    let (_, report) = prover
+        .execute(Elf::from(elf), stdin)
+        .calculate_gas(true)
+        .deferred_proof_verification(false)
+        .await
+        .unwrap();
+
+    println!("{}", report);
+}
+
+#[tokio::main]
+#[allow(clippy::field_reassign_with_default)]
+async fn main() {
+    let args = Args::parse();
+    let args_clone = args.clone();
+
+    // Initialize the tracer.
+    if args.telemetry {
+        let resource = Resource::new(vec![KeyValue::new("service.name", "csl-execute")]);
+        telemetry::init(resource);
+    } else {
+        csl_tracing::init_tracer();
+    }
+
+    // Get the program and input.
+    let (elf, stdin) = get_program_and_input(args.program, args.param);
+
+    match args.mode.as_str() {
+        "node" => execute_node(args_clone, elf, stdin).await,
+        "gas" => execute_gas(elf, stdin).await,
+        _ => panic!("invalid mode"),
+    }
 }

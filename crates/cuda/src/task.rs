@@ -429,7 +429,7 @@ impl TaskScope {
 
                     }
                 }
-                _ =&mut rx => {
+                _ = &mut rx => {
                     break;
                 }
             }
