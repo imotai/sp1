@@ -24,19 +24,25 @@ pub mod lib {
 #[cfg(all(target_os = "zkvm", feature = "libm"))]
 mod libm;
 
-pub const DEFAULT_MAX_MEMORY_SIZE: usize = 1 << 37;
-pub const DEFAULT_INPUT_REGION_SIZE: usize = 1 << 34;
-
 /// The number of 32 bit words that the public values digest is composed of.
 pub const PV_DIGEST_NUM_WORDS: usize = 8;
 pub const POSEIDON_NUM_WORDS: usize = 8;
 
 #[cfg(all(target_os = "zkvm", not(feature = "bump")))]
-static mut EMBEDDED_MAX_MEMORY: usize = 0;
+const MAX_MEMORY: usize = 1 << 37;
+
+/// Size of the reserved region for input values with the embedded allocator.
+#[cfg(all(target_os = "zkvm", not(feature = "bump")))]
+pub(crate) const EMBEDDED_RESERVED_INPUT_REGION_SIZE: usize = 1 << 34;
+
+/// Start of the reserved region for inputs with the embedded allocator.
+#[cfg(all(target_os = "zkvm", not(feature = "bump")))]
+pub(crate) const EMBEDDED_RESERVED_INPUT_START: usize =
+    MAX_MEMORY - EMBEDDED_RESERVED_INPUT_REGION_SIZE;
 
 /// Pointer to the current position in the reserved region for inputs with the embedded allocator.
 #[cfg(all(target_os = "zkvm", not(feature = "bump")))]
-static mut EMBEDDED_RESERVED_INPUT_PTR: usize = 0;
+static mut EMBEDDED_RESERVED_INPUT_PTR: usize = EMBEDDED_RESERVED_INPUT_START;
 
 #[repr(C)]
 pub struct ReadVecResult {
@@ -80,7 +86,7 @@ pub extern "C" fn read_vec_raw() -> ReadVecResult {
                 // Get the existing pointer in the reserved region which is the start of the vec.
                 // Increment the pointer by the capacity to set the new pointer to the end of the vec.
                 let ptr = unsafe { EMBEDDED_RESERVED_INPUT_PTR };
-                if ptr.saturating_add(capacity) > unsafe { EMBEDDED_MAX_MEMORY } {
+                if ptr.saturating_add(capacity) > MAX_MEMORY {
                     panic!("Input region overflowed.")
                 }
 
@@ -187,6 +193,23 @@ mod zkvm {
     #[no_mangle]
     unsafe extern "C" fn __start() {
         {
+            #[cfg(all(target_os = "zkvm", not(feature = "bump")))]
+            crate::allocators::init();
+
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "blake3")] {
+                    PUBLIC_VALUES_HASHER = Some(blake3::Hasher::new());
+                }
+                else {
+                    PUBLIC_VALUES_HASHER = Some(Sha256::new());
+                }
+            }
+
+            #[cfg(feature = "verify")]
+            {
+                DEFERRED_PROOFS_DIGEST = Some([SP1Field::zero(); 8]);
+            }
+
             extern "C" {
                 fn main();
             }
@@ -194,41 +217,6 @@ mod zkvm {
         }
 
         syscall_halt(0);
-    }
-
-    #[allow(unused)]
-    #[no_mangle]
-    unsafe extern "C" fn __sp1_setup(max_memory_size: usize, max_input_size: usize) {
-        #[cfg(all(target_os = "zkvm", not(feature = "bump")))]
-        {
-            assert!(max_memory_size <= sp1_primitives::consts::MAXIMUM_MEMORY_SIZE as usize);
-            if max_memory_size > super::DEFAULT_MAX_MEMORY_SIZE
-                || max_input_size > super::DEFAULT_INPUT_REGION_SIZE
-            {
-                eprintln!("WARNING: You are tweaking memory sizes. Be aware of memory usage.");
-            }
-            unsafe {
-                super::EMBEDDED_MAX_MEMORY = max_memory_size;
-            }
-            unsafe {
-                super::EMBEDDED_RESERVED_INPUT_PTR = max_memory_size - max_input_size;
-            }
-            crate::allocators::init(unsafe { super::EMBEDDED_RESERVED_INPUT_PTR });
-        }
-
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "blake3")] {
-                PUBLIC_VALUES_HASHER = Some(blake3::Hasher::new());
-            }
-            else {
-                PUBLIC_VALUES_HASHER = Some(Sha256::new());
-            }
-        }
-
-        #[cfg(feature = "verify")]
-        {
-            DEFERRED_PROOFS_DIGEST = Some([SP1Field::zero(); 8]);
-        }
     }
 
     // core::arch::global_asm!(include_str!("memset.s"));
@@ -278,26 +266,12 @@ mod zkvm {
 #[macro_export]
 macro_rules! entrypoint {
     ($path:path) => {
-        $crate::entrypoint!(
-            $path,
-            $crate::DEFAULT_MAX_MEMORY_SIZE,
-            $crate::DEFAULT_INPUT_REGION_SIZE
-        );
-    };
-    ($path:path, $max_memory_size:expr, $max_input_size:expr) => {
         const ZKVM_ENTRY: fn() = $path;
 
         mod zkvm_generated_main {
 
             #[no_mangle]
             fn main() {
-                extern "C" {
-                    fn __sp1_setup(max_memory_size: usize, max_input_size: usize);
-                }
-                unsafe {
-                    __sp1_setup($max_memory_size, $max_input_size);
-                }
-
                 // Link to the actual entrypoint only when compiling for zkVM, otherwise run a
                 // simple noop. Doing this avoids compilation errors when building for the host
                 // target.
