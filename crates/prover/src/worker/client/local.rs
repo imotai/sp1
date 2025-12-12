@@ -43,6 +43,8 @@ impl LocalWorkerClientInner {
             TaskType::MarkerDeferredRecord,
             TaskType::PlonkWrap,
             TaskType::Groth16Wrap,
+            TaskType::UtilVkeyMapChunk,
+            TaskType::UtilVkeyMapController,
         ] {
             let (tx, rx) = mpsc::channel(1);
             task_outputs.insert(task_type, rx);

@@ -6690,6 +6690,7 @@ dependencies = [
  "clap",
  "dirs",
  "downloader",
+ "either",
  "enum-map",
  "eyre",
  "futures",

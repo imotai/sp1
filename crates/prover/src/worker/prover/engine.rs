@@ -8,10 +8,10 @@ use sp1_prover_types::{Artifact, ArtifactClient};
 use crate::{
     components::{CoreProver, RecursionProver},
     worker::{
-        CoreProveSubmitHandle, RawTaskRequest, ReduceSubmitHandle, SP1CoreProver,
-        SP1CoreProverConfig, SP1DeferredProver, SP1DeferredProverConfig, SP1DeferredSubmitHandle,
-        SP1RecursionProver, SP1RecursionProverConfig, SetupSubmitHandle, SetupTask, TaskError,
-        TaskId, WorkerClient,
+        CoreProveSubmitHandle, RawTaskRequest, RecursionVkWorker, ReduceSubmitHandle,
+        SP1CoreProver, SP1CoreProverConfig, SP1DeferredProver, SP1DeferredProverConfig,
+        SP1DeferredSubmitHandle, SP1RecursionProver, SP1RecursionProverConfig, SetupSubmitHandle,
+        SetupTask, TaskError, TaskId, WorkerClient,
     },
     SP1ProverComponents,
 };
@@ -27,6 +27,7 @@ pub struct SP1ProverEngine<A, W, C: SP1ProverComponents> {
     pub core_prover: SP1CoreProver<A, W, C>,
     pub recursion_prover: SP1RecursionProver<A, C>,
     pub deferred_prover: SP1DeferredProver<A, C>,
+    pub vk_worker: RecursionVkWorker<C>,
 }
 
 impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine<A, W, C> {
@@ -43,7 +44,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
         let recursion_prover = SP1RecursionProver::new(
             config.recursion_prover_config,
             artifact_client.clone(),
-            recursion_prover_and_permits,
+            recursion_prover_and_permits.clone(),
             shrink_air_prover_and_permits,
             wrap_air_prover_and_permits,
         )
@@ -65,7 +66,13 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
             artifact_client,
         );
 
-        Self { core_prover, recursion_prover, deferred_prover }
+        let vk_worker = RecursionVkWorker {
+            recursion_permits: recursion_prover_and_permits.1,
+            recursion_prover: recursion_prover_and_permits.0,
+            shrink_prover: recursion_prover.shrink_prover.clone(),
+        };
+
+        Self { core_prover, vk_worker, recursion_prover, deferred_prover }
     }
 
     pub async fn submit_prove_core_shard(

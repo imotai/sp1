@@ -55,6 +55,7 @@ lru = { workspace = true }
 eyre = { workspace = true }
 hashbrown = { workspace = true, features = ["inline-more"] }
 enum-map = { workspace = true }
+either = { workspace = true }
 static_assertions = { workspace = true }
 rand = { workspace = true }
 mti = { workspace = true }

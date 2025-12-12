@@ -1,24 +1,28 @@
-use std::{env, sync::Arc};
+use std::sync::Arc;
 
 use sp1_core_executor::SP1CoreOpts;
 use sp1_hypercube::prover::{CpuShardProver, ProverSemaphore};
-use sp1_prover_types::ArtifactClient;
+use sp1_prover_types::{ArtifactClient, InMemoryArtifactClient};
 
 use crate::{
     components::{CoreProver, RecursionProver, WrapProver},
     verify::SP1Verifier,
-    worker::{SP1Controller, SP1ProverEngine, SP1Worker, SP1WorkerConfig, WorkerClient},
+    worker::{
+        LocalWorkerClient, SP1Controller, SP1ProverEngine, SP1Worker, SP1WorkerConfig, WorkerClient,
+    },
     CpuSP1ProverComponents, SP1ProverComponents,
 };
 
-pub struct SP1WorkerBuilder<C: SP1ProverComponents, A = (), W = ()> {
+pub struct SP1WorkerBuilder<
+    C: SP1ProverComponents,
+    A = InMemoryArtifactClient,
+    W = LocalWorkerClient,
+> {
     config: SP1WorkerConfig,
     core_air_prover_and_permits: Option<(Arc<CoreProver<C>>, ProverSemaphore)>,
     compress_air_prover_and_permits: Option<(Arc<RecursionProver<C>>, ProverSemaphore)>,
     shrink_air_prover_and_permits: Option<(Arc<RecursionProver<C>>, ProverSemaphore)>,
     wrap_air_prover_and_permits: Option<(Arc<WrapProver<C>>, ProverSemaphore)>,
-    #[allow(dead_code)]
-    vk_map_path: String,
     artifact_client: Option<A>,
     worker_client: Option<W>,
 }
@@ -27,16 +31,12 @@ impl<C: SP1ProverComponents> SP1WorkerBuilder<C> {
     pub fn new() -> Self {
         let config = SP1WorkerConfig::default();
 
-        let vk_map_path =
-            env::var("SP1_LOCAL_NODE_VK_MAP_PATH").unwrap_or("./src/vk_map.bin".to_string());
-
         Self {
             config,
             core_air_prover_and_permits: None,
             compress_air_prover_and_permits: None,
             shrink_air_prover_and_permits: None,
             wrap_air_prover_and_permits: None,
-            vk_map_path,
             artifact_client: None,
             worker_client: None,
         }
@@ -56,7 +56,6 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
             compress_air_prover_and_permits,
             shrink_air_prover_and_permits,
             wrap_air_prover_and_permits,
-            vk_map_path,
             artifact_client: _,
             worker_client,
         } = self;
@@ -67,7 +66,6 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
             compress_air_prover_and_permits,
             shrink_air_prover_and_permits,
             wrap_air_prover_and_permits,
-            vk_map_path,
             artifact_client: Some(artifact_client),
             worker_client,
         }
@@ -85,7 +83,6 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
             compress_air_prover_and_permits,
             shrink_air_prover_and_permits,
             wrap_air_prover_and_permits,
-            vk_map_path,
             artifact_client,
             worker_client: _,
         } = self;
@@ -96,7 +93,6 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
             compress_air_prover_and_permits,
             shrink_air_prover_and_permits,
             wrap_air_prover_and_permits,
-            vk_map_path,
             artifact_client,
             worker_client: Some(worker_client),
         }
@@ -178,7 +174,6 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
             compress_air_prover_and_permits,
             shrink_air_prover_and_permits,
             wrap_air_prover_and_permits,
-            vk_map_path: _,
             artifact_client,
             worker_client,
         } = self;
@@ -188,11 +183,6 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
         let worker_client = worker_client.ok_or(anyhow::anyhow!("Worker client is required"))?;
 
         let opts = config.controller_config.opts.clone();
-        let controller = SP1Controller::new(
-            config.controller_config,
-            artifact_client.clone(),
-            worker_client.clone(),
-        );
 
         // Create the prover engine
         let core_air_prover_and_permits = core_air_prover_and_permits
@@ -239,7 +229,66 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
             wrap_vk: prover_engine.recursion_prover.wrap_prover.verifying_key.clone(),
         };
 
+        let controller = SP1Controller::new(
+            config.controller_config,
+            artifact_client.clone(),
+            worker_client.clone(),
+            verifier.clone(),
+        );
+
         Ok(SP1Worker::new(controller, prover_engine, verifier))
+    }
+
+    /// Set the artifact client.
+    #[must_use]
+    pub fn with_vk_map_path(self, vk_map_path: String) -> SP1WorkerBuilder<C, A, W> {
+        let SP1WorkerBuilder {
+            mut config,
+            core_air_prover_and_permits,
+            compress_air_prover_and_permits,
+            shrink_air_prover_and_permits,
+            wrap_air_prover_and_permits,
+            artifact_client,
+            worker_client,
+        } = self;
+
+        config.prover_config.recursion_prover_config.vk_map_file = Some(vk_map_path);
+
+        SP1WorkerBuilder {
+            config,
+            core_air_prover_and_permits,
+            compress_air_prover_and_permits,
+            shrink_air_prover_and_permits,
+            wrap_air_prover_and_permits,
+            artifact_client,
+            worker_client,
+        }
+    }
+
+    /// Set the artifact client.
+    #[must_use]
+    pub fn with_vk_verification(self, vk_verification: bool) -> SP1WorkerBuilder<C, A, W> {
+        let SP1WorkerBuilder {
+            mut config,
+            core_air_prover_and_permits,
+            compress_air_prover_and_permits,
+            shrink_air_prover_and_permits,
+            wrap_air_prover_and_permits,
+            artifact_client,
+            worker_client,
+        } = self;
+
+        config.prover_config.recursion_prover_config.vk_verification = vk_verification;
+
+        SP1WorkerBuilder {
+            config,
+            core_air_prover_and_permits,
+            compress_air_prover_and_permits,
+            shrink_air_prover_and_permits,
+            wrap_air_prover_and_permits,
+            artifact_client,
+            worker_client,
+        }
     }
 }
 
@@ -264,7 +313,12 @@ pub fn cpu_worker_builder() -> SP1WorkerBuilder<CpuSP1ProverComponents> {
     let wrap_verifier = CpuSP1ProverComponents::wrap_verifier();
     let wrap_prover = Arc::new(CpuShardProver::new(wrap_verifier.shard_verifier().clone()));
 
+    let artifact_client = InMemoryArtifactClient::new();
+    let (worker_client, _) = LocalWorkerClient::init();
+
     SP1WorkerBuilder::new()
+        .with_artifact_client(artifact_client)
+        .with_worker_client(worker_client)
         .with_core_opts(opts)
         .with_core_air_prover(core_air_prover, prover_permits.clone())
         .with_compress_air_prover(recursion_air_prover, prover_permits.clone())

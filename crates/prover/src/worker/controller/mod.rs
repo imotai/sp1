@@ -4,12 +4,15 @@ mod deferred;
 mod global;
 mod precompiles;
 mod splicing;
+mod vk_tree;
 
 pub use compress::*;
 pub use core::*;
 pub use deferred::*;
 pub use global::*;
 pub use precompiles::*;
+pub use splicing::*;
+pub use vk_tree::*;
 
 use lru::LruCache;
 
@@ -26,7 +29,6 @@ use sp1_prover_types::{
     network_base_types::ProofMode, Artifact, ArtifactClient, ArtifactType, TaskStatus, TaskType,
 };
 use sp1_verifier::{ProofFromNetwork, SP1Proof};
-pub use splicing::*;
 use std::{borrow::Borrow, sync::Arc};
 use tokio::{
     sync::{mpsc, oneshot, Mutex, MutexGuard},
@@ -35,6 +37,7 @@ use tokio::{
 use tracing::Instrument;
 
 use crate::{
+    verify::SP1Verifier,
     worker::{RawTaskRequest, TaskContext, TaskError, WorkerClient},
     CoreSC, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
 };
@@ -69,6 +72,7 @@ pub struct SP1Controller<A, W> {
     setup_cache: Arc<Mutex<LruCache<Artifact, SP1VerifyingKey>>>,
     pub(crate) artifact_client: A,
     pub(crate) worker_client: W,
+    pub(crate) verifier: SP1Verifier,
     minimal_executor_cache: Option<MinimalExecutorCache>,
 }
 
@@ -77,7 +81,12 @@ where
     A: ArtifactClient,
     W: WorkerClient,
 {
-    pub fn new(config: SP1ControllerConfig, artifact_client: A, worker_client: W) -> Self {
+    pub fn new(
+        config: SP1ControllerConfig,
+        artifact_client: A,
+        worker_client: W,
+        verifier: SP1Verifier,
+    ) -> Self {
         let minimal_executor_cache =
             if config.use_fixed_pk { Some(MinimalExecutorCache::empty()) } else { None };
 
@@ -86,6 +95,7 @@ where
             setup_cache: Arc::new(Mutex::new(LruCache::new(20.try_into().unwrap()))),
             artifact_client,
             worker_client,
+            verifier,
             minimal_executor_cache,
         }
     }

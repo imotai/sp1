@@ -150,6 +150,8 @@ impl Default for SP1WorkerConfig {
             .and_then(|s| s.parse::<bool>().ok())
             .unwrap_or(DEFAULT_VK_VERIFICATION);
 
+        let vk_map_path = env::var("SP1_LOCAL_NODE_VK_MAP_PATH");
+
         let recursion_prover_config = SP1RecursionProverConfig {
             num_prepare_reduce_workers,
             prepare_reduce_buffer_size,
@@ -160,6 +162,7 @@ impl Default for SP1WorkerConfig {
             max_compose_arity,
             vk_verification,
             verify_intermediates,
+            vk_map_file: vk_map_path.ok(),
         };
 
         // Build the deferred prover config.

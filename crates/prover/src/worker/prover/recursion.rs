@@ -5,7 +5,7 @@ use crate::{
         compose_program_from_input, deferred_program_from_input, dummy_deferred_input,
         recursive_verifier, shrink_program_from_input, wrap_program_from_input, RecursionConfig,
     },
-    shapes::SP1RecursionProofShape,
+    shapes::{create_all_input_shapes, SP1RecursionProofShape},
     worker::{
         CommonProverInput, ProverMetrics, RangeProofs, RawTaskRequest, TaskContext, TaskError,
         TaskMetadata,
@@ -20,6 +20,7 @@ use slop_futures::pipeline::{
     AsyncEngine, AsyncWorker, BlockingEngine, BlockingWorker, Chain, Pipeline, SubmitError,
     SubmitHandle,
 };
+use sp1_core_machine::riscv::RiscvAir;
 use sp1_hypercube::{
     air::SP1CorePublicValues,
     inner_perm,
@@ -76,6 +77,8 @@ pub struct SP1RecursionProverConfig {
     pub vk_verification: bool,
     /// Whether or not to verify the proof result at the end.
     pub verify_intermediates: bool,
+    /// An optional file path for the vk map.
+    pub vk_map_file: Option<String>,
 }
 
 pub struct ReduceTaskRequest {
@@ -306,7 +309,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
         input: Result<ProveRecursionTask<C>, TaskError>,
     ) -> Result<TaskMetadata, TaskError> {
         // Get the input or return an error
-        let ProveRecursionTask { record, keys, output, metrics, .. } = input?;
+        let ProveRecursionTask { record, keys, output, metrics } = input?;
         // Prove the shard
         let proof = self.prove_shard(keys, record, metrics.clone()).await?;
         // Upload the proof
@@ -384,21 +387,42 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
             let mut compose_programs = BTreeMap::new();
             let mut compose_keys = BTreeMap::new();
 
-            let file = std::fs::File::open("./src/vk_map.bin").ok();
+            let file = std::fs::File::open(
+                config.vk_map_file.as_ref().unwrap_or(&"./src/vk_map.bin".to_string()),
+            )
+            .ok();
 
-            let allowed_vk_map: BTreeMap<[SP1Field; DIGEST_SIZE], usize> = if config.vk_verification
+            let num_shapes =
+                create_all_input_shapes(RiscvAir::machine().shape(), config.max_compose_arity)
+                    .into_iter()
+                    .collect::<BTreeSet<_>>()
+                    .len();
+
+            let mut allowed_vk_map: BTreeMap<[SP1Field; DIGEST_SIZE], usize> = if config
+                .vk_verification
             {
                 file.and_then(|file| bincode::deserialize_from(file).ok()).unwrap_or_else(|| {
-                    (0..1 << 18)
+                    (0..num_shapes)
                         .map(|i| ([SP1Field::from_canonical_u32(i as u32); DIGEST_SIZE], i))
                         .collect()
                 })
             } else {
                 // Dummy merkle tree when vk_verification is false.
-                (0..1 << 18)
+                (0..num_shapes)
                     .map(|i| ([SP1Field::from_canonical_u32(i as u32); DIGEST_SIZE], i))
                     .collect()
             };
+
+            let added_len = num_shapes.saturating_sub(allowed_vk_map.len());
+
+            allowed_vk_map.extend((0..added_len).map(|i| {
+                let index = i;
+                ([SP1Field::from_canonical_u32(index as u32); DIGEST_SIZE], index)
+            }));
+
+            let vks = allowed_vk_map.into_keys().collect::<BTreeSet<_>>();
+            let allowed_vk_map: BTreeMap<_, _> =
+                vks.into_iter().enumerate().map(|(i, vk)| (vk, i)).collect();
 
             let compress_verifier = C::compress_verifier();
             let recursive_compress_verifier =
@@ -927,6 +951,13 @@ impl<C: SP1ProverComponents> ShrinkProver<C> {
             rx.blocking_recv().unwrap()
         };
         Self { prover, permits, program, verifying_key: vk, prover_data, shrink_shape }
+    }
+
+    pub(crate) async fn setup(
+        self: Arc<Self>,
+        program: Arc<RecursionProgram<SP1Field>>,
+    ) -> MachineVerifyingKey<SP1GlobalContext, InnerSC> {
+        self.prover.setup(program, self.permits.clone()).await.1
     }
 
     async fn prove(

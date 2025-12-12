@@ -2,6 +2,7 @@ mod init;
 
 use std::sync::Arc;
 
+use either::Either;
 pub use init::*;
 use mti::prelude::{MagicTypeIdExt, V7};
 use sp1_core_executor::{ExecutionReport, Program, SP1Context, SP1CoreOpts};
@@ -12,13 +13,16 @@ use sp1_prover_types::{
     TaskStatus, TaskType,
 };
 pub use sp1_verifier::{ProofFromNetwork, SP1Proof};
+use tokio::task::JoinSet;
 use tracing::{instrument, Instrument};
 
 use crate::{
+    shapes::DEFAULT_ARITY,
     verify::SP1Verifier,
     worker::{
         execute_with_optional_gas, LocalWorkerClient, ProofId, RawTaskRequest, RequesterId,
-        SP1ExecutorConfig, TaskContext, WorkerClient,
+        SP1ExecutorConfig, TaskContext, VkeyMapControllerInput, VkeyMapControllerOutput,
+        WorkerClient,
     },
     SP1CoreProofData, SP1VerifyingKey,
 };
@@ -28,6 +32,7 @@ pub(crate) struct SP1NodeInner {
     worker_client: LocalWorkerClient,
     verifier: SP1Verifier,
     opts: SP1CoreOpts,
+    _tasks: JoinSet<()>,
 }
 
 pub struct SP1LocalNode {
@@ -111,6 +116,61 @@ impl SP1LocalNode {
         context: SP1Context<'static>,
     ) -> anyhow::Result<ProofFromNetwork> {
         self.prove_with_mode(elf, stdin, context, ProofMode::Compressed).await
+    }
+
+    pub async fn build_vks(
+        &self,
+        range_or_limit: Option<Either<Vec<usize>, usize>>,
+        chunk_size: usize,
+    ) -> anyhow::Result<VkeyMapControllerOutput> {
+        let vk_controller_artifact = self.inner.artifact_client.create_artifact()?;
+        let input =
+            VkeyMapControllerInput { range_or_limit, chunk_size, reduce_batch_size: DEFAULT_ARITY };
+        self.inner.artifact_client.upload(&vk_controller_artifact, input).await?;
+
+        let output_artifact = self.inner.artifact_client.create_artifact()?;
+
+        let proof_id = ProofId::new("proof".create_type_id::<V7>().to_string());
+
+        let request = RawTaskRequest {
+            inputs: vec![vk_controller_artifact.clone()],
+            outputs: vec![output_artifact.clone()],
+            context: TaskContext {
+                proof_id: proof_id.clone(),
+                parent_id: None,
+                parent_context: None,
+                requester_id: RequesterId::new(format!("local-node-{}", std::process::id())),
+            },
+        };
+
+        let task_id =
+            self.inner.worker_client.submit_task(TaskType::UtilVkeyMapController, request).await?;
+        let subscriber = self.inner.worker_client.subscriber(proof_id).await?.per_task();
+        let status = subscriber.wait_task(task_id).await?;
+        if status != TaskStatus::Succeeded {
+            return Err(anyhow::anyhow!("controller task failed"));
+        }
+
+        // Clean up the input artifacts
+        self.inner
+            .artifact_client
+            .try_delete(&vk_controller_artifact, ArtifactType::Program)
+            .await?;
+
+        // Download the output proof and return it.
+        let output = self
+            .inner
+            .artifact_client
+            .download::<VkeyMapControllerOutput>(&output_artifact)
+            .await?;
+
+        // Clean up the output artifact
+        self.inner
+            .artifact_client
+            .try_delete(&output_artifact, ArtifactType::UnspecifiedArtifactType)
+            .await?;
+
+        Ok(output)
     }
 
     pub async fn prove_with_mode(

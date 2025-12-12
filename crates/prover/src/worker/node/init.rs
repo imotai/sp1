@@ -11,8 +11,9 @@ use tracing::Instrument;
 use crate::{
     components::{CoreProver, RecursionProver, WrapProver},
     worker::{
-        LocalWorkerClient, LocalWorkerClientChannels, ProofId, RawTaskRequest, SP1LocalNode,
-        SP1NodeInner, SP1WorkerBuilder, TaskError, TaskId, TaskMetadata, WorkerClient,
+        run_vk_generation, LocalWorkerClient, LocalWorkerClientChannels, ProofId, RawTaskRequest,
+        SP1LocalNode, SP1NodeInner, SP1WorkerBuilder, TaskError, TaskId, TaskMetadata,
+        WorkerClient,
     },
     SP1ProverComponents,
 };
@@ -90,11 +91,14 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         // Build the node.
         let worker = worker_builder.build().await?;
 
+        // Create a join set for the task handlers.
+        let mut join_set = JoinSet::new();
+
         // Spawn tasks to handle all the requests. We must spawn a handler for each task type to
         // avoid blocking the main thread by not having processed the input channel.
 
         // Spawn the controller handler
-        tokio::task::spawn({
+        join_set.spawn({
             let mut controller_rx = channels.task_receivers.remove(&TaskType::Controller).unwrap();
             let worker = worker.clone();
             async move {
@@ -134,7 +138,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         });
 
         // Spawn the setup handler
-        tokio::task::spawn({
+        join_set.spawn({
             let mut setup_rx = channels.task_receivers.remove(&TaskType::SetupVkey).unwrap();
             let worker = worker.clone();
             let worker_client = worker.worker_client().clone();
@@ -174,8 +178,94 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
             }
         });
 
+        // Spawn the recursion vk tree handler
+        join_set.spawn({
+            let mut controller_rx =
+                channels.task_receivers.remove(&TaskType::UtilVkeyMapController).unwrap();
+            let worker = worker.clone();
+            async move {
+                while let Some((task_id, request)) = controller_rx.recv().await {
+                    // Run the controller task
+                    if let Err(e) =
+                        worker.controller().run_sp1_util_vkey_map_controller(request.clone()).await
+                    {
+                        tracing::error!("Controller: task failed: {e:?}");
+                    }
+
+                    // Complete the task
+                    if let Err(e) = worker
+                        .worker_client()
+                        .complete_task(
+                            request.context.proof_id,
+                            task_id,
+                            TaskMetadata { gpu_time: None },
+                        )
+                        .await
+                    {
+                        tracing::error!("Controller: marking task as complete failed: {e:?}");
+                    }
+
+                    // Remove all the inputs from the task
+                    for input in request.inputs {
+                        if let Err(e) = worker
+                            .artifact_client()
+                            .delete(&input, ArtifactType::UnspecifiedArtifactType)
+                            .await
+                        {
+                            tracing::error!("Controller: deleting input artifact failed: {e:?}");
+                        }
+                    }
+                }
+            }
+        });
+
+        // Spawn the vk chunk worker handler.
+        join_set.spawn({
+            let mut core_prover_rx =
+                channels.task_receivers.remove(&TaskType::UtilVkeyMapChunk).unwrap();
+            let worker = worker.clone();
+            let worker_client = worker.worker_client().clone();
+            let vk_worker = Arc::new(worker.clone().prover_engine().vk_worker.clone());
+            async move {
+                let mut task_set = JoinSet::new();
+                let (task_tx, mut task_rx) = mpsc::unbounded_channel();
+
+                loop {
+                    let vk_worker = vk_worker.clone();
+                    tokio::select! {
+                        Some((id, request)) = core_prover_rx.recv() => {
+                            let proof_id = request.context.proof_id.clone();
+                        let handle = run_vk_generation::<_,_>(vk_worker, request, worker.artifact_client().clone());
+                            let tx = task_tx.clone();
+                            let task_id = id;
+                            task_set.spawn(async move {
+                                match handle.await {
+                                    Ok(()) => {
+                                        tx.send((proof_id, task_id, TaskStatus::Succeeded)).ok();
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Failed to generate vk chunk: {:?}", e);
+                                    }
+                                }
+                            });
+                        }
+
+                        Some((proof_id, task_id , status)) = task_rx.recv() => {
+                            assert_eq!(status, TaskStatus::Succeeded);
+                         if let Err(e) = worker_client.complete_task(proof_id, task_id, TaskMetadata { gpu_time: None }).await {
+                             tracing::error!("Failed to complete vk chunk task: {:?}", e);
+                         }
+                        }
+                        else => {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+
         // Spawn the prove shard handler
-        tokio::task::spawn({
+        join_set.spawn({
             let mut core_prover_rx = channels.task_receivers.remove(&TaskType::ProveShard).unwrap();
             let worker = worker.clone();
             let worker_client = worker.worker_client().clone();
@@ -217,7 +307,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         });
 
         // Spawn the recursion reduce handler
-        tokio::task::spawn({
+        join_set.spawn({
             let mut recursion_reduce_rx =
                 channels.task_receivers.remove(&TaskType::RecursionReduce).unwrap();
             let worker = worker.clone();
@@ -256,7 +346,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         });
 
         // Spawn the deferred handler
-        tokio::task::spawn({
+        join_set.spawn({
             let mut recursion_deferred_rx =
                 channels.task_receivers.remove(&TaskType::RecursionDeferred).unwrap();
             let worker = worker.clone();
@@ -295,7 +385,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
 
         // Spawn the deferred marker task handler.
         // Marker deferred tasks are completed by the [TaskType::ProveShard] task, but we still need to consume the receiver here.
-        tokio::task::spawn({
+        join_set.spawn({
             let mut marker_deferred_task_rx =
                 channels.task_receivers.remove(&TaskType::MarkerDeferredRecord).unwrap();
             async move { while let Some((_task_id, _request)) = marker_deferred_task_rx.recv().await {} }
@@ -304,7 +394,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         // Spawn the shrink wrap handler
         //
         // In the local node, we only allow one of these tasks to be run at a time.
-        tokio::task::spawn({
+        join_set.spawn({
             let mut shrink_wrap_rx = channels.task_receivers.remove(&TaskType::ShrinkWrap).unwrap();
             let worker = worker.clone();
             let worker_client = worker.worker_client().clone();
@@ -338,7 +428,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         // Spawn the plonk wrap handler
         //
         // in the local node, we only allow one of these tasks to be run at a time.
-        tokio::task::spawn({
+        join_set.spawn({
             let mut plonk_wrap_rx = channels.task_receivers.remove(&TaskType::PlonkWrap).unwrap();
             let worker = worker.clone();
             let worker_client = worker.worker_client().clone();
@@ -372,7 +462,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         // Spawn the groth16 wrap handler
         //
         // In the local node, we only allow one of these tasks to be run at a time.
-        tokio::task::spawn({
+        join_set.spawn({
             let mut groth16_wrap_rx =
                 channels.task_receivers.remove(&TaskType::Groth16Wrap).unwrap();
             let worker = worker.clone();
@@ -407,7 +497,13 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         let verifier = worker.verifier().clone();
         let artifact_client = worker.artifact_client().clone();
         let worker_client = worker.worker_client().clone();
-        let inner = Arc::new(SP1NodeInner { artifact_client, worker_client, verifier, opts });
+        let inner = Arc::new(SP1NodeInner {
+            artifact_client,
+            worker_client,
+            verifier,
+            opts,
+            _tasks: join_set,
+        });
         Ok(SP1LocalNode { inner })
     }
 }

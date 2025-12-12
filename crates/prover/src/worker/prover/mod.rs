@@ -5,6 +5,7 @@ mod engine;
 mod execute;
 mod metric;
 mod recursion;
+mod vk_worker;
 
 pub use air_prover::*;
 pub use core::*;
@@ -13,3 +14,4 @@ pub use engine::*;
 pub use execute::*;
 pub use metric::*;
 pub use recursion::*;
+pub use vk_worker::*;

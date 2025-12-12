@@ -67,7 +67,7 @@ pub fn setup_logger() {
 
                 if ratio > 0.8 {
                     tracing::warn!(
-                        "Memory usage is high: {:.2}%, we recommand using the prover network",
+                        "Memory usage is high: {:.2}%, we recommend using the prover network",
                         ratio * 100.0
                     );
                 }

@@ -1,12 +1,9 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{fs::File, path::PathBuf};
 
 use clap::Parser;
+use either::Either;
 use sp1_core_machine::utils::setup_logger;
-use sp1_prover::{
-    components::CpuSP1ProverComponents,
-    shapes::{build_vk_map_to_file, DEFAULT_ARITY},
-    SP1ProverBuilder,
-};
+use sp1_prover::worker::{cpu_worker_builder, SP1LocalNodeBuilder};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -17,30 +14,29 @@ struct Args {
     start: Option<usize>,
     #[clap(short, long)]
     end: Option<usize>,
+    #[clap(short, long, default_value_t = 4)]
+    chunk_size: usize,
 }
 #[tokio::main]
 async fn main() {
     setup_logger();
     let args = Args::parse();
 
-    let maximum_compose_arity = DEFAULT_ARITY;
     let build_dir = args.build_dir;
-    let num_compiler_workers = 1;
-    let num_setup_workers = 1;
     let start = args.start;
     let end = args.end;
+    let chunk_size = args.chunk_size;
 
-    let prover = Arc::new(SP1ProverBuilder::new().build().await);
+    let maybe_range = start.and_then(|s| end.map(|e| (s..e).collect::<Vec<usize>>()));
+    let maybe_either = maybe_range.map(Either::Left);
+    let node = SP1LocalNodeBuilder::from_worker_client_builder(cpu_worker_builder())
+        .build()
+        .await
+        .unwrap();
+    let result = node.build_vks(maybe_either, chunk_size).await.unwrap();
 
-    build_vk_map_to_file::<CpuSP1ProverComponents>(
-        build_dir.clone(),
-        maximum_compose_arity,
-        false,
-        num_compiler_workers,
-        num_setup_workers,
-        start.and_then(|s| end.map(|e| (s..e).collect())),
-        prover,
-    )
-    .await
-    .unwrap();
+    // Create the file to store the vk map.
+    let mut file = File::create(build_dir.join("vk_map.bin")).unwrap();
+
+    bincode::serialize_into(&mut file, &result.vk_map).unwrap();
 }
