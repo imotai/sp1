@@ -47,7 +47,6 @@ memmap2 = { workspace = true }
 cfg-if = { workspace = true }
 
 # profiling
-goblin = { workspace = true, optional = true }
 rustc-demangle = { workspace = true, optional = true }
 gecko_profile = { workspace = true, optional = true }
 indicatif = { workspace = true, optional = true }
@@ -61,7 +60,6 @@ test-artifacts = { workspace = true }
 [features]
 bigint-rug = ["sp1-curves/bigint-rug"]
 profiling = [
-  "dep:goblin",
   "dep:rustc-demangle",
   "dep:gecko_profile",
   "dep:indicatif",

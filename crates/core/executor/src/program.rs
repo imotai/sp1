@@ -43,6 +43,8 @@ pub struct Program {
     pub preprocessed_shape: Option<Shape<RiscvAirId>>,
     /// Flag indicating if untrusted programs are allowed.
     pub enable_untrusted_programs: bool,
+    /// Function symbols for profiling & debugging. In the form of (name, start address, size)
+    pub function_symbols: Vec<(String, u64, u64)>,
 }
 
 impl Program {
@@ -61,6 +63,7 @@ impl Program {
             memory_image: Arc::new(HashMap::new()),
             preprocessed_shape: None,
             enable_untrusted_programs: false,
+            function_symbols: Vec::new(),
         }
     }
 
@@ -102,6 +105,7 @@ impl Program {
             page_prot_image: elf.page_prot_image,
             preprocessed_shape: None,
             enable_untrusted_programs: elf.enable_untrusted_programs,
+            function_symbols: elf.function_symbols,
         })
     }
 

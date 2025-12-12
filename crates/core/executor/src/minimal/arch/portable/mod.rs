@@ -38,6 +38,8 @@ pub struct MinimalExecutor {
     hints: Vec<(u64, Vec<u8>)>,
     maybe_unconstrained: Option<UnconstrainedCtx>,
     debug_sender: Option<mpsc::SyncSender<Option<debug::State>>>,
+    #[cfg(feature = "profiling")]
+    profiler: Option<(crate::profiler::Profiler, std::io::BufWriter<std::fs::File>)>,
 }
 
 #[derive(Debug)]
@@ -197,7 +199,7 @@ impl MinimalExecutor {
             memory.insert(*addr, MemValue { clk: 0, value: *value });
         }
 
-        Self {
+        let mut result = Self {
             program,
             input: VecDeque::new(),
             registers: [0; 32],
@@ -212,6 +214,50 @@ impl MinimalExecutor {
             maybe_unconstrained: None,
             debug_sender: None,
             exit_code: 0,
+            #[cfg(feature = "profiling")]
+            profiler: None,
+        };
+        result.maybe_setup_profiler();
+        result
+    }
+
+    /// WARNING: This function's API is subject to change without a major version bump.
+    ///
+    /// If the feature `"profiling"` is enabled, this sets up the profiler. Otherwise, it does
+    /// nothing.
+    ///
+    /// The profiler is configured by the following environment variables:
+    ///
+    /// - `TRACE_FILE`: writes Gecko traces to this path. If unspecified, the profiler is disabled.
+    /// - `TRACE_SAMPLE_RATE`: The period between clock cycles where samples are taken. Defaults to
+    ///   1.
+    #[inline]
+    #[allow(unused_variables)]
+    fn maybe_setup_profiler(&mut self) {
+        #[cfg(feature = "profiling")]
+        {
+            use crate::profiler::Profiler;
+            use std::{fs::File, io::BufWriter};
+
+            let trace_buf = std::env::var("TRACE_FILE").ok().map(|file| {
+                let file = File::create(file).unwrap();
+                BufWriter::new(file)
+            });
+
+            if let Some(trace_buf) = trace_buf {
+                eprintln!("Profiling enabled");
+
+                let sample_rate = std::env::var("TRACE_SAMPLE_RATE")
+                    .ok()
+                    .and_then(|rate| {
+                        eprintln!("Profiling sample rate: {rate}");
+                        rate.parse::<u32>().ok()
+                    })
+                    .unwrap_or(1);
+
+                self.profiler =
+                    Some((Profiler::from_program(&self.program, sample_rate as u64), trace_buf));
+            }
         }
     }
 
@@ -266,6 +312,13 @@ impl MinimalExecutor {
         let start_hint_idx = self.hints.len();
 
         while !self.execute_instruction() {}
+
+        #[cfg(feature = "profiling")]
+        if self.is_done() {
+            if let Some((profiler, writer)) = self.profiler.take() {
+                profiler.write(writer).expect("Failed to write profile to output file");
+            }
+        }
 
         if self.traces.is_some() {
             unsafe {
@@ -385,6 +438,12 @@ impl MinimalExecutor {
         let instruction = program.fetch(self.pc).unwrap();
         if let Some(sender) = &self.debug_sender {
             sender.send(Some(self.current_state())).expect("Failed to send debug state");
+        }
+        #[cfg(feature = "profiling")]
+        if let Some((ref mut profiler, _)) = self.profiler {
+            if self.maybe_unconstrained.is_none() {
+                profiler.record(self.global_clk, self.pc);
+            }
         }
 
         let mut next_pc = self.pc.wrapping_add(PC_BUMP);

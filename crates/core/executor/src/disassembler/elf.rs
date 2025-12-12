@@ -37,6 +37,8 @@ pub(crate) struct Elf {
     pub(crate) enable_untrusted_programs: bool,
     /// The initial memory image, useful for global constants.
     pub(crate) memory_image: Arc<HashMap<u64, u64>>,
+    /// Function symbols for profiling. In the form of (name, start address, size)
+    pub(crate) function_symbols: Vec<(String, u64, u64)>,
 }
 
 impl Elf {
@@ -49,6 +51,7 @@ impl Elf {
         memory_image: HashMap<u64, u64>,
         page_prot_image: HashMap<u64, u8>,
         enable_untrusted_programs: bool,
+        function_symbols: Vec<(String, u64, u64)>,
     ) -> Self {
         Self {
             instructions,
@@ -57,6 +60,7 @@ impl Elf {
             memory_image: Arc::new(memory_image),
             page_prot_image,
             enable_untrusted_programs,
+            function_symbols,
         }
     }
 
@@ -136,6 +140,25 @@ impl Elf {
             eyre::bail!("invalid number of instructions");
         }
 
+        #[cfg(not(feature = "profiling"))]
+        let function_symbols = Vec::new();
+
+        #[cfg(feature = "profiling")]
+        let function_symbols =
+            elf.symbol_table()?.map_or_else(Vec::new, |(symbol_table, string_table)| {
+                symbol_table
+                    .iter()
+                    .filter(|sym| sym.st_symtype() == elf::abi::STT_FUNC)
+                    .map(|sym| {
+                        let name = string_table.get(sym.st_name as usize).unwrap_or("");
+                        let demangled_name = rustc_demangle::demangle(name).to_string();
+                        let size = sym.st_size;
+                        let start_address = sym.st_value;
+                        (demangled_name, start_address, size)
+                    })
+                    .collect()
+            });
+
         Ok(Elf::new(
             instructions,
             entry,
@@ -143,6 +166,7 @@ impl Elf {
             image,
             page_prot_image,
             enable_untrusted_programs,
+            function_symbols,
         ))
     }
 

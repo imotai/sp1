@@ -209,7 +209,6 @@ gecko_profile = "0.4.0"
 generic-array = "=1.1.0"
 getrandom_v2 = { package = "getrandom", version = "0.2.15", default-features = false }
 getrandom_v3 = { package = "getrandom", version = "0.3.3", default-features = false }
-goblin = "0.9"
 hashbrown = "0.14.5"
 hex = "0.4.3"
 indicatif = "0.17.8"
