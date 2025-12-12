@@ -57,6 +57,8 @@ impl<F: PrimeField32> MachineExecutor<F> {
         &self.opts
     }
 
+    /// DEPRECATED: use [`sp1_prover::execute_with_optional_gas`] instead.
+    ///
     /// Execute a program synchronously and return the same interface as the deprecated core
     /// executor.
     ///
@@ -103,14 +105,11 @@ impl<F: PrimeField32> MachineExecutor<F> {
         let mut accumulated_report = ExecutionReport::default();
         let filler: [u8; 32] = [0; 32];
 
-        let mut touched_addresses = CompressedMemory::new();
-
         for chunk in chunks {
             let mut gas_estimating_vm = GasEstimatingVM::new(
                 &chunk,
                 program.clone(),
                 context.proof_nonce,
-                &mut touched_addresses,
                 self.opts.clone(),
             );
             let report = gas_estimating_vm.execute().unwrap();

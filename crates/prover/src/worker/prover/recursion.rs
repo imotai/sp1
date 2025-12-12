@@ -55,7 +55,7 @@ use std::{
 use tokio::sync::oneshot;
 use tracing::Instrument;
 
-/// Configuration for the core prover.
+/// Configuration for the recursion prover.
 #[derive(Debug, Clone)]
 pub struct SP1RecursionProverConfig {
     /// The number of prepare reduce workers.

@@ -293,11 +293,11 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
             }
         });
 
+        // Spawn the deferred marker task handler.
+        // Marker deferred tasks are completed by the [TaskType::ProveShard] task, but we still need to consume the receiver here.
         tokio::task::spawn({
             let mut marker_deferred_task_rx =
                 channels.task_receivers.remove(&TaskType::MarkerDeferredRecord).unwrap();
-            // Marker deferred tasks are completed by the [TaskType::ProveShard] task so no need to
-            // handle them here.
             async move { while let Some((_task_id, _request)) = marker_deferred_task_rx.recv().await {} }
         });
 

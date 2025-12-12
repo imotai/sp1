@@ -233,7 +233,7 @@ impl JitContext {
     /// Enter the unconstrained context, this will create a COW memory map of the memory file
     /// descriptor.
     pub fn enter_unconstrained(&mut self) -> io::Result<()> {
-        // SAFETY: The memory is allocated by the [JitFunction] and is valid, not alisiaed, and has
+        // SAFETY: The memory is allocated by the [JitFunction] and is valid, not aliased, and has
         // enough space for the alignment.
         let mut cow_memory =
             unsafe { MmapOptions::new().no_reserve_swap().map_copy(self.memory_fd)? };

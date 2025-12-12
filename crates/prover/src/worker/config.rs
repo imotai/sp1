@@ -212,3 +212,7 @@ pub(crate) const DEFAULT_VK_VERIFICATION: bool = false;
 // Default values for the deferred prover config.
 pub(crate) const DEFAULT_NUM_DEFERRED_WORKERS: usize = 4;
 pub(crate) const DEFAULT_DEFERRED_BUFFER_SIZE: usize = 2;
+
+// Default values for the gas executor config.
+pub(crate) const DEFAULT_NUM_GAS_EXECUTOR_WORKERS: usize = 4;
+pub(crate) const DEFAULT_GAS_EXECUTOR_BUFFER_SIZE: usize = 4;

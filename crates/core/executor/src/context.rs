@@ -6,6 +6,7 @@ use crate::{
     subproof::SubproofVerifier,
 };
 use hashbrown::HashMap;
+use sp1_hypercube::air::PROOF_NONCE_NUM_WORDS;
 use std::io::Write;
 
 use sp1_primitives::consts::fd::LOWEST_ALLOWED_FD;
@@ -82,7 +83,7 @@ pub struct SP1Context<'a> {
 
     /// The nonce used for this specific proof execution (4 x u32 = 128 bits of entropy).
     /// This nonce ensures each proof is unique even for identical programs and inputs.
-    pub proof_nonce: [u32; 4],
+    pub proof_nonce: [u32; PROOF_NONCE_NUM_WORDS],
 
     /// The IO options for the [`SP1Executor`].
     pub io_options: IoOptions<'a>,

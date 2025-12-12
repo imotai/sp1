@@ -7,7 +7,6 @@ use crate::{
     syscalls::SyscallCode,
     vm::{
         gas::ReportGenerator,
-        memory::CompressedMemory,
         results::{
             AluResult, BranchResult, CycleResult, JumpResult, LoadResult, MaybeImmediate,
             StoreResult, UTypeResult,
@@ -22,8 +21,6 @@ use crate::{
 pub struct GasEstimatingVM<'a> {
     /// The core VM.
     pub core: CoreVM<'a>,
-    /// The addresses that have been touched.
-    pub touched_addresses: &'a mut CompressedMemory,
     /// The gas calculator for the VM.
     pub gas_calculator: ReportGenerator,
     /// The index of the hint lens the next shard will use.
@@ -119,17 +116,15 @@ impl GasEstimatingVM<'_> {
 }
 
 impl<'a> GasEstimatingVM<'a> {
-    /// Create a new full-tracing VM from a minimal trace.
+    /// Create a new gas estimating VM from a minimal trace.
     pub fn new<T: MinimalTrace>(
         trace: &'a T,
         program: Arc<Program>,
         proof_nonce: [u32; PROOF_NONCE_NUM_WORDS],
-        touched_addresses: &'a mut CompressedMemory,
         opts: SP1CoreOpts,
     ) -> Self {
         Self {
             core: CoreVM::new(trace, program, opts, proof_nonce),
-            touched_addresses,
             hint_lens_idx: 0,
             gas_calculator: ReportGenerator::new(trace.clk_start()),
         }
@@ -144,9 +139,6 @@ impl<'a> GasEstimatingVM<'a> {
     pub fn execute_load(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
         let LoadResult { addr, rd, mr_record, rr_record, rw_record, rs1, .. } =
             self.core.execute_load(instruction)?;
-
-        // Ensure the address is aligned to 8 bytes.
-        self.touched_addresses.insert(addr & !0b111, true);
 
         self.gas_calculator.handle_instruction(
             instruction,
@@ -171,9 +163,6 @@ impl<'a> GasEstimatingVM<'a> {
     pub fn execute_store(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
         let StoreResult { addr, mw_record, rs1_record, rs2_record, rs1, rs2, .. } =
             self.core.execute_store(instruction)?;
-
-        // Ensure the address is aligned to 8 bytes.
-        self.touched_addresses.insert(addr & !0b111, true);
 
         self.gas_calculator.handle_instruction(
             instruction,

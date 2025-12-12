@@ -4,10 +4,7 @@ use std::sync::Arc;
 
 pub use init::*;
 use mti::prelude::{MagicTypeIdExt, V7};
-use sp1_core_executor::{
-    CompressedMemory, ExecutionReport, GasEstimatingVM, MinimalExecutor, Program, SP1Context,
-    SP1CoreOpts,
-};
+use sp1_core_executor::{ExecutionReport, Program, SP1Context, SP1CoreOpts};
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::io::SP1PublicValues;
 use sp1_prover_types::{
@@ -19,7 +16,10 @@ use tracing::{instrument, Instrument};
 
 use crate::{
     verify::SP1Verifier,
-    worker::{LocalWorkerClient, ProofId, RawTaskRequest, RequesterId, TaskContext, WorkerClient},
+    worker::{
+        execute_with_optional_gas, LocalWorkerClient, ProofId, RawTaskRequest, RequesterId,
+        SP1ExecutorConfig, TaskContext, WorkerClient,
+    },
     SP1CoreProofData, SP1VerifyingKey,
 };
 
@@ -41,60 +41,25 @@ impl Clone for SP1LocalNode {
 }
 
 impl SP1LocalNode {
-    fn blocking_execute_program(
+    #[instrument(name = "execute_program", skip_all)]
+    pub async fn execute(
         &self,
-        program: Arc<Program>,
+        elf: &[u8],
         stdin: SP1Stdin,
         context: SP1Context<'static>,
     ) -> anyhow::Result<(SP1PublicValues, [u8; 32], ExecutionReport)> {
-        // Phase 1: Use MinimalExecutor for fast execution and public values stream
-        const MINIMAL_TRACE_CHUNK_THRESHOLD: u64 =
-            2147483648 / std::mem::size_of::<sp1_jit::MemValue>() as u64;
-        let max_number_trace_entries = std::env::var("MINIMAL_TRACE_CHUNK_THRESHOLD").map_or_else(
-            |_| MINIMAL_TRACE_CHUNK_THRESHOLD,
-            |s| s.parse::<u64>().unwrap_or(MINIMAL_TRACE_CHUNK_THRESHOLD),
-        );
-
-        let mut minimal_executor =
-            MinimalExecutor::new(program.clone(), false, Some(max_number_trace_entries));
-
-        // Feed stdin buffers to the executor
-        for buf in stdin.buffer {
-            minimal_executor.with_input(&buf);
-        }
-
-        // Execute the program to completion, collecting all trace chunks
-        let mut chunks = Vec::new();
-        while let Some(chunk) = minimal_executor.execute_chunk() {
-            chunks.push(chunk);
-        }
-
-        tracing::info!("chunks: {:?}", chunks.len());
-
-        // Extract the public values stream from minimal executor
-        let public_value_stream = minimal_executor.into_public_values_stream();
-        let public_values = SP1PublicValues::from(&public_value_stream);
-
-        tracing::info!("public_value_stream: {:?}", public_value_stream);
-
-        let mut accumulated_report = ExecutionReport::default();
-        let filler: [u8; 32] = [0; 32];
-
-        let mut touched_addresses = CompressedMemory::new();
-
-        for chunk in chunks {
-            let mut gas_estimating_vm = GasEstimatingVM::new(
-                &chunk,
-                program.clone(),
-                context.proof_nonce,
-                &mut touched_addresses,
-                self.inner.opts.clone(),
-            );
-            let report = gas_estimating_vm.execute().unwrap();
-            accumulated_report += report;
-        }
-
-        Ok((public_values, filler, accumulated_report))
+        let program = Program::from(elf)
+            .map_err(|e| anyhow::anyhow!("failed to dissassemble program: {}", e))?;
+        let program = Arc::new(program);
+        execute_with_optional_gas(
+            program,
+            stdin,
+            context.proof_nonce,
+            context.calculate_gas,
+            self.inner.opts.clone(),
+            SP1ExecutorConfig::default(),
+        )
+        .await
     }
 
     pub async fn setup(&self, elf: &[u8]) -> anyhow::Result<SP1VerifyingKey> {
@@ -137,21 +102,6 @@ impl SP1LocalNode {
             .await?;
 
         Ok(vk)
-    }
-
-    #[instrument(name = "execute_program", skip_all)]
-    pub async fn execute(
-        &self,
-        elf: &[u8],
-        stdin: SP1Stdin,
-        context: SP1Context<'static>,
-    ) -> anyhow::Result<(SP1PublicValues, [u8; 32], ExecutionReport)> {
-        let node = self.clone();
-        let program = Program::from(elf)
-            .map_err(|e| anyhow::anyhow!("failed to dissassemble program: {}", e))?;
-        let program = Arc::new(program);
-        tokio::task::spawn_blocking(move || node.blocking_execute_program(program, stdin, context))
-            .await?
     }
 
     pub async fn prove(
