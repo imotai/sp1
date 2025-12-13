@@ -138,7 +138,7 @@ impl RangeProofs {
     }
 
     pub async fn download_witness(
-        self,
+        &self,
         is_complete: bool,
         artifact_client: &impl ArtifactClient,
     ) -> Result<SP1CircuitWitness, TaskError> {
@@ -159,6 +159,19 @@ impl RangeProofs {
         let witness = SP1ShapedWitnessValues { vks_and_proofs, is_complete };
         let witness = SP1CircuitWitness::Compress(witness);
         Ok(witness)
+    }
+
+    pub async fn try_delete_proofs(
+        &self,
+        artifact_client: &impl ArtifactClient,
+    ) -> Result<(), TaskError> {
+        try_join_all(self.proofs.iter().map(|proof| async {
+            // Delete the proof artifact.
+            artifact_client.try_delete(&proof.proof, ArtifactType::UnspecifiedArtifactType).await?;
+            Ok::<_, TaskError>(())
+        }))
+        .await?;
+        Ok(())
     }
 }
 

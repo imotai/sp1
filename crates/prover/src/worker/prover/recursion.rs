@@ -132,13 +132,20 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
         let witness = range_proofs.download_witness(is_complete, &self.artifact_client).await?;
 
         let metrics = ProverMetrics::new();
-        Ok(RecursionTask { program, witness, output, metrics })
+        Ok(RecursionTask {
+            program,
+            witness,
+            output,
+            metrics,
+            range_proofs_to_cleanup: Some(range_proofs),
+        })
     }
 }
 
 pub struct RecursionTask {
     program: Arc<RecursionProgram<SP1Field>>,
     witness: SP1CircuitWitness,
+    range_proofs_to_cleanup: Option<RangeProofs>,
     output: Artifact,
     metrics: ProverMetrics,
 }
@@ -156,7 +163,7 @@ impl<C: SP1ProverComponents>
         &self,
         input: Result<RecursionTask, TaskError>,
     ) -> Result<ProveRecursionTask<C>, TaskError> {
-        let RecursionTask { program, witness, output, metrics } = input?;
+        let RecursionTask { program, witness, output, metrics, range_proofs_to_cleanup } = input?;
 
         // Execute the runtime.
         let runtime_span = tracing::debug_span!("execute runtime").entered();
@@ -197,7 +204,7 @@ impl<C: SP1ProverComponents>
             _ => unimplemented!(),
         })?;
 
-        Ok(ProveRecursionTask { record, keys, output, metrics })
+        Ok(ProveRecursionTask { record, keys, output, metrics, range_proofs_to_cleanup })
     }
 }
 
@@ -214,6 +221,7 @@ pub struct ProveRecursionTask<C: SP1ProverComponents> {
     keys: RecursionKeys<C>,
     output: Artifact,
     metrics: ProverMetrics,
+    range_proofs_to_cleanup: Option<RangeProofs>,
 }
 
 pub struct RecursionProverWorker<A, C: SP1ProverComponents> {
@@ -309,13 +317,18 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
         input: Result<ProveRecursionTask<C>, TaskError>,
     ) -> Result<TaskMetadata, TaskError> {
         // Get the input or return an error
-        let ProveRecursionTask { record, keys, output, metrics } = input?;
+        let ProveRecursionTask { record, keys, output, metrics, range_proofs_to_cleanup } = input?;
         // Prove the shard
         let proof = self.prove_shard(keys, record, metrics.clone()).await?;
         // Upload the proof
 
         self.artifact_client.upload(&output, proof.clone()).await?;
         let metadata = metrics.to_metadata();
+
+        // Delete the proofs to cleanup.
+        if let Some(proofs_to_cleanup) = range_proofs_to_cleanup {
+            proofs_to_cleanup.try_delete_proofs(&self.artifact_client).await?;
+        }
 
         Ok(metadata)
     }
@@ -573,7 +586,13 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
         metrics: ProverMetrics,
     ) -> Result<RecursionProveSubmitHandle<A, C>, SubmitError> {
         self.recursion_prover_pipeline()
-            .submit(Ok(RecursionTask { program, witness, output, metrics }))
+            .submit(Ok(RecursionTask {
+                program,
+                witness,
+                output,
+                metrics,
+                range_proofs_to_cleanup: None,
+            }))
             .await
     }
 
