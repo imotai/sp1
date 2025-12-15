@@ -24,16 +24,18 @@ pub mod lib {
 #[cfg(all(target_os = "zkvm", feature = "libm"))]
 mod libm;
 
+include!(concat!(env!("OUT_DIR"), "/configs.rs"));
+
 /// The number of 32 bit words that the public values digest is composed of.
 pub const PV_DIGEST_NUM_WORDS: usize = 8;
 pub const POSEIDON_NUM_WORDS: usize = 8;
 
 #[cfg(all(target_os = "zkvm", not(feature = "bump")))]
-const MAX_MEMORY: usize = 1 << 37;
+const MAX_MEMORY: usize = configs::MAX_MEMORY;
 
 /// Size of the reserved region for input values with the embedded allocator.
 #[cfg(all(target_os = "zkvm", not(feature = "bump")))]
-pub(crate) const EMBEDDED_RESERVED_INPUT_REGION_SIZE: usize = 1 << 34;
+pub(crate) const EMBEDDED_RESERVED_INPUT_REGION_SIZE: usize = configs::INPUT_REGION_SIZE;
 
 /// Start of the reserved region for inputs with the embedded allocator.
 #[cfg(all(target_os = "zkvm", not(feature = "bump")))]
