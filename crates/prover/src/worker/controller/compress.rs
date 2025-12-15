@@ -147,8 +147,6 @@ impl RangeProofs {
             let downloaded_proof = artifact_client
                 .download::<SP1RecursionProof<SP1GlobalContext, InnerSC>>(&proof.proof)
                 .await?;
-            // Delete the proof artifact.
-            artifact_client.try_delete(&proof.proof, ArtifactType::UnspecifiedArtifactType).await?;
 
             Ok::<_, TaskError>(downloaded_proof)
         }))
