@@ -1,15 +1,12 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    iter::once,
-};
+use std::{collections::BTreeSet, iter::once};
 
 use slop_algebra::AbstractField;
 use slop_basefold::{BasefoldVerifier, FriConfig};
 use slop_multilinear::Point;
 use sp1_hypercube::{
-    air::MachineAir, septic_digest::SepticDigest, AirOpenedValues, Chip, ChipDimensions,
-    ChipOpenedValues, MachineVerifyingKey, SP1CoreJaggedConfig, ShardOpenedValues, ShardProof,
-    NUM_SP1_COMMITMENTS, PROOF_MAX_NUM_PVS,
+    air::MachineAir, septic_digest::SepticDigest, AirOpenedValues, Chip, ChipOpenedValues,
+    MachineVerifyingKey, SP1CoreJaggedConfig, ShardOpenedValues, ShardProof, NUM_SP1_COMMITMENTS,
+    PROOF_MAX_NUM_PVS,
 };
 use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
 
@@ -17,17 +14,13 @@ use crate::dummy::{
     jagged::dummy_pcs_proof, logup_gkr::dummy_gkr_proof, sumcheck::dummy_sumcheck_proof,
 };
 
-type F = SP1Field;
 type EF = SP1ExtensionField;
 
-pub fn dummy_vk(
-    preprocessed_chip_information: BTreeMap<String, ChipDimensions<F>>,
-) -> MachineVerifyingKey<SP1GlobalContext, SP1CoreJaggedConfig> {
+pub fn dummy_vk() -> MachineVerifyingKey<SP1GlobalContext, SP1CoreJaggedConfig> {
     MachineVerifyingKey {
         pc_start: [SP1Field::zero(); 3],
         initial_global_cumulative_sum: SepticDigest::zero(),
         preprocessed_commit: [SP1Field::zero(); 8],
-        preprocessed_chip_information,
         marker: std::marker::PhantomData,
         enable_untrusted_programs: SP1Field::zero(),
     }

@@ -490,20 +490,38 @@ where
             }
         }
 
-        for (chip, dimensions) in vk.preprocessed_chip_information.iter() {
-            if let Some(height) = heights.get(chip) {
-                if *height != dimensions.height {
-                    return Err(ShardVerifierError::PreprocessedChipHeightMismatch(chip.clone()));
-                }
-            } else {
-                return Err(ShardVerifierError::PreprocessedChipHeightMismatch(chip.clone()));
-            }
-        }
-
         let machine_chip_names =
             self.machine.chips().iter().map(MachineAir::name).collect::<BTreeSet<_>>();
 
-        if !shard_chips.is_subset(&machine_chip_names) {
+        let preprocessed_chips = self
+            .machine
+            .chips()
+            .iter()
+            .filter(|chip| chip.preprocessed_width() != 0)
+            .collect::<BTreeSet<_>>();
+
+        // Check:
+        // 1. All shard chips in the proof are expected from the machine configuration.
+        // 2. All chips with non-zero preprocessed width in the machine configuration appear in
+        //  the proof.
+        // 3. The preprocessed widths as deduced from the jagged proof exactly match those
+        // expected from the machine configuration.
+        if !shard_chips.is_subset(&machine_chip_names)
+            || !preprocessed_chips
+                .iter()
+                .map(|chip| chip.name())
+                .collect::<BTreeSet<_>>()
+                .is_subset(&shard_chips)
+            || evaluation_proof.row_counts_and_column_counts[0]
+                .iter()
+                .map(|&(_, c)| c)
+                .take(preprocessed_chips.len())
+                .collect::<Vec<_>>()
+                != preprocessed_chips
+                    .iter()
+                    .map(|chip| chip.preprocessed_width())
+                    .collect::<Vec<_>>()
+        {
             return Err(ShardVerifierError::InvalidShape);
         }
 
@@ -561,12 +579,35 @@ where
             return Err(ShardVerifierError::InvalidShape);
         }
 
-        for (shard_chip, (chip_name, _)) in shard_chips.iter().zip_eq(opened_values.chips.iter()) {
+        for ((shard_chip, (chip_name, _)), (gkr_chip_name, gkr_opened_values)) in shard_chips
+            .iter()
+            .zip_eq(opened_values.chips.iter())
+            .zip_eq(logup_gkr_proof.logup_evaluations.chip_openings.iter())
+        {
             if shard_chip.name() != *chip_name {
                 return Err(ShardVerifierError::InvalidChipOrder(
                     shard_chip.name(),
                     chip_name.clone(),
                 ));
+            }
+            if shard_chip.name() != *gkr_chip_name {
+                return Err(ShardVerifierError::InvalidChipOrder(
+                    shard_chip.name(),
+                    gkr_chip_name.clone(),
+                ));
+            }
+
+            if gkr_opened_values
+                .preprocessed_trace_evaluations
+                .as_ref()
+                .map_or(0, MleEval::num_polynomials)
+                != shard_chip.preprocessed_width()
+            {
+                return Err(ShardVerifierError::InvalidShape);
+            }
+
+            if gkr_opened_values.main_trace_evaluations.len() != shard_chip.width() {
+                return Err(ShardVerifierError::InvalidShape);
             }
         }
 

@@ -28,7 +28,7 @@ use crate::{
     air::{MachineAir, MachineProgram},
     prover::{ProverPermit, ProverSemaphore, ZeroCheckPoly, ZerocheckAir},
     septic_digest::SepticDigest,
-    AirOpenedValues, Chip, ChipDimensions, ChipEvaluation, ChipOpenedValues, ChipStatistics,
+    AirOpenedValues, Chip, ChipEvaluation, ChipOpenedValues, ChipStatistics,
     ConstraintSumcheckFolder, LogUpEvaluations, LogUpGkrProver, Machine, MachineConfig,
     MachineRecord, MachineVerifyingKey, ShardOpenedValues, ShardProof,
 };
@@ -388,24 +388,10 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
         let (preprocessed_commit, preprocessed_data) =
             self.pcs_prover.commit_multilinears(message).await.unwrap();
 
-        let preprocessed_chip_information = preprocessed_traces
-            .iter()
-            .map(|(name, trace)| {
-                (
-                    name.to_owned(),
-                    ChipDimensions {
-                        height: GC::F::from_canonical_usize(trace.num_real_entries()),
-                        num_polynomials: GC::F::from_canonical_usize(trace.num_polynomials()),
-                    },
-                )
-            })
-            .collect::<BTreeMap<_, _>>();
-
         let vk = MachineVerifyingKey {
             pc_start,
             initial_global_cumulative_sum,
             preprocessed_commit,
-            preprocessed_chip_information,
             enable_untrusted_programs,
             marker: std::marker::PhantomData,
         };

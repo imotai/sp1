@@ -21,9 +21,8 @@ use slop_commit::Rounds;
 use slop_multilinear::{Evaluations, MleEval, Point};
 use slop_sumcheck::PartialSumcheckProof;
 use sp1_hypercube::{
-    air::MachineAir, septic_digest::SepticDigest, ChipDimensions,
-    GenericVerifierPublicValuesConstraintFolder, LogupGkrProof, Machine, MachineRecord,
-    ShardOpenedValues,
+    air::MachineAir, septic_digest::SepticDigest, GenericVerifierPublicValuesConstraintFolder,
+    LogupGkrProof, Machine, MachineRecord, ShardOpenedValues,
 };
 use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::{
@@ -55,8 +54,6 @@ pub struct MachineVerifyingKeyVariable<C: CircuitConfig, SC: SP1FieldConfigVaria
     pub initial_global_cumulative_sum: SepticDigest<Felt<SP1Field>>,
     /// The preprocessed commitments.
     pub preprocessed_commit: SC::DigestVariable,
-    /// The preprocessed chip information.
-    pub preprocessed_chip_information: BTreeMap<String, ChipDimensions<Felt<SP1Field>>>,
     /// Flag indicating if untrusted programs are allowed.
     pub enable_untrusted_programs: Felt<SP1Field>,
 }
@@ -79,15 +76,6 @@ where
         inputs.extend(self.initial_global_cumulative_sum.0.x.0);
         inputs.extend(self.initial_global_cumulative_sum.0.y.0);
         inputs.push(self.enable_untrusted_programs);
-        for (name, ChipDimensions { height, num_polynomials: _ }) in
-            self.preprocessed_chip_information.iter()
-        {
-            inputs.push(*height);
-            inputs.push(builder.eval(SP1Field::from_canonical_usize(name.len())));
-            for byte in name.as_bytes() {
-                inputs.push(builder.eval(SP1Field::from_canonical_u8(*byte)));
-            }
-        }
 
         SC::hash(builder, &inputs)
     }
@@ -197,22 +185,6 @@ where
                 inputs.push(builder.eval(GC::F::from_canonical_u8(*byte)));
             }
             challenger.observe_slice(builder, inputs);
-        }
-
-        for (chip, dimensions) in vk.preprocessed_chip_information.iter() {
-            if let Some(height) = height_felts_map.get(chip) {
-                builder.assert_felt_eq(*height, dimensions.height);
-            } else {
-                builder.assert_felt_eq(SymbolicFelt::zero(), SymbolicFelt::one());
-            }
-        }
-
-        for (chip, dimensions) in vk.preprocessed_chip_information.iter() {
-            if let Some(height) = height_felts_map.get(chip) {
-                builder.assert_felt_eq(*height, dimensions.height);
-            } else {
-                builder.assert_felt_eq(SymbolicFelt::zero(), SymbolicFelt::one());
-            }
         }
 
         let shard_chips = self

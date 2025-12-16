@@ -255,16 +255,6 @@ fn build_outer_circuit(
     for (vk_pc, template_vk_pc) in vk.pc_start.iter().zip_eq(template_vk.pc_start.iter()) {
         builder.assert_felt_eq(*vk_pc, *template_vk_pc);
     }
-    // Constrain the preprocessed heights to be the same as template `vk`.
-    for ((vk_chip, vk_dimension), (template_vk_chip, template_vk_dimension)) in vk
-        .preprocessed_chip_information
-        .iter()
-        .zip_eq(template_vk.preprocessed_chip_information.iter())
-    {
-        assert_eq!(vk_chip, template_vk_chip);
-        builder.assert_felt_eq(vk_dimension.height, template_vk_dimension.height);
-        builder.assert_felt_eq(vk_dimension.num_polynomials, template_vk_dimension.num_polynomials);
-    }
     // Verify the proof.
     SP1WrapVerifier::verify(&mut builder, &recursive_wrap_verifier, input);
 

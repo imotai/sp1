@@ -25,7 +25,7 @@ use sp1_hypercube::{
     air::MachineAir,
     log2_ceil_usize,
     prover::{CoreProofShape, DefaultTraceGenerator, ProverSemaphore, TraceGenerator},
-    Chip, ChipDimensions, Machine, MachineShape,
+    Chip, Machine, MachineShape,
 };
 use sp1_primitives::{fri_params::core_fri_config, SP1Field, SP1GlobalContext};
 use sp1_prover_types::ArtifactClient;
@@ -240,8 +240,7 @@ impl SP1RecursionProofShape {
         fri_config: FriConfig<SP1Field>,
         log_stacking_height: usize,
     ) -> SP1CompressWithVKeyWitnessValues<InnerSC> {
-        let preprocessed_chip_information = self.shape.preprocessed_chip_information(&chips);
-        let dummy_vk = dummy_vk(preprocessed_chip_information);
+        let dummy_vk = dummy_vk();
 
         let preprocessed_multiple = chips
             .iter()
@@ -408,33 +407,7 @@ pub async fn build_vk_map<A: ArtifactClient, C: SP1ProverComponents + 'static>(
                                 log_blowup: CORE_LOG_BLOWUP,
                                 log_stacking_height: CORE_LOG_STACKING_HEIGHT as usize,
                             };
-                            let dummy_vk = dummy_vk(
-                                vec![
-                                    (
-                                        "Byte".to_string(),
-                                        ChipDimensions {
-                                            height: SP1Field::zero(),
-                                            num_polynomials: SP1Field::zero(),
-                                        },
-                                    ),
-                                    (
-                                        "Program".to_string(),
-                                        ChipDimensions {
-                                            height: SP1Field::zero(),
-                                            num_polynomials: SP1Field::zero(),
-                                        },
-                                    ),
-                                    (
-                                        "Range".to_string(),
-                                        ChipDimensions {
-                                            height: SP1Field::zero(),
-                                            num_polynomials: SP1Field::zero(),
-                                        },
-                                    ),
-                                ]
-                                .into_iter()
-                                .collect(),
-                            );
+                            let dummy_vk = dummy_vk();
                             let core_verifier = C::core_verifier();
                             let recursive_core_verifier =
                                 recursive_verifier::<_, _, InnerSC, InnerConfig>(

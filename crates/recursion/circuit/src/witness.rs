@@ -13,8 +13,8 @@ use slop_commit::Rounds;
 use slop_multilinear::MultilinearPcsVerifier;
 use sp1_hypercube::{
     septic_curve::SepticCurve, septic_digest::SepticDigest, septic_extension::SepticExtension,
-    AirOpenedValues, ChipDimensions, ChipOpenedValues, MachineConfig, MachineVerifyingKey,
-    ShardOpenedValues, ShardProof,
+    AirOpenedValues, ChipOpenedValues, MachineConfig, MachineVerifyingKey, ShardOpenedValues,
+    ShardProof,
 };
 use sp1_primitives::{SP1ExtensionField, SP1Field};
 pub use sp1_recursion_compiler::ir::Witness as OuterWitness;
@@ -338,25 +338,11 @@ where
         let pc_start = self.pc_start.read(builder);
         let initial_global_cumulative_sum = self.initial_global_cumulative_sum.read(builder);
         let preprocessed_commit = self.preprocessed_commit.read(builder);
-        let preprocessed_chip_information = self
-            .preprocessed_chip_information
-            .iter()
-            .map(|(name, dimensions)| {
-                (
-                    name.clone(),
-                    ChipDimensions {
-                        height: dimensions.height.read(builder),
-                        num_polynomials: dimensions.num_polynomials.read(builder),
-                    },
-                )
-            })
-            .collect();
         let enable_untrusted_programs = self.enable_untrusted_programs.read(builder);
         Self::WitnessVariable {
             pc_start,
             initial_global_cumulative_sum,
             preprocessed_commit,
-            preprocessed_chip_information,
             enable_untrusted_programs,
         }
     }
@@ -365,10 +351,6 @@ where
         self.pc_start.write(witness);
         self.initial_global_cumulative_sum.write(witness);
         self.preprocessed_commit.write(witness);
-        self.preprocessed_chip_information.values().for_each(|dims| {
-            dims.height.write(witness);
-            dims.num_polynomials.write(witness)
-        });
         self.enable_untrusted_programs.write(witness);
     }
 }

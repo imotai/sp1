@@ -2,13 +2,11 @@ use crate::utils::words_to_bytes_be;
 use anyhow::Result;
 use clap::ValueEnum;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use slop_algebra::{AbstractField, PrimeField, PrimeField32};
+use slop_algebra::{PrimeField, PrimeField32};
 use slop_bn254::Bn254Fr;
 use slop_challenger::IopCtx;
 use sp1_core_machine::io::SP1Stdin;
-use sp1_hypercube::{
-    air::ShardRange, ChipDimensions, MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE,
-};
+use sp1_hypercube::{air::ShardRange, MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE};
 use sp1_primitives::{io::SP1PublicValues, poseidon2_hash, SP1Field, SP1GlobalContext};
 use sp1_recursion_circuit::{
     machine::{
@@ -100,15 +98,6 @@ where
         inputs.extend(self.initial_global_cumulative_sum.0.x.0);
         inputs.extend(self.initial_global_cumulative_sum.0.y.0);
         inputs.push(self.enable_untrusted_programs);
-        for (name, ChipDimensions { height, num_polynomials: _ }) in
-            self.preprocessed_chip_information.iter()
-        {
-            inputs.push(*height);
-            inputs.push(SP1Field::from_canonical_usize(name.len()));
-            for byte in name.as_bytes() {
-                inputs.push(SP1Field::from_canonical_u8(*byte));
-            }
-        }
 
         poseidon2_hash(inputs)
     }

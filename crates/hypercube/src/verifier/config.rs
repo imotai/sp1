@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::AbstractField;
 use slop_challenger::{CanObserve, IopCtx};
@@ -68,8 +66,6 @@ pub struct MachineVerifyingKey<C: IopCtx, SC: MachineConfig<C>> {
     pub initial_global_cumulative_sum: SepticDigest<C::F>,
     /// The preprocessed commitments.
     pub preprocessed_commit: C::Digest,
-    /// The dimensions of the preprocessed polynomials.
-    pub preprocessed_chip_information: BTreeMap<String, ChipDimensions<C::F>>,
     /// Flag indicating if untrusted programs are allowed.
     pub enable_untrusted_programs: C::F,
     /// Phantom data.
