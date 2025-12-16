@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 
 use clap::Parser;
 use csl_perf::{get_program_and_input, telemetry};
@@ -78,7 +78,6 @@ async fn execute_node(args: Args, elf: Vec<u8>, stdin: SP1Stdin) {
         pc_start: [SP1Field::zero(); 3],
         initial_global_cumulative_sum: SepticDigest::zero(),
         preprocessed_commit: [SP1Field::zero(); 8],
-        preprocessed_chip_information: BTreeMap::new(),
         marker: std::marker::PhantomData,
         enable_untrusted_programs: SP1Field::zero(),
     };

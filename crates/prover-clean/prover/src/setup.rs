@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
@@ -7,7 +7,6 @@ use csl_cuda::TaskScope;
 use cslpc_tracegen::setup_tracegen_permit;
 use cslpc_tracegen::CudaShardProverData;
 use cslpc_utils::{Ext, Felt, JaggedTraceMle};
-use slop_algebra::AbstractField;
 use slop_basefold::BasefoldProof;
 use slop_challenger::{FromChallenger, IopCtx};
 use slop_jagged::JaggedConfig;
@@ -17,7 +16,7 @@ use sp1_hypercube::{
     air::{MachineAir, MachineProgram},
     prover::{PreprocessedData, ProverSemaphore, ProvingKey},
     septic_digest::SepticDigest,
-    ChipDimensions, MachineVerifyingKey,
+    MachineVerifyingKey,
 };
 
 use crate::{CudaShardProver, ProverCleanProverComponents};
@@ -100,26 +99,10 @@ where
         .await
         .unwrap();
 
-        let preprocessed_chip_information = preprocessed_traces
-            .dense()
-            .preprocessed_table_index
-            .iter()
-            .map(|(name, trace_offset)| {
-                (
-                    name.to_owned(),
-                    ChipDimensions {
-                        height: GC::F::from_canonical_usize(trace_offset.poly_size),
-                        num_polynomials: GC::F::from_canonical_usize(trace_offset.num_polys),
-                    },
-                )
-            })
-            .collect::<BTreeMap<_, _>>();
-
         let vk = MachineVerifyingKey {
             pc_start,
             initial_global_cumulative_sum,
             preprocessed_commit,
-            preprocessed_chip_information,
             enable_untrusted_programs,
             marker: std::marker::PhantomData,
         };
