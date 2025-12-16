@@ -153,7 +153,7 @@ where
             &self.machine,
             program,
             record,
-            buffer,
+            &buffer,
             self.max_trace_size,
             self.basefold_prover.log_height,
             self.max_log_row_count,
@@ -192,6 +192,7 @@ where
             .prove_shard_with_data(shard_data, challenger)
             .instrument(tracing::debug_span!("prove shard with data"))
             .await;
+        drop(buffer);
 
         (vk, shard_proof, permit)
     }
@@ -213,7 +214,7 @@ where
             &self.machine,
             record,
             &pk.preprocessed_data,
-            buffer,
+            &buffer,
             self.basefold_prover.log_height,
             self.max_log_row_count,
             &self.backend,
@@ -232,9 +233,13 @@ where
             },
         };
 
-        self.prove_shard_with_data(shard_data, challenger)
+        let (shard_proof, permit) = self
+            .prove_shard_with_data(shard_data, challenger)
             .instrument(tracing::debug_span!("prove shard with data"))
-            .await
+            .await;
+        drop(buffer);
+
+        (shard_proof, permit)
     }
 }
 
@@ -729,7 +734,7 @@ mod tests {
                 &machine,
                 program.clone(),
                 Arc::new(record),
-                buffer,
+                &buffer,
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT,

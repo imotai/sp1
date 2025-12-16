@@ -548,7 +548,7 @@ mod tests {
                 &machine,
                 program.clone(),
                 Arc::new(record),
-                buffer,
+                &buffer,
                 CORE_MAX_TRACE_SIZE as usize,
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT,

@@ -54,7 +54,7 @@ where
         let (preprocessed_data, permit) = setup_tracegen_permit(
             &self.machine,
             program,
-            buffer,
+            &buffer,
             self.max_trace_size,
             self.basefold_prover.log_height,
             self.max_log_row_count,
