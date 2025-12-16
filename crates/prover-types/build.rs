@@ -6,10 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic_build::configure()
         .protoc_arg("--experimental_allow_proto3_optional")
         .type_attribute(".", "#[derive(serde::Serialize,serde::Deserialize)]")
-        .compile_protos(
-            &["proto/worker.proto", "proto/cluster.proto"],
-            &["proto/", "/usr/include"],
-        )?;
+        .compile_protos(&["proto/worker.proto", "proto/cluster.proto"], &["proto/"])?;
 
     println!("cargo:rerun-if-env-changed=BUILD_GIT_SHA");
 
