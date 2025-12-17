@@ -2,7 +2,7 @@ use std::{mem::ManuallyDrop, sync::Arc};
 
 use futures::future::OptionFuture;
 use serde::{Deserialize, Serialize};
-use slop_algebra::{AbstractExtensionField, AbstractField};
+use slop_algebra::{AbstractExtensionField, AbstractField, Field};
 use slop_alloc::{Backend, CpuBackend, HasBackend, ToHost, GLOBAL_CPU_BACKEND};
 use slop_tensor::{AddAssignBackend, Tensor};
 
@@ -19,7 +19,6 @@ use crate::{
 pub enum Padding<F, A: Backend> {
     Constant((F, usize, A)),
     Generic(Arc<MleEval<F, A>>),
-    Zero((usize, A)),
 }
 
 impl<F, A: Backend> HasBackend for Padding<F, A> {
@@ -29,7 +28,6 @@ impl<F, A: Backend> HasBackend for Padding<F, A> {
         match self {
             Padding::Constant((_, _, backend)) => backend,
             Padding::Generic(eval) => eval.backend(),
-            Padding::Zero((_, backend)) => backend,
         }
     }
 }
@@ -39,7 +37,6 @@ impl<F: Clone, A: Backend> Padding<F, A> {
         match self {
             Padding::Constant((_, num_polynomials, _)) => *num_polynomials,
             Padding::Generic(ref eval) => eval.num_polynomials(),
-            Padding::Zero((num_polynomials, _)) => *num_polynomials,
         }
     }
 }
@@ -49,7 +46,6 @@ impl<F: AbstractField> From<Padding<F, CpuBackend>> for Vec<F> {
         match padding {
             Padding::Constant((value, num_polynomials, _)) => vec![value; num_polynomials],
             Padding::Generic(eval) => eval.evaluations().as_buffer().to_vec(),
-            Padding::Zero((num_polynomials, _)) => vec![F::zero(); num_polynomials],
         }
     }
 }
@@ -72,7 +68,7 @@ pub struct PaddedMle<T, A: Backend = CpuBackend> {
     num_variables: u32,
 }
 
-impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
+impl<T: Field, A: MleBaseBackend<T>> PaddedMle<T, A> {
     #[inline]
     pub const fn new(
         inner: Option<Arc<Mle<T, A>>>,
@@ -116,7 +112,7 @@ impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
     where
         A: MleBaseBackend<T>,
     {
-        Self::dummy(num_variables, Padding::Zero((num_polynomials, backend.clone())))
+        Self::dummy(num_variables, Padding::Constant((T::zero(), num_polynomials, backend.clone())))
     }
 
     /// Returns the number of variables in the multi-linear polynomial.
@@ -192,12 +188,11 @@ impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
             }
 
             Padding::Constant((padding_value, _, backend)) => {
-                let padding_value_clone = padding_value.clone();
                 let inner = OptionFuture::from(self.inner.as_ref().map(|mle| async move {
                     let guts = A::mle_fix_last_variable_constant_padding(
                         mle.guts(),
                         alpha,
-                        padding_value.clone(),
+                        *padding_value,
                     )
                     .await;
                     Mle::<EF, A>::new(guts)
@@ -207,26 +202,10 @@ impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
                 PaddedMle {
                     inner,
                     padding_values: Padding::Constant((
-                        EF::from_base(padding_value_clone),
+                        EF::from_base(*padding_value),
                         self.num_polynomials(),
                         backend.clone(),
                     )),
-                    num_variables: self.num_variables - 1,
-                }
-            }
-
-            Padding::Zero((_, backend)) => {
-                let inner = OptionFuture::from(self.inner.as_ref().map(|mle| async move {
-                    let guts =
-                        A::mle_fix_last_variable_constant_padding(mle.guts(), alpha, T::zero())
-                            .await;
-                    Mle::<EF, A>::new(guts)
-                }))
-                .await;
-                let inner = inner.map(Arc::new);
-                PaddedMle {
-                    inner,
-                    padding_values: Padding::Zero((self.num_polynomials(), backend.clone())),
                     num_variables: self.num_variables - 1,
                 }
             }
@@ -280,13 +259,17 @@ impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
                 self.backend().copy_to(&final_evals).await.unwrap()
             }
             Padding::Constant((padding_value, _, _)) => {
-                let geq_adjustment = if num_real_entries < 1 << self.num_variables {
-                    full_geq(
-                        &Point::from_usize(num_real_entries, self.num_variables as usize),
-                        point,
-                    ) * padding_value.clone()
+                let geq_adjustment = if *padding_value != T::zero() {
+                    if num_real_entries < 1 << self.num_variables {
+                        full_geq(
+                            &Point::from_usize(num_real_entries, self.num_variables as usize),
+                            point,
+                        ) * *padding_value
+                    } else {
+                        assert!(num_real_entries == 1 << self.num_variables);
+                        ET::zero()
+                    }
                 } else {
-                    assert!(num_real_entries == 1 << self.num_variables);
                     ET::zero()
                 };
 
@@ -296,16 +279,12 @@ impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
                     MleEval::zeros_in(self.num_polynomials(), self.backend())
                 };
 
+                if *padding_value == T::zero() {
+                    return evals;
+                }
+
                 unsafe { A::add_assign(evals.evaluations_mut(), geq_adjustment).await };
                 evals
-            }
-
-            Padding::Zero(_) => {
-                if let Some(inner) = self.inner.as_ref() {
-                    inner.eval_at_eq(eq).await
-                } else {
-                    MleEval::zeros_in(self.num_polynomials(), self.backend())
-                }
             }
         }
     }
@@ -342,11 +321,9 @@ impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
 
         let padding_values = match &self.padding_values {
             Padding::Constant((value, num_polynomials, _)) => {
-                Padding::Constant((value.clone(), *num_polynomials, storage_allocator))
+                Padding::Constant((*value, *num_polynomials, storage_allocator))
             }
-            Padding::Zero((num_polynomials, _)) => {
-                Padding::Zero((*num_polynomials, storage_allocator))
-            }
+
             Padding::Generic(eval) => {
                 let evaluations = eval.owned_unchecked_in(storage_allocator);
                 let evaluations = ManuallyDrop::into_inner(evaluations);
@@ -362,7 +339,7 @@ impl<T: AbstractField, A: MleBaseBackend<T>> PaddedMle<T, A> {
 impl<T> PaddedMle<T, CpuBackend> {
     pub fn zeros(num_polynomials: usize, num_variables: u32) -> Self
     where
-        T: AbstractField,
+        T: Field,
     {
         Self::zeros_in(num_polynomials, num_variables, &GLOBAL_CPU_BACKEND)
     }
@@ -375,7 +352,6 @@ impl<T, A: Backend> HasBackend for PaddedMle<T, A> {
         match &self.padding_values {
             Padding::Generic(eval) => eval.backend(),
             Padding::Constant((_, _, backend)) => backend,
-            Padding::Zero((_, backend)) => backend,
         }
     }
 }
