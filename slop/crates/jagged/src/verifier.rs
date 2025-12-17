@@ -52,7 +52,7 @@ pub enum JaggedPcsVerifierError<EF, PcsError> {
     InvalidPrefixSums,
     #[error("incorrect table sizes")]
     IncorrectTableSizes,
-    #[error("total area out of bounds")]
+    #[error("round area out of bounds (must be non-zero and less than 2^30)")]
     AreaOutOfBounds,
     #[error("base field overflow")]
     BaseFieldOverflow,
@@ -177,6 +177,8 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
             })
             .collect();
 
+        // Each round is checked to have a non-zero area. This check may not be strictly necessary.
+        // The area must also be less than 2^30 to avoid overflow in field arithmetic.
         if round_areas.iter().any(|&area| area == 0 || area >= (1 << 30)) {
             return Err(JaggedPcsVerifierError::AreaOutOfBounds);
         }
