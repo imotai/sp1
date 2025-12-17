@@ -210,7 +210,7 @@ pub(crate) const DEFAULT_NUM_RECURSION_EXECUTOR_WORKERS: usize = 4;
 pub(crate) const DEFAULT_RECURSION_EXECUTOR_BUFFER_SIZE: usize = 4;
 pub(crate) const DEFAULT_NUM_RECURSION_PROVER_WORKERS: usize = 8;
 pub(crate) const DEFAULT_RECURSION_PROVER_BUFFER_SIZE: usize = 8;
-pub(crate) const DEFAULT_VK_VERIFICATION: bool = false;
+pub(crate) const DEFAULT_VK_VERIFICATION: bool = true;
 
 // Default values for the deferred prover config.
 pub(crate) const DEFAULT_NUM_DEFERRED_WORKERS: usize = 4;

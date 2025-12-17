@@ -445,14 +445,16 @@ pub async fn build_vk_map<A: ArtifactClient, C: SP1ProverComponents + 'static>(
                                 &reduce_shape.clone().expect("max arity not supported"),
                                 height,
                             );
-                            (
-                                Arc::new(deferred_program_from_input(
-                                    &recursive_compress_verifier,
-                                    true,
-                                    &dummy_input,
-                                )),
-                                false,
-                            )
+                            let mut program = deferred_program_from_input(
+                                &recursive_compress_verifier,
+                                true,
+                                &dummy_input,
+                            );
+
+                            program.shape =
+                                Some(reduce_shape.clone().expect("max arity not supported").shape);
+
+                            (Arc::new(program), false)
                         }
                         SP1RecursionProgramShape::Shrink => {
                             let dummy_input = dummy_compose_input(

@@ -171,15 +171,25 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
                 .collect::<BTreeSet<_>>()
                 .len();
 
-        let file = std::fs::File::open(vk_map_path.unwrap_or("./src/vk_map.bin".to_string())).ok();
+        let vk_map = if let Some(vk_map_path) = vk_map_path {
+            let file = std::fs::File::open(vk_map_path).expect("failed to open vk map file");
+            bincode::deserialize_from(file)
+        } else {
+            let vk_map_bytes = include_bytes!("./vk_map.bin");
+            bincode::deserialize::<BTreeMap<[SP1Field; DIGEST_SIZE], usize>>(vk_map_bytes)
+        };
 
         let mut allowed_vk_map: BTreeMap<[SP1Field; DIGEST_SIZE], usize> = if vk_verification {
-            file.and_then(|file| bincode::deserialize_from(file).ok()).unwrap_or_else(|| {
+            vk_map.unwrap_or_else(|_| {
+                tracing::warn!(
+                    "Vk map file not found or failed to deserialize, using dummy vk map"
+                );
                 (0..num_shapes)
                     .map(|i| ([SP1Field::from_canonical_u32(i as u32); DIGEST_SIZE], i))
                     .collect()
             })
         } else {
+            tracing::warn!("Vk verification disabled, using dummy vk map");
             // Dummy merkle tree when vk_verification is false.
             (0..num_shapes)
                 .map(|i| ([SP1Field::from_canonical_u32(i as u32); DIGEST_SIZE], i))
@@ -187,9 +197,10 @@ impl<C: SP1ProverComponents> SP1RecursionProver<C> {
         };
 
         let added_len = num_shapes.saturating_sub(allowed_vk_map.len());
+        let prev_len = allowed_vk_map.len();
 
         allowed_vk_map.extend((0..added_len).map(|i| {
-            let index = i;
+            let index = i + prev_len;
             ([SP1Field::from_canonical_u32(index as u32); DIGEST_SIZE], index)
         }));
 
