@@ -20,13 +20,35 @@ fn main() {
 
             println!("Building Go library at {}", dest.display());
 
-            // Run the go build command
+            if cfg!(feature = "groth16-cuda") {
+                println!("cargo:rustc-link-search=native=/usr/local/lib");
+                println!("cargo:rustc-link-lib=dylib=icicle_device");
+                println!("cargo:rustc-link-lib=dylib=icicle_field_bn254");
+                println!("cargo:rustc-link-lib=dylib=icicle_curve_bn254");
+                println!("cargo:rustc-link-lib=dylib=icicle_field_bls12_377");
+                println!("cargo:rustc-link-lib=dylib=icicle_curve_bls12_377");
+                println!("cargo:rustc-link-lib=dylib=icicle_field_bls12_381");
+                println!("cargo:rustc-link-lib=dylib=icicle_curve_bls12_381");
+                println!("cargo:rustc-link-lib=dylib=icicle_field_bw6_761");
+                println!("cargo:rustc-link-lib=dylib=icicle_curve_bw6_761");
+                // Ideally we would also set the RPATH/RUNPATH using the following
+                // println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/local/lib");
+                // Unfortunately, this doesn't work. See:
+                // https://github.com/rust-lang/cargo/pull/9557#issuecomment-884302305
+            }
+
+            let tags = if cfg!(feature = "groth16-cuda") {
+                "-tags=debug,icicle"
+            } else {
+                "-tags=debug"
+            };
+
             let status = Command::new("go")
                 .current_dir("go")
                 .env("CGO_ENABLED", "1")
                 .args([
                     "build",
-                    "-tags=debug",
+                    tags,
                     "-o",
                     dest.to_str().unwrap(),
                     "-buildmode=c-archive",

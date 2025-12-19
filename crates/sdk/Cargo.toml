@@ -52,6 +52,7 @@ sp1-recursion-executor = { workspace = true }
 sp1-hypercube = { workspace = true }
 sp1-primitives = { workspace = true }
 sp1-prover-types = { workspace = true }
+sp1-recursion-gnark-ffi = { workspace = true }
 itertools = { workspace = true }
 tonic = { workspace = true, features = ["tls", "tls-roots"], optional = true }
 aws-config = { workspace = true, optional = true }
@@ -105,7 +106,7 @@ bigint-rug = ["sp1-core-machine/bigint-rug"]
 experimental = ["sp1-prover/experimental"]
 profiling = ["sp1-core-executor/profiling"]
 blocking = []
-
+groth16-cuda = ["sp1-recursion-gnark-ffi/groth16-cuda", "native-gnark"]
 
 [lints]
 workspace = true

@@ -33,6 +33,7 @@ cfg-if = { workspace = true }
 
 [features]
 native = []
+groth16-cuda = []
 
 [lints]
 workspace = true

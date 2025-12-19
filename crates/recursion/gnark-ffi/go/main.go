@@ -213,8 +213,7 @@ func TestMain() error {
 
 	// Compile the circuit.
 	circuit := sp1.NewCircuit(inputs)
-	builder := scs.NewBuilder
-	scs, err := frontend.Compile(ecc.BN254.ScalarField(), builder, &circuit)
+	scs, err := frontend.Compile(ecc.BN254.ScalarField(), scs.NewBuilder, &circuit)
 	if err != nil {
 		return err
 	}
@@ -290,8 +289,7 @@ func TestPoseidonKoalaBear2() *C.char {
 	circuit := sp1.TestPoseidon2KoalaBearCircuit{Input: input, ExpectedOutput: expectedOutput}
 	assignment := sp1.TestPoseidon2KoalaBearCircuit{Input: input, ExpectedOutput: expectedOutput}
 
-	builder := r1cs.NewBuilder
-	r1cs, err := frontend.Compile(ecc.BN254.ScalarField(), builder, &circuit)
+	r1cs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
 	if err != nil {
 		return C.CString(err.Error())
 	}
