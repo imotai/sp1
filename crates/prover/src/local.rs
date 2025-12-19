@@ -811,7 +811,6 @@ pub mod tests {
     /// Tests an end-to-end workflow of proving a program across the entire proof generation
     /// pipeline.
     #[tokio::test]
-    #[ignore = "Can't be run together with other groth16 tests for some reason"]
     #[serial]
     async fn test_e2e() -> Result<()> {
         let elf = test_artifacts::FIBONACCI_ELF;
@@ -830,7 +829,7 @@ pub mod tests {
         };
         let prover = Arc::new(LocalProver::new(sp1_prover, opts));
 
-        test_e2e_prover::<CpuSP1ProverComponents>(prover, &elf, SP1Stdin::default(), Test::OnChain)
+        test_e2e_prover::<CpuSP1ProverComponents>(prover, &elf, SP1Stdin::default(), Test::Wrap)
             .await
     }
 

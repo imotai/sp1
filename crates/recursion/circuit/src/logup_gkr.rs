@@ -12,7 +12,7 @@ use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::ir::Builder;
 
 use crate::{
-    challenger::FieldChallengerVariable,
+    challenger::{CanObserveVariable, FieldChallengerVariable},
     sumcheck::{evaluate_mle_ext, verify_sumcheck},
     symbolic::IntoSymbolic,
     witness::{WitnessWriter, Witnessable},
@@ -49,12 +49,8 @@ where
         let LogUpGkrOutput { numerator, denominator } = circuit_output;
 
         // Observe the output claims.
-        for (n, d) in
-            numerator.guts().as_slice().iter().zip_eq(denominator.guts().as_slice().iter())
-        {
-            challenger.observe_ext_element(builder, *n);
-            challenger.observe_ext_element(builder, *d);
-        }
+        challenger.observe_variable_length_extension_slice(builder, numerator.guts().as_slice());
+        challenger.observe_variable_length_extension_slice(builder, denominator.guts().as_slice());
 
         // Verify that the cumulative sum matches the claimed one.
         let output_cumulative_sum = numerator
@@ -153,18 +149,20 @@ where
             &beta_seed,
         ));
         point_extended.add_dimension(SymbolicExt::zero());
+        let len = shard_chips.len();
+        let len_felt: Felt<_> = builder.constant(SP1Field::from_canonical_usize(len));
+        challenger.observe(builder, len_felt);
         for ((chip, openings), threshold) in
             shard_chips.iter().zip_eq(chip_openings.values()).zip_eq(degrees)
         {
             // Observe the opening
             if let Some(prep_eval) = openings.preprocessed_trace_evaluations.as_ref() {
-                for eval in prep_eval.deref().iter() {
-                    challenger.observe_ext_element(builder, *eval);
-                }
+                challenger.observe_variable_length_extension_slice(builder, prep_eval.deref());
             }
-            for eval in openings.main_trace_evaluations.deref().iter() {
-                challenger.observe_ext_element(builder, *eval);
-            }
+            challenger.observe_variable_length_extension_slice(
+                builder,
+                openings.main_trace_evaluations.deref(),
+            );
             let threshold = threshold.iter().map(|x| SymbolicExt::from(*x)).collect::<Point<_>>();
             let geq_eval = full_geq(&threshold, &point_extended);
             let ChipEvaluation { main_trace_evaluations, preprocessed_trace_evaluations } =

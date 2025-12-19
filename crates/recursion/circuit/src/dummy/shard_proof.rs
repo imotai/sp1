@@ -40,16 +40,12 @@ pub fn dummy_shard_proof<A: MachineAir<SP1Field>>(
     let fri_queries = default_verifier.fri_config.num_queries;
     let log_blowup = default_verifier.fri_config.log_blowup;
 
-    let total_machine_cols =
-        shard_chips.iter().map(|chip| chip.air.width() + chip.preprocessed_width()).sum::<usize>();
-
     let evaluation_proof = dummy_pcs_proof(
         fri_queries,
         max_log_row_count,
         log_stacking_height_multiples,
         log_stacking_height,
         log_blowup,
-        total_machine_cols,
         once(shard_chips.iter().map(MachineAir::preprocessed_width).filter(|x| *x > 0).collect())
             .chain(once(shard_chips.iter().map(|chip| chip.air.width()).collect::<Vec<_>>()))
             .zip(added_cols.iter().copied())

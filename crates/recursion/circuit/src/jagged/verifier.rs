@@ -144,7 +144,7 @@ impl<SC: SP1FieldConfigVariable<C>, C: CircuitConfig> RecursiveJaggedPcsVerifier
 
         // Verify the evaluation proof.
         let evaluation_point = sumcheck_proof.point_and_eval.0.clone();
-        self.stacked_pcs_verifier.verify_trusted_evaluation(
+        self.stacked_pcs_verifier.verify_untrusted_evaluation(
             builder,
             original_commitments,
             &evaluation_point,

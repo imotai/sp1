@@ -10,7 +10,7 @@ use derive_where::derive_where;
 use serde::{de::DeserializeOwned, Serialize};
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::{Backend, CpuBackend, HasBackend, ToHost};
-use slop_challenger::{FieldChallenger, IopCtx};
+use slop_challenger::{FieldChallenger, IopCtx, VariableLengthChallenger};
 use slop_commit::{Message, Rounds};
 
 #[derive(Debug, Clone)]
@@ -84,9 +84,10 @@ pub trait MultilinearPcsBatchVerifier<GC: IopCtx>: 'static + Send + Sync + Clone
     ) -> Result<(), Self::VerifierError> {
         // Observe the evaluation claims.
         for round in evaluation_claims.iter() {
-            for evaluation in round.iter() {
-                challenger.observe_ext_element(*evaluation);
-            }
+            // We assume that in the process of producing `commitments`, the prover is bound
+            // to the number of polynomials in each round. Thus, we can observe the evaluation
+            // claims without observing their length.
+            challenger.observe_constant_length_extension_slice(round);
         }
 
         self.verify_trusted_evaluations(commitments, point, evaluation_claims, proof, challenger)
@@ -230,9 +231,11 @@ pub trait MultilinearPcsBatchProver<GC: IopCtx>: 'static + Debug + Send + Sync {
             for round in evaluation_claims.iter() {
                 for claim in round.iter() {
                     let host_claim = claim.to_host().await.unwrap();
-                    for evaluation in host_claim.iter() {
-                        challenger.observe_ext_element(*evaluation);
-                    }
+
+                    // We assume that in the process of producing `commitments`, the prover is bound
+                    // to the number of polynomials in each round. Thus, we can observe the evaluation
+                    // claims without observing their length.
+                    challenger.observe_constant_length_extension_slice(&host_claim);
                 }
             }
 

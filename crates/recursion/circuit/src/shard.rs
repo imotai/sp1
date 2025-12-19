@@ -163,9 +163,7 @@ where
         }
 
         // Observe the public values.
-        for value in public_values.iter() {
-            challenger.observe(builder, *value);
-        }
+        challenger.observe_slice(builder, public_values.to_vec());
 
         for value in public_values[self.machine.num_pv_elts()..].iter() {
             builder.assert_felt_eq(value, GC::F::zero());

@@ -168,7 +168,7 @@ pub fn transition_function(bit_state: BitState<bool>, memory_state: MemoryState)
 /// appearing in the jagged sumcheck protocol.
 #[derive(Clone, Debug)]
 pub struct JaggedLittlePolynomialProverParams {
-    pub(crate) col_prefix_sums_usize: Vec<usize>,
+    pub col_prefix_sums_usize: Vec<usize>,
     pub(crate) max_log_row_count: usize,
 }
 
@@ -313,7 +313,6 @@ impl JaggedLittlePolynomialProverParams {
     /// evaluation algorithm.
     pub fn into_verifier_params<K: Field>(self) -> JaggedLittlePolynomialVerifierParams<K> {
         let log_m = log2_ceil_usize(*self.col_prefix_sums_usize.last().unwrap());
-        let log_m = log_m.max(self.max_log_row_count);
         let col_prefix_sums =
             self.col_prefix_sums_usize.iter().map(|&x| Point::from_usize(x, log_m + 1)).collect();
         JaggedLittlePolynomialVerifierParams { col_prefix_sums }

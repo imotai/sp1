@@ -1,5 +1,6 @@
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::AbstractField;
+use slop_challenger::VariableLengthChallenger;
 use slop_challenger::{CanObserve, IopCtx};
 use slop_jagged::JaggedConfig;
 
@@ -76,11 +77,11 @@ impl<C: IopCtx, SC: MachineConfig<C>> MachineVerifyingKey<C, SC> {
     /// Observes the values of the proving key into the challenger.
     pub fn observe_into(&self, challenger: &mut C::Challenger) {
         challenger.observe(self.preprocessed_commit);
-        challenger.observe_slice(&self.pc_start);
-        challenger.observe_slice(&self.initial_global_cumulative_sum.0.x.0);
-        challenger.observe_slice(&self.initial_global_cumulative_sum.0.y.0);
+        challenger.observe_constant_length_slice(&self.pc_start);
+        challenger.observe_constant_length_slice(&self.initial_global_cumulative_sum.0.x.0);
+        challenger.observe_constant_length_slice(&self.initial_global_cumulative_sum.0.y.0);
         challenger.observe(self.enable_untrusted_programs);
         // Observe the padding.
-        challenger.observe_slice(&[C::F::zero(); 6]);
+        challenger.observe_constant_length_slice(&[C::F::zero(); 6]);
     }
 }

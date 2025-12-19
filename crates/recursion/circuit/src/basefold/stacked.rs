@@ -1,5 +1,5 @@
 use super::RecursiveMultilinearPcsVerifier;
-use crate::sumcheck::evaluate_mle_ext;
+use crate::{challenger::FieldChallengerVariable, sumcheck::evaluate_mle_ext};
 use slop_commit::Rounds;
 use slop_multilinear::{Mle, MleEval, Point};
 use sp1_primitives::{SP1ExtensionField, SP1Field};
@@ -24,7 +24,7 @@ impl<P: RecursiveMultilinearPcsVerifier> RecursiveStackedPcsVerifier<P> {
         Self { recursive_pcs_verifier, log_stacking_height }
     }
 
-    pub fn verify_trusted_evaluation(
+    pub fn verify_untrusted_evaluation(
         &self,
         builder: &mut Builder<P::Circuit>,
         commitments: &[P::Commitment],
@@ -33,6 +33,8 @@ impl<P: RecursiveMultilinearPcsVerifier> RecursiveStackedPcsVerifier<P> {
         evaluation_claim: SymbolicExt<SP1Field, SP1ExtensionField>,
         challenger: &mut P::Challenger,
     ) {
+        let claim_ext: Ext<_, _> = builder.eval(evaluation_claim);
+        challenger.observe_ext_element(builder, claim_ext);
         let (batch_point, stack_point) =
             point.split_at(point.dimension() - self.log_stacking_height as usize);
         let batch_evaluations =
@@ -40,7 +42,7 @@ impl<P: RecursiveMultilinearPcsVerifier> RecursiveStackedPcsVerifier<P> {
 
         builder.cycle_tracker_v2_enter("rizz - evaluate_mle_ext");
         let expected_evaluation = evaluate_mle_ext(builder, batch_evaluations, batch_point)[0];
-        builder.assert_ext_eq(evaluation_claim, expected_evaluation);
+        builder.assert_ext_eq(claim_ext, expected_evaluation);
         builder.cycle_tracker_v2_exit();
 
         builder.cycle_tracker_v2_enter("rizz - verify_untrusted_evaluations");
@@ -151,7 +153,7 @@ mod tests {
         let eval_claim = batch_evaluations_mle.eval_at(&batch_point).await[0];
 
         let proof = prover
-            .prove_trusted_evaluation(point.clone(), eval_claim, prover_data, &mut challenger)
+            .prove_untrusted_evaluation(point.clone(), eval_claim, prover_data, &mut challenger)
             .await
             .unwrap();
 
@@ -186,7 +188,7 @@ mod tests {
         let recursive_verifier =
             RecursiveStackedPcsVerifier::new(recursive_verifier, log_stacking_height);
 
-        recursive_verifier.verify_trusted_evaluation(
+        recursive_verifier.verify_untrusted_evaluation(
             &mut builder,
             &commitments,
             &point,

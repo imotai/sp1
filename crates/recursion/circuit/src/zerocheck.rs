@@ -1,8 +1,11 @@
 use std::{collections::BTreeSet, ops::Deref};
 
 use crate::{
-    challenger::FieldChallengerVariable, shard::RecursiveShardVerifier, sumcheck::verify_sumcheck,
-    symbolic::IntoSymbolic, CircuitConfig, SP1FieldConfigVariable,
+    challenger::{CanObserveVariable, FieldChallengerVariable},
+    shard::RecursiveShardVerifier,
+    sumcheck::verify_sumcheck,
+    symbolic::IntoSymbolic,
+    CircuitConfig, SP1FieldConfigVariable,
 };
 use itertools::Itertools;
 use slop_air::{Air, BaseAir};
@@ -235,13 +238,12 @@ where
         verify_sumcheck::<C, GC>(builder, challenger, zerocheck_proof);
 
         // Observe the openings
+        let len_felt: Felt<_> = builder.constant(SP1Field::from_canonical_usize(shard_chips.len()));
+        challenger.observe(builder, len_felt);
         for opening in opened_values.chips.values() {
-            for eval in opening.preprocessed.local.iter() {
-                challenger.observe_ext_element(builder, *eval);
-            }
-            for eval in opening.main.local.iter() {
-                challenger.observe_ext_element(builder, *eval);
-            }
+            challenger
+                .observe_variable_length_extension_slice(builder, &opening.preprocessed.local);
+            challenger.observe_variable_length_extension_slice(builder, &opening.main.local);
         }
     }
 }

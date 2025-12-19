@@ -7,7 +7,7 @@ use rayon::{
 };
 use slop_algebra::{interpolate_univariate_polynomial, ExtensionField, Field};
 use slop_alloc::{Backend, Buffer, CpuBackend};
-use slop_challenger::FieldChallenger;
+use slop_challenger::{FieldChallenger, VariableLengthChallenger};
 use slop_multilinear::Point;
 
 use crate::BranchingProgram;
@@ -204,9 +204,8 @@ impl<F: Field, EF: ExtensionField<F>, Challenger: FieldChallenger<F> + Send + Sy
         );
 
         // Observe and sample new randomness.
-        for elem in poly.coefficients.iter() {
-            challenger.observe_slice(elem.as_base_slice());
-        }
+        challenger.observe_constant_length_extension_slice(&poly.coefficients);
+
         let alpha = challenger.sample_ext_element();
         rhos.add_dimension(alpha);
 

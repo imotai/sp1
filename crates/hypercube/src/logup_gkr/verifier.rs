@@ -1,12 +1,11 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     marker::PhantomData,
-    ops::Deref,
 };
 
 use itertools::Itertools;
 use slop_algebra::{ExtensionField, Field};
-use slop_challenger::FieldChallenger;
+use slop_challenger::{FieldChallenger, VariableLengthChallenger};
 use slop_multilinear::{
     full_geq, partial_lagrange_blocking, Mle, MleEval, MultilinearPcsChallenger, Point,
 };
@@ -98,12 +97,8 @@ where
         }
 
         // Observe the output claims.
-        for (n, d) in
-            numerator.guts().as_slice().iter().zip_eq(denominator.guts().as_slice().iter())
-        {
-            challenger.observe_ext_element(*n);
-            challenger.observe_ext_element(*d);
-        }
+        challenger.observe_variable_length_extension_slice(numerator.guts().as_slice());
+        challenger.observe_variable_length_extension_slice(denominator.guts().as_slice());
 
         if denominator.guts().as_slice().iter().any(slop_algebra::Field::is_zero) {
             return Err(LogupGkrVerificationError::ZeroDenominator);
@@ -215,23 +210,21 @@ where
         let mut denominator_values = Vec::with_capacity(num_of_interactions);
         let mut point_extended = point.clone();
         point_extended.add_dimension(EF::zero());
+        let len = shard_chips.len();
+        challenger.observe(F::from_canonical_usize(len));
         for ((chip, openings), threshold) in
             shard_chips.iter().zip_eq(chip_openings.values()).zip_eq(degrees.values())
         {
             // Observe the opening
             if let Some(prep_eval) = openings.preprocessed_trace_evaluations.as_ref() {
-                for eval in prep_eval.deref().iter() {
-                    challenger.observe_ext_element(*eval);
-                }
+                challenger.observe_variable_length_extension_slice(prep_eval);
                 if prep_eval.evaluations().sizes() != [chip.air.preprocessed_width()] {
                     return Err(LogupGkrVerificationError::InvalidShape);
                 }
             } else if chip.air.preprocessed_width() != 0 {
                 return Err(LogupGkrVerificationError::InvalidShape);
             }
-            for eval in openings.main_trace_evaluations.deref().iter() {
-                challenger.observe_ext_element(*eval);
-            }
+            challenger.observe_variable_length_extension_slice(&openings.main_trace_evaluations);
             if openings.main_trace_evaluations.evaluations().sizes() != [chip.air.width()] {
                 return Err(LogupGkrVerificationError::InvalidShape);
             }

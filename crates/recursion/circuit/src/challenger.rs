@@ -62,6 +62,17 @@ pub trait FieldChallengerVariable<C: CircuitConfig, Bit>:
         (0..dimension).map(|_| self.sample_ext(builder)).collect()
     }
 
+    fn observe_variable_length_slice(
+        &mut self,
+        builder: &mut Builder<C>,
+        values: &[Felt<SP1Field>],
+    ) {
+        let len = values.len();
+        let len_felt = builder.constant(SP1Field::from_canonical_usize(len));
+        self.observe(builder, len_felt);
+        self.observe_slice(builder, values.iter().cloned());
+    }
+
     fn observe_ext_element(
         &mut self,
         builder: &mut Builder<C>,
@@ -83,6 +94,19 @@ pub trait FieldChallengerVariable<C: CircuitConfig, Bit>:
         for &element in elements {
             self.observe_ext_element(builder, element);
         }
+    }
+
+    fn observe_variable_length_extension_slice(
+        &mut self,
+        builder: &mut Builder<C>,
+        elements: &[Ext<SP1Field, SP1ExtensionField>],
+    ) where
+        C: CircuitConfig,
+    {
+        let len = elements.len();
+        let len_felt = builder.constant(SP1Field::from_canonical_usize(len));
+        self.observe(builder, len_felt);
+        self.observe_ext_element_slice(builder, elements);
     }
 }
 
@@ -176,16 +200,6 @@ impl<C: CircuitConfig> CanCopyChallenger<C> for DuplexChallengerVariable<C> {
 impl<C: CircuitConfig> CanObserveVariable<C, Felt<SP1Field>> for DuplexChallengerVariable<C> {
     fn observe(&mut self, builder: &mut Builder<C>, value: Felt<SP1Field>) {
         DuplexChallengerVariable::observe(self, builder, value);
-    }
-
-    fn observe_slice(
-        &mut self,
-        builder: &mut Builder<C>,
-        values: impl IntoIterator<Item = Felt<SP1Field>>,
-    ) {
-        for value in values {
-            self.observe(builder, value);
-        }
     }
 }
 

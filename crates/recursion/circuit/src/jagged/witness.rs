@@ -1,9 +1,10 @@
 use slop_algebra::AbstractField;
 use slop_challenger::IopCtx;
 use slop_jagged::{
-    JaggedConfig, JaggedLittlePolynomialVerifierParams, JaggedPcsProof, JaggedSumcheckEvalProof,
+    unzip_and_prefix_sums, JaggedConfig, JaggedLittlePolynomialVerifierParams, JaggedPcsProof,
+    JaggedSumcheckEvalProof, PrefixSumsMaxLogRowCount,
 };
-use slop_multilinear::MultilinearPcsVerifier;
+use slop_multilinear::{MultilinearPcsVerifier, Point};
 use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::ir::Builder;
 
@@ -69,17 +70,18 @@ where
         JaggedPcsProofVariable<RecursiveBasefoldProof<C, GC>, GC::DigestVariable>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
-        let params = self.params.read(builder);
+        let PrefixSumsMaxLogRowCount { row_counts, column_counts, usize_prefix_sums, log_m: _ } =
+            unzip_and_prefix_sums(&self.row_counts_and_column_counts);
+
+        let point_prefix_sums: Vec<Point<GC::F>> =
+            usize_prefix_sums.iter().map(|&x| Point::from_usize(x, self.log_m + 1)).collect();
+        let column_prefix_sums = point_prefix_sums.read(builder);
+        let params = JaggedLittlePolynomialVerifierParams { col_prefix_sums: column_prefix_sums };
+
         let sumcheck_proof = self.sumcheck_proof.read(builder);
         let jagged_eval_proof = self.jagged_eval_proof.read(builder);
         let pcs_proof = self.pcs_proof.read(builder);
 
-        let (row_counts, column_counts): (Vec<Vec<usize>>, Vec<Vec<usize>>) = self
-            .row_counts_and_column_counts
-            .clone()
-            .into_iter()
-            .map(|x| x.into_iter().unzip())
-            .unzip();
         let row_counts = row_counts
             .into_iter()
             .map(|x| x.into_iter().map(SP1Field::from_canonical_usize).collect::<Vec<_>>())
@@ -102,7 +104,13 @@ where
     }
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
-        self.params.write(witness);
+        let PrefixSumsMaxLogRowCount { usize_prefix_sums, log_m, .. } =
+            unzip_and_prefix_sums(&self.row_counts_and_column_counts);
+
+        let point_prefix_sums: Vec<Point<GC::F>> =
+            usize_prefix_sums.iter().map(|&x| Point::from_usize(x, log_m + 1)).collect();
+        let params = JaggedLittlePolynomialVerifierParams { col_prefix_sums: point_prefix_sums };
+        params.write(witness);
         self.sumcheck_proof.write(witness);
         self.jagged_eval_proof.write(witness);
         self.pcs_proof.write(witness);

@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use futures::prelude::*;
 pub use p3_challenger::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use slop_algebra::{ExtensionField, PrimeField32};
+use slop_algebra::{ExtensionField, Field, PrimeField32};
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 pub use synchronize::*;
 
@@ -40,9 +40,8 @@ pub trait IopCtx:
         + Debug
         + PartialEq
         + Eq;
-    type Challenger: FieldChallenger<Self::F>
+    type Challenger: VariableLengthChallenger<Self::F, Self::Digest>
         + GrindingChallenger
-        + CanObserve<Self::Digest>
         + 'static
         + Send
         + Sync
@@ -54,4 +53,39 @@ pub trait IopCtx:
     fn default_hasher_and_compressor() -> (Self::Hasher, Self::Compressor);
 
     fn default_challenger() -> Self::Challenger;
+}
+
+pub trait VariableLengthChallenger<F: Field, Digest: Copy>:
+    FieldChallenger<F> + CanObserve<Digest>
+{
+    fn observe_variable_length_slice(&mut self, data: &[F]) {
+        self.observe(F::from_canonical_u32(data.len() as u32));
+        self.observe_slice(data);
+    }
+    fn observe_variable_length_extension_slice<EF: ExtensionField<F>>(&mut self, data: &[EF]) {
+        self.observe(F::from_canonical_u32(data.len() as u32));
+        for &item in data {
+            self.observe_ext_element(item);
+        }
+    }
+    fn observe_constant_length_slice(&mut self, data: &[F]) {
+        self.observe_slice(data);
+    }
+    fn observe_constant_length_extension_slice<EF: ExtensionField<F>>(&mut self, data: &[EF]) {
+        for &item in data {
+            self.observe_ext_element(item);
+        }
+    }
+    fn observe_constant_length_digest_slice(&mut self, data: &[Digest]) {
+        self.observe_slice(data);
+    }
+    fn observe_variable_length_digest_slice(&mut self, data: &[Digest]) {
+        self.observe(F::from_canonical_u32(data.len() as u32));
+        self.observe_slice(data);
+    }
+}
+
+impl<F: Field, Digest: Copy, C: FieldChallenger<F> + CanObserve<Digest>>
+    VariableLengthChallenger<F, Digest> for C
+{
 }

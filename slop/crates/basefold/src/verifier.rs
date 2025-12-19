@@ -1,7 +1,10 @@
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractExtensionField, AbstractField, TwoAdicField};
-use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger, IopCtx};
+use slop_challenger::{
+    CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger, IopCtx,
+    VariableLengthChallenger,
+};
 use slop_merkle_tree::{MerkleTreeOpeningAndProof, MerkleTreeTcs, MerkleTreeTcsError};
 use slop_multilinear::{MleEval, MultilinearPcsBatchVerifier, Point};
 use slop_utils::reverse_bits_len;
@@ -164,12 +167,18 @@ where
         point.reverse();
 
         // Sample the challenges used for FRI folding and BaseFold random linear combinations.
+        // Observe the number of FRI rounds. In principle, the prover should already be
+        // bound to this length because it is deducible from the shape of the openings in
+        // `proof.component_polynomials_query_openings_and_proofs` and the prover is bound to those,
+        // but we observe it here for security.
+        let len = proof.fri_commitments.len();
+        challenger.observe(GC::F::from_canonical_usize(len));
         let betas = proof
             .fri_commitments
             .iter()
             .zip_eq(proof.univariate_messages.iter())
             .map(|(commitment, poly)| {
-                poly.iter().copied().for_each(|x| challenger.observe_ext_element(x));
+                challenger.observe_constant_length_extension_slice(poly);
                 challenger.observe(*commitment);
                 challenger.sample_ext_element::<GC::EF>()
             })
@@ -253,7 +262,7 @@ where
                 batching_challenge.shifted_powers(batch_challenge_power).nth(count).unwrap();
         }
 
-        // Verify the proof of the claimed values.
+        // Verify the proof of the claimed values of the original commitments at the query indices.
         for (commit, opening_and_proof) in
             commitments.iter().zip_eq(proof.component_polynomials_query_openings_and_proofs.iter())
         {

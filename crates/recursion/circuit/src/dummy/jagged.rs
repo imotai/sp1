@@ -2,9 +2,9 @@ use slop_algebra::AbstractField;
 use slop_alloc::CpuBackend;
 use slop_basefold::BasefoldProof;
 use slop_commit::Rounds;
-use slop_jagged::{JaggedLittlePolynomialVerifierParams, JaggedPcsProof, JaggedSumcheckEvalProof};
+use slop_jagged::{JaggedPcsProof, JaggedSumcheckEvalProof};
 use slop_merkle_tree::{MerkleTreeOpeningAndProof, MerkleTreeTcsProof};
-use slop_multilinear::{MleEval, Point};
+use slop_multilinear::MleEval;
 use slop_stacked::StackedPcsProof;
 use slop_tensor::Tensor;
 use sp1_hypercube::{log2_ceil_usize, SP1CoreJaggedConfig, NUM_SP1_COMMITMENTS};
@@ -55,7 +55,6 @@ pub fn dummy_pcs_proof(
     log_stacking_height_multiples: &[usize],
     log_stacking_height: usize,
     log_blowup: usize,
-    total_machine_cols: usize,
     column_counts_and_added_cols: Rounds<(Vec<usize>, usize)>,
 ) -> JaggedPcsProof<SP1GlobalContext, SP1CoreJaggedConfig> {
     let (column_counts, added_cols): (Rounds<Vec<usize>>, Vec<usize>) =
@@ -101,16 +100,7 @@ pub fn dummy_pcs_proof(
     let total_trace = log2_ceil_usize(
         log_stacking_height_multiples.iter().sum::<usize>() * (1 << log_stacking_height),
     );
-    let total_num_variables = total_trace.max(max_log_row_count);
-
-    // Add 2 because of the dummy columns after the preprocessed and main rounds, and then one more
-    // because the prefix sums start at 0 and end at total trace area (so there is one more prefix
-    // sum than the number of columns).
-    let col_prefix_sums = (0..total_machine_cols + 1 + added_cols.iter().sum::<usize>())
-        .map(|_| Point::<InnerVal>::from_usize(0, total_num_variables + 1))
-        .collect::<Vec<_>>();
-
-    let jagged_params = JaggedLittlePolynomialVerifierParams { col_prefix_sums };
+    let total_num_variables = total_trace;
 
     let partial_sumcheck_proof = dummy_sumcheck_proof(total_trace, 2);
 
@@ -132,12 +122,13 @@ pub fn dummy_pcs_proof(
 
     JaggedPcsProof {
         pcs_proof: stacked_proof,
-        params: jagged_params,
         jagged_eval_proof,
         sumcheck_proof: partial_sumcheck_proof,
         merkle_tree_commitments: vec![dummy_hash(); NUM_SP1_COMMITMENTS].into_iter().collect(),
         row_counts_and_column_counts,
         expected_eval: InnerChallenge::zero(),
+        max_log_row_count,
+        log_m: total_trace,
     }
 }
 
@@ -290,7 +281,6 @@ mod tests {
             &[prep_multiple, main_multiple],
             log_stacking_height as usize,
             log_blowup,
-            column_counts.iter().flat_map(|x| x.iter()).sum(),
             column_counts
                 .clone()
                 .into_iter()
@@ -335,14 +325,6 @@ mod tests {
             .zip(dummy_proof.jagged_eval_proof.partial_sumcheck_proof.univariate_polys.iter())
         {
             assert_eq!(poly.coefficients.len(), dummy_poly.coefficients.len());
-        }
-
-        // Check the params are the correct shape.
-        assert_eq!(dummy_proof.params.col_prefix_sums.len(), proof.params.col_prefix_sums.len());
-        for (col_prefix_sum, dummy_col_prefix_sum) in
-            proof.params.col_prefix_sums.iter().zip(dummy_proof.params.col_prefix_sums.iter())
-        {
-            assert_eq!(col_prefix_sum.dimension(), dummy_col_prefix_sum.dimension());
         }
 
         // Check the stacked proof is the right shape.

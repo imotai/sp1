@@ -1,14 +1,12 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     future::Future,
-    ops::Deref,
 };
 
 use futures::future::OptionFuture;
-use itertools::Itertools;
-use slop_algebra::{ExtensionField, Field};
+use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_alloc::{Backend, CanCopyFromRef, CanCopyIntoRef, CpuBackend, ToHost};
-use slop_challenger::{FieldChallenger, IopCtx};
+use slop_challenger::{CanObserve, FieldChallenger, IopCtx, VariableLengthChallenger};
 use slop_multilinear::{
     Mle, MleBaseBackend, MleEvaluationBackend, MultilinearPcsChallenger, PaddedMle,
     PartialLagrangeBackend, Point, PointBackend,
@@ -233,16 +231,9 @@ impl<GC: IopCtx, GkrComponents: LogUpGkrProverComponents<GC>> LogUpGkrProver<GC>
 
         let host_numerator = numerator.to_host().await.unwrap();
         let host_denominator = denominator.to_host().await.unwrap();
-        // Observe the output claims.
-        for (n, d) in host_numerator
-            .guts()
-            .as_slice()
-            .iter()
-            .zip_eq(host_denominator.guts().as_slice().iter())
-        {
-            challenger.observe_ext_element(*n);
-            challenger.observe_ext_element(*d);
-        }
+
+        challenger.observe_variable_length_extension_slice(host_numerator.guts().as_slice());
+        challenger.observe_variable_length_extension_slice(host_denominator.guts().as_slice());
         let output_host =
             LogUpGkrOutput { numerator: host_numerator, denominator: host_denominator };
 
@@ -278,6 +269,7 @@ impl<GC: IopCtx, GkrComponents: LogUpGkrProverComponents<GC>> LogUpGkrProver<GC>
         let eval_point_b = numerator.backend().copy_to(&eval_point).await.unwrap();
         let eval_point_eq = Mle::partial_lagrange(&eval_point_b).await;
 
+        challenger.observe(GC::F::from_canonical_usize(chips.len()));
         for chip in chips.iter() {
             let name = chip.name();
             let main_trace = traces.get(&name).unwrap();
@@ -299,13 +291,9 @@ impl<GC: IopCtx, GkrComponents: LogUpGkrProverComponents<GC>> LogUpGkrProver<GC>
             };
             // Observe the openings.
             if let Some(prep_eval) = openings.preprocessed_trace_evaluations.as_ref() {
-                for eval in prep_eval.deref().iter() {
-                    challenger.observe_ext_element(*eval);
-                }
+                challenger.observe_variable_length_extension_slice(prep_eval);
             }
-            for eval in openings.main_trace_evaluations.deref().iter() {
-                challenger.observe_ext_element(*eval);
-            }
+            challenger.observe_variable_length_extension_slice(&openings.main_trace_evaluations);
 
             chip_evaluations.insert(name, openings);
         }

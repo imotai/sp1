@@ -1,6 +1,6 @@
 use slop_algebra::{
     extension::{BinomiallyExtendable, HasTwoAdicBionmialExtension},
-    PrimeField31,
+    AbstractField, PrimeField31,
 };
 use slop_baby_bear::baby_bear_poseidon2::BabyBearDegree4Duplex;
 use slop_bn254::{Bn254Fr, Poseidon2Bn254GlobalConfig, BNGC, OUTER_DIGEST_SIZE};
@@ -15,7 +15,7 @@ use slop_algebra::{ExtensionField, Field, TwoAdicField};
 use slop_alloc::{Backend, CpuBackend};
 use slop_baby_bear::BabyBear;
 use slop_basefold::{BasefoldProof, BasefoldVerifier, RsCodeWord};
-use slop_challenger::{CanSampleBits, FieldChallenger, IopCtx};
+use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, IopCtx};
 use slop_commit::{Message, Rounds};
 use slop_dft::p3::Radix2DitParallel;
 use slop_futures::OwnedBorrow;
@@ -247,6 +247,10 @@ impl<GC: IopCtx<F: TwoAdicField>, C: BasefoldProverComponents<GC>> BasefoldProve
             eval_point.dimension() as u32,
             "eval point dimension mismatch"
         );
+        // Observe the number of FRI rounds. In principle, the prover is bound to this number already
+        // because it is determined by the heights of the codewords and the log_blowup, but we
+        // observe it here for extra security.
+        challenger.observe(GC::F::from_canonical_usize(eval_point.dimension()));
         for _ in 0..eval_point.dimension() {
             // Compute claims for `g(X_0, X_1, ..., X_{d-1}, 0)` and `g(X_0, X_1, ..., X_{d-1}, 1)`.
             let last_coord = eval_point.remove_last_coordinate();

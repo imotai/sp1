@@ -20,10 +20,11 @@ pub struct JaggedPcsProof<GC: IopCtx, C: JaggedConfig<GC>> {
     pub pcs_proof: <C::PcsVerifier as MultilinearPcsVerifier<GC>>::Proof,
     pub sumcheck_proof: PartialSumcheckProof<GC::EF>,
     pub jagged_eval_proof: JaggedSumcheckEvalProof<GC::EF>,
-    pub params: JaggedLittlePolynomialVerifierParams<GC::F>,
     pub row_counts_and_column_counts: Rounds<Vec<(usize, usize)>>,
     pub merkle_tree_commitments: Rounds<GC::Digest>,
     pub expected_eval: GC::EF,
+    pub max_log_row_count: usize,
+    pub log_m: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +59,43 @@ pub enum JaggedPcsVerifierError<EF, PcsError> {
     BaseFieldOverflow,
 }
 
+pub struct PrefixSumsMaxLogRowCount {
+    pub row_counts: Vec<Vec<usize>>,
+    pub column_counts: Vec<Vec<usize>>,
+    pub usize_prefix_sums: Vec<usize>,
+    pub log_m: usize,
+}
+
+pub fn unzip_and_prefix_sums(
+    row_counts_and_column_counts: &Rounds<Vec<(usize, usize)>>,
+) -> PrefixSumsMaxLogRowCount {
+    let (row_counts, column_counts): (Vec<Vec<usize>>, Vec<Vec<usize>>) =
+        row_counts_and_column_counts.iter().map(|r_c| r_c.clone().into_iter().unzip()).unzip();
+
+    let usize_column_heights: Vec<usize> = row_counts
+        .iter()
+        .zip_eq(column_counts.iter())
+        .flat_map(|(rc, cc)| {
+            rc.iter().zip_eq(cc.iter()).flat_map(|(r, c)| std::iter::repeat_n(*r, *c))
+        })
+        .collect();
+
+    let mut usize_prefix_sums: Vec<usize> = usize_column_heights
+        .iter()
+        .scan(0usize, |state, &x| {
+            let result = *state;
+            *state += x;
+            Some(result)
+        })
+        .collect();
+
+    usize_prefix_sums
+        .push(*usize_prefix_sums.last().unwrap() + *usize_column_heights.last().unwrap());
+
+    let log_trace = log2_ceil_usize(usize_prefix_sums.last().copied().unwrap());
+    PrefixSumsMaxLogRowCount { row_counts, column_counts, usize_prefix_sums, log_m: log_trace }
+}
+
 impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
     pub fn challenger(&self) -> GC::Challenger {
         self.pcs_verifier.default_challenger()
@@ -75,20 +113,28 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
             pcs_proof,
             sumcheck_proof,
             jagged_eval_proof,
-            params,
             row_counts_and_column_counts,
             merkle_tree_commitments: original_commitments,
             expected_eval,
+            max_log_row_count,
+            log_m,
         } = proof;
 
-        let (row_counts, column_counts): (Vec<Vec<usize>>, Vec<Vec<usize>>) =
-            row_counts_and_column_counts.iter().map(|r_c| r_c.clone().into_iter().unzip()).unzip();
+        let PrefixSumsMaxLogRowCount {
+            row_counts,
+            column_counts,
+            usize_prefix_sums,
+            log_m: purported_log_m,
+        } = unzip_and_prefix_sums(row_counts_and_column_counts);
 
-        if params.col_prefix_sums.is_empty() {
+        if usize_prefix_sums.is_empty()
+            || *max_log_row_count != self.max_log_row_count
+            || *log_m != purported_log_m
+        {
             return Err(JaggedPcsVerifierError::IncorrectShape);
         }
 
-        let num_col_variables = (params.col_prefix_sums.len() - 1).next_power_of_two().ilog2();
+        let num_col_variables = (usize_prefix_sums.len() - 1).next_power_of_two().ilog2();
         let z_col = (0..num_col_variables)
             .map(|_| challenger.sample_ext_element::<GC::EF>())
             .collect::<Point<_>>();
@@ -212,52 +258,19 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
             || added_rows_final.iter().zip_eq(expected_added_vals_and_cols.iter()).any(
                 |(&x, &expected)| {
                     x != expected.0 - (expected.1 - 1) * (1 << self.max_log_row_count)
-                        || row_counts
-                            .iter()
-                            .any(|rc| rc.iter().any(|&r| r > 1 << self.max_log_row_count))
                 },
             )
+            || row_counts.iter().any(|rc| rc.iter().any(|&r| r > 1 << self.max_log_row_count))
         {
             return Err(JaggedPcsVerifierError::IncorrectShape);
         }
 
-        let usize_column_heights: Vec<usize> = row_counts
-            .iter()
-            .zip_eq(column_counts.iter())
-            .flat_map(|(rc, cc)| {
-                rc.iter().zip_eq(cc.iter()).flat_map(|(r, c)| std::iter::repeat_n(*r, *c))
-            })
-            .collect();
-
-        let mut usize_prefix_sums: Vec<usize> = usize_column_heights
-            .iter()
-            .scan(0usize, |state, &x| {
-                let result = *state;
-                *state += x;
-                Some(result)
-            })
-            .collect();
-
-        if usize_prefix_sums.is_empty() {
-            return Err(JaggedPcsVerifierError::IncorrectShape);
-        }
-
-        usize_prefix_sums
-            .push(*usize_prefix_sums.last().unwrap() + *usize_column_heights.last().unwrap());
-
-        let log_trace = log2_ceil_usize(usize_prefix_sums.last().copied().unwrap());
-        let log_m = log_trace.max(self.max_log_row_count);
-
-        if log_m >= 30 {
+        if *log_m >= 30 {
             return Err(JaggedPcsVerifierError::AreaOutOfBounds);
         }
 
         let point_prefix_sums: Vec<Point<GC::F>> =
-            usize_prefix_sums.iter().map(|&x| Point::from_usize(x, log_m + 1)).collect();
-
-        if point_prefix_sums != params.col_prefix_sums {
-            return Err(JaggedPcsVerifierError::IncorrectShape);
-        }
+            usize_prefix_sums.iter().map(|&x| Point::from_usize(x, *log_m + 1)).collect();
 
         let insertion_points: Vec<usize> = column_counts
             .iter()
@@ -282,7 +295,7 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
             }
         }
 
-        if params.col_prefix_sums.len() != column_claims.len() + 1 {
+        if point_prefix_sums.len() != column_claims.len() + 1 {
             return Err(JaggedPcsVerifierError::IncorrectShape);
         }
 
@@ -303,12 +316,11 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
             ));
         }
 
+        let log_trace = log2_ceil_usize(usize_prefix_sums.last().copied().unwrap());
         partially_verify_sumcheck_proof(sumcheck_proof, challenger, log_trace, 2)
             .map_err(JaggedPcsVerifierError::SumcheckError)?;
 
-        for (t_col, next_t_col) in
-            params.col_prefix_sums.iter().zip(params.col_prefix_sums.iter().skip(1))
-        {
+        for (t_col, next_t_col) in point_prefix_sums.iter().zip(point_prefix_sums.iter().skip(1)) {
             // We bound the prefix sums to be < 2^30. While this function is implemented with
             // `C::F` being any field, this function is intended for use with primes larger than
             // `2^30`. We recommend using this function for Mersenne31, BabyBear, KoalaBear.
@@ -321,8 +333,10 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
             }
         }
 
+        let params = JaggedLittlePolynomialVerifierParams { col_prefix_sums: point_prefix_sums };
+
         let jagged_eval = JaggedEvalSumcheckConfig::jagged_evaluation(
-            params,
+            &params,
             &z_row,
             &z_col,
             &sumcheck_proof.point_and_eval.0,
@@ -346,7 +360,7 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
         // Verify the evaluation proof using the (dense) stacked PCS verifier.
         let evaluation_point = sumcheck_proof.point_and_eval.0.clone();
         self.pcs_verifier
-            .verify_trusted_evaluation(
+            .verify_untrusted_evaluation(
                 proof.merkle_tree_commitments.as_slice(),
                 &total_areas,
                 evaluation_point,

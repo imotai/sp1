@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use slop_air::Air;
 use slop_algebra::{AbstractField, Field};
 use slop_alloc::{Backend, Buffer, CanCopyFrom, CanCopyFromRef, CanCopyIntoRef, CpuBackend};
-use slop_challenger::{CanObserve, FieldChallenger, IopCtx};
+use slop_challenger::{CanObserve, FieldChallenger, IopCtx, VariableLengthChallenger};
 use slop_commit::Rounds;
 use slop_jagged::{JaggedBackend, JaggedProver, JaggedProverComponents, JaggedProverData};
 use slop_matrix::dense::RowMajorMatrixView;
@@ -587,6 +587,8 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
         // Compute the chip openings from the component poly evaluations.
 
         debug_assert_eq!(component_poly_evals.len(), airs.len());
+        let len = airs.len();
+        challenger.observe(GC::F::from_canonical_usize(len));
         let shard_open_values = airs
             .into_iter()
             .zip_eq(component_poly_evals)
@@ -594,12 +596,8 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
                 let (preprocessed_evals, main_evals) = evals.split_at(air.preprocessed_width());
 
                 // Observe the openings
-                for eval in preprocessed_evals.iter() {
-                    challenger.observe_ext_element(*eval);
-                }
-                for eval in main_evals.iter() {
-                    challenger.observe_ext_element(*eval);
-                }
+                challenger.observe_variable_length_extension_slice(preprocessed_evals);
+                challenger.observe_variable_length_extension_slice(main_evals);
 
                 let preprocessed = AirOpenedValues { local: preprocessed_evals.to_vec() };
 
@@ -648,7 +646,7 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
         );
 
         // Observe the public values.
-        challenger.observe_slice(&public_values);
+        challenger.observe_constant_length_slice(&public_values);
 
         // Commit to the traces.
         let (main_commit, main_data) =

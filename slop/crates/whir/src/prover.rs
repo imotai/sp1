@@ -16,7 +16,10 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIter
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_alloc::CpuBackend;
-use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger, IopCtx};
+use slop_challenger::{
+    CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger, IopCtx,
+    VariableLengthChallenger,
+};
 use slop_commit::{Message, Rounds};
 use slop_dft::{p3::Radix2DitParallel, Dft};
 use slop_jagged::{
@@ -243,7 +246,9 @@ where
             .map(|point| concatenated_polynomial.blocking_monomial_basis_eval_at(point)[0])
             .collect();
 
-        challenger.observe_ext_element_slice(&ood_answers);
+        // The length of this vector is determined by the agreed-upon "WHIR config", so its length
+        // does not need to be observed.
+        challenger.observe_constant_length_extension_slice(&ood_answers);
 
         let parsed_commitment = ParsedCommitment {
             commitment: rounds.iter().map(|r| r.commitment).collect(),
@@ -366,7 +371,7 @@ where
                 })
                 .collect();
 
-            challenger.observe_ext_element_slice(&ood_answers);
+            challenger.observe_constant_length_extension_slice(&ood_answers);
 
             parsed_commitments.push(ParsedCommitment::<GC> {
                 commitment: vec![commitment].into_iter().collect(),
@@ -499,7 +504,7 @@ where
 
         let final_polynomial =
             f_vec.inner().as_ref().unwrap().guts().clone().into_buffer().to_vec();
-        challenger.observe_ext_element_slice(&final_polynomial);
+        challenger.observe_constant_length_extension_slice(&final_polynomial);
 
         let final_id_indices = (0..config.final_queries)
             .map(|_| challenger.sample_bits(prev_domain_log_size))
@@ -863,7 +868,7 @@ where
 
             let sumcheck_poly = SumcheckPoly([c0, c1, c2]);
 
-            challenger.observe_ext_element_slice(&sumcheck_poly.0);
+            challenger.observe_constant_length_extension_slice(&sumcheck_poly.0);
             let folding_randomness_single: GC::EF = challenger.sample_ext_element();
             let pow = challenger.grind(round_pow_bits.ceil() as usize);
             claimed_sum = sumcheck_poly.evaluate_at_point(folding_randomness_single);

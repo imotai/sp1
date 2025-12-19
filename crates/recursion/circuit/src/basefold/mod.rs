@@ -55,7 +55,7 @@ pub trait RecursiveMultilinearPcsVerifier: Sized {
     type Proof;
     type Circuit: CircuitConfig<Bit = Self::Bit>;
     type Bit;
-    type Challenger: CanObserveVariable<Self::Circuit, Felt<SP1Field>>;
+    type Challenger: FieldChallengerVariable<Self::Circuit, Self::Bit>;
 
     fn verify_trusted_evaluations(
         &self,
@@ -158,6 +158,9 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> RecursiveBasefoldVerifier<
         point.reverse();
 
         // Sample the challenges used for FRI folding and BaseFold random linear combinations.
+        let len_felt: Felt<_> =
+            builder.constant(SP1Field::from_canonical_usize(proof.fri_commitments.len()));
+        challenger.observe(builder, len_felt);
         let betas = proof
             .fri_commitments
             .iter()
@@ -201,9 +204,7 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> RecursiveBasefoldVerifier<
         }
 
         let final_poly_felts = C::ext2felt(builder, proof.final_poly);
-        final_poly_felts.iter().for_each(|felt| {
-            challenger.observe(builder, *felt);
-        });
+        challenger.observe_slice(builder, final_poly_felts);
 
         // Check proof of work (grinding to find a number that hashes to have
         // `self.config.proof_of_work_bits` zeroes at the beginning).

@@ -3,7 +3,10 @@ use std::iter::once;
 
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, UnivariatePolynomial};
-use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger, IopCtx};
+use slop_challenger::{
+    CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger, IopCtx,
+    VariableLengthChallenger,
+};
 use slop_commit::Rounds;
 use slop_merkle_tree::{MerkleTreeOpeningAndProof, MerkleTreeTcs};
 use slop_multilinear::{Mle, MultilinearPcsVerifier, Point};
@@ -147,9 +150,7 @@ where
         commitment: &[GC::Digest],
         challenger: &mut GC::Challenger,
     ) -> Result<(), WhirProofError> {
-        for c in commitment {
-            challenger.observe(*c);
-        }
+        challenger.observe_constant_length_digest_slice(commitment);
 
         Ok(())
     }

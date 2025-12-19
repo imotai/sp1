@@ -113,9 +113,7 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> RecursiveWhirVerifier<C, S
             }
         }
 
-        for ood_answer in commitment.ood_answers.iter() {
-            challenger.observe_ext_element(builder, *ood_answer);
-        }
+        challenger.observe_ext_element_slice(builder, &commitment.ood_answers);
 
         // Batch the initial claim with the OOD claims of the commitment
         let claim_batching_randomness: Ext<SP1Field, SP1ExtensionField> =
@@ -190,9 +188,7 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> RecursiveWhirVerifier<C, S
             }
 
             // Absorb the OOD answers
-            for ood_answer in &new_commitment.ood_answers {
-                challenger.observe_ext_element(builder, *ood_answer);
-            }
+            challenger.observe_ext_element_slice(builder, &new_commitment.ood_answers);
 
             // Squeeze the STIR queries
             let id_query_indices = (0..round_params.num_queries)
@@ -466,9 +462,7 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> RecursiveWhirVerifier<C, S
         let mut randomness = Vec::with_capacity(rounds);
         for i in 0..rounds {
             let (sumcheck_poly, pow_witness) = &sumcheck_polynomials[i];
-            for elem in sumcheck_poly.0.iter() {
-                challenger.observe_ext_element(builder, *elem);
-            }
+            challenger.observe_ext_element_slice(builder, &sumcheck_poly.0);
 
             let sum = IntoSymbolic::<C>::as_symbolic(sumcheck_poly).sum_over_hypercube();
 

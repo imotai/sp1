@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::{Buffer, CanCopyFrom, CpuBackend};
-use slop_challenger::{FieldChallenger, FromChallenger};
+use slop_challenger::{FieldChallenger, FromChallenger, VariableLengthChallenger};
 use slop_multilinear::{Mle, Point, PointBackend};
 use slop_sumcheck::{partially_verify_sumcheck_proof, PartialSumcheckProof, SumcheckError};
 use slop_tensor::Tensor;
@@ -70,10 +70,13 @@ where
             return Err(JaggedEvalSumcheckError::IncorrectShape);
         }
 
-        let log_m = params.col_prefix_sums[0].dimension().max(z_row.dimension() + 1);
         // Verify the jagged eval proof.
-        let result =
-            partially_verify_sumcheck_proof(partial_sumcheck_proof, challenger, 2 * log_m, 2);
+        let result = partially_verify_sumcheck_proof(
+            partial_sumcheck_proof,
+            challenger,
+            2 * params.col_prefix_sums[0].dimension(),
+            2,
+        );
 
         if let Err(result) = result {
             return Err(JaggedEvalSumcheckError::SumcheckError(result));
@@ -209,8 +212,7 @@ where
         let expected_sum =
             verifier_params.full_jagged_little_polynomial_evaluation(z_row, z_col, z_trace);
 
-        let log_m =
-            log2_ceil_usize(*params.col_prefix_sums_usize.last().unwrap()).max(z_row.dimension());
+        let log_m = log2_ceil_usize(*params.col_prefix_sums_usize.last().unwrap());
 
         let mut sum_values = Tensor::zeros_in([3, 2 * (log_m + 1)], backend.clone()).into_buffer();
 
@@ -235,9 +237,7 @@ where
         // of the device challenger. This could also be done by copying the device challenger
         // state to CPU.
         for poly in &partial_sumcheck_proof.univariate_polys {
-            for coefficient in &poly.coefficients {
-                challenger.observe_ext_element(*coefficient);
-            }
+            challenger.observe_constant_length_extension_slice(&poly.coefficients);
             let _: EF = challenger.sample_ext_element();
         }
 

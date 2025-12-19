@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use slop_tensor::TransposeBackend;
+use slop_utils::log2_ceil_usize;
 use std::{fmt::Debug, iter::once, sync::Arc};
 use tracing::Instrument;
 
@@ -345,7 +346,7 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
 
         let pcs_proof = self
             .pcs_prover
-            .prove_trusted_evaluation(
+            .prove_untrusted_evaluation(
                 final_eval_point,
                 component_poly_evals[0][0],
                 stacked_prover_data,
@@ -365,10 +366,11 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
             pcs_proof,
             sumcheck_proof,
             jagged_eval_proof,
-            params: params.into_verifier_params(),
             row_counts_and_column_counts,
             merkle_tree_commitments: original_commitments,
             expected_eval: component_poly_evals[0][0],
+            max_log_row_count: self.max_log_row_count,
+            log_m: log2_ceil_usize(*params.col_prefix_sums_usize.last().unwrap()),
         })
     }
 }

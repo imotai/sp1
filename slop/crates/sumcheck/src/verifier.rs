@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use slop_algebra::{ExtensionField, Field};
-use slop_challenger::FieldChallenger;
+use slop_challenger::{FieldChallenger, VariableLengthChallenger};
 use slop_multilinear::Point;
 
 use crate::PartialSumcheckProof;
@@ -56,14 +56,10 @@ pub fn partially_verify_sumcheck_proof<
         return Err(SumcheckError::InvalidProofShape);
     }
 
-    challenger.observe_slice(
-        &first_poly
-            .coefficients
-            .iter()
-            .flat_map(|x| x.as_base_slice())
-            .copied()
-            .collect::<Vec<_>>(),
-    );
+    // The degree of this polynomial is checked against `expected_degree`, which is considered to be
+    // agreed upon between the prover and verifier before the proof starts, which is why we don't
+    // observe it here.
+    challenger.observe_constant_length_extension_slice(&first_poly.coefficients);
     let mut previous_poly = first_poly;
 
     for poly in proof.univariate_polys.iter().skip(1) {
@@ -76,9 +72,7 @@ pub fn partially_verify_sumcheck_proof<
         if expected_eval != poly.eval_one_plus_eval_zero() {
             return Err(SumcheckError::SumcheckRoundInconsistency);
         }
-        challenger.observe_slice(
-            &poly.coefficients.iter().flat_map(|x| x.as_base_slice()).copied().collect::<Vec<_>>(),
-        );
+        challenger.observe_constant_length_extension_slice(&poly.coefficients);
         previous_poly = poly;
     }
 

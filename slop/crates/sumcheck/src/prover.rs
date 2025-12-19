@@ -2,7 +2,7 @@ use futures::{future::join_all, prelude::*};
 use itertools::Itertools;
 
 use slop_algebra::{rlc_univariate_polynomials, ExtensionField, Field, UnivariatePolynomial};
-use slop_challenger::FieldChallenger;
+use slop_challenger::{FieldChallenger, VariableLengthChallenger};
 
 use crate::{ComponentPoly, PartialSumcheckProof, SumcheckPoly, SumcheckPolyFirstRound};
 
@@ -51,7 +51,7 @@ pub async fn reduce_sumcheck_to_evaluation<
     let mut rlc_uni_poly = rlc_univariate_polynomials(&uni_polys, lambda);
     let coefficients =
         rlc_uni_poly.coefficients.iter().flat_map(|x| x.as_base_slice()).copied().collect_vec();
-    challenger.observe_slice(&coefficients);
+    challenger.observe_constant_length_slice(&coefficients);
 
     univariate_poly_msgs.push(rlc_uni_poly);
 
@@ -72,14 +72,7 @@ pub async fn reduce_sumcheck_to_evaluation<
         )
         .await;
         rlc_uni_poly = rlc_univariate_polynomials(&uni_polys, lambda);
-        challenger.observe_slice(
-            &rlc_uni_poly
-                .coefficients
-                .iter()
-                .flat_map(|x| x.as_base_slice())
-                .copied()
-                .collect::<Vec<_>>(),
-        );
+        challenger.observe_constant_length_extension_slice(&rlc_uni_poly.coefficients);
 
         univariate_poly_msgs.push(rlc_uni_poly);
 

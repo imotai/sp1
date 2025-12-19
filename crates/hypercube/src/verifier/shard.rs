@@ -13,7 +13,7 @@ use std::{
 use itertools::Itertools;
 use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32, TwoAdicField};
-use slop_challenger::{CanObserve, FieldChallenger, IopCtx};
+use slop_challenger::{CanObserve, FieldChallenger, IopCtx, VariableLengthChallenger};
 use slop_commit::Rounds;
 use slop_jagged::{JaggedBasefoldConfig, JaggedConfig, JaggedPcsVerifier, JaggedPcsVerifierError};
 use slop_matrix::dense::RowMajorMatrixView;
@@ -393,13 +393,11 @@ where
         })?;
 
         // Observe the openings
+        let len = shard_chips.len();
+        challenger.observe(GC::F::from_canonical_usize(len));
         for (_, opening) in opened_values.chips.iter() {
-            for eval in opening.preprocessed.local.iter() {
-                challenger.observe_ext_element(*eval);
-            }
-            for eval in opening.main.local.iter() {
-                challenger.observe_ext_element(*eval);
-            }
+            challenger.observe_variable_length_extension_slice(&opening.preprocessed.local);
+            challenger.observe_variable_length_extension_slice(&opening.main.local);
         }
 
         Ok(())
@@ -468,7 +466,7 @@ where
         let shard_chips = opened_values.chips.keys().cloned().collect::<BTreeSet<_>>();
 
         // Observe the public values.
-        challenger.observe_slice(public_values);
+        challenger.observe_constant_length_extension_slice(public_values);
         // Observe the main commitment.
         challenger.observe(*main_commitment);
         // Observe the number of chips.

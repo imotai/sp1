@@ -82,7 +82,6 @@ mod tests {
         let z_col: Point<EF> =
             (0..log2_ceil_usize(row_counts.len())).map(|_| rng.gen::<EF>()).collect();
         let z_index: Point<EF> = (0..log_m + 1).map(|_| rng.gen::<EF>()).collect();
-        let log_m = log_m.max(z_row.dimension());
 
         let merged_prefix_sums = prefix_sums
             .windows(2)
