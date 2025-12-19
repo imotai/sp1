@@ -461,7 +461,6 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
 
         let (_, stack_point) = final_eval_point
             .split_at(final_eval_point.dimension() - self.basefold_prover.log_height as usize);
-        // let stack_point = stack_point.copy_into(&backend);
 
         let batch_evaluations = self.round_stacked_evaluations(&stack_point, all_mles).await;
 
@@ -496,6 +495,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
                 stacked_prover_data,
                 challenger,
             )
+            .instrument(tracing::debug_span!("prove trusted evaluations basefold"))
             .await
             .unwrap();
 

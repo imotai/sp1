@@ -789,7 +789,7 @@ async fn device_main_tracegen<A: CudaTracegenAir<Felt>>(
 
     // If we're the last users of the record, expensively drop it in a separate task.
     // TODO: in general, figure out the best way to drop expensive-to-drop things.
-    tokio::spawn(async move { drop(record) });
+    tokio::task::spawn_blocking(move || drop(record));
 
     (all_traces, public_values)
 }
@@ -899,7 +899,7 @@ pub async fn full_tracegen<A: CudaTracegenAir<Felt>>(
 
     let (preprocessed_traces, (main_traces, public_values)) = join!(
         device_preprocessed_tracegen(program, prep_host_phase_tracegen, backend),
-        device_main_tracegen(main_host_phase_tracegen, record.clone(), initial_traces, backend)
+        device_main_tracegen(main_host_phase_tracegen, record, initial_traces, backend)
     );
 
     log_chip_stats(machine, &chip_set, &main_traces);
