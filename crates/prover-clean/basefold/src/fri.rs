@@ -377,6 +377,8 @@ where
             eval_point.dimension() as u32,
             "eval point dimension mismatch"
         );
+
+        challenger.observe(Felt::from_canonical_usize(eval_point.dimension()));
         for _ in 0..eval_point.dimension() {
             // Compute claims for `g(X_0, X_1, ..., X_{d-1}, 0)` and `g(X_0, X_1, ..., X_{d-1}, 1)`.
             let last_coord = eval_point.remove_last_coordinate();

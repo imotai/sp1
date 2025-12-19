@@ -30,7 +30,7 @@ use slop_algebra::{
     Field, UnivariatePolynomial,
 };
 use slop_alloc::{Backend, Buffer, CanCopyFromRef, CpuBackend, HasBackend, IntoHost};
-use slop_challenger::FieldChallenger;
+use slop_challenger::{FieldChallenger, VariableLengthChallenger};
 use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{Mle, Point, VirtualGeq};
 use slop_sumcheck::PartialSumcheckProof;
@@ -679,24 +679,21 @@ where
     let mut preprocessed_ptr = 0;
     let mut main_ptr = total_preprocessed_columns;
     let mut opened_values: BTreeMap<String, ChipOpenedValues<Felt, Ext>> = BTreeMap::new();
+    challenger.observe(Felt::from_canonical_usize(chips.len()));
     for (i, chip) in chips.iter().enumerate() {
         let preprocessed_width = chip.preprocessed_width();
         let preprocessed = AirOpenedValues {
             local: individual_column_evals[preprocessed_ptr..preprocessed_ptr + preprocessed_width]
                 .to_vec(),
         };
-        for eval in &preprocessed.local {
-            challenger.observe_ext_element(*eval);
-        }
+        challenger.observe_variable_length_extension_slice(&preprocessed.local);
         preprocessed_ptr += preprocessed_width;
 
         let width = chip.width();
 
         let main =
             AirOpenedValues { local: individual_column_evals[main_ptr..main_ptr + width].to_vec() };
-        for eval in &main.local {
-            challenger.observe_ext_element(*eval);
-        }
+        challenger.observe_variable_length_extension_slice(&main.local);
         main_ptr += width;
 
         opened_values.insert(
@@ -732,7 +729,9 @@ pub mod tests {
     use slop_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, PairBuilder};
     use slop_algebra::{AbstractField, PrimeField32};
     use slop_alloc::{Buffer, CpuBackend};
-    use slop_challenger::{CanObserve, CanSample, FieldChallenger, IopCtx};
+    use slop_challenger::{
+        CanObserve, CanSample, FieldChallenger, IopCtx, VariableLengthChallenger,
+    };
     use slop_futures::queue::WorkerQueue;
     use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
     use slop_matrix::{dense::RowMajorMatrix, dense::RowMajorMatrixView, Matrix};
@@ -1446,12 +1445,8 @@ pub mod tests {
 
         // Observe the openings
         for (_, opening) in opened_values.chips.iter() {
-            for eval in opening.preprocessed.local.iter() {
-                challenger.observe_ext_element(*eval);
-            }
-            for eval in opening.main.local.iter() {
-                challenger.observe_ext_element(*eval);
-            }
+            challenger.observe_variable_length_extension_slice(&opening.preprocessed.local);
+            challenger.observe_variable_length_extension_slice(&opening.main.local);
         }
     }
 

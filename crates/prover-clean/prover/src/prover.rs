@@ -21,8 +21,9 @@ use slop_challenger::{CanObserve, FieldChallenger, FromChallenger, IopCtx};
 use slop_commit::Rounds;
 use slop_futures::queue::{Worker, WorkerQueue};
 use slop_jagged::{
-    JaggedConfig, JaggedEvalProver, JaggedEvalSumcheckProver, JaggedLittlePolynomialProverParams,
-    JaggedPcsProof, JaggedProverData, JaggedProverError,
+    unzip_and_prefix_sums, JaggedConfig, JaggedEvalProver, JaggedEvalSumcheckProver,
+    JaggedLittlePolynomialProverParams, JaggedPcsProof, JaggedProverData, JaggedProverError,
+    PrefixSumsMaxLogRowCount,
 };
 use slop_multilinear::{Evaluations, Mle, MleEval, MultilinearPcsVerifier, Point};
 use slop_stacked::StackedPcsProof;
@@ -464,6 +465,8 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
 
         let batch_evaluations = self.round_stacked_evaluations(&stack_point, all_mles).await;
 
+        challenger.observe_ext_element(component_poly_evals[0]);
+
         let mut host_batch_evaluations = Rounds::new();
         for round_evals in batch_evaluations.iter() {
             let mut host_round_evals = vec![];
@@ -510,14 +513,18 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
         let stacked_pcs_proof =
             StackedPcsProof { pcs_proof, batch_evaluations: host_batch_evaluations };
 
+        let PrefixSumsMaxLogRowCount { log_m, .. } =
+            unzip_and_prefix_sums(&row_counts_and_column_counts);
+
         Ok(JaggedPcsProof {
             pcs_proof: stacked_pcs_proof.into(),
             sumcheck_proof,
             jagged_eval_proof,
-            params: params.into_verifier_params(),
             row_counts_and_column_counts,
             merkle_tree_commitments: original_commitments,
             expected_eval: component_poly_evals[0],
+            max_log_row_count: self.max_log_row_count as usize,
+            log_m,
         })
     }
 
@@ -601,7 +608,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: ProverCleanProverComponents<GC>> CudaSh
             .collect::<Point<_>>();
         let _pv_challenge = challenger.sample_ext_element::<GC::EF>();
 
-        let logup_gkr_proof = prove_logup_gkr(
+        let logup_gkr_proof = prove_logup_gkr::<GC, _, _>(
             shard_chips,
             self.all_interactions.clone(),
             traces,

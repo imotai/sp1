@@ -3,7 +3,6 @@
 //!
 use std::{
     collections::{BTreeMap, BTreeSet},
-    ops::Deref,
     sync::Arc,
 };
 
@@ -11,7 +10,7 @@ use csl_cuda::{TaskScope, ToDevice};
 use itertools::Itertools;
 use slop_algebra::AbstractField;
 use slop_alloc::{CanCopyFromRef, HasBackend, ToHost};
-use slop_challenger::FieldChallenger;
+use slop_challenger::{FieldChallenger, IopCtx, VariableLengthChallenger};
 use slop_multilinear::{Mle, MultilinearPcsChallenger, Point};
 use tracing::instrument;
 
@@ -173,7 +172,11 @@ pub async fn prove_gkr_circuit<'a, C: FieldChallenger<Felt>>(
 }
 
 /// End-to-end proves lookups for a given trace.
-pub async fn prove_logup_gkr<A: MachineAir<Felt>, C: MultilinearPcsChallenger<Felt>>(
+pub async fn prove_logup_gkr<
+    GC: IopCtx<F = Felt, EF = Ext>,
+    A: MachineAir<Felt>,
+    C: MultilinearPcsChallenger<Felt> + VariableLengthChallenger<Felt, <GC as IopCtx>::Digest>,
+>(
     chips: &BTreeSet<Chip<Felt, A>>,
     all_interactions: BTreeMap<String, Arc<Interactions<Felt, TaskScope>>>,
     jagged_trace_data: &JaggedTraceMle<Felt, TaskScope>,
@@ -204,12 +207,11 @@ pub async fn prove_logup_gkr<A: MachineAir<Felt>, C: MultilinearPcsChallenger<Fe
     // Copy the output to host and observe the claims.
     let host_numerator = numerator.to_host().await.unwrap();
     let host_denominator = denominator.to_host().await.unwrap();
-    for (n, d) in
-        host_numerator.guts().as_slice().iter().zip_eq(host_denominator.guts().as_slice().iter())
-    {
-        challenger.observe_ext_element(*n);
-        challenger.observe_ext_element(*d);
-    }
+    challenger
+        .observe_variable_length_extension_slice(host_numerator.guts().as_buffer().as_slice());
+    challenger
+        .observe_variable_length_extension_slice(host_denominator.guts().as_buffer().as_slice());
+
     let output_host = LogUpGkrOutput { numerator: host_numerator, denominator: host_denominator };
 
     // TODO: instead calculate from number of interactions.
@@ -244,6 +246,7 @@ pub async fn prove_logup_gkr<A: MachineAir<Felt>, C: MultilinearPcsChallenger<Fe
 
     let mut preprocessed_so_far = 0;
 
+    challenger.observe(Felt::from_canonical_usize(chips.len()));
     for (chip, main_evals) in chips.iter().zip_eq(main.into_iter()) {
         let openings = ChipEvaluation {
             main_trace_evaluations: main_evals,
@@ -258,13 +261,9 @@ pub async fn prove_logup_gkr<A: MachineAir<Felt>, C: MultilinearPcsChallenger<Fe
 
         // Observe the openings.
         if let Some(prep_eval) = openings.preprocessed_trace_evaluations.as_ref() {
-            for eval in prep_eval.deref().iter() {
-                challenger.observe_ext_element(*eval);
-            }
+            challenger.observe_variable_length_extension_slice(prep_eval);
         }
-        for eval in openings.main_trace_evaluations.deref().iter() {
-            challenger.observe_ext_element(*eval);
-        }
+        challenger.observe_variable_length_extension_slice(&openings.main_trace_evaluations);
 
         chip_evaluations.insert(chip.name(), openings);
     }
@@ -604,7 +603,7 @@ mod tests {
             }
 
             let mut prover_challenger = challenger.clone();
-            let proof = super::prove_logup_gkr(
+            let proof = super::prove_logup_gkr::<TestGC, _, _>(
                 shard_chips,
                 all_interactions,
                 &jagged_trace_data,
