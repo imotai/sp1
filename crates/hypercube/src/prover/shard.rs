@@ -6,7 +6,9 @@ use slop_algebra::{AbstractField, Field};
 use slop_alloc::{Backend, Buffer, CanCopyFrom, CanCopyFromRef, CanCopyIntoRef, CpuBackend};
 use slop_challenger::{CanObserve, FieldChallenger, IopCtx, VariableLengthChallenger};
 use slop_commit::Rounds;
-use slop_jagged::{JaggedBackend, JaggedProver, JaggedProverComponents, JaggedProverData};
+use slop_jagged::{
+    JaggedBackend, JaggedConfig, JaggedProver, JaggedProverComponents, JaggedProverData,
+};
 use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{
     Evaluations, HostEvaluationBackend, Mle, MleEval, MultilinearPcsProver, PaddedMle, Point,
@@ -29,8 +31,8 @@ use crate::{
     prover::{ProverPermit, ProverSemaphore, ZeroCheckPoly, ZerocheckAir},
     septic_digest::SepticDigest,
     AirOpenedValues, Chip, ChipEvaluation, ChipOpenedValues, ChipStatistics,
-    ConstraintSumcheckFolder, LogUpEvaluations, LogUpGkrProver, Machine, MachineConfig,
-    MachineRecord, MachineVerifyingKey, ShardOpenedValues, ShardProof,
+    ConstraintSumcheckFolder, LogUpEvaluations, LogUpGkrProver, Machine, MachineRecord,
+    MachineVerifyingKey, ShardOpenedValues, ShardProof,
 };
 
 use super::{TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
@@ -43,7 +45,7 @@ type ShardProverComponentsJaggedProverData<GC, C> = JaggedProverData<
 
 /// A prover for an AIR.
 #[allow(clippy::type_complexity)]
-pub trait AirProver<GC: IopCtx, C: MachineConfig<GC>, Air: MachineAir<GC::F>>:
+pub trait AirProver<GC: IopCtx, C: JaggedConfig<GC>, Air: MachineAir<GC::F>>:
     'static + Send + Sync + Sized
 {
     /// The proving key type.
@@ -105,7 +107,7 @@ pub trait AirProver<GC: IopCtx, C: MachineConfig<GC>, Air: MachineAir<GC::F>>:
 /// A proving key for an AIR prover.
 pub struct ProvingKey<
     GC: IopCtx,
-    C: MachineConfig<GC>,
+    C: JaggedConfig<GC>,
     Air: MachineAir<GC::F>,
     Prover: AirProver<GC, C, Air>,
 > {
@@ -137,7 +139,7 @@ pub trait ShardProverComponents<GC: IopCtx>: 'static + Send + Sync + Sized {
         + CanCopyIntoRef<PaddedMle<GC::F, Self::B>, CpuBackend, Output = PaddedMle<GC::F>>;
 
     /// The machine configuration for which this prover can make proofs for.
-    type Config: MachineConfig<GC>;
+    type Config: JaggedConfig<GC>;
 
     /// The trace generator.
     type TraceGenerator: TraceGenerator<GC::F, Self::Air, Self::B>;

@@ -239,8 +239,9 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
         Ok(SP1Worker::new(controller, prover_engine, verifier))
     }
 
-    /// Set the artifact client.
-    #[must_use]
+    /// Set the path to the vk map. By default, the prover will use `prover/vk_map.bin` and this
+    /// should only be changed for testing purposes.
+    #[cfg(feature = "experimental")]
     pub fn with_vk_map_path(self, vk_map_path: String) -> SP1WorkerBuilder<C, A, W> {
         let SP1WorkerBuilder {
             mut config,
@@ -252,7 +253,8 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
             worker_client,
         } = self;
 
-        config.prover_config.recursion_prover_config.vk_map_file = Some(vk_map_path);
+        config.prover_config.recursion_prover_config =
+            config.prover_config.recursion_prover_config.with_vk_map_path(vk_map_path);
 
         SP1WorkerBuilder {
             config,
@@ -265,9 +267,9 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
         }
     }
 
-    /// Set the artifact client.
-    #[must_use]
-    pub fn with_vk_verification(self, vk_verification: bool) -> SP1WorkerBuilder<C, A, W> {
+    /// Turn off vk verification for recursion proofs.
+    #[cfg(feature = "experimental")]
+    pub fn without_vk_verification(self) -> SP1WorkerBuilder<C, A, W> {
         let SP1WorkerBuilder {
             mut config,
             core_air_prover_and_permits,
@@ -278,7 +280,8 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
             worker_client,
         } = self;
 
-        config.prover_config.recursion_prover_config.vk_verification = vk_verification;
+        config.prover_config.recursion_prover_config =
+            config.prover_config.recursion_prover_config.without_vk_verification();
 
         SP1WorkerBuilder {
             config,

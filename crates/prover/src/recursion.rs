@@ -8,6 +8,7 @@ use std::{
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_basefold::BasefoldVerifier;
 use slop_challenger::IopCtx;
+use slop_jagged::JaggedConfig;
 use slop_stacked::StackedPcsVerifier;
 use sp1_core_executor::SP1RecursionProof;
 use sp1_core_machine::riscv::RiscvAir;
@@ -15,7 +16,7 @@ use sp1_hypercube::{
     air::{MachineAir, POSEIDON_NUM_WORDS, PROOF_NONCE_NUM_WORDS},
     inner_perm,
     prover::{MachineProver, MachineProverComponents, MachineProvingKey},
-    Machine, MachineConfig, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
+    Machine, MachineVerifier, MachineVerifyingKey, ShardProof, ShardVerifier,
 };
 use sp1_primitives::{
     hash_deferred_proof, SP1ExtensionField, SP1Field, SP1GlobalContext, SP1OuterGlobalContext,
@@ -918,7 +919,7 @@ pub(crate) fn recursive_verifier<GC, A, SC, C>(
 ) -> RecursiveShardVerifier<GC, A, C>
 where
     GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + SP1FieldConfigVariable<C>,
-    SC: MachineConfig<GC, PcsVerifier = StackedPcsVerifier<GC, BasefoldVerifier<GC>>>,
+    SC: JaggedConfig<GC, PcsVerifier = StackedPcsVerifier<GC, BasefoldVerifier<GC>>>,
     A: MachineAir<GC::F>,
     C: CircuitConfig,
 {

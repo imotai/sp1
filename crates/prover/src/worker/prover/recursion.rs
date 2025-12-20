@@ -73,12 +73,51 @@ pub struct SP1RecursionProverConfig {
     pub recursion_prover_buffer_size: usize,
     /// The maximum compose arity.
     pub max_compose_arity: usize,
-    /// Whether to verify the recursion vks
-    pub vk_verification: bool,
+    /// Whether to verify the recursion vks. Should be true by default and only can be set to false
+    /// manually for code that is feature-gated behind the `experimental` flag.
+    vk_verification: bool,
     /// Whether or not to verify the proof result at the end.
     pub verify_intermediates: bool,
-    /// An optional file path for the vk map.
-    pub vk_map_file: Option<String>,
+    /// An optional file path for the vk map. Should be `None` by default and only can be set manually
+    /// for code that is feature-gated behind the `experimental` flag.
+    vk_map_file: Option<String>,
+}
+
+impl SP1RecursionProverConfig {
+    pub fn new(
+        num_prepare_reduce_workers: usize,
+        prepare_reduce_buffer_size: usize,
+        num_recursion_executor_workers: usize,
+        recursion_executor_buffer_size: usize,
+        num_recursion_prover_workers: usize,
+        recursion_prover_buffer_size: usize,
+        max_compose_arity: usize,
+        verify_intermediates: bool,
+    ) -> Self {
+        Self {
+            num_prepare_reduce_workers,
+            prepare_reduce_buffer_size,
+            num_recursion_executor_workers,
+            recursion_executor_buffer_size,
+            num_recursion_prover_workers,
+            recursion_prover_buffer_size,
+            max_compose_arity,
+            vk_verification: true,
+            verify_intermediates,
+            vk_map_file: None,
+        }
+    }
+    #[cfg(feature = "experimental")]
+    /// Turn off vk verification for recursion proofs.
+    pub fn without_vk_verification(self) -> Self {
+        Self { vk_verification: false, ..self }
+    }
+
+    #[cfg(feature = "experimental")]
+    /// Set the path to the recursion vk map.
+    pub fn with_vk_map_path(self, vk_map_path: String) -> Self {
+        Self { vk_map_file: Some(vk_map_path), ..self }
+    }
 }
 
 pub struct ReduceTaskRequest {

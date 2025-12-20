@@ -5,6 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use slop_challenger::IopCtx;
+use slop_jagged::JaggedConfig;
 
 use crate::machine::{
     assert_recursion_public_values_valid, SP1MerkleProofVerifier, SP1MerkleProofWitnessValues,
@@ -16,7 +17,7 @@ use sp1_hypercube::{
     air::{MachineAir, ShardRange, POSEIDON_NUM_WORDS, PROOF_NONCE_NUM_WORDS},
     septic_curve::SepticCurve,
     septic_digest::SepticDigest,
-    MachineConfig, MachineVerifyingKey, ShardProof,
+    MachineVerifyingKey, ShardProof,
 };
 use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::ir::{Builder, Felt};
@@ -48,7 +49,7 @@ pub struct SP1DeferredVerifier<GC, C, A> {
 ))]
 pub struct SP1DeferredWitnessValues<
     GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + FieldHasher,
-    SC: MachineConfig<GC>,
+    SC: JaggedConfig<GC>,
 > {
     pub vks_and_proofs: Vec<(MachineVerifyingKey<GC, SC>, ShardProof<GC, SC>)>,
     pub vk_merkle_data: SP1MerkleProofWitnessValues<GC>,
@@ -59,7 +60,7 @@ pub struct SP1DeferredWitnessValues<
     pub deferred_proof_index: GC::F,
 }
 
-impl<GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + FieldHasher, SC: MachineConfig<GC>>
+impl<GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + FieldHasher, SC: JaggedConfig<GC>>
     SP1DeferredWitnessValues<GC, SC>
 {
     /// The deferred proof range.

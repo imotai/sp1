@@ -26,7 +26,7 @@ use crate::{
     witness::{WitnessWriter, Witnessable},
     CircuitConfig, SP1FieldConfigVariable,
 };
-use sp1_hypercube::{MachineConfig, MachineVerifyingKey, SP1CoreJaggedConfig, ShardProof, Word};
+use sp1_hypercube::{MachineVerifyingKey, SP1CoreJaggedConfig, ShardProof, Word};
 use sp1_recursion_compiler::{
     config::InnerConfig,
     ir::{Builder, Felt},
@@ -236,11 +236,11 @@ where
     }
 }
 
-impl<C: CircuitConfig, SC: MachineConfig<SP1GlobalContext>> Witnessable<C>
+impl<C: CircuitConfig, SC: JaggedConfig<SP1GlobalContext>> Witnessable<C>
     for SP1CompressWithVKeyWitnessValues<SC>
 where
     // This trait bound is redundant, but Rust-Analyzer is not able to infer it.
-    SC: MachineConfig<SP1GlobalContext>,
+    SC: JaggedConfig<SP1GlobalContext>,
     <SP1GlobalContext as IopCtx>::Digest: Witnessable<
         C,
         WitnessVariable = <SP1GlobalContext as FieldHasherVariable<C>>::DigestVariable,

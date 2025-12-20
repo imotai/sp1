@@ -14,19 +14,19 @@ use crate::{
     VerifierConstraintFolder,
 };
 
-use super::{MachineConfig, MachineVerifyingKey, ShardProof, ShardVerifier, ShardVerifierError};
+use super::{MachineVerifyingKey, ShardProof, ShardVerifier, ShardVerifierError};
 /// A complete proof of program execution.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(
-    serialize = "C: MachineConfig<GC>, GC::Challenger: Serialize",
-    deserialize = "C: MachineConfig<GC>, GC::Challenger: Deserialize<'de>"
+    serialize = "C: JaggedConfig<GC>, GC::Challenger: Serialize",
+    deserialize = "C: JaggedConfig<GC>, GC::Challenger: Deserialize<'de>"
 ))]
-pub struct MachineProof<GC: IopCtx, C: MachineConfig<GC>> {
+pub struct MachineProof<GC: IopCtx, C: JaggedConfig<GC>> {
     /// The shard proofs.
     pub shard_proofs: Vec<ShardProof<GC, C>>,
 }
 
-impl<GC: IopCtx, C: MachineConfig<GC>> From<Vec<ShardProof<GC, C>>> for MachineProof<GC, C> {
+impl<GC: IopCtx, C: JaggedConfig<GC>> From<Vec<ShardProof<GC, C>>> for MachineProof<GC, C> {
     fn from(shard_proofs: Vec<ShardProof<GC, C>>) -> Self {
         Self { shard_proofs }
     }
@@ -63,12 +63,12 @@ pub type MachineVerifierConfigError<GC, C> = MachineVerifierError<
 
 /// A verifier for a machine proof.
 #[derive_where(Clone)]
-pub struct MachineVerifier<GC: IopCtx, C: MachineConfig<GC>, A: MachineAir<GC::F>> {
+pub struct MachineVerifier<GC: IopCtx, C: JaggedConfig<GC>, A: MachineAir<GC::F>> {
     /// Shard proof verifier.
     shard_verifier: ShardVerifier<GC, C, A>,
 }
 
-impl<GC: IopCtx, C: MachineConfig<GC>, A: MachineAir<GC::F>> MachineVerifier<GC, C, A> {
+impl<GC: IopCtx, C: JaggedConfig<GC>, A: MachineAir<GC::F>> MachineVerifier<GC, C, A> {
     /// Create a new machine verifier.
     pub fn new(shard_verifier: ShardVerifier<GC, C, A>) -> Self {
         Self { shard_verifier }
@@ -109,7 +109,7 @@ impl<GC: IopCtx, C: MachineConfig<GC>, A: MachineAir<GC::F>> MachineVerifier<GC,
     }
 }
 
-impl<GC: IopCtx, C: MachineConfig<GC>, A: MachineAir<GC::F>> MachineVerifier<GC, C, A>
+impl<GC: IopCtx, C: JaggedConfig<GC>, A: MachineAir<GC::F>> MachineVerifier<GC, C, A>
 where
     GC::F: PrimeField32,
 {

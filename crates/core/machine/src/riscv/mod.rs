@@ -984,8 +984,6 @@ pub mod tests {
     //         StarkProvingKey, StarkVerifyingKey,
     //     };
 
-    // TODO:  Re-enable when we get all precompiles compatible w/ v6 (specifically the
-    // first_row, last_row.
     // #[test]
     // fn test_primitives_and_machine_air_names_match() {
     //     let chips = RiscvAir::<SP1Field>::chips();

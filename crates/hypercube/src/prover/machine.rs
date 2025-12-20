@@ -3,6 +3,7 @@ use slop_air::{Air, BaseAir};
 use slop_algebra::PrimeField32;
 use slop_challenger::IopCtx;
 use slop_futures::queue::WorkerQueue;
+use slop_jagged::JaggedConfig;
 use std::{
     collections::{BTreeMap, BTreeSet},
     future::Future,
@@ -12,8 +13,8 @@ use std::{
 use crate::{
     air::MachineAir,
     prover::{shard::AirProver, CoreProofShape, ProvingKey},
-    Machine, MachineConfig, MachineProof, MachineVerifier, MachineVerifierConfigError,
-    MachineVerifyingKey, ShardProof, ShardVerifier, VerifierConstraintFolder,
+    Machine, MachineProof, MachineVerifier, MachineVerifierConfigError, MachineVerifyingKey,
+    ShardProof, ShardVerifier, VerifierConstraintFolder,
 };
 
 use super::{PreprocessedData, ProverSemaphore};
@@ -22,7 +23,7 @@ use super::{PreprocessedData, ProverSemaphore};
 #[allow(clippy::type_complexity)]
 pub trait MachineProverComponents<GC: IopCtx>: 'static + Send + Sync {
     /// The machine configuration.
-    type Config: MachineConfig<GC>;
+    type Config: JaggedConfig<GC>;
     /// The AIR.
     type Air: MachineAir<GC::F>;
     /// The prover.

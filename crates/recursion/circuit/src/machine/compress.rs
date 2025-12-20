@@ -13,6 +13,7 @@ use slop_algebra::{AbstractField, PrimeField32};
 use slop_challenger::IopCtx;
 
 use serde::{Deserialize, Serialize};
+use slop_jagged::JaggedConfig;
 use sp1_core_machine::riscv::MAX_LOG_NUMBER_OF_SHARDS;
 use sp1_recursion_compiler::ir::{Builder, Felt, IrIter};
 
@@ -21,7 +22,7 @@ use sp1_recursion_executor::{RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS}
 
 use sp1_hypercube::{
     air::{MachineAir, ShardRange, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
-    MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE,
+    MachineVerifyingKey, ShardProof, DIGEST_SIZE,
 };
 
 use crate::{
@@ -61,12 +62,12 @@ pub struct SP1ShapedWitnessVariable<C: CircuitConfig, GC: SP1FieldConfigVariable
 #[serde(bound(serialize = "ShardProof<GC,SC>: Serialize"))]
 #[serde(bound(deserialize = "ShardProof<GC,SC>: Deserialize<'de>"))]
 /// An input layout for the shard proofs that have been normalized to a standard shape.
-pub struct SP1ShapedWitnessValues<GC: IopCtx, SC: MachineConfig<GC>> {
+pub struct SP1ShapedWitnessValues<GC: IopCtx, SC: JaggedConfig<GC>> {
     pub vks_and_proofs: Vec<(MachineVerifyingKey<GC, SC>, ShardProof<GC, SC>)>,
     pub is_complete: bool,
 }
 
-impl<GC: IopCtx, SC: MachineConfig<GC>> SP1ShapedWitnessValues<GC, SC> {
+impl<GC: IopCtx, SC: JaggedConfig<GC>> SP1ShapedWitnessValues<GC, SC> {
     pub fn range(&self) -> ShardRange
     where
         GC::F: PrimeField32,

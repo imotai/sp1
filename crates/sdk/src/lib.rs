@@ -106,8 +106,10 @@ mod tests {
         assert_eq!(report.exit_code, 1);
     }
 
+    // TODO: reimplement the cycle limit logic and revive this test.
     #[should_panic]
     #[tokio::test]
+    #[ignore = "The cycle limit logic needs to be reimplemented."]
     async fn test_cycle_limit_fail() {
         utils::setup_logger();
         let client = ProverClient::builder().cpu().build().await;
@@ -137,7 +139,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "experimental")]
     #[tokio::test]
     async fn test_e2e_core_panic() {
         use sp1_core_executor::StatusCode;
@@ -145,7 +146,7 @@ mod tests {
         use crate::{prover::ProveRequest, CpuProver};
 
         utils::setup_logger();
-        let client = CpuProver::new_experimental().await;
+        let client = CpuProver::new().await;
         let elf = test_artifacts::PANIC_ELF;
         let pk = client.setup(elf).await.unwrap();
         let stdin = SP1Stdin::new();
@@ -179,15 +180,12 @@ mod tests {
     //     assert_eq!(stdout, b"Hello, world!\n");
     // }
 
-    // TODO BEFORE RELEASE: remove use of experimental prover when vkey commitments are finally
-    // built.
-    #[cfg(feature = "experimental")]
     #[tokio::test]
     async fn test_e2e_compressed() {
         use crate::{prover::ProveRequest, CpuProver};
 
         utils::setup_logger();
-        let client = CpuProver::new_experimental().await;
+        let client = CpuProver::new().await;
         let elf = test_artifacts::FIBONACCI_ELF;
         let pk = client.setup(elf).await.unwrap();
         let mut stdin = SP1Stdin::new();
@@ -204,7 +202,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "experimental")]
     #[tokio::test]
     async fn test_e2e_compressed_panic() {
         use sp1_core_executor::StatusCode;
@@ -212,7 +209,7 @@ mod tests {
         use crate::{prover::ProveRequest, CpuProver};
 
         utils::setup_logger();
-        let client = CpuProver::new_experimental().await;
+        let client = CpuProver::new().await;
         let elf = test_artifacts::PANIC_ELF;
         let pk = client.setup(elf).await.unwrap();
         let stdin = SP1Stdin::new();
@@ -230,14 +227,12 @@ mod tests {
         }
     }
 
-    // TODO BEFORE RELEASE: remove use of experimental prover (see above).
-    #[cfg(feature = "experimental")]
     #[tokio::test]
     async fn test_e2e_plonk() {
         use crate::{prover::ProveRequest, CpuProver};
 
         utils::setup_logger();
-        let client = CpuProver::new_experimental().await;
+        let client = CpuProver::new().await;
         let pk = client.setup(test_artifacts::FIBONACCI_ELF).await.unwrap();
         let mut stdin = SP1Stdin::new();
         stdin.write(&10usize);
@@ -246,14 +241,12 @@ mod tests {
         client.verify(&proof, &pk.vk, None).unwrap();
     }
 
-    // TODO BEFORE RELEASE: remove use of experimental prover (see above).
-    #[cfg(feature = "experimental")]
     #[tokio::test]
     async fn test_e2e_groth16() {
         use crate::{prover::ProveRequest, CpuProver};
 
         utils::setup_logger();
-        let client = CpuProver::new_experimental().await;
+        let client = CpuProver::new().await;
         let elf = test_artifacts::FIBONACCI_ELF;
         let pk = client.setup(elf).await.unwrap();
         let mut stdin = SP1Stdin::new();

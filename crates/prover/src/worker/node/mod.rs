@@ -280,7 +280,7 @@ impl SP1LocalNode {
     }
 }
 
-#[cfg(all(test, feature = "experimental"))]
+#[cfg(test)]
 mod tests {
     use serial_test::serial;
     use sp1_core_machine::utils::setup_logger;

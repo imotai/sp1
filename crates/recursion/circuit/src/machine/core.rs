@@ -7,6 +7,7 @@ use itertools::Itertools;
 use slop_air::Air;
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_challenger::IopCtx;
+use slop_jagged::JaggedConfig;
 use sp1_primitives::{SP1Field, SP1GlobalContext};
 
 use serde::{Deserialize, Serialize};
@@ -14,7 +15,7 @@ use sp1_core_machine::riscv::RiscvAir;
 
 use sp1_hypercube::air::{PublicValues, SP1CorePublicValues};
 
-use sp1_hypercube::{air::ShardRange, MachineConfig, MachineVerifyingKey, ShardProof};
+use sp1_hypercube::{air::ShardRange, MachineVerifyingKey, ShardProof};
 
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
@@ -44,7 +45,7 @@ pub struct SP1RecursionWitnessVariable<C: CircuitConfig, SC: SP1FieldConfigVaria
 #[serde(bound(serialize = "ShardProof<GC,SC>: Serialize"))]
 #[serde(bound(deserialize = "ShardProof<GC,SC>: Deserialize<'de>"))]
 /// A struct to contain the inputs to the `normalize` program.
-pub struct SP1NormalizeWitnessValues<GC: IopCtx, SC: MachineConfig<GC>> {
+pub struct SP1NormalizeWitnessValues<GC: IopCtx, SC: JaggedConfig<GC>> {
     pub vk: MachineVerifyingKey<GC, SC>,
     pub shard_proofs: Vec<ShardProof<GC, SC>>,
     pub is_complete: bool,
@@ -53,7 +54,7 @@ pub struct SP1NormalizeWitnessValues<GC: IopCtx, SC: MachineConfig<GC>> {
     pub num_deferred_proofs: GC::F,
 }
 
-impl<GC: IopCtx, SC: MachineConfig<GC>> SP1NormalizeWitnessValues<GC, SC> {
+impl<GC: IopCtx, SC: JaggedConfig<GC>> SP1NormalizeWitnessValues<GC, SC> {
     pub fn range(&self) -> ShardRange
     where
         GC::F: PrimeField32,

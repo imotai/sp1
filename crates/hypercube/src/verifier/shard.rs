@@ -27,7 +27,7 @@ use crate::{
     VerifierPublicValuesConstraintFolder, MAX_CONSTRAINT_DEGREE, PROOF_MAX_NUM_PVS,
 };
 
-use super::{MachineConfig, MachineVerifyingKey, ShardOpenedValues, ShardProof};
+use super::{MachineVerifyingKey, ShardOpenedValues, ShardProof};
 use crate::record::MachineRecord;
 
 /// The number of commitments in an SP1 shard proof, corresponding to the preprocessed and main
@@ -36,7 +36,7 @@ pub const NUM_SP1_COMMITMENTS: usize = 2;
 
 /// A verifier for shard proofs.
 #[derive_where(Clone)]
-pub struct ShardVerifier<GC: IopCtx, C: MachineConfig<GC>, A: MachineAir<GC::F>> {
+pub struct ShardVerifier<GC: IopCtx, C: JaggedConfig<GC>, A: MachineAir<GC::F>> {
     /// The jagged pcs verifier.
     pub jagged_pcs_verifier: JaggedPcsVerifier<GC, C>,
     /// The machine.
@@ -108,7 +108,7 @@ pub enum OpeningShapeError {
     MainWidthMismatch(usize, usize),
 }
 
-impl<GC: IopCtx, C: MachineConfig<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C, A> {
+impl<GC: IopCtx, C: JaggedConfig<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C, A> {
     /// Get a shard verifier from a jagged pcs verifier.
     pub fn new(pcs_verifier: JaggedPcsVerifier<GC, C>, machine: Machine<GC::F, A>) -> Self {
         Self { jagged_pcs_verifier: pcs_verifier, machine }
@@ -247,7 +247,7 @@ impl<GC: IopCtx, C: MachineConfig<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C
     }
 }
 
-impl<GC: IopCtx, C: MachineConfig<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C, A>
+impl<GC: IopCtx, C: JaggedConfig<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C, A>
 where
     GC::F: PrimeField32,
 {

@@ -145,14 +145,8 @@ impl Default for SP1WorkerConfig {
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(DEFAULT_MAX_COMPOSE_ARITY);
-        let vk_verification = env::var("SP1_WORKER_VK_VERIFICATION")
-            .ok()
-            .and_then(|s| s.parse::<bool>().ok())
-            .unwrap_or(DEFAULT_VK_VERIFICATION);
 
-        let vk_map_path = env::var("SP1_LOCAL_NODE_VK_MAP_PATH");
-
-        let recursion_prover_config = SP1RecursionProverConfig {
+        let recursion_prover_config = SP1RecursionProverConfig::new(
             num_prepare_reduce_workers,
             prepare_reduce_buffer_size,
             num_recursion_executor_workers,
@@ -160,10 +154,8 @@ impl Default for SP1WorkerConfig {
             num_recursion_prover_workers,
             recursion_prover_buffer_size,
             max_compose_arity,
-            vk_verification,
             verify_intermediates,
-            vk_map_file: vk_map_path.ok(),
-        };
+        );
 
         // Build the deferred prover config.
         let num_deferred_workers = env::var("SP1_WORKER_NUM_DEFERRED_WORKERS")
@@ -210,7 +202,6 @@ pub(crate) const DEFAULT_NUM_RECURSION_EXECUTOR_WORKERS: usize = 4;
 pub(crate) const DEFAULT_RECURSION_EXECUTOR_BUFFER_SIZE: usize = 4;
 pub(crate) const DEFAULT_NUM_RECURSION_PROVER_WORKERS: usize = 8;
 pub(crate) const DEFAULT_RECURSION_PROVER_BUFFER_SIZE: usize = 8;
-pub(crate) const DEFAULT_VK_VERIFICATION: bool = true;
 
 // Default values for the deferred prover config.
 pub(crate) const DEFAULT_NUM_DEFERRED_WORKERS: usize = 4;

@@ -779,22 +779,14 @@ pub fn build_shape_from_recursion_air_event_count(
     SP1RecursionProofShape { shape: chips_and_heights.into_iter().collect() }
 }
 
-#[cfg(all(test, feature = "experimental"))]
+#[cfg(test)]
 mod tests {
     use anyhow::Context;
-    use either::Either;
-    use serial_test::serial;
-    use sp1_prover_types::network_base_types::ProofMode;
-    use sp1_verifier::SP1Proof;
 
-    use crate::{
-        recursion::normalize_program_from_input,
-        worker::{cpu_worker_builder, SP1LocalNodeBuilder},
-        CpuSP1ProverComponents,
-    };
+    use crate::{recursion::normalize_program_from_input, CpuSP1ProverComponents};
     use sp1_core_executor::SP1Context;
 
-    use sp1_core_machine::{io::SP1Stdin, utils::setup_logger};
+    use sp1_core_machine::utils::setup_logger;
     use sp1_recursion_executor::RecursionAirEventCount;
 
     use crate::SP1ProverBuilder;
@@ -917,9 +909,21 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(feature = "experimental")]
+    use serial_test::serial;
+
     #[tokio::test]
     #[serial]
+    #[cfg(feature = "experimental")]
     async fn test_build_vk_map() {
+        use either::Either;
+
+        use sp1_core_machine::io::SP1Stdin;
+        use sp1_prover_types::network_base_types::ProofMode;
+        use sp1_verifier::SP1Proof;
+
+        use crate::worker::{cpu_worker_builder, SP1LocalNodeBuilder};
+
         setup_logger();
 
         // Use a temporary directory for the vk_map file to avoid conflicts
@@ -980,9 +984,7 @@ mod tests {
 
         // Build a new prover that performs the vk verification check using the built vk map.
         let node = SP1LocalNodeBuilder::from_worker_client_builder(
-            cpu_worker_builder()
-                .with_vk_map_path(vk_map_path.to_str().unwrap().to_string())
-                .with_vk_verification(true),
+            cpu_worker_builder().with_vk_map_path(vk_map_path.to_str().unwrap().to_string()),
         )
         .build()
         .await

@@ -403,12 +403,11 @@ mod tests {
         let _ = bincode::deserialize::<ProofFromNetwork>(&round_trip_bytes).unwrap();
     }
 
-    #[cfg(feature = "experimental")]
     #[tokio::test]
     async fn test_round_trip_proof_save_load() {
         use crate::{ProveRequest, Prover};
 
-        let prover = crate::CpuProver::new_experimental().await;
+        let prover = crate::CpuProver::new().await;
         let pk = prover.setup(test_artifacts::FIBONACCI_BLAKE3_ELF).await.unwrap();
         let proof = prover.prove(&pk, crate::SP1Stdin::new()).compressed().await.unwrap();
 

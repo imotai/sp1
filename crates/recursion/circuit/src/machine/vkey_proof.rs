@@ -14,7 +14,8 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
 use slop_algebra::AbstractField;
-use sp1_hypercube::{air::MachineAir, MachineConfig};
+use slop_jagged::JaggedConfig;
+use sp1_hypercube::air::MachineAir;
 use sp1_primitives::{SP1Field, SP1GlobalContext};
 use sp1_recursion_compiler::ir::{Builder, Felt};
 use sp1_recursion_executor::DIGEST_SIZE;
@@ -93,7 +94,7 @@ pub struct SP1CompressWithVKeyWitnessVariable<C: CircuitConfig, GC: SP1FieldConf
 }
 
 /// An input layout for the verifier of the proof shape phase of the compress stage.
-pub struct SP1CompressWithVKeyWitnessValues<SC: MachineConfig<SP1GlobalContext>> {
+pub struct SP1CompressWithVKeyWitnessValues<SC: JaggedConfig<SP1GlobalContext>> {
     pub compress_val: SP1ShapedWitnessValues<SP1GlobalContext, SC>,
     pub merkle_val: SP1MerkleProofWitnessValues<SP1GlobalContext>,
 }

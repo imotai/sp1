@@ -685,7 +685,7 @@ struct ProveTask<C: SP1ProverComponents> {
     record: RecursionRecord<SP1Field>,
 }
 
-#[cfg(all(test, feature = "experimental"))]
+#[cfg(test)]
 pub mod tests {
     use std::str::FromStr;
 
@@ -816,10 +816,7 @@ pub mod tests {
         let elf = test_artifacts::FIBONACCI_ELF;
         setup_logger();
 
-        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::new()
-            .without_vk_verification()
-            .build()
-            .await;
+        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::new().build().await;
         let opts = LocalProverOpts {
             core_opts: SP1CoreOpts {
                 retained_events_presets: [RetainedEventsPreset::Sha256].into(),
@@ -838,10 +835,7 @@ pub mod tests {
     async fn test_deferred_compress() -> Result<()> {
         setup_logger();
 
-        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::new()
-            .without_vk_verification()
-            .build()
-            .await;
+        let sp1_prover = SP1ProverBuilder::<CpuSP1ProverComponents>::new().build().await;
         let opts = LocalProverOpts::default();
         let prover = Arc::new(LocalProver::new(sp1_prover, opts));
 

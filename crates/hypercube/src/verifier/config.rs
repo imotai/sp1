@@ -1,22 +1,10 @@
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
 use slop_challenger::VariableLengthChallenger;
 use slop_challenger::{CanObserve, IopCtx};
 use slop_jagged::JaggedConfig;
 
 use crate::septic_digest::SepticDigest;
-
-/// A configuration for a machine.
-pub trait MachineConfig<GC: IopCtx>:
-//TODO: Move bounds to JaggedConfig
-    JaggedConfig<GC> + 'static + Send + Sync + Serialize + DeserializeOwned
-{
-}
-
-impl<GC: IopCtx, C> MachineConfig<GC> for C where
-    C: JaggedConfig<GC> + 'static + Send + Sync + Serialize + DeserializeOwned
-{
-}
 
 #[allow(clippy::disallowed_types)]
 use slop_jagged::Poseidon2KoalaBearJaggedCpuProverComponents;
@@ -60,7 +48,7 @@ pub struct ChipDimensions<T> {
 
 /// A verifying key.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct MachineVerifyingKey<C: IopCtx, SC: MachineConfig<C>> {
+pub struct MachineVerifyingKey<C: IopCtx, SC: JaggedConfig<C>> {
     /// The start pc of the program.
     pub pc_start: [C::F; 3],
     /// The starting global digest of the program, after incorporating the initial memory.
@@ -73,7 +61,7 @@ pub struct MachineVerifyingKey<C: IopCtx, SC: MachineConfig<C>> {
     pub marker: std::marker::PhantomData<SC>,
 }
 
-impl<C: IopCtx, SC: MachineConfig<C>> MachineVerifyingKey<C, SC> {
+impl<C: IopCtx, SC: JaggedConfig<C>> MachineVerifyingKey<C, SC> {
     /// Observes the values of the proving key into the challenger.
     pub fn observe_into(&self, challenger: &mut C::Challenger) {
         challenger.observe(self.preprocessed_commit);

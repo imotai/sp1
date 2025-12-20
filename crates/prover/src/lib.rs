@@ -281,6 +281,7 @@ impl<C: SP1ProverComponents> SP1ProverBuilder<C> {
         self
     }
 
+    #[cfg(feature = "experimental")]
     pub fn with_vk_map_path(&mut self, vk_map_path: String) -> &mut Self {
         self.vk_map_path = Some(vk_map_path);
         self

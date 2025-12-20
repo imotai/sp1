@@ -5,8 +5,9 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::{PrimeField, PrimeField32};
 use slop_bn254::Bn254Fr;
 use slop_challenger::IopCtx;
+use slop_jagged::JaggedConfig;
 use sp1_core_machine::io::SP1Stdin;
-use sp1_hypercube::{air::ShardRange, MachineConfig, MachineVerifyingKey, ShardProof, DIGEST_SIZE};
+use sp1_hypercube::{air::ShardRange, MachineVerifyingKey, ShardProof, DIGEST_SIZE};
 use sp1_primitives::{io::SP1PublicValues, poseidon2_hash, SP1Field, SP1GlobalContext};
 use sp1_recursion_circuit::{
     machine::{
@@ -86,7 +87,7 @@ impl HashableKey for SP1VerifyingKey {
     }
 }
 
-impl<GC: IopCtx<F = SP1Field>, C: MachineConfig<GC>> HashableKey for MachineVerifyingKey<GC, C>
+impl<GC: IopCtx<F = SP1Field>, C: JaggedConfig<GC>> HashableKey for MachineVerifyingKey<GC, C>
 where
     GC::Digest: Borrow<[SP1Field; DIGEST_SIZE]>,
 {

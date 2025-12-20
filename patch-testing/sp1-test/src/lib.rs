@@ -49,7 +49,7 @@ pub fn write_cycles(name: &str, cycles: u64) {
 static CPU_PROVER: tokio::sync::OnceCell<sp1_sdk::cpu::CpuProver> = tokio::sync::OnceCell::const_new();
 
 pub async fn sp1_cpu_prover() -> &'static sp1_sdk::cpu::CpuProver {
-    CPU_PROVER.get_or_init(sp1_sdk::cpu::CpuProver::new_experimental).await
+    CPU_PROVER.get_or_init(sp1_sdk::cpu::CpuProver::new).await
 }
 
 static SETUP_ONCE: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
