@@ -130,9 +130,7 @@ sp1-recursion-executor = { git = "https://github.com/succinctlabs/sp1-wip.git", 
 sp1-curves = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-cuda = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-derive = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
-sp1-sdk = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6", features = [
-    "experimental",
-] }
+sp1-sdk = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 sp1-prover-types = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }
 
 # # slop local copy

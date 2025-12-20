@@ -2,10 +2,11 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use cslpc_utils::{Ext, Felt};
 use slop_challenger::IopCtx;
+use slop_jagged::JaggedConfig;
 use sp1_hypercube::{
     air::MachineAir,
     prover::{AirProver, ProverPermit, ProvingKey},
-    Chip, MachineConfig,
+    Chip,
 };
 
 use crate::ProverCleanProverComponents;
@@ -23,7 +24,7 @@ where
 pub struct MainTraceData<
     GC: IopCtx<F = Felt, EF = Ext>,
     Air: MachineAir<GC::F>,
-    C: MachineConfig<GC>,
+    C: JaggedConfig<GC>,
     Prover: AirProver<GC, C, Air>,
 > {
     /// The traces.

@@ -118,8 +118,7 @@ async fn main() {
         let node = SP1LocalNodeBuilder::from_worker_client_builder(
             prover_clean_worker_builder(t.clone())
                 .await
-                .with_vk_map_path(vk_map_path.to_str().unwrap().to_string())
-                .with_vk_verification(true),
+                .with_vk_map_path(vk_map_path.to_str().unwrap().to_string()),
         )
         .build()
         .await

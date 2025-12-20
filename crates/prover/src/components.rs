@@ -18,7 +18,8 @@ use slop_basefold::{Poseidon2Bn254FrBasefoldConfig, Poseidon2KoalaBear16Basefold
 use slop_challenger::IopCtx;
 use slop_futures::queue::WorkerQueue;
 use slop_jagged::{
-    DefaultJaggedProver, JaggedBasefoldConfig, JaggedProver, JaggedProverComponents, SP1OuterConfig,
+    DefaultJaggedProver, JaggedBasefoldConfig, JaggedConfig, JaggedProver, JaggedProverComponents,
+    SP1OuterConfig,
 };
 use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 use sp1_core_machine::riscv::RiscvAir;
@@ -27,7 +28,7 @@ use sp1_hypercube::{
     prover::{
         MachineProverComponents, ProvingKey, ShardProver, ShardProverComponents, ZerocheckAir,
     },
-    GkrProverImpl, MachineConfig, SP1CoreJaggedConfig, ShardVerifier,
+    GkrProverImpl, SP1CoreJaggedConfig, ShardVerifier,
 };
 use sp1_primitives::{SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_prover::{components::SP1ProverComponents, CompressAir, WrapAir};
@@ -130,7 +131,7 @@ pub fn new_cuda_prover_sumcheck_eval<GC, C, Comp, A>(
 ) -> CudaProver<GC, Comp, A>
 where
     GC: IopCtx<F = KoalaBear, EF = BinomialExtensionField<KoalaBear, 4>>,
-    C: MachineConfig<GC>,
+    C: JaggedConfig<GC>,
     Comp: JaggedProverComponents<GC, A = TaskScope, Config = C> + DefaultJaggedProver<GC>,
     A: MachineAir<GC::F>
         + CudaTracegenAir<GC::F>

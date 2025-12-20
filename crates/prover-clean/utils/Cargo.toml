@@ -18,7 +18,7 @@ slop-koala-bear = { workspace = true }
 [dev-dependencies]
 serial_test = "3.1"
 zstd = "0.13.3"
-sp1-sdk = { workspace = true, features = ["experimental"] }
+sp1-sdk = { workspace = true}
 sp1-recursion-circuit = { workspace = true }
 csl-prover = { workspace = true }
 sp1-recursion-compiler = { workspace = true }
