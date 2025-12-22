@@ -91,7 +91,8 @@ mod tests {
         let elf = test_artifacts::FIBONACCI_ELF;
         let mut stdin = SP1Stdin::new();
         stdin.write(&10usize);
-        let (_, report) = client.execute(elf, stdin).await.unwrap();
+        let (_pv, report) = client.execute(elf, stdin).await.unwrap();
+
         assert_eq!(report.exit_code, 0);
     }
 
@@ -253,6 +254,7 @@ mod tests {
         stdin.write(&10usize);
 
         let proof = client.prove(&pk, stdin).groth16().await.unwrap();
+
         client.verify(&proof, &pk.vk, None).unwrap();
     }
 }

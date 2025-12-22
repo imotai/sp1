@@ -205,8 +205,8 @@ pub struct JitFunction {
     /// This is effectively a mapping from start address to the value of the hint.
     pub hints: Vec<(u64, Vec<u8>)>,
 
-    /// The JIT funciton may stop "in the middle" of an program,
-    /// we want to be able to resune it, so this is the information needed to do so.
+    /// The JIT function may stop "in the middle" of an program,
+    /// we want to be able to resume it, so this is the information needed to do so.
     pub memory: MmapMut,
     pub pc: u64,
     pub registers: [u64; 32],

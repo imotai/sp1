@@ -10,7 +10,10 @@ use sp1_primitives::io::SP1PublicValues;
 use std::sync::Arc;
 use tracing::Instrument;
 
-use crate::worker::{DEFAULT_GAS_EXECUTOR_BUFFER_SIZE, DEFAULT_NUM_GAS_EXECUTOR_WORKERS};
+use crate::worker::{
+    FinalVmState, FinalVmStateLock, DEFAULT_GAS_EXECUTOR_BUFFER_SIZE,
+    DEFAULT_NUM_GAS_EXECUTOR_WORKERS,
+};
 
 /// Configuration for the executor.
 #[derive(Debug, Clone)]
@@ -54,6 +57,8 @@ pub type GasExecutingEngine =
 /// A task for gas estimation on a trace chunk.
 pub struct GasExecutingTask {
     pub chunk: TraceChunkRaw,
+    /// Lock to store the final VM state when execution completes.
+    pub final_vm_state: FinalVmStateLock,
 }
 
 #[derive(Debug, Clone)]
@@ -77,12 +82,22 @@ impl GasExecutingWorker {
 
 impl AsyncWorker<GasExecutingTask, Result<ExecutionReport, ExecutionError>> for GasExecutingWorker {
     async fn call(&self, input: GasExecutingTask) -> Result<ExecutionReport, ExecutionError> {
+        let GasExecutingTask { chunk, final_vm_state } = input;
         if !self.calculate_gas {
             return Ok(ExecutionReport::default());
         }
         let mut gas_estimating_vm =
-            GasEstimatingVM::new(&input.chunk, self.program.clone(), self.nonce, self.opts.clone());
+            GasEstimatingVM::new(&chunk, self.program.clone(), self.nonce, self.opts.clone());
         let report = gas_estimating_vm.execute()?;
+
+        // If the VM has completed execution, set the final state.
+        if gas_estimating_vm.core.is_done() {
+            let final_state = FinalVmState::new(&gas_estimating_vm.core);
+            final_vm_state.set(final_state).map_err(|e| {
+                ExecutionError::Other(format!("failed to set final vm state: {}", e))
+            })?;
+        }
+
         Ok(report)
     }
 }
@@ -108,6 +123,9 @@ pub async fn execute_with_optional_gas(
         minimal_executor.with_input(&buf);
     }
 
+    // Create a shared final VM state lock that will be set when execution completes.
+    let final_vm_state = FinalVmStateLock::new();
+
     // Execute the program to completion, collecting all trace chunks
     let (handle_sender, mut handle_receiver) = tokio::sync::mpsc::unbounded_channel();
 
@@ -132,7 +150,7 @@ pub async fn execute_with_optional_gas(
 
                 }
                 Some(result) = gas_handles.next() => {
-                    let chunk_report: ExecutionReport = result.map_err(|e| anyhow::anyhow!("gas task panicked: {}", e))??;
+                    let chunk_report = result.map_err(|e| anyhow::anyhow!("gas task panicked: {}", e))??;
                     let gas_handles_len = gas_handles.len();
                     tracing::debug!(num_gas_handles = %gas_handles_len, "Gas task finished.");
                     report += chunk_report;
@@ -152,10 +170,14 @@ pub async fn execute_with_optional_gas(
     }.instrument(tracing::debug_span!("report_accumulator")));
 
     // Spawn a blocking task to run the minimal executor.
+    let final_vm_state_clone = final_vm_state.clone();
     join_set.spawn_blocking(move || {
         while let Some(chunk) = minimal_executor.execute_chunk() {
             let handle = gas_engine
-                .blocking_submit(GasExecutingTask { chunk })
+                .blocking_submit(GasExecutingTask {
+                    chunk,
+                    final_vm_state: final_vm_state_clone.clone(),
+                })
                 .map_err(|e| anyhow::anyhow!("Gas engine submission failed: {}", e))?;
             handle_sender.send(handle)?;
         }
@@ -178,6 +200,48 @@ pub async fn execute_with_optional_gas(
         }
     }
 
-    // TODO: hash the public values.
-    Ok((public_values, [0u8; 32], final_report))
+    // Extract the public value digest from the final VM state.
+    let public_value_digest: [u8; 32] = final_vm_state
+        .get()
+        .map(|state| {
+            let mut committed_value_digest = [0u8; 32];
+            state.public_value_digest.iter().enumerate().for_each(|(i, word)| {
+                let bytes = word.to_le_bytes();
+                committed_value_digest[i * 4..(i + 1) * 4].copy_from_slice(&bytes);
+            });
+            committed_value_digest
+        })
+        .ok_or(anyhow::anyhow!("Failed to extract public value digest"))?;
+
+    Ok((public_values, public_value_digest, final_report))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use sp1_core_executor::{Program, SP1CoreOpts};
+    use sp1_core_machine::io::SP1Stdin;
+    use sp1_hypercube::air::PROOF_NONCE_NUM_WORDS;
+
+    use super::{execute_with_optional_gas, SP1ExecutorConfig};
+
+    #[tokio::test]
+    async fn test_execute_with_optional_gas() {
+        let elf = test_artifacts::FIBONACCI_ELF;
+        let program = Arc::new(Program::from(&elf).unwrap());
+        let mut stdin = SP1Stdin::new();
+        stdin.write(&10usize);
+        let nonce = [0u32; PROOF_NONCE_NUM_WORDS];
+        let opts = SP1CoreOpts::default();
+        let executor_config = SP1ExecutorConfig::default();
+
+        let (pv, digest, report) =
+            execute_with_optional_gas(program, stdin, nonce, true, opts, executor_config)
+                .await
+                .unwrap();
+
+        assert!(pv.hash() == digest.to_vec() || pv.blake3_hash() == digest.to_vec());
+        assert_eq!(report.exit_code, 0);
+    }
 }

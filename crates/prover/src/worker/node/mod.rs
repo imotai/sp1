@@ -56,7 +56,7 @@ impl SP1LocalNode {
         let program = Program::from(elf)
             .map_err(|e| anyhow::anyhow!("failed to dissassemble program: {}", e))?;
         let program = Arc::new(program);
-        execute_with_optional_gas(
+        let (public_values, public_value_digest, report) = execute_with_optional_gas(
             program,
             stdin,
             context.proof_nonce,
@@ -64,7 +64,8 @@ impl SP1LocalNode {
             self.inner.opts.clone(),
             SP1ExecutorConfig::default(),
         )
-        .await
+        .await?;
+        Ok((public_values, public_value_digest, report))
     }
 
     pub async fn setup(&self, elf: &[u8]) -> anyhow::Result<SP1VerifyingKey> {

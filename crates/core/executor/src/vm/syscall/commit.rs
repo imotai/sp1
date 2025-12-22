@@ -1,7 +1,3 @@
-// use crate::ExecutorConfig;
-
-// use super::{SyscallCode, SyscallContext};
-
 use crate::{syscalls::SyscallCode, vm::syscall::SyscallRuntime};
 
 pub(crate) fn commit_syscall<'a, RT: SyscallRuntime<'a>>(

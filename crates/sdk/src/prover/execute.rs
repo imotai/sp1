@@ -212,7 +212,7 @@ impl<'a, P: Prover> IntoFuture for ExecuteRequest<'a, P> {
             let Self { prover, elf, stdin, mut context_builder } = self;
             let inner = prover.inner();
             let context = context_builder.build();
-            let (pv, _, report) = inner
+            let (pv, _digest, report) = inner
                 .execute(&elf, stdin, context)
                 .await
                 .map_err(|e| ExecutionError::Other(e.to_string()))?;
