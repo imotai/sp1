@@ -1,0 +1,61 @@
+[package]
+name = "csl-shard-prover"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+# cuslop
+csl-cuda = { workspace = true }
+csl-challenger = { workspace = true }
+csl-jagged-assist = { workspace = true }
+csl-tracegen = { workspace = true }
+csl-air = { workspace = true }
+
+# prover-clean subcrates
+csl-merkle-tree = { workspace = true }
+csl-utils = { workspace = true }
+csl-commit = { workspace = true }
+csl-basefold = { workspace = true }
+csl-jagged-sumcheck = { workspace = true }
+csl-zerocheck = { workspace = true }
+csl-jagged-tracegen = { workspace = true }
+csl-logup-gkr = { workspace = true }
+
+# slop
+slop-alloc = { workspace = true }
+slop-algebra = { workspace = true }
+slop-multilinear = { workspace = true }
+slop-challenger = { workspace = true }
+slop-jagged = { workspace = true }
+slop-commit = { workspace = true }
+slop-tensor = { workspace = true }
+slop-basefold = { workspace = true }
+slop-stacked = { workspace = true }
+slop-futures = { workspace = true }
+
+# sp1
+sp1-hypercube = { workspace = true }
+
+# utils
+thiserror = "1.0"
+tracing = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+serial_test = "3.1"
+zstd = "0.13.3"
+sp1-recursion-circuit = { workspace = true }
+csl-prover = { workspace = true }
+sp1-recursion-compiler = { workspace = true }
+slop-stacked = { workspace = true }
+
+# sp1
+sp1-core-machine = { workspace = true }
+sp1-primitives = { workspace = true }
+
+[lints]
+workspace = true

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use clap::Parser;
 use csl_perf::{get_program_and_input, telemetry, Measurement};
-use csl_prover::{cuda_worker_builder, prover_clean_worker_builder, ProverBackend};
+use csl_prover::cuda_worker_builder;
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
 use sp1_core_executor::SP1Context;
@@ -22,8 +22,6 @@ struct Args {
     pub mode: String,
     #[arg(long, short, default_value = "1")]
     pub num_iterations: usize,
-    #[arg(long, default_value = "prover-clean")]
-    pub backend: ProverBackend,
 }
 
 fn proof_mode_from_string(s: &str) -> ProofMode {
@@ -57,20 +55,11 @@ async fn main() {
 
     // Initialize the AirProver and permits
     let measurements = csl_cuda::spawn(move |t| async move {
-        let client = match args.backend {
-            ProverBackend::Old => {
-                SP1LocalNodeBuilder::from_worker_client_builder(cuda_worker_builder(t.clone()))
-                    .build()
-                    .await
-                    .unwrap()
-            }
-            ProverBackend::ProverClean => SP1LocalNodeBuilder::from_worker_client_builder(
-                prover_clean_worker_builder(t.clone()).await,
-            )
-            .build()
-            .await
-            .unwrap(),
-        };
+        let client =
+            SP1LocalNodeBuilder::from_worker_client_builder(cuda_worker_builder(t.clone()).await)
+                .build()
+                .await
+                .unwrap();
 
         let time = tokio::time::Instant::now();
         let context = SP1Context::default();

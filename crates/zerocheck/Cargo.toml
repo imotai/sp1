@@ -8,24 +8,47 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+# cuslop
 csl-cuda = { workspace = true }
 csl-air = { workspace = true }
+sp1-derive = { workspace = true }
 
-slop-tensor = { workspace = true }
-slop-algebra = { workspace = true }
+# prover-clean subcrates
+csl-utils = { workspace = true }
+
+# slop
 slop-air = { workspace = true }
+slop-algebra = { workspace = true }
 slop-alloc = { workspace = true }
-slop-koala-bear = { workspace = true }
+slop-tensor = { workspace = true }
+slop-matrix = { workspace = true }
 slop-multilinear = { workspace = true }
+slop-sumcheck = { workspace = true }
+slop-challenger = { workspace = true }
+slop-koala-bear = { workspace = true }
+slop-commit = { workspace = true }
 
+# sp1
 sp1-hypercube = { workspace = true }
+sp1-core-executor = { workspace = true }
 
+# misc
+itertools = { workspace = true }
+rand = { workspace = true }
 tokio = { workspace = true }
+thiserror = "1.0"
+tracing = { workspace = true }
 
 [dev-dependencies]
-slop-matrix = { workspace = true }
-
-rand = { workspace = true }
+serial_test = "3.1"
+zstd = "0.13.3"
+sp1-sdk = { workspace = true }
+sp1-recursion-circuit = { workspace = true }
+csl-prover = { workspace = true }
+csl-jagged-tracegen = { workspace = true }
+sp1-recursion-compiler = { workspace = true }
+slop-stacked = { workspace = true }
+slop-futures = { workspace = true }
 
 [lints]
 workspace = true

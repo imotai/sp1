@@ -1,7 +1,6 @@
 mod base;
 mod eval;
 mod fold;
-mod padded;
 mod restrict;
 
 pub use eval::*;

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use clap::Parser;
 use csl_perf::{get_program_and_input, telemetry};
-use csl_prover::{local_gpu_opts, ProverBackend};
+use csl_prover::local_gpu_opts;
 
 use slop_algebra::AbstractField;
 
@@ -44,8 +44,6 @@ struct Args {
     pub task_capacity: usize,
     #[arg(long, default_value = "false")]
     pub telemetry: bool,
-    #[arg(long, default_value = "prover-clean")]
-    pub backend: ProverBackend,
     #[arg(long, default_value = "gas")]
     pub mode: String,
 }
@@ -105,7 +103,7 @@ async fn execute_node(args: Args, elf: Vec<u8>, stdin: SP1Stdin) {
 
     let stdin = Arc::new(stdin);
 
-    let mut opts = local_gpu_opts(args.backend).core_opts;
+    let mut opts = local_gpu_opts().core_opts;
     if let Some(chunk_size) = args.chunk_size {
         opts.minimal_trace_chunk_threshold = chunk_size;
     }

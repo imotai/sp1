@@ -1,91 +1,66 @@
-
 #pragma once
 
 #include "round.cuh"
+#include "../config.cuh"
 
-extern "C" void* logup_gkr_fix_last_variable_first_layer_kernel_koala_bear();
-extern "C" void* logup_gkr_sum_as_poly_first_layer_kernel_koala_bear();
-extern "C" void* logup_gkr_first_layer_transition_koala_bear();
+extern "C" void* logup_gkr_fix_last_variable_first_layer();
+extern "C" void* logup_gkr_sum_as_poly_first_layer();
+extern "C" void* logup_gkr_first_layer_transition();
 
-template <typename F, typename EF>
 struct FirstLayerCircuitValues {
   public:
-    F numeratorZero;
-    F numeratorOne;
-    EF denominatorZero;
-    EF denominatorOne;
+    felt_t numeratorZero;
+    felt_t numeratorOne;
+    ext_t denominatorZero;
+    ext_t denominatorOne;
 
   public:
-    static __device__ __forceinline__ FirstLayerCircuitValues<F, EF>
-    load(F* numeratorValues, EF* denominatorValues, size_t i, size_t parity, size_t height) {
-        FirstLayerCircuitValues<F, EF> values;
+    static __device__ __forceinline__ FirstLayerCircuitValues
+    load(felt_t* numeratorValues, ext_t* denominatorValues, size_t i, size_t height) {
+        FirstLayerCircuitValues values;
+
         // Load the numerator and denominator values
-        //  numerator[i, b, 0] = numeratorValues[0, b, i]
-        //  numerator[i, b, 1] = numeratorValues[1, b, i]
-        //  denominator[i, b, 0] = denominatorValues[0, b, i]
-        //  denominator[i, b, 1] = denominatorValues[1, b, i]
-        //
-        // Indexing into the layer tensor is done as follows:
-        //
-        //  layer[k, parity, n] = layer_ptr[k * 2 * height + parity * height + n]
+        // numeratorValues is the concatenation of numerator evaluations at 0 and then 1
+        // likewise for denominatorValues
 
-        //  numerator[i, b, 0] = layer[0, b, i] = layer_ptr[0 * 2 * height + b * height + i]
-        values.numeratorZero = numeratorValues[parity * height + i];
-        //  numerator[i, b, 1] = layer[1, b, i] = layer_ptr[1 * 2 * height + b * height + i]
-        values.numeratorOne = numeratorValues[2 * height + parity * height + i];
-
-        //  denominator[i, b, 0] = layer[2, b, i] = layer_ptr[2 * 2 * height + b * height + i]
-        values.denominatorZero = denominatorValues[parity * height + i];
-        //  denominator[i, b, 1] = layer[3, b, i] = layer_ptr[3 * 2 * height + b * height + i]
-        values.denominatorOne = denominatorValues[2 * height + parity * height + i];
+        values.numeratorZero = felt_t::load(numeratorValues, i);
+        values.numeratorOne = felt_t::load(numeratorValues, i + 2 * height);
+        values.denominatorZero = ext_t::load(denominatorValues, i);
+        values.denominatorOne = ext_t::load(denominatorValues, i + 2 * height);
 
         return values;
     }
 
-    static __device__ __forceinline__ FirstLayerCircuitValues<F, EF> load(
-        const F* numeratorValues,
-        const EF* denominatorValues,
-        size_t i,
-        size_t parity,
-        size_t height) {
-        FirstLayerCircuitValues<F, EF> values;
+    static __device__ __forceinline__ FirstLayerCircuitValues
+    load(const felt_t* numeratorValues, const ext_t* denominatorValues, size_t i, size_t height) {
+        FirstLayerCircuitValues values;
+
         // Load the numerator and denominator values
-        //  numerator[i, b, 0] = numeratorValues[0, b, i]
-        //  numerator[i, b, 1] = numeratorValues[1, b, i]
-        //  denominator[i, b, 0] = denominatorValues[0, b, i]
-        //  denominator[i, b, 1] = denominatorValues[1, b, i]
-        //
-        // Indexing into the layer tensor is done as follows:
-        //
-        //  layer[k, parity, n] = layer_ptr[k * 2 * height + parity * height + n]
+        // numeratorValues is the concatenation of numerator evaluations at 0 and then 1
+        // likewise for denominatorValues
 
-        //  numerator[i, b, 0] = layer[0, b, i] = layer_ptr[0 * 2 * height + b * height + i]
-        values.numeratorZero = numeratorValues[parity * height + i];
-        //  numerator[i, b, 1] = layer[1, b, i] = layer_ptr[1 * 2 * height + b * height + i]
-        values.numeratorOne = numeratorValues[2 * height + parity * height + i];
-
-        //  denominator[i, b, 0] = layer[2, b, i] = layer_ptr[2 * 2 * height + b * height + i]
-        values.denominatorZero = denominatorValues[parity * height + i];
-        //  denominator[i, b, 1] = layer[3, b, i] = layer_ptr[3 * 2 * height + b * height + i]
-        values.denominatorOne = denominatorValues[2 * height + parity * height + i];
+        values.numeratorZero = felt_t::load(numeratorValues, i);
+        values.numeratorOne = felt_t::load(numeratorValues, i + 2 * height);
+        values.denominatorZero = ext_t::load(denominatorValues, i);
+        values.denominatorOne = ext_t::load(denominatorValues, i + 2 * height);
 
         return values;
     }
 
-    static __device__ __forceinline__ FirstLayerCircuitValues<F, EF> paddingValues() {
-        FirstLayerCircuitValues<F, EF> values;
-        values.numeratorZero = F::zero();
-        values.numeratorOne = F::zero();
-        values.denominatorZero = EF::one();
-        values.denominatorOne = EF::one();
+    static __device__ __forceinline__ FirstLayerCircuitValues paddingValues() {
+        FirstLayerCircuitValues values;
+        values.numeratorZero = felt_t::zero();
+        values.numeratorOne = felt_t::zero();
+        values.denominatorZero = ext_t::one();
+        values.denominatorOne = ext_t::one();
         return values;
     }
 
-    static __device__ __forceinline__ CircuitValues<EF> fix_last_variable(
-        FirstLayerCircuitValues<F, EF> zeroValues,
-        FirstLayerCircuitValues<F, EF> oneValues,
-        EF alpha) {
-        CircuitValues<EF> values;
+    static __device__ __forceinline__ CircuitValues fix_last_variable(
+        FirstLayerCircuitValues zeroValues,
+        FirstLayerCircuitValues oneValues,
+        ext_t alpha) {
+        CircuitValues values;
         values.numeratorZero =
             alpha.interpolateLinear(oneValues.numeratorZero, zeroValues.numeratorZero);
         values.numeratorOne =
@@ -98,21 +73,75 @@ struct FirstLayerCircuitValues {
     }
 
     __device__ __forceinline__ void
-    store(F* numeratorValues, EF* denominatorValues, size_t i, size_t parity, size_t height) {
-        // Store the indices at entry [d, parity, restrictedIndex]. This tranlsates to the index
-        //  of the outut layer given by: d * 2 * height + parity * height + restrictedIndex
-        // where d = 0,1 for numerator_0, numerator_1, and values and d = 2,3 for denominator_0,
-        // denominator_1 and values respectively.
-        numeratorValues[parity * height + i] = numeratorZero;
-        numeratorValues[2 * height + parity * height + i] = numeratorOne;
-        denominatorValues[parity * height + i] = denominatorZero;
-        denominatorValues[2 * height + parity * height + i] = denominatorOne;
+    store(felt_t* numeratorValues, ext_t* denominatorValues, size_t i, size_t height) {
+
+        felt_t::store(numeratorValues, i, numeratorZero);
+        felt_t::store(numeratorValues, i + 2 * height, numeratorOne);
+        ext_t::store(denominatorValues, i, denominatorZero);
+        ext_t::store(denominatorValues, i + 2 * height, denominatorOne);
     }
 
     /// Compute the sumcheck sum values
-    __device__ __forceinline__ EF sumAsPoly(EF lambda, EF eqValue) {
-        EF numerator = numeratorZero * denominatorOne + numeratorOne * denominatorZero;
-        EF denominator = denominatorZero * denominatorOne;
+    __device__ __forceinline__ ext_t sumAsPoly(ext_t lambda, ext_t eqValue) {
+        ext_t numerator = numeratorZero * denominatorOne + numeratorOne * denominatorZero;
+        ext_t denominator = denominatorZero * denominatorOne;
         return eqValue * (numerator * lambda + denominator);
+    }
+};
+
+
+/// A GKR layer.
+struct JaggedFirstGkrLayer {
+    using OutputDenseData = JaggedGkrLayer;
+
+  public:
+    /// numerator_0 || numerator_1
+    felt_t* numeratorValues;
+    /// denominator_0 || denominator_1
+    ext_t* denominatorValues;
+    /// Half of the length of each section.
+    size_t height;
+
+    __forceinline__ __device__ void fixLastVariable(
+        JaggedGkrLayer& other,
+        size_t restrictedIdx,
+        size_t zeroIdx,
+        size_t oneIdx,
+        ext_t alpha) const {
+
+        FirstLayerCircuitValues valuesZero =
+            FirstLayerCircuitValues::load(numeratorValues, denominatorValues, zeroIdx, height);
+        FirstLayerCircuitValues valuesOne =
+            FirstLayerCircuitValues::load(numeratorValues, denominatorValues, oneIdx, height);
+        CircuitValues values =
+            FirstLayerCircuitValues::fix_last_variable(valuesZero, valuesOne, alpha);
+
+        values.store(other.layer, restrictedIdx, other.height);
+    }
+
+    __forceinline__ __device__ void pad(JaggedGkrLayer& other, size_t restrictedIdx) const {
+        CircuitValues values = CircuitValues::paddingValues();
+        values.store(other.layer, restrictedIdx, other.height);
+    }
+
+    __forceinline__ __device__ void
+    circuitTransition(JaggedGkrLayer& other, size_t restrictedIdx, size_t zeroIdx, size_t oneIdx)
+        const {
+
+        CircuitValues values;
+
+        FirstLayerCircuitValues valuesZero =
+            FirstLayerCircuitValues::load(numeratorValues, denominatorValues, zeroIdx, height);
+        values.numeratorZero = valuesZero.numeratorZero * valuesZero.denominatorOne +
+                               valuesZero.numeratorOne * valuesZero.denominatorZero;
+        values.denominatorZero = valuesZero.denominatorZero * valuesZero.denominatorOne;
+
+        FirstLayerCircuitValues valuesOne =
+            FirstLayerCircuitValues::load(numeratorValues, denominatorValues, oneIdx, height);
+        values.numeratorOne = (valuesOne.denominatorOne * valuesOne.numeratorZero) +
+                              (valuesOne.denominatorZero * valuesOne.numeratorOne);
+        values.denominatorOne = valuesOne.denominatorZero * valuesOne.denominatorOne;
+
+        values.store(other.layer, restrictedIdx, other.height);
     }
 };

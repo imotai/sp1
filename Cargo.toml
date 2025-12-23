@@ -12,30 +12,25 @@ missing_docs = "warn"
 [workspace]
 members = [
     "crates/air",
-    "crates/basefold",
     "crates/challenger",
     "crates/cuda",
     "crates/sys",
-    "crates/dft",
-    "crates/merkle-tree",
-    "crates/jagged",
-    "crates/zerocheck",
-    "crates/prover",
+    "crates/jagged_assist",
+    "crates/prover_components",
     "crates/tracing",
     "crates/perf",
     "crates/tracegen",
-    "crates/logup-gkr",
     "crates/cuslop",
-    "crates/prover-clean/commit",
-    "crates/prover-clean/utils",
-    "crates/prover-clean/prover",
-    "crates/prover-clean/jagged_sumcheck",
-    "crates/prover-clean/merkle_tree",
-    "crates/prover-clean/tracegen",
-    "crates/prover-clean/logup_gkr",
-    "crates/prover-clean/zerocheck",
-    "crates/prover-clean/experimental",
-    "crates/prover-clean/basefold",
+    "crates/commit",
+    "crates/utils",
+    "crates/shard_prover",
+    "crates/jagged_sumcheck",
+    "crates/merkle_tree",
+    "crates/jagged_tracegen",
+    "crates/logup_gkr",
+    "crates/zerocheck",
+    "crates/experimental",
+    "crates/basefold",
 ]
 resolver = "2"
 
@@ -68,32 +63,25 @@ lto = false
 # cuslop
 csl-sys = { path = "crates/sys" }
 csl-cuda = { path = "crates/cuda" }
-csl-dft = { path = "crates/dft" }
-csl-merkle-tree = { path = "crates/merkle-tree" }
-csl-basefold = { path = "crates/basefold" }
 csl-challenger = { path = "crates/challenger" }
-csl-jagged = { path = "crates/jagged" }
+csl-jagged-assist = { path = "crates/jagged_assist" }
 csl-air = { path = "crates/air" }
-csl-zerocheck = { path = "crates/zerocheck" }
 csl-tracing = { path = "crates/tracing" }
-csl-prover = { path = "crates/prover" }
+csl-prover = { path = "crates/prover_components" }
 csl-tracegen = { path = "crates/tracegen" }
-csl-logup-gkr = { path = "crates/logup-gkr" }
-csl-prover-clean = { path = "crates/prover-clean" }
 csl-server = { path = "crates/cuslop" }
 csl-perf = { path = "crates/perf" }
 
-# prover-clean subcrates
-cslpc-utils = { path = "crates/prover-clean/utils" }
-cslpc-commit = { path = "crates/prover-clean/commit" }
-cslpc-prover = { path = "crates/prover-clean/prover" }
-cslpc-jagged-sumcheck = { path = "crates/prover-clean/jagged_sumcheck" }
-cslpc-merkle-tree = { path = "crates/prover-clean/merkle_tree" }
-cslpc-tracegen = { path = "crates/prover-clean/tracegen" }
-cslpc-logup-gkr = { path = "crates/prover-clean/logup_gkr" }
-cslpc-zerocheck = { path = "crates/prover-clean/zerocheck" }
-cslpc-experimental = { path = "crates/prover-clean/experimental" }
-cslpc-basefold = { path = "crates/prover-clean/basefold" }
+csl-utils = { path = "crates/utils" }
+csl-commit = { path = "crates/commit" }
+csl-shard-prover = { path = "crates/shard_prover" }
+csl-jagged-sumcheck = { path = "crates/jagged_sumcheck" }
+csl-merkle-tree = { path = "crates/merkle_tree" }
+csl-jagged-tracegen = { path = "crates/jagged_tracegen" }
+csl-logup-gkr = { path = "crates/logup_gkr" }
+csl-zerocheck = { path = "crates/zerocheck" }
+csl-experimental = { path = "crates/experimental" }
+csl-basefold = { path = "crates/basefold" }
 
 # slop 
 slop-air = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }

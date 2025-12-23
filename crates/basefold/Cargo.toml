@@ -8,36 +8,52 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-csl-dft = { workspace = true }
+# cuslop
 csl-cuda = { workspace = true }
-csl-merkle-tree = { workspace = true }
+csl-tracegen = { workspace = true }
 csl-challenger = { workspace = true }
 
-sp1-hypercube = {workspace = true}
-sp1-primitives = {workspace = true}
+# prover-clean subcrates
+csl-utils = { workspace = true }
+csl-merkle-tree = { workspace = true }
 
-slop-basefold = { workspace = true }
-slop-futures = { workspace = true }
-slop-alloc = { workspace = true }
-slop-tensor = { workspace = true }
-slop-commit = { workspace = true }
-slop-dft = { workspace = true }
-slop-basefold-prover = { workspace = true }
 slop-algebra = { workspace = true }
-slop-koala-bear = { workspace = true }
-slop-merkle-tree = { workspace = true }
+slop-alloc = { workspace = true }
+slop-basefold-prover = { workspace = true }
 slop-multilinear = { workspace = true }
+slop-commit = { workspace = true }
+slop-futures = { workspace = true }
+slop-basefold = { workspace = true }
+slop-merkle-tree = { workspace = true }
+slop-tensor = { workspace = true }
 slop-challenger = { workspace = true }
+slop-koala-bear = { workspace = true }
 slop-symmetric = { workspace = true }
-slop-poseidon2 = { workspace = true }
-slop-bn254 = { workspace = true }
-serde = { workspace = true }
+slop-dft = { workspace = true }
+
+# sp1
+sp1-hypercube = { workspace = true }
+
+# misc
 itertools = { workspace = true }
-
-[dev-dependencies]
-slop-stacked = { workspace = true }
-sp1-prover = { workspace = true }
-futures = { workspace = true }
-
 rand = { workspace = true }
 tokio = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+csl-jagged-tracegen = { workspace = true }
+serial_test = "3.1"
+zstd = "0.13.3"
+sp1-sdk = { workspace = true }
+sp1-recursion-circuit = { workspace = true }
+csl-prover = { workspace = true }
+csl-commit = { workspace = true }
+sp1-recursion-compiler = { workspace = true }
+slop-stacked = { workspace = true }
+slop-poseidon2 = { workspace = true }
+sp1-primitives = { workspace = true }
+futures = { workspace = true }
+slop-futures = { workspace = true }
+
+[lints]
+workspace = true

@@ -3,6 +3,7 @@ use csl_challenger::{
 };
 use csl_cuda::sys::challenger::grind_koala_bear;
 use csl_cuda::{args, sys::runtime::KernelPtr, TaskScope};
+use serde::{Deserialize, Serialize};
 use slop_algebra::{Field, PrimeField, PrimeField31, PrimeField64};
 use slop_alloc::{Buffer, CpuBackend, IntoHost};
 use slop_challenger::GrindingChallenger;
@@ -143,6 +144,20 @@ where
 unsafe impl GrindingChallengerKernel<KoalaBear> for TaskScope {
     fn grind_kernel() -> KernelPtr {
         unsafe { grind_koala_bear() }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
+)]
+pub struct GrindingPowCudaProver;
+
+impl GrindingPowCudaProver {
+    pub async fn grind<C: DeviceGrindingChallenger + Send + Sync>(
+        challenger: &mut C,
+        bits: usize,
+    ) -> C::Witness {
+        challenger.grind_device(bits).await
     }
 }
 

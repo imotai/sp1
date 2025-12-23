@@ -18,7 +18,7 @@ use std::collections::BTreeSet;
 
 use clap::Parser;
 use csl_perf::get_program_and_input;
-use csl_prover::prover_clean_worker_builder;
+use csl_prover::cuda_worker_builder;
 use either::Either;
 use sp1_core_executor::SP1Context;
 use sp1_prover::{
@@ -51,12 +51,11 @@ async fn main() {
 
     // Initialize the AirProver and permits
     csl_cuda::spawn(move |t| async move {
-        let node = SP1LocalNodeBuilder::from_worker_client_builder(
-            prover_clean_worker_builder(t.clone()).await,
-        )
-        .build()
-        .await
-        .unwrap();
+        let node =
+            SP1LocalNodeBuilder::from_worker_client_builder(cuda_worker_builder(t.clone()).await)
+                .build()
+                .await
+                .unwrap();
 
         // Use a temporary directory for the vk_map file to avoid conflicts
         let temp_dir = std::env::current_dir().unwrap();
@@ -116,7 +115,7 @@ async fn main() {
 
         // Build a new prover that performs the vk verification check using the built vk map.
         let node = SP1LocalNodeBuilder::from_worker_client_builder(
-            prover_clean_worker_builder(t.clone())
+            cuda_worker_builder(t.clone())
                 .await
                 .with_vk_map_path(vk_map_path.to_str().unwrap().to_string()),
         )

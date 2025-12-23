@@ -1,4 +1,3 @@
-pub mod mpsc;
 use slop_algebra::{extension::BinomialExtensionField, UnivariatePolynomial};
 use slop_alloc::{Buffer, CpuBackend};
 use slop_koala_bear::KoalaBear;

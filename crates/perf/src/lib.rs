@@ -6,15 +6,15 @@ mod report;
 pub mod telemetry;
 
 pub const FIBONACCI_ELF: &[u8] =
-    include_bytes!("../../prover/programs/fibonacci/riscv64im-succinct-zkvm-elf");
+    include_bytes!("../../prover_components/programs/fibonacci/riscv64im-succinct-zkvm-elf");
 pub const KECCAK_ELF: &[u8] =
-    include_bytes!("../../prover/programs/keccak/riscv64im-succinct-zkvm-elf");
+    include_bytes!("../../prover_components/programs/keccak/riscv64im-succinct-zkvm-elf");
 pub const SHA2_ELF: &[u8] =
-    include_bytes!("../../prover/programs/sha2/riscv64im-succinct-zkvm-elf");
+    include_bytes!("../../prover_components/programs/sha2/riscv64im-succinct-zkvm-elf");
 pub const LOOP_ELF: &[u8] =
-    include_bytes!("../../prover/programs/loop/riscv64im-succinct-zkvm-elf");
+    include_bytes!("../../prover_components/programs/loop/riscv64im-succinct-zkvm-elf");
 pub const POSEIDON2_ELF: &[u8] =
-    include_bytes!("../../prover/programs/poseidon2/riscv64im-succinct-zkvm-elf");
+    include_bytes!("../../prover_components/programs/poseidon2/riscv64im-succinct-zkvm-elf");
 pub const RSP_ELF: &[u8] = include_bytes!("../programs/rsp/elf/rsp-client");
 
 pub fn get_program_and_input(program: String, param: String) -> (Vec<u8>, SP1Stdin) {

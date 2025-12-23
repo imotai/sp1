@@ -1,5 +1,5 @@
 use csl_cuda::TaskScope;
-use csl_prover::prover_clean_worker_builder;
+use csl_prover::cuda_worker_builder;
 use sp1_core_executor::SP1Context;
 use sp1_cuda::{
     api::{Request, Response},
@@ -54,7 +54,7 @@ impl Server {
 
         let prover = Arc::new(
             SP1LocalNodeBuilder::from_worker_client_builder(
-                prover_clean_worker_builder(task_scope.clone()).await,
+                cuda_worker_builder(task_scope.clone()).await,
             )
             .build()
             .await
