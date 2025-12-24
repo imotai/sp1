@@ -105,7 +105,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
         let mut events = Vec::new();
 
         input.get_local_mem_events().for_each(|mem_event| {
-            let mut blu = Vec::new();
+            let mut blu = Vec::with_capacity(10); // 1 + 4 + 1 + 4
             let initial_value_byte0 = ((mem_event.initial_mem_access.value >> 32) & 0xFF) as u32;
             let initial_value_byte1 = ((mem_event.initial_mem_access.value >> 40) & 0xFF) as u32;
             blu.add_u8_range_check(initial_value_byte0 as u8, initial_value_byte1 as u8);

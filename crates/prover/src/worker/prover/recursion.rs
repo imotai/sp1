@@ -213,6 +213,12 @@ impl<C: SP1ProverComponents>
         let mut record = runtime.record;
         runtime_span.exit();
 
+        tokio::task::spawn_blocking(move || {
+            drop(runtime.memory);
+            drop(runtime.program);
+            drop(runtime.witness_stream);
+        });
+
         // Generate the dependencies.
         tracing::debug_span!("generate dependencies").in_scope(|| {
             self.compress_verifier
