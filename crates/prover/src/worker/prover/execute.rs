@@ -1,7 +1,8 @@
 use futures::{stream::FuturesUnordered, StreamExt};
 use slop_futures::pipeline::{AsyncEngine, AsyncWorker, Pipeline, SubmitHandle};
 use sp1_core_executor::{
-    ExecutionError, ExecutionReport, GasEstimatingVM, MinimalExecutor, Program, SP1CoreOpts,
+    ExecutionError, ExecutionReport, GasEstimatingVM, MinimalExecutor, Program, SP1Context,
+    SP1CoreOpts,
 };
 use sp1_core_machine::io::SP1Stdin;
 use sp1_hypercube::air::PROOF_NONCE_NUM_WORDS;
@@ -102,16 +103,18 @@ impl AsyncWorker<GasExecutingTask, Result<ExecutionReport, ExecutionError>> for 
     }
 }
 
-pub async fn execute_with_optional_gas(
+pub async fn execute_with_options(
     program: Arc<Program>,
     stdin: SP1Stdin,
-    nonce: [u32; PROOF_NONCE_NUM_WORDS],
-    calculate_gas: bool,
+    context: SP1Context<'static>,
     opts: SP1CoreOpts,
     executor_config: SP1ExecutorConfig,
 ) -> anyhow::Result<(SP1PublicValues, [u8; 32], ExecutionReport)> {
+    let calculate_gas = context.calculate_gas;
+    let nonce = context.proof_nonce;
+    let max_cycles = context.max_cycles;
     let minimal_trace_chunk_threshold =
-        if calculate_gas { Some(opts.minimal_trace_chunk_threshold) } else { None };
+        if context.calculate_gas { Some(opts.minimal_trace_chunk_threshold) } else { None };
     let gas_engine =
         initialize_gas_engine(&executor_config, program.clone(), nonce, opts, calculate_gas);
 
@@ -139,6 +142,7 @@ pub async fn execute_with_optional_gas(
     // Spawn a task that runs gas executors.
     join_set.spawn(async move {
         let mut report = ExecutionReport::default();
+        let mut cycles_left = max_cycles.unwrap_or(u64::MAX);
         let mut gas_handles: FuturesUnordered<SubmitHandle<GasExecutingEngine>> =
             FuturesUnordered::new();
         loop {
@@ -149,11 +153,19 @@ pub async fn execute_with_optional_gas(
                     gas_handles.push(result);
 
                 }
+
                 Some(result) = gas_handles.next() => {
                     let chunk_report = result.map_err(|e| anyhow::anyhow!("gas task panicked: {}", e))??;
                     let gas_handles_len = gas_handles.len();
                     tracing::debug!(num_gas_handles = %gas_handles_len, "Gas task finished.");
                     report += chunk_report;
+
+                    let total_instructions = report.total_instruction_count();
+                    if total_instructions >= cycles_left {
+                        tracing::debug!("Cycle limit reached, stopping execution");
+                        return Err(anyhow::anyhow!("cycle limit reached"));
+                    }
+                    cycles_left -= total_instructions;
                 }
 
                 else => {
@@ -193,10 +205,19 @@ pub async fn execute_with_optional_gas(
     let mut final_report = ExecutionReport::default();
     let mut public_values = SP1PublicValues::default();
     while let Some(result) = join_set.join_next().await {
-        let output = result??;
-        match output {
-            ExecutorOutput::PublicValues(pv) => public_values = pv,
-            ExecutorOutput::Report(report) => final_report = report,
+        match result {
+            Ok(Ok(output)) => match output {
+                ExecutorOutput::PublicValues(pv) => public_values = pv,
+                ExecutorOutput::Report(report) => final_report = report,
+            },
+            Ok(Err(e)) => {
+                // Task returned an error
+                return Err(e);
+            }
+            Err(join_error) => {
+                // Task panicked or was cancelled
+                return Err(join_error.into());
+            }
         }
     }
 
@@ -220,11 +241,10 @@ pub async fn execute_with_optional_gas(
 mod tests {
     use std::sync::Arc;
 
-    use sp1_core_executor::{Program, SP1CoreOpts};
+    use sp1_core_executor::{Program, SP1Context, SP1CoreOpts};
     use sp1_core_machine::io::SP1Stdin;
-    use sp1_hypercube::air::PROOF_NONCE_NUM_WORDS;
 
-    use super::{execute_with_optional_gas, SP1ExecutorConfig};
+    use super::{execute_with_options, SP1ExecutorConfig};
 
     #[tokio::test]
     async fn test_execute_with_optional_gas() {
@@ -232,14 +252,12 @@ mod tests {
         let program = Arc::new(Program::from(&elf).unwrap());
         let mut stdin = SP1Stdin::new();
         stdin.write(&10usize);
-        let nonce = [0u32; PROOF_NONCE_NUM_WORDS];
         let opts = SP1CoreOpts::default();
         let executor_config = SP1ExecutorConfig::default();
 
+        let context = SP1Context::default();
         let (pv, digest, report) =
-            execute_with_optional_gas(program, stdin, nonce, true, opts, executor_config)
-                .await
-                .unwrap();
+            execute_with_options(program, stdin, context, opts, executor_config).await.unwrap();
 
         assert!(pv.hash() == digest.to_vec() || pv.blake3_hash() == digest.to_vec());
         assert_eq!(report.exit_code, 0);

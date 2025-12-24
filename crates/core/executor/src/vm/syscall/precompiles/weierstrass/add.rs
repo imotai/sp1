@@ -7,7 +7,7 @@ use crate::{
 };
 use typenum::Unsigned;
 
-pub(crate) fn weirstrass_add<'a, RT: SyscallRuntime<'a>, E: EllipticCurve>(
+pub(crate) fn weierstrass_add<'a, RT: SyscallRuntime<'a>, E: EllipticCurve>(
     rt: &mut RT,
     syscall_code: SyscallCode,
     arg1: u64,

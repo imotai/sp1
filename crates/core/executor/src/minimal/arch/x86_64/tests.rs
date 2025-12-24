@@ -11,7 +11,7 @@ fn new_backend() -> sp1_jit::backends::x86::TranspilerBackend {
     sp1_jit::backends::x86::TranspilerBackend::new(0, 1024 * 2, 1000, 100, 100, 8).unwrap()
 }
 
-/// Finalize the function and call it.
+// Finalize the function and call it.
 fn run_test(assembler: sp1_jit::backends::x86::TranspilerBackend) {
     let mut func = assembler.finalize().expect("Failed to finalize function");
 

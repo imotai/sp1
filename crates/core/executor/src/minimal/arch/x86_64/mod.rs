@@ -20,7 +20,7 @@ pub struct MinimalExecutor {
 }
 
 impl MinimalExecutor {
-    /// Create a new minimal executor and transpiles the program.
+    /// Create a new minimal executor and transpile the program.
     ///
     /// # Arguments
     ///

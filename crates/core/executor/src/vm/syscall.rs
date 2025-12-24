@@ -166,28 +166,28 @@ pub(crate) fn sp1_ecall_handler<'a, RT: SyscallRuntime<'a>>(
         }
         // Weierstrass curve operations
         SyscallCode::SECP256K1_ADD => {
-            precompiles::weirstrass::weirstrass_add::<_, Secp256k1>(rt, code, args1, args2)
+            precompiles::weierstrass::weierstrass_add::<_, Secp256k1>(rt, code, args1, args2)
         }
         SyscallCode::SECP256K1_DOUBLE => {
-            precompiles::weirstrass::weirstrass_double::<_, Secp256k1>(rt, code, args1, args2)
+            precompiles::weierstrass::weierstrass_double::<_, Secp256k1>(rt, code, args1, args2)
         }
         SyscallCode::BLS12381_ADD => {
-            precompiles::weirstrass::weirstrass_add::<_, Bls12381>(rt, code, args1, args2)
+            precompiles::weierstrass::weierstrass_add::<_, Bls12381>(rt, code, args1, args2)
         }
         SyscallCode::BLS12381_DOUBLE => {
-            precompiles::weirstrass::weirstrass_double::<_, Bls12381>(rt, code, args1, args2)
+            precompiles::weierstrass::weierstrass_double::<_, Bls12381>(rt, code, args1, args2)
         }
         SyscallCode::BN254_ADD => {
-            precompiles::weirstrass::weirstrass_add::<_, Bn254>(rt, code, args1, args2)
+            precompiles::weierstrass::weierstrass_add::<_, Bn254>(rt, code, args1, args2)
         }
         SyscallCode::BN254_DOUBLE => {
-            precompiles::weirstrass::weirstrass_double::<_, Bn254>(rt, code, args1, args2)
+            precompiles::weierstrass::weierstrass_double::<_, Bn254>(rt, code, args1, args2)
         }
         SyscallCode::SECP256R1_ADD => {
-            precompiles::weirstrass::weirstrass_add::<_, Secp256r1>(rt, code, args1, args2)
+            precompiles::weierstrass::weierstrass_add::<_, Secp256r1>(rt, code, args1, args2)
         }
         SyscallCode::SECP256R1_DOUBLE => {
-            precompiles::weirstrass::weirstrass_double::<_, Secp256r1>(rt, code, args1, args2)
+            precompiles::weierstrass::weierstrass_double::<_, Secp256r1>(rt, code, args1, args2)
         }
         // Edwards curve operations
         SyscallCode::ED_ADD => {

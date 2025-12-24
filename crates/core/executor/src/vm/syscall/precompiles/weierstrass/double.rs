@@ -4,7 +4,7 @@ use sp1_curves::{params::NumWords, CurveType, EllipticCurve};
 use crate::{syscalls::SyscallCode, vm::syscall::SyscallRuntime};
 use typenum::Unsigned;
 
-pub(crate) fn weirstrass_double<'a, RT: SyscallRuntime<'a>, E: EllipticCurve>(
+pub(crate) fn weierstrass_double<'a, RT: SyscallRuntime<'a>, E: EllipticCurve>(
     rt: &mut RT,
     syscall_code: SyscallCode,
     arg1: u64,

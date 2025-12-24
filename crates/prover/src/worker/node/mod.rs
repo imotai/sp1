@@ -20,7 +20,7 @@ use crate::{
     shapes::DEFAULT_ARITY,
     verify::SP1Verifier,
     worker::{
-        execute_with_optional_gas, LocalWorkerClient, ProofId, RawTaskRequest, RequesterId,
+        execute_with_options, LocalWorkerClient, ProofId, RawTaskRequest, RequesterId,
         SP1ExecutorConfig, TaskContext, VkeyMapControllerInput, VkeyMapControllerOutput,
         WorkerClient,
     },
@@ -56,11 +56,10 @@ impl SP1LocalNode {
         let program = Program::from(elf)
             .map_err(|e| anyhow::anyhow!("failed to dissassemble program: {}", e))?;
         let program = Arc::new(program);
-        let (public_values, public_value_digest, report) = execute_with_optional_gas(
+        let (public_values, public_value_digest, report) = execute_with_options(
             program,
             stdin,
-            context.proof_nonce,
-            context.calculate_gas,
+            context,
             self.inner.opts.clone(),
             SP1ExecutorConfig::default(),
         )
