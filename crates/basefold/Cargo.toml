@@ -13,7 +13,6 @@ csl-cuda = { workspace = true }
 csl-tracegen = { workspace = true }
 csl-challenger = { workspace = true }
 
-# prover-clean subcrates
 csl-utils = { workspace = true }
 csl-merkle-tree = { workspace = true }
 

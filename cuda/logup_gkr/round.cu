@@ -6,7 +6,7 @@
 #include <cstdio>
 
 /// Currently not used.
-__global__ void proverCleanFixLastVariableCircuitLayer(
+__global__ void fixLastVariableCircuitLayer(
     ext_t* __restrict__ layer,
     const uint32_t* __restrict__ colIndex,
     const uint32_t* __restrict__ startIndices,
@@ -166,7 +166,7 @@ __global__ void firstSumAsPolyCircuitLayer(
     }
 }
 
-__global__ void proverCleanFixLastVariableLastCircuitLayer(
+__global__ void fixLastVariableLastCircuitLayer(
     const ext_t* __restrict__ layer,
     ext_t alpha,
     ext_t* __restrict__ output,
@@ -224,7 +224,7 @@ __global__ void sumAsPolyInteractionsLayer(
     }
 }
 
-__global__ void proverCleanFixLastVariableInteractionsLayer(
+__global__ void fixLastVariableInteractionsLayer(
     const ext_t* input,
     ext_t* __restrict__ output,
     ext_t alpha,
@@ -468,11 +468,11 @@ extern "C" void* logup_gkr_first_sum_as_poly_circuit_layer() {
 }
 
 extern "C" void* logup_gkr_fix_last_variable_circuit_layer() {
-    return (void*)proverCleanFixLastVariableCircuitLayer;
+    return (void*)fixLastVariableCircuitLayer;
 }
 
 extern "C" void* logup_gkr_fix_last_variable_last_circuit_layer() {
-    return (void*)proverCleanFixLastVariableLastCircuitLayer;
+    return (void*)fixLastVariableLastCircuitLayer;
 }
 
 extern "C" void* logup_gkr_sum_as_poly_interactions_layer() {
@@ -480,7 +480,7 @@ extern "C" void* logup_gkr_sum_as_poly_interactions_layer() {
 }
 
 extern "C" void* logup_gkr_fix_last_variable_interactions_layer() {
-    return (void*)proverCleanFixLastVariableInteractionsLayer;
+    return (void*)fixLastVariableInteractionsLayer;
 }
 
 extern "C" void* logup_gkr_fix_and_sum_circuit_layer() { return (void*)fixAndSumCircuitLayer; }

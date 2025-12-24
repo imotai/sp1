@@ -8,7 +8,7 @@
 
 
 __global__ void
-proverCleanJaggedSumAsPoly(ext_t* evaluations, const JaggedMle<JaggedSumcheckData> inputJaggedMle) {
+jaggedSumAsPoly(ext_t* evaluations, const JaggedMle<JaggedSumcheckData> inputJaggedMle) {
 
     ext_t evalZero = ext_t::zero();
     ext_t evalHalf = ext_t::zero();
@@ -56,7 +56,7 @@ proverCleanJaggedSumAsPoly(ext_t* evaluations, const JaggedMle<JaggedSumcheckDat
 }
 
 
-__global__ void proverCleanJaggedFixAndSum(
+__global__ void jaggedFixAndSum(
     ext_t* evaluations,
     const JaggedMle<JaggedSumcheckData> inputJaggedMle,
     ext_t* output_p,
@@ -182,8 +182,8 @@ __global__ void paddedHadamardFixAndSum(
 }
 
 
-extern "C" void* jagged_sum_as_poly() { return (void*)proverCleanJaggedSumAsPoly; }
+extern "C" void* jagged_sum_as_poly() { return (void*)jaggedSumAsPoly; }
 
-extern "C" void* jagged_fix_and_sum() { return (void*)proverCleanJaggedFixAndSum; }
+extern "C" void* jagged_fix_and_sum() { return (void*)jaggedFixAndSum; }
 
 extern "C" void* padded_hadamard_fix_and_sum() { return (void*)paddedHadamardFixAndSum; }

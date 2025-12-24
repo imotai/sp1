@@ -10,15 +10,11 @@ categories.workspace = true
 [dependencies]
 # cuslop
 csl-cuda = { workspace = true }
-
-# prover-clean subcrates
 csl-utils = { workspace = true }
 csl-jagged-tracegen = { workspace = true }
 csl-zerocheck = { workspace = true }
 
 # slop
-
-
 slop-air = { workspace = true }
 slop-algebra = { workspace = true }
 slop-alloc = { workspace = true }

@@ -12,7 +12,6 @@ categories.workspace = true
 csl-cuda = { workspace = true }
 csl-tracegen = { workspace = true }
 
-# prover-clean subcrates
 csl-utils = { workspace = true }
 csl-basefold = { workspace = true }
 

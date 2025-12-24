@@ -6,7 +6,7 @@
 #include "../tracegen/jagged_tracegen/jagged.cuh"
 #include "../config.cuh"
 
-__global__ void proverCleanLogUpCircuitTransition(
+__global__ void logUpCircuitTransition(
     const JaggedMle<JaggedGkrLayer> inputJaggedMle,
     JaggedMle<JaggedGkrLayer> outputJaggedMle) {
 
@@ -18,7 +18,7 @@ __global__ void proverCleanLogUpCircuitTransition(
     }
 }
 
-__global__ void proverCleanExtractOutput(
+__global__ void extractOutput(
     const JaggedMle<JaggedGkrLayer> inputJaggedMle,
     ext_t* __restrict__ numerator,
     ext_t* __restrict__ denominator,
@@ -67,7 +67,7 @@ __global__ void proverCleanExtractOutput(
 }
 
 extern "C" void* logup_gkr_circuit_transition() {
-    return (void*)proverCleanLogUpCircuitTransition;
+    return (void*)logUpCircuitTransition;
 }
 
-extern "C" void* logup_gkr_extract_output() { return (void*)proverCleanExtractOutput; }
+extern "C" void* logup_gkr_extract_output() { return (void*)extractOutput; }

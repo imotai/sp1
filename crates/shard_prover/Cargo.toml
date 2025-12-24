@@ -14,8 +14,6 @@ csl-challenger = { workspace = true }
 csl-jagged-assist = { workspace = true }
 csl-tracegen = { workspace = true }
 csl-air = { workspace = true }
-
-# prover-clean subcrates
 csl-merkle-tree = { workspace = true }
 csl-utils = { workspace = true }
 csl-commit = { workspace = true }

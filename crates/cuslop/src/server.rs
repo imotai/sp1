@@ -39,7 +39,7 @@ impl Server {
     /// Run the server, indefinitely.
     pub async fn run(self, task_scope: TaskScope) {
         eprintln!(
-            "Running cuslop-server {} (prover-clean) with device {}",
+            "Running cuslop-server {} with device {}",
             sp1_primitives::SP1_VERSION,
             self.cuda_device_id
         );

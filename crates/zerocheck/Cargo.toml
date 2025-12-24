@@ -11,9 +11,6 @@ categories.workspace = true
 # cuslop
 csl-cuda = { workspace = true }
 csl-air = { workspace = true }
-sp1-derive = { workspace = true }
-
-# prover-clean subcrates
 csl-utils = { workspace = true }
 
 # slop
@@ -29,6 +26,7 @@ slop-koala-bear = { workspace = true }
 slop-commit = { workspace = true }
 
 # sp1
+sp1-derive = { workspace = true }
 sp1-hypercube = { workspace = true }
 sp1-core-executor = { workspace = true }
 

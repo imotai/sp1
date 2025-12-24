@@ -12,12 +12,12 @@ categories.workspace = true
 csl-cuda = { workspace = true }
 csl-jagged-assist = { workspace = true }
 csl-tracegen = { workspace = true }
-
-# prover-clean subcrates
 csl-utils = { workspace = true }
 csl-jagged-tracegen = { workspace = true }
 csl-basefold = { workspace = true }
 csl-merkle-tree = { workspace = true }
+
+# slop
 slop-algebra = { workspace = true }
 slop-alloc = { workspace = true }
 slop-tensor = { workspace = true }

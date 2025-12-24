@@ -28,7 +28,7 @@ impl SP1ProverComponents for SP1CudaProverComponents {
         CudaMachineProverComponents<SP1OuterGlobalContext, CudaProverWrapComponents>;
 }
 
-/// Core prover components for prover-clean.
+/// Core prover components for the CUDA prover.
 pub struct CudaProverCoreComponents;
 
 impl CudaShardProverComponents<KoalaBearDegree4Duplex> for CudaProverCoreComponents {
@@ -37,7 +37,7 @@ impl CudaShardProverComponents<KoalaBearDegree4Duplex> for CudaProverCoreCompone
     type C = SP1CoreJaggedConfig;
 }
 
-/// Recursion prover components for prover-clean.
+/// Recursion prover components for the CUDA prover.
 pub struct CudaProverRecursionComponents;
 
 impl CudaShardProverComponents<KoalaBearDegree4Duplex> for CudaProverRecursionComponents {
@@ -46,7 +46,7 @@ impl CudaShardProverComponents<KoalaBearDegree4Duplex> for CudaProverRecursionCo
     type C = SP1CoreJaggedConfig;
 }
 
-/// Wrap prover components for prover-clean.
+/// Wrap prover components for the CUDA prover.
 pub struct CudaProverWrapComponents;
 
 impl CudaShardProverComponents<SP1OuterGlobalContext> for CudaProverWrapComponents {

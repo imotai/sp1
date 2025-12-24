@@ -12,7 +12,7 @@ use sp1_hypercube::prover::{MachineProverComponents, ProvingKey};
 
 use crate::{CudaShardProver, CudaShardProverComponents};
 
-/// Machine prover components for the prover-clean implementation.
+/// Machine prover components for the CUDA prover implementation.
 #[derive(Debug, Clone, Copy)]
 pub struct CudaMachineProverComponents<GC, PC>(PhantomData<(GC, PC)>);
 

@@ -28,7 +28,7 @@ The project uses a **CMake + Makefile** build system for CUDA compilation:
 ### Key Crates
 - **csl-sys** - FFI bindings and CUDA compilation (the core integration point)
 - **csl-cuda** - High-level Rust wrappers for CUDA operations
-- **csl-prover-clean** - Main proving algorithms with GPU acceleration
+- **csl-shard-prover** - Main shard prover implementation.
 - **csl-perf** - Performance benchmarking and testing tools
 - **cuslop-server** - Server API for the proving system
 
@@ -76,7 +76,7 @@ make clean                     # Clean all build artifacts
 cargo run --release -p csl-perf --bin e2e -- --program fibonacci-20m --stage compress
 
 # Run look-ahead benchmarks
-cargo run --release -p csl-prover-clean --bin look_ahead_bench
+cargo run --release -p csl-experimental --bin look_ahead_bench
 ```
 
 ## Performance Considerations

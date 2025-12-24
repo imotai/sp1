@@ -868,7 +868,7 @@ pub async fn main_tracegen_permit<GC: IopCtx<F = Felt>, A: CudaTracegenAir<Felt>
 
 /// Does tracegen for both preprocessed and main.
 ///
-/// TODO: output a `MainTraceData` (from prover-clean/prover/types.rs)
+/// TODO: output a `MainTraceData` (from shard_prover/types.rs)
 #[instrument(skip_all, level = "debug")]
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub async fn full_tracegen<A: CudaTracegenAir<Felt>>(

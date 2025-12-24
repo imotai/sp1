@@ -158,21 +158,21 @@ $(OBJ_DIR)/sppark/all_gpus.o: $(SPPARK_DIR)/util/all_gpus.cpp | $(SPPARK_OBJ_DIR
 	@$(NVCC) $(NVCC_FLAGS) $(ARCH_FLAGS) -MMD -MP -MT $@ -MF $(patsubst %.o,%.d,$@) -c $< -o $@
 
 # Module-specific targets for convenience
-.PHONY: algebra basefold challenger jagged logup_gkr merkle mle ntt prover-clean reduce runtime scan sumcheck tracegen transpose zerocheck
+.PHONY: algebra basefold challenger experimental jagged_assist jagged_sumcheck logup_gkr merkle_tree mle ntt runtime scan sum_and_reduce tracegen transpose zerocheck
 
 algebra: $(filter $(OBJ_DIR)/cuda/algebra/%,$(CUDA_OBJECTS))
 basefold: $(filter $(OBJ_DIR)/cuda/basefold/%,$(CUDA_OBJECTS))
 challenger: $(filter $(OBJ_DIR)/cuda/challenger/%,$(CUDA_OBJECTS))
-jagged: $(filter $(OBJ_DIR)/cuda/jagged/%,$(CUDA_OBJECTS))
+experimental: $(filter $(OBJ_DIR)/cuda/experimental/%,$(CUDA_OBJECTS))
+jagged_assist: $(filter $(OBJ_DIR)/cuda/jagged_assist/%,$(CUDA_OBJECTS))
+jagged_sumcheck: $(filter $(OBJ_DIR)/cuda/jagged_sumcheck/%,$(CUDA_OBJECTS))
 logup_gkr: $(filter $(OBJ_DIR)/cuda/logup_gkr/%,$(CUDA_OBJECTS))
-merkle: $(filter $(OBJ_DIR)/cuda/merkle-tree/%,$(CUDA_OBJECTS))
+merkle_tree: $(filter $(OBJ_DIR)/cuda/merkle_tree/%,$(CUDA_OBJECTS))
 mle: $(filter $(OBJ_DIR)/cuda/mle/%,$(CUDA_OBJECTS))
 ntt: $(filter $(OBJ_DIR)/cuda/ntt/%,$(CUDA_OBJECTS))
-prover-clean: $(filter $(OBJ_DIR)/cuda/prover-clean/%,$(CUDA_OBJECTS))
-reduce: $(filter $(OBJ_DIR)/cuda/reduce/%,$(CUDA_OBJECTS))
 runtime: $(filter $(OBJ_DIR)/cuda/runtime/%,$(CUDA_OBJECTS))
 scan: $(filter $(OBJ_DIR)/cuda/scan/%,$(CUDA_OBJECTS))
-sumcheck: $(filter $(OBJ_DIR)/cuda/sumcheck/%,$(CUDA_OBJECTS))
+sum_and_reduce: $(filter $(OBJ_DIR)/cuda/sum_and_reduce/%,$(CUDA_OBJECTS))
 tracegen: $(filter $(OBJ_DIR)/cuda/tracegen/%,$(CUDA_OBJECTS))
 transpose: $(filter $(OBJ_DIR)/cuda/transpose/%,$(CUDA_OBJECTS))
 zerocheck: $(filter $(OBJ_DIR)/cuda/zerocheck/%,$(CUDA_OBJECTS))
@@ -215,9 +215,9 @@ help:
 	@echo "  install   - Install library to DESTDIR"
 	@echo ""
 	@echo "Module targets:"
-	@echo "  algebra, basefold, challenger, jagged, logup_gkr, merkle,"
-	@echo "  mle, ntt, prover-clean, reduce, runtime, scan, sumcheck,"
-	@echo "  tracegen, transpose, zerocheck"
+	@echo "  algebra, basefold, challenger, experimental, jagged_assist,"
+	@echo "  jagged_sumcheck, logup_gkr, merkle_tree, mle, ntt, runtime, scan,"
+	@echo "  sum_and_reduce, tracegen, transpose, zerocheck"
 	@echo ""
 	@echo "Environment variables:"
 	@echo "  BUILD_TYPE        - Debug or Release (default: Release)"

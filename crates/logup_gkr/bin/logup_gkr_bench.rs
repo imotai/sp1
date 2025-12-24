@@ -21,8 +21,8 @@ struct Workload {
 }
 
 fn load_workloads_from_json() -> Vec<Workload> {
-    let json_content = fs::read_to_string("crates/prover-clean/logup_gkr/layer_workloads.json")
-        .expect("Failed to read crates/prover-clean/layer_workloads.json");
+    let json_content = fs::read_to_string("crates/logup_gkr/layer_workloads.json")
+        .expect("Failed to read crates/logup_gkr/layer_workloads.json");
     serde_json::from_str(&json_content).expect("Failed to parse layer_workloads.json")
 }
 

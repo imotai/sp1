@@ -5,7 +5,7 @@
 #include "../sum_and_reduce/reduce.cuh"
 #include "../tracegen/jagged_tracegen/jagged.cuh"
 
-__global__ void proverCleanLogupGkrFixLastVariableFirstCircuitLayer(
+__global__ void logupGkrFixLastVariableFirstCircuitLayer(
     const JaggedMle<JaggedFirstGkrLayer> inputJaggedMle,
     JaggedMle<JaggedGkrLayer> outputJaggedMle,
     ext_t alpha) {
@@ -17,7 +17,7 @@ __global__ void proverCleanLogupGkrFixLastVariableFirstCircuitLayer(
     }
 }
 
-__global__ void proverCleanFixAndSumFirstCircuitLayer(
+__global__ void fixAndSumFirstCircuitLayer(
     ext_t* __restrict__ univariate_result,
     const JaggedMle<JaggedFirstGkrLayer> inputJaggedMle,
     JaggedMle<JaggedGkrLayer> outputJaggedMle,
@@ -81,7 +81,7 @@ __global__ void proverCleanFixAndSumFirstCircuitLayer(
     }
 }
 
-__global__ void proverCleanLogupGkrSumAsPolyFirstCircuitLayer(
+__global__ void logupGkrSumAsPolyFirstCircuitLayer(
     ext_t* __restrict__ result,
     const JaggedMle<JaggedFirstGkrLayer> inputJaggedMle,
     const ext_t* __restrict__ eqRow,
@@ -153,7 +153,7 @@ __global__ void proverCleanLogupGkrSumAsPolyFirstCircuitLayer(
     }
 }
 
-__global__ void proverCleanLogUpFirstLayerTransitionKernel(
+__global__ void LogUpFirstLayerTransitionKernel(
     const JaggedMle<JaggedFirstGkrLayer> inputJaggedMle,
     JaggedMle<JaggedGkrLayer> outputJaggedMle) {
 
@@ -167,17 +167,17 @@ __global__ void proverCleanLogUpFirstLayerTransitionKernel(
 }
 
 extern "C" void* logup_gkr_fix_and_sum_first_layer() {
-    return (void*)proverCleanFixAndSumFirstCircuitLayer;
+    return (void*)fixAndSumFirstCircuitLayer;
 }
 
 extern "C" void* logup_gkr_fix_last_variable_first_layer() {
-    return (void*)proverCleanLogupGkrFixLastVariableFirstCircuitLayer;
+    return (void*)logupGkrFixLastVariableFirstCircuitLayer;
 }
 
 extern "C" void* logup_gkr_sum_as_poly_first_layer() {
-    return (void*)proverCleanLogupGkrSumAsPolyFirstCircuitLayer;
+    return (void*)logupGkrSumAsPolyFirstCircuitLayer;
 }
 
 extern "C" void* logup_gkr_first_layer_transition() {
-    return (void*)proverCleanLogUpFirstLayerTransitionKernel;
+    return (void*)LogUpFirstLayerTransitionKernel;
 }

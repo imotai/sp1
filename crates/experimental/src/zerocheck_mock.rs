@@ -358,7 +358,7 @@ mod tests {
     use super::*;
     const NUM_SIMPLE_ITERATIONS: usize = 1;
 
-    // see cuda/prover-clean/zerocheck.cu
+    // see cuda/zerocheck/zerocheck.cu
     fn zerocheck_eval(ext: Ext, base: Ext) -> Ext {
         let six = Ext::from_canonical_u16(6);
         ext * ext * base + ext * base * base + six * base * base * base

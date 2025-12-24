@@ -12,8 +12,6 @@ csl-cuda = { workspace = true }
 csl-jagged-assist = { workspace = true }
 csl-air = { workspace = true }
 csl-tracegen = { workspace = true }
-
-# prover-clean
 csl-shard-prover = { workspace = true }
 csl-logup-gkr = { workspace = true }
 csl-basefold = { workspace = true }

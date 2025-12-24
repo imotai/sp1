@@ -11,9 +11,8 @@ categories.workspace = true
 # cuslop
 csl-cuda = { workspace = true }
 csl-tracegen = { workspace = true }
-
-# prover-clean subcrates
 csl-utils = { workspace = true }
+
 slop-algebra = { workspace = true }
 slop-alloc = { workspace = true }
 slop-tensor = { workspace = true }

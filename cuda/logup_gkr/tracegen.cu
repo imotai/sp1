@@ -66,7 +66,7 @@ __device__ __forceinline__ GkrInput interactionValue(
     return value;
 }
 
-__global__ void proverCleanPopulateLastCircuitLayer(
+__global__ void populateLastCircuitLayer(
     Interactions<felt_t> interactions,
     const uint32_t* startIndices,
     uint32_t* colIndex,
@@ -147,5 +147,5 @@ __global__ void proverCleanPopulateLastCircuitLayer(
 }
 
 extern "C" void* logup_gkr_populate_last_circuit_layer() {
-    return (void*)proverCleanPopulateLastCircuitLayer;
+    return (void*)populateLastCircuitLayer;
 }
