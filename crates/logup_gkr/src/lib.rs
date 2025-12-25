@@ -265,7 +265,7 @@ pub async fn prove_logup_gkr<
         }
         challenger.observe_variable_length_extension_slice(&openings.main_trace_evaluations);
 
-        chip_evaluations.insert(chip.name(), openings);
+        chip_evaluations.insert(chip.name().to_string(), openings);
     }
 
     let logup_evaluations = LogUpEvaluations { point: eval_point, chip_openings: chip_evaluations };
@@ -599,7 +599,7 @@ mod tests {
             for chip in shard_chips.iter() {
                 let interactions = Interactions::new(chip.sends(), chip.receives());
                 let device_interactions = interactions.to_device_in(&scope).await.unwrap();
-                all_interactions.insert(chip.name(), Arc::new(device_interactions));
+                all_interactions.insert(chip.name().to_string(), Arc::new(device_interactions));
             }
 
             let mut prover_challenger = challenger.clone();
@@ -618,11 +618,11 @@ mod tests {
             let degrees = shard_chips
                 .iter()
                 .map(|c| {
-                    let poly_size = jagged_trace_data.main_poly_height(&c.name()).unwrap();
+                    let poly_size = jagged_trace_data.main_poly_height(c.name()).unwrap();
 
                     let threshold_point =
                         Point::from_usize(poly_size, CORE_MAX_LOG_ROW_COUNT as usize + 1);
-                    (c.name(), threshold_point)
+                    (c.name().to_string(), threshold_point)
                 })
                 .collect();
 

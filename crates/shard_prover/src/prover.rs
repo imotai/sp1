@@ -771,7 +771,7 @@ mod tests {
             let mut cache = BTreeMap::new();
             for chip in machine.chips().iter() {
                 let result = codegen_cuda_eval(chip.air.as_ref());
-                cache.insert(chip.name(), result);
+                cache.insert(chip.name().to_string(), result);
             }
 
             let num_workers = 1;

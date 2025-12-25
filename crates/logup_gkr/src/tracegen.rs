@@ -173,7 +173,7 @@ pub async fn generate_gkr_circuit<'a, A: MachineAir<Felt>>(
     backend: TaskScope,
 ) -> (LogUpGkrOutput<Ext, TaskScope>, LogUpCudaCircuit<'a, TaskScope>) {
     let input_data = GkrInputData {
-        chip_set: chips.iter().map(|chip| chip.name()).collect(),
+        chip_set: chips.iter().map(|chip| chip.name().to_string()).collect(),
         all_interactions,
         jagged_trace_data,
         alpha,

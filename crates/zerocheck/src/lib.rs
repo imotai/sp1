@@ -129,7 +129,7 @@ where
             chip_ef_constants_indices,
             chip_f_ctr,
             chip_ef_ctr,
-        ) = zerocheck_programs.get(&chip.air.name()).unwrap_or_else(|| {
+        ) = zerocheck_programs.get(chip.air.name()).unwrap_or_else(|| {
             panic!("Chip name {} not found in CUDA eval cache", chip.air.name());
         });
 
@@ -613,7 +613,7 @@ where
         let ChipEvaluation {
             main_trace_evaluations: main_opening,
             preprocessed_trace_evaluations: prep_opening,
-        } = chip_openings.get(&chip.name()).unwrap();
+        } = chip_openings.get(chip.name()).unwrap();
 
         claim *= lambda;
 
@@ -697,7 +697,7 @@ where
         main_ptr += width;
 
         opened_values.insert(
-            chip.air.name().clone(),
+            chip.air.name().to_string(),
             ChipOpenedValues {
                 preprocessed,
                 main,
@@ -802,7 +802,7 @@ pub mod tests {
         type Record = ExecutionRecord;
         type Program = Program;
 
-        fn name(&self) -> String {
+        fn name(&self) -> &'static str {
             match self {
                 Self::Chip1(chip) => <ZerocheckTestChip1 as MachineAir<F>>::name(chip),
                 Self::Chip2(chip) => <ZerocheckTestChip2 as MachineAir<F>>::name(chip),
@@ -920,8 +920,8 @@ pub mod tests {
         type Record = ExecutionRecord;
         type Program = Program;
 
-        fn name(&self) -> String {
-            "ZerocheckTest1".to_string()
+        fn name(&self) -> &'static str {
+            "ZerocheckTest1"
         }
 
         fn num_rows(&self, _: &Self::Record) -> Option<usize> {
@@ -1041,8 +1041,8 @@ pub mod tests {
         type Record = ExecutionRecord;
         type Program = Program;
 
-        fn name(&self) -> String {
-            "ZerocheckTest2".to_string()
+        fn name(&self) -> &'static str {
+            "ZerocheckTest2"
         }
 
         fn num_rows(&self, _: &Self::Record) -> Option<usize> {
@@ -1189,8 +1189,8 @@ pub mod tests {
         type Record = ExecutionRecord;
         type Program = Program;
 
-        fn name(&self) -> String {
-            "ZerocheckTest3".to_string()
+        fn name(&self) -> &'static str {
+            "ZerocheckTest3"
         }
 
         fn preprocessed_width(&self) -> usize {
@@ -1601,8 +1601,8 @@ pub mod tests {
         let padded_preprocessed = total_preprocessed.next_multiple_of(1 << 21);
         let sum_length = padded_preprocessed + total_main;
 
-        let mut preprocessed_table_index: BTreeMap<String, TraceOffset> = BTreeMap::new();
-        let mut main_table_index: BTreeMap<String, TraceOffset> = BTreeMap::new();
+        let mut preprocessed_table_index: BTreeMap<_, TraceOffset> = BTreeMap::new();
+        let mut main_table_index: BTreeMap<_, TraceOffset> = BTreeMap::new();
 
         let mut data = vec![KoalaBear::zero(); sum_length as usize];
         let mut preprocessed_ptr = 0;
@@ -1618,7 +1618,7 @@ pub mod tests {
                 }
             }
             preprocessed_table_index.insert(
-                chips_vec[i].air.name(),
+                chips_vec[i].air.name().to_string(),
                 TraceOffset {
                     dense_offset: preprocessed_ptr as usize
                         ..(preprocessed_ptr + row * chips_vec[i].preprocessed_width() as u32)
@@ -1629,7 +1629,7 @@ pub mod tests {
             );
             preprocessed_ptr += row * chips_vec[i].preprocessed_width() as u32;
             main_table_index.insert(
-                chips_vec[i].air.name(),
+                chips_vec[i].air.name().to_string(),
                 TraceOffset {
                     dense_offset: main_ptr as usize
                         ..(main_ptr + row * chips_vec[i].width() as u32) as usize,
@@ -1729,7 +1729,7 @@ pub mod tests {
         let mut cache = BTreeMap::new();
         for chip in chips.iter() {
             let result = codegen_cuda_eval(chip.air.as_ref());
-            cache.insert(chip.name(), result);
+            cache.insert(chip.name().to_string(), result);
         }
 
         let chips_vec = chips.iter().cloned().collect::<Vec<_>>();
@@ -1918,7 +1918,7 @@ pub mod tests {
         let mut cache = BTreeMap::new();
         for chip in chips.iter() {
             let result = codegen_cuda_eval(chip.air.as_ref());
-            cache.insert(chip.name(), result);
+            cache.insert(chip.name().to_string(), result);
         }
         let chips_vec = chips.iter().cloned().collect::<Vec<_>>();
         let row_variables = 22;
@@ -1973,7 +1973,7 @@ pub mod tests {
                     <ZerocheckTestChip as sp1_hypercube::air::MachineAir<KoalaBear>>::name(
                         &chip.air,
                     )
-                    .clone(),
+                    .to_string(),
                     chip_eval,
                 );
                 preprocessed_ptr += preprocessed_width;
@@ -2039,7 +2039,7 @@ pub mod tests {
             let mut cache = BTreeMap::new();
             for chip in chips.iter() {
                 let result = codegen_cuda_eval(chip.air.as_ref());
-                cache.insert(chip.name(), result);
+                cache.insert(chip.name().to_string(), result);
             }
 
             let trace_mle = Arc::new(trace_mle);
@@ -2083,7 +2083,7 @@ pub mod tests {
                     )),
                 };
 
-                chip_openings.insert(chip.air.name().clone(), chip_eval);
+                chip_openings.insert(chip.air.name().to_string(), chip_eval);
                 preprocessed_ptr += preprocessed_width;
                 main_ptr += main_width;
             }

@@ -40,7 +40,7 @@ name = "hadamard_sumcheck_bench"
 path = "bin/hadamard_sumcheck_bench.rs"
 
 [[bin]]
-name = "zerocheck_bench"
+name = "zerocheck_mock_bench"
 path = "bin/zerocheck_bench.rs"
 
 

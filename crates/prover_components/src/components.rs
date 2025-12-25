@@ -75,7 +75,7 @@ where
     let mut cache = BTreeMap::new();
     for chip in machine.chips() {
         let result = codegen_cuda_eval(chip.air.as_ref());
-        cache.insert(chip.air.name(), result);
+        cache.insert(chip.air.name().to_string(), result);
     }
 
     let log_stacking_height = verifier.log_stacking_height();

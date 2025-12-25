@@ -81,7 +81,7 @@ where
         slop_futures::rayon::spawn(move || {
             host_airs.into_par_iter().for_each_with(host_traces_tx, |tx, air| {
                 if let Some(trace) = air.generate_preprocessed_trace(&program) {
-                    tx.unbounded_send((air.name(), Mle::from(trace))).unwrap();
+                    tx.unbounded_send((air.name().to_string(), Mle::from(trace))).unwrap();
                 }
             });
             // Make this explicit.
@@ -119,7 +119,9 @@ where
                 }
             })
             .collect::<FuturesUnordered<_>>()
-            .filter_map(|(air, maybe_trace)| ready(maybe_trace.map(|trace| (air.name(), trace))));
+            .filter_map(|(air, maybe_trace)| {
+                ready(maybe_trace.map(|trace| (air.name().to_string(), trace)))
+            });
 
         let named_traces = futures::stream_select!(copied_host_traces, device_traces)
             .map(|(name, trace)| {
@@ -168,7 +170,7 @@ where
             host_airs.into_par_iter().for_each_with(host_traces_tx, |tx, air| {
                 let trace = Mle::from(air.generate_trace(&record, &mut A::Record::default()));
                 // Since it's unbounded, it will only error if the receiver is disconnected.
-                tx.unbounded_send((air.name(), trace)).unwrap();
+                tx.unbounded_send((air.name().to_string(), trace)).unwrap();
             });
             // Make this explicit.
             // If we are the last users of the record, this will expensively drop it.
@@ -184,7 +186,7 @@ where
             .map(|chip| {
                 let num_polynomials = chip.width();
                 (
-                    chip.name(),
+                    chip.name().to_string(),
                     PaddedMle::zeros_in(
                         num_polynomials,
                         max_log_row_count as u32,
@@ -233,7 +235,7 @@ where
                         )
                         .await
                         .unwrap();
-                    (air.name(), trace)
+                    (air.name().to_string(), trace)
                 }
             })
             .collect::<FuturesUnordered<_>>();

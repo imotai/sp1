@@ -380,7 +380,7 @@ fn host_preprocessed_tracegen<A: CudaTracegenAir<Felt>>(
                 air.generate_preprocessed_trace_into(&program, slice);
                 let start_pointer = unsafe { base_ptr.add(offset) as usize };
                 // Since it's unbounded, it will only error if the receiver is disconnected.
-                tx.unbounded_send((air.name(), start_pointer, height, width)).unwrap();
+                tx.unbounded_send((air.name().to_string(), start_pointer, height, width)).unwrap();
             }
         });
         // Make this explicit.
@@ -426,7 +426,9 @@ async fn device_preprocessed_tracegen<A: CudaTracegenAir<Felt>>(
             }
         })
         .collect::<FuturesUnordered<_>>()
-        .filter_map(|(air, maybe_trace)| ready(maybe_trace.map(|trace| (air.name(), trace))));
+        .filter_map(|(air, maybe_trace)| {
+            ready(maybe_trace.map(|trace| (air.name().to_string(), trace)))
+        });
 
     let named_traces = futures::stream_select!(copied_host_traces, device_traces)
         .map(|(name, trace)| (name, Trace::Real(trace)))
@@ -697,7 +699,7 @@ where
                         air.generate_trace_into(&record, &mut A::Record::default(), slice);
                         let start_pointer = unsafe { base_ptr.add(offset) as usize };
                         // Since it's unbounded, it will only error if the receiver is disconnected.
-                        tx.unbounded_send((air.name(), start_pointer, height, width)).unwrap();
+                        tx.unbounded_send((air.name().to_string(), start_pointer, height, width)).unwrap();
                     },
                 );
             });
@@ -715,7 +717,7 @@ where
         .filter(|chip| !chip_set.contains(chip))
         .map(|chip| {
             let num_polynomials = chip.width();
-            (chip.name(), Trace::Padding(num_polynomials))
+            (chip.name().to_string(), Trace::Padding(num_polynomials))
         })
         .collect::<BTreeMap<_, _>>();
 
@@ -767,7 +769,7 @@ async fn device_main_tracegen<A: CudaTracegenAir<Felt>>(
                     .instrument(tracing::trace_span!(parent: &outer_span, "device chip tracegen", chip = %air.name()))
                     .await
                     .unwrap();
-                (air.name(), trace)
+                (air.name().to_string(), trace)
             }
         })
         .collect::<FuturesUnordered<_>>();

@@ -12,6 +12,7 @@ categories.workspace = true
 csl-cuda = { workspace = true }
 csl-air = { workspace = true }
 csl-utils = { workspace = true }
+csl-tracegen = { workspace = true }
 
 # slop
 slop-air = { workspace = true }
@@ -24,6 +25,7 @@ slop-sumcheck = { workspace = true }
 slop-challenger = { workspace = true }
 slop-koala-bear = { workspace = true }
 slop-commit = { workspace = true }
+slop-futures = { workspace = true }
 
 # sp1
 sp1-derive = { workspace = true }
@@ -46,7 +48,6 @@ csl-prover = { workspace = true }
 csl-jagged-tracegen = { workspace = true }
 sp1-recursion-compiler = { workspace = true }
 slop-stacked = { workspace = true }
-slop-futures = { workspace = true }
 
 [lints]
 workspace = true

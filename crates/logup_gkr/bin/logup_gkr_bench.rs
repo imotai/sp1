@@ -1,3 +1,6 @@
+use std::fs;
+use std::time::Duration;
+
 use csl_cuda::{TaskScope, ToDevice};
 use csl_logup_gkr::{
     bench_materialized_sumcheck, extract_outputs, gkr_transition, jagged_first_gkr_layer_to_device,
@@ -11,8 +14,6 @@ use slop_alloc::ToHost;
 use slop_challenger::{FieldChallenger, IopCtx};
 use slop_multilinear::{Mle, Point};
 use slop_sumcheck::partially_verify_sumcheck_proof;
-use std::fs;
-use std::time::Duration;
 
 #[derive(Deserialize)]
 struct Workload {
@@ -180,8 +181,35 @@ fn print_benchmark_summary(results: &[(Duration, Duration)]) {
 }
 
 const ONLY_SUMCHECK: bool = false;
+
+fn init_tracing() {
+    #[cfg(feature = "tokio-blocked")]
+    {
+        use tracing_subscriber::layer::SubscriberExt;
+        use tracing_subscriber::util::SubscriberInitExt;
+        use tracing_subscriber::EnvFilter;
+        use tracing_subscriber::Layer;
+
+        let env_filter =
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+        let busy_ms =
+            std::env::var("TOKIO_BLOCKED_BUSY_MS").map(|s| s.parse().unwrap()).unwrap_or(5000);
+        let tokio_blocked_layer = tokio_blocked::TokioBlockedLayer::new()
+            .with_warn_busy_single_poll(Some(std::time::Duration::from_micros(busy_ms)));
+
+        tracing_subscriber::registry()
+            .with(tokio_blocked_layer)
+            .with(tracing_subscriber::fmt::layer().with_filter(env_filter))
+            .init();
+    }
+}
+
 #[tokio::main]
 async fn main() {
+    init_tracing();
+    tracing::info!("Starting logup_gkr_bench with tokio-blocked profiling");
+
     if ONLY_SUMCHECK {
         let mut rng = StdRng::seed_from_u64(0);
         // let interaction_row_counts: Vec<u32> = vec![4; 66];

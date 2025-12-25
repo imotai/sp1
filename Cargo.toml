@@ -168,6 +168,8 @@ futures = "0.3.31"
 rayon = "1.10.0"
 # misc
 tracing = "0.1.40"
+tracing-subscriber = "0.3"
+tokio-blocked = "0.1.0"
 thiserror = "1.0"
 itertools = "0.14.0"
 serde = { version = "1.0.217", features = ["derive"] }
