@@ -69,8 +69,8 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for ExtAluChip {
 
     type Program = RecursionProgram<F>;
 
-    fn name(&self) -> String {
-        "ExtAlu".to_string()
+    fn name(&self) -> &'static str {
+        "ExtAlu"
     }
 
     fn preprocessed_width(&self) -> usize {

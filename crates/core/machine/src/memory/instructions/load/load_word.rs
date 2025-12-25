@@ -76,8 +76,8 @@ impl<F: PrimeField32> MachineAir<F> for LoadWordChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "LoadWord".to_string()
+    fn name(&self) -> &'static str {
+        "LoadWord"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

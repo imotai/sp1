@@ -49,8 +49,8 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "Program".to_string()
+    fn name(&self) -> &'static str {
+        "Program"
     }
 
     fn preprocessed_width(&self) -> usize {

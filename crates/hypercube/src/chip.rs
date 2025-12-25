@@ -184,7 +184,7 @@ where
 
     type Program = A::Program;
 
-    fn name(&self) -> String {
+    fn name(&self) -> &'static str {
         self.air.name()
     }
 
@@ -289,7 +289,7 @@ where
 {
     #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.name().cmp(&other.name())
+        self.name().cmp(other.name())
     }
 }
 
@@ -311,7 +311,7 @@ impl<F: Field> ChipStatistics<F> {
     /// Creates a new chip statistics from a chip and height.
     #[must_use]
     pub fn new<A: MachineAir<F>>(chip: &Chip<F, A>, height: usize) -> Self {
-        let name = chip.name();
+        let name = chip.name().to_string();
         let preprocessed_cols = chip.preprocessed_width();
         let main_cols = chip.width();
         Self { name, height, preprocessed_cols, main_cols, _marker: std::marker::PhantomData }

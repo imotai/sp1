@@ -61,8 +61,8 @@ impl<F: PrimeField32> MachineAir<F> for StoreDoubleChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "StoreDouble".to_string()
+    fn name(&self) -> &'static str {
+        "StoreDouble"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

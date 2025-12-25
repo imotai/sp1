@@ -54,10 +54,10 @@ impl<F: PrimeField32> MachineAir<F> for PageProtGlobalChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
+    fn name(&self) -> &'static str {
         match self.kind {
-            MemoryChipType::Initialize => "PageProtGlobalInit".to_string(),
-            MemoryChipType::Finalize => "PageProtGlobalFinalize".to_string(),
+            MemoryChipType::Initialize => "PageProtGlobalInit",
+            MemoryChipType::Finalize => "PageProtGlobalFinalize",
         }
     }
 

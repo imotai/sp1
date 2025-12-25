@@ -219,7 +219,7 @@ where
 
 //         type Program = Program;
 
-//         fn name(&self) -> String {
+//         fn name(&self) -> &'static str {
 //             "FieldDen".to_string()
 //         }
 

@@ -24,8 +24,8 @@ impl<F: PrimeField32> MachineAir<F> for SyscallInstrsChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "SyscallInstrs".to_string()
+    fn name(&self) -> &'static str {
+        "SyscallInstrs"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

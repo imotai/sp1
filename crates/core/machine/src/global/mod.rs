@@ -76,10 +76,10 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
+    fn name(&self) -> &'static str {
         assert_eq!(GLOBAL_INITIAL_DIGEST_POS_COPY, GLOBAL_INITIAL_DIGEST_POS);
         assert_eq!(GLOBAL_OFFSET_POS_COPY, GLOBAL_OFFSET_POS);
-        "Global".to_string()
+        "Global"
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {

@@ -55,8 +55,8 @@ impl<F: PrimeField32> MachineAir<F> for AddiChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "Addi".to_string()
+    fn name(&self) -> &'static str {
+        "Addi"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

@@ -51,8 +51,8 @@ impl<F: PrimeField32> MachineAir<F> for ShaExtendControlChip {
     type Record = ExecutionRecord;
     type Program = Program;
 
-    fn name(&self) -> String {
-        "ShaExtendControl".to_string()
+    fn name(&self) -> &'static str {
+        "ShaExtendControl"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

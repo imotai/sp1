@@ -100,8 +100,8 @@ impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "ShiftRight".to_string()
+    fn name(&self) -> &'static str {
+        "ShiftRight"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

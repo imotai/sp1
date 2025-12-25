@@ -69,8 +69,8 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for Poseidon2Linea
 
     type Program = RecursionProgram<F>;
 
-    fn name(&self) -> String {
-        "Poseidon2LinearLayer".to_string()
+    fn name(&self) -> &'static str {
+        "Poseidon2LinearLayer"
     }
 
     fn preprocessed_width(&self) -> usize {

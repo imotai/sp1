@@ -64,8 +64,8 @@ impl<F: PrimeField32> MachineAir<F> for InstructionDecodeChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "InstructionDecode".to_string()
+    fn name(&self) -> &'static str {
+        "InstructionDecode"
     }
 
     fn generate_dependencies(&self, _input: &ExecutionRecord, _output: &mut ExecutionRecord) {

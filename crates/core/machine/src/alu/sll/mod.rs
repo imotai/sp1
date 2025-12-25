@@ -92,8 +92,8 @@ impl<F: PrimeField32> MachineAir<F> for ShiftLeft {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "ShiftLeft".to_string()
+    fn name(&self) -> &'static str {
+        "ShiftLeft"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

@@ -51,8 +51,8 @@ impl<F: PrimeField32> MachineAir<F> for StateBumpChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "StateBump".to_string()
+    fn name(&self) -> &'static str {
+        "StateBump"
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {

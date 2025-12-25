@@ -99,7 +99,7 @@ where
             .iter()
             .filter(|chip| {
                 if let Some(chips_filter) = chips_filter {
-                    chips_filter.contains(&chip.name())
+                    chips_filter.contains(&chip.name().to_string())
                 } else {
                     true
                 }

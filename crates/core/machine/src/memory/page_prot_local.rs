@@ -77,8 +77,8 @@ impl<F: PrimeField32> MachineAir<F> for PageProtLocalChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "PageProtLocal".to_string()
+    fn name(&self) -> &'static str {
+        "PageProtLocal"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

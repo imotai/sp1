@@ -57,8 +57,8 @@ impl<F: PrimeField32> MachineAir<F> for ShaCompressControlChip {
     type Record = ExecutionRecord;
     type Program = Program;
 
-    fn name(&self) -> String {
-        "ShaCompressControl".to_string()
+    fn name(&self) -> &'static str {
+        "ShaCompressControl"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

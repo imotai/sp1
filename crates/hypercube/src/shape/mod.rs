@@ -98,7 +98,7 @@ impl<K: Clone + Eq + Hash + FromStr> Shape<K> {
     where
         <K as FromStr>::Err: std::fmt::Debug,
     {
-        self.inner.contains_key(&K::from_str(&air.name()).unwrap())
+        self.inner.contains_key(&K::from_str(air.name()).unwrap())
     }
 
     /// Get an iterator over the shape.

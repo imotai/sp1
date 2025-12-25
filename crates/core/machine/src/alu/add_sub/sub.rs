@@ -55,8 +55,8 @@ impl<F: PrimeField32> MachineAir<F> for SubChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "Sub".to_string()
+    fn name(&self) -> &'static str {
+        "Sub"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

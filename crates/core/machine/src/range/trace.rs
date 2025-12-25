@@ -15,8 +15,8 @@ impl<F: PrimeField32> MachineAir<F> for RangeChip<F> {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "Range".to_string()
+    fn name(&self) -> &'static str {
+        "Range"
     }
 
     fn num_rows(&self, _: &Self::Record) -> Option<usize> {

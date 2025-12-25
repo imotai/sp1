@@ -52,8 +52,8 @@ impl<F: PrimeField32, const VAR_EVENTS_PER_ROW: usize> MachineAir<F>
 
     type Program = RecursionProgram<F>;
 
-    fn name(&self) -> String {
-        "MemoryVar".to_string()
+    fn name(&self) -> &'static str {
+        "MemoryVar"
     }
     fn preprocessed_width(&self) -> usize {
         NUM_MEM_PREPROCESSED_INIT_COLS * VAR_EVENTS_PER_ROW

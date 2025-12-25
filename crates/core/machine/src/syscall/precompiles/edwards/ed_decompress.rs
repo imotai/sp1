@@ -267,8 +267,8 @@ impl<F: PrimeField32, E: EdwardsParameters> MachineAir<F> for EdDecompressChip<E
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "EdDecompress".to_string()
+    fn name(&self) -> &'static str {
+        "EdDecompress"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

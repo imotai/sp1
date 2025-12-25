@@ -79,8 +79,8 @@ impl<F: PrimeField32> MachineAir<F> for Poseidon2Chip {
     type Record = ExecutionRecord;
     type Program = Program;
 
-    fn name(&self) -> String {
-        "Poseidon2".to_string()
+    fn name(&self) -> &'static str {
+        "Poseidon2"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

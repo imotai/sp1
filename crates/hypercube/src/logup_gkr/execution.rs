@@ -178,10 +178,10 @@ impl<F: Field, EF: ExtensionField<F>, A> LogupGkrCpuTraceGenerator<F, EF, A> {
         let betas = CpuBackend::partial_lagrange(&beta_seed).await.into_buffer().into_vec();
         let mut total_interactions = 0;
         for (name, interactions) in interactions.iter() {
-            let main_trace = main_traces.get(name).unwrap().clone();
+            let main_trace = main_traces.get(name.as_str()).unwrap().clone();
             let height = main_trace.num_real_entries();
 
-            let preprocessed_trace = preprocessed_traces.get(name).cloned();
+            let preprocessed_trace = preprocessed_traces.get(name.as_str()).cloned();
             let num_interactions = interactions.len();
             total_interactions += num_interactions;
             let mut numer_evals = vec![F::zero(); height * num_interactions];

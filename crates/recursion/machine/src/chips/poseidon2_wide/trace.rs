@@ -24,8 +24,12 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
     type Program = RecursionProgram<F>;
 
     #[allow(clippy::uninlined_format_args)]
-    fn name(&self) -> String {
-        format!("Poseidon2WideDeg{}", DEGREE)
+    fn name(&self) -> &'static str {
+        match DEGREE {
+            3 => "Poseidon2WideDeg3",
+            9 => "Poseidon2WideDeg9",
+            _ => panic!("unsupported DEGREE"),
+        }
     }
 
     fn generate_dependencies(&self, _: &Self::Record, _: &mut Self::Record) {

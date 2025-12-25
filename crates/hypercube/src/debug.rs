@@ -99,8 +99,8 @@ pub async fn debug_constraints_all_chips<GC, A, BE>(
     let mut result = BTreeMap::new();
     for chip in chips.iter() {
         let preprocessed_trace =
-            preprocessed.get(&chip.air.name()).map(|t| t.inner().as_ref().unwrap().as_ref());
-        let maybe_main_trace = main.get(&chip.air.name()).unwrap().inner().as_ref();
+            preprocessed.get(chip.air.name()).map(|t| t.inner().as_ref().unwrap().as_ref());
+        let maybe_main_trace = main.get(chip.air.name()).unwrap().inner().as_ref();
 
         if maybe_main_trace.is_none() {
             continue;
@@ -114,7 +114,7 @@ pub async fn debug_constraints_all_chips<GC, A, BE>(
         )
         .await;
         if !failed_rows.is_empty() {
-            result.insert(chip.name(), failed_rows);
+            result.insert(chip.name().to_string(), failed_rows);
         }
     }
 

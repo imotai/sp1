@@ -196,8 +196,8 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "DivRem".to_string()
+    fn name(&self) -> &'static str {
+        "DivRem"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

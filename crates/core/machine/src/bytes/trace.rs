@@ -16,8 +16,8 @@ impl<F: PrimeField32> MachineAir<F> for ByteChip<F> {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "Byte".to_string()
+    fn name(&self) -> &'static str {
+        "Byte"
     }
 
     fn num_rows(&self, _: &Self::Record) -> Option<usize> {

@@ -19,8 +19,8 @@ impl<F: PrimeField32> MachineAir<F> for BranchChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "Branch".to_string()
+    fn name(&self) -> &'static str {
+        "Branch"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

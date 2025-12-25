@@ -195,6 +195,7 @@ impl ExecutionRecord {
         result.global_memory_initialize_events.reserve(reservation_size);
         result.global_memory_finalize_events.reserve(reservation_size);
         result.global_interaction_events.reserve(reservation_size);
+        result.byte_lookups.reserve(reservation_size);
 
         result.public_values.proof_nonce = proof_nonce;
         result.global_dependencies_opt = global_dependencies_opt;

@@ -66,8 +66,8 @@ impl<F: PrimeField32> MachineAir<F> for BaseAluChip {
 
     type Program = RecursionProgram<F>;
 
-    fn name(&self) -> String {
-        "BaseAlu".to_string()
+    fn name(&self) -> &'static str {
+        "BaseAlu"
     }
 
     fn preprocessed_width(&self) -> usize {

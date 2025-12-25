@@ -68,7 +68,7 @@ pub fn dummy_shard_proof<A: MachineAir<SP1Field>>(
                 .iter()
                 .map(|chip| {
                     (
-                        chip.name().clone(),
+                        chip.name().to_string(),
                         ChipOpenedValues {
                             preprocessed: AirOpenedValues {
                                 local: vec![EF::zero(); chip.preprocessed_width()],

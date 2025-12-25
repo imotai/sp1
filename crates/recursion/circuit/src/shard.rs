@@ -189,7 +189,7 @@ where
             .machine
             .chips()
             .iter()
-            .filter(|chip| heights.contains_key(&chip.name()))
+            .filter(|chip| heights.contains_key(chip.name()))
             .cloned()
             .collect::<BTreeSet<_>>();
 

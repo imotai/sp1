@@ -134,8 +134,8 @@ impl<F: PrimeField32> MachineAir<F> for InstructionFetchChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "InstructionFetch".to_string()
+    fn name(&self) -> &'static str {
+        "InstructionFetch"
     }
 
     fn generate_dependencies(&self, input: &ExecutionRecord, output: &mut ExecutionRecord) {

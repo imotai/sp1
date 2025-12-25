@@ -82,8 +82,8 @@ impl<F: PrimeField32> MachineAir<F> for LoadX0Chip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "LoadX0".to_string()
+    fn name(&self) -> &'static str {
+        "LoadX0"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

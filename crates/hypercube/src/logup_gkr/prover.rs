@@ -272,8 +272,8 @@ impl<GC: IopCtx, GkrComponents: LogUpGkrProverComponents<GC>> LogUpGkrProver<GC>
         challenger.observe(GC::F::from_canonical_usize(chips.len()));
         for chip in chips.iter() {
             let name = chip.name();
-            let main_trace = traces.get(&name).unwrap();
-            let preprocessed_trace = preprocessed_traces.get(&name);
+            let main_trace = traces.get(name).unwrap();
+            let preprocessed_trace = preprocessed_traces.get(name);
 
             let main_evaluation = main_trace.eval_at_eq(&eval_point, &eval_point_eq).await;
             let preprocessed_evaluation = OptionFuture::from(
@@ -295,7 +295,7 @@ impl<GC: IopCtx, GkrComponents: LogUpGkrProverComponents<GC>> LogUpGkrProver<GC>
             }
             challenger.observe_variable_length_extension_slice(&openings.main_trace_evaluations);
 
-            chip_evaluations.insert(name, openings);
+            chip_evaluations.insert(name.to_string(), openings);
         }
 
         let logup_evaluations =

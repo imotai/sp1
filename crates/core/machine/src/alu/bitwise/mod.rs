@@ -63,8 +63,8 @@ impl<F: PrimeField32> MachineAir<F> for BitwiseChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "Bitwise".to_string()
+    fn name(&self) -> &'static str {
+        "Bitwise"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

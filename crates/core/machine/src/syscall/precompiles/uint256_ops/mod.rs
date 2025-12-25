@@ -25,8 +25,8 @@ impl<F: PrimeField32> MachineAir<F> for Uint256OpsChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "Uint256Ops".to_string()
+    fn name(&self) -> &'static str {
+        "Uint256Ops"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

@@ -62,8 +62,8 @@ impl<F: PrimeField32> MachineAir<F> for PrefixSumChecksChip {
 
     type Program = RecursionProgram<F>;
 
-    fn name(&self) -> String {
-        "PrefixSumChecks".to_string()
+    fn name(&self) -> &'static str {
+        "PrefixSumChecks"
     }
 
     fn generate_dependencies(&self, _: &Self::Record, _: &mut Self::Record) {

@@ -52,8 +52,8 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteControlChip {
     type Record = ExecutionRecord;
     type Program = Program;
 
-    fn name(&self) -> String {
-        "KeccakPermuteControl".to_string()
+    fn name(&self) -> &'static str {
+        "KeccakPermuteControl"
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {

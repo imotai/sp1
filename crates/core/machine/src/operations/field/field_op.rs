@@ -579,7 +579,7 @@ impl<V: Copy, P: FieldParameters> FieldOpCols<V, P> {
 
 //         type Program = Program;
 
-//         fn name(&self) -> String {
+//         fn name(&self) -> &'static str {
 //             format!("FieldOp{:?}", self.operation)
 //         }
 

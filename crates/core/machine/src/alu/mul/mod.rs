@@ -69,8 +69,8 @@ impl<F: PrimeField32> MachineAir<F> for MulChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "Mul".to_string()
+    fn name(&self) -> &'static str {
+        "Mul"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

@@ -23,7 +23,7 @@ impl<F: PrimeField32> RecursionShape<F> {
         F: Field,
         A: MachineAir<F>,
     {
-        self.heights.get(&air.name()).copied()
+        self.heights.get(air.name()).copied()
     }
 
     pub fn height_of_name(&self, name: &str) -> Option<usize> {
@@ -35,7 +35,7 @@ impl<F: PrimeField32> RecursionShape<F> {
         F: Field,
         A: MachineAir<F>,
     {
-        self.heights.insert(air.name(), height);
+        self.heights.insert(air.name().to_string(), height);
     }
 
     pub fn insert_with_name(&mut self, name: &str, height: usize) {
@@ -59,7 +59,7 @@ impl<F: PrimeField32> RecursionShape<F> {
             .filter_map(|chip| {
                 self.height(chip).map(|height| {
                     (
-                        chip.name(),
+                        chip.name().to_string(),
                         ChipDimensions {
                             height: F::from_canonical_u32(height as u32),
                             num_polynomials: F::from_canonical_u32(chip.preprocessed_width() as u32),
@@ -74,7 +74,10 @@ impl<F: PrimeField32> RecursionShape<F> {
 impl<F: Field, A: MachineAir<F>> FromIterator<(A, usize)> for RecursionShape<F> {
     fn from_iter<T: IntoIterator<Item = (A, usize)>>(iter: T) -> Self {
         RecursionShape {
-            heights: iter.into_iter().map(|(air, height)| (air.name(), height)).collect(),
+            heights: iter
+                .into_iter()
+                .map(|(air, height)| (air.name().to_string(), height))
+                .collect(),
             _marker: PhantomData,
         }
     }

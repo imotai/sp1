@@ -148,7 +148,7 @@ impl<GC: IopCtx, C: JaggedConfig<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C,
             .machine()
             .chips()
             .iter()
-            .filter(|air| proof.opened_values.chips.keys().contains(&air.name()))
+            .filter(|air| proof.opened_values.chips.keys().any(|k| k == air.name()))
             .cloned()
             .collect::<BTreeSet<_>>();
         debug_assert_eq!(shard_chips.len(), proof.opened_values.chips.len());
@@ -295,7 +295,7 @@ where
         // proof is correct.
         let mut rlc_eval = GC::EF::zero();
         for (chip, (chip_name, openings)) in shard_chips.iter().zip_eq(opened_values.chips.iter()) {
-            assert_eq!(&chip.name(), chip_name);
+            assert_eq!(chip.name(), chip_name);
             // Verify the shape of the opening arguments matches the expected values.
             Self::verify_opening_shape(chip, openings)?;
 
@@ -489,7 +489,7 @@ where
         }
 
         let machine_chip_names =
-            self.machine.chips().iter().map(MachineAir::name).collect::<BTreeSet<_>>();
+            self.machine.chips().iter().map(|c| c.name().to_string()).collect::<BTreeSet<_>>();
 
         let preprocessed_chips = self
             .machine
@@ -507,7 +507,7 @@ where
         if !shard_chips.is_subset(&machine_chip_names)
             || !preprocessed_chips
                 .iter()
-                .map(|chip| chip.name())
+                .map(|chip| chip.name().to_string())
                 .collect::<BTreeSet<_>>()
                 .is_subset(&shard_chips)
             || evaluation_proof.row_counts_and_column_counts[0]
@@ -527,7 +527,7 @@ where
             .machine
             .chips()
             .iter()
-            .filter(|chip| shard_chips.contains(&chip.name()))
+            .filter(|chip| shard_chips.contains(chip.name()))
             .cloned()
             .collect::<BTreeSet<_>>();
 
@@ -582,15 +582,15 @@ where
             .zip_eq(opened_values.chips.iter())
             .zip_eq(logup_gkr_proof.logup_evaluations.chip_openings.iter())
         {
-            if shard_chip.name() != *chip_name {
+            if shard_chip.name() != chip_name.as_str() {
                 return Err(ShardVerifierError::InvalidChipOrder(
-                    shard_chip.name(),
+                    shard_chip.name().to_string(),
                     chip_name.clone(),
                 ));
             }
-            if shard_chip.name() != *gkr_chip_name {
+            if shard_chip.name() != gkr_chip_name.as_str() {
                 return Err(ShardVerifierError::InvalidChipOrder(
-                    shard_chip.name(),
+                    shard_chip.name().to_string(),
                     gkr_chip_name.clone(),
                 ));
             }
@@ -710,14 +710,14 @@ where
         for chip in shard_chips.iter() {
             if chip.preprocessed_width() > 0 {
                 preprocessed_chip_degrees.push(
-                    proof.opened_values.chips[&chip.name()]
+                    proof.opened_values.chips[chip.name()]
                         .degree
                         .bit_string_evaluation()
                         .as_canonical_u32(),
                 );
             }
             main_chip_degrees.push(
-                proof.opened_values.chips[&chip.name()]
+                proof.opened_values.chips[chip.name()]
                     .degree
                     .bit_string_evaluation()
                     .as_canonical_u32(),

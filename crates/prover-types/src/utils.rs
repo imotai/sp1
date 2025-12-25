@@ -5,7 +5,7 @@ use tokio::task::JoinError;
 
 /// Spawn a blocking task and immediately await its result. This function is similar to
 /// `tokio::task::spawn_blocking`, but it does not require F to be 'static.
-pub async fn await_blocking<F: FnMut() -> T + Send, T: Send + 'static>(
+pub async fn await_blocking<F: FnOnce() -> T + Send, T: Send + 'static>(
     f: F,
 ) -> Result<T, JoinError> {
     // Safety: This is safe as long as we do not `std::mem::forget` the returned future.

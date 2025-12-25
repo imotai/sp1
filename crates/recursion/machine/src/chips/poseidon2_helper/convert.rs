@@ -62,8 +62,8 @@ impl<F: PrimeField32 + BinomiallyExtendable<D>> MachineAir<F> for ConvertChip {
 
     type Program = RecursionProgram<F>;
 
-    fn name(&self) -> String {
-        "ExtFeltConvert".to_string()
+    fn name(&self) -> &'static str {
+        "ExtFeltConvert"
     }
 
     fn preprocessed_width(&self) -> usize {

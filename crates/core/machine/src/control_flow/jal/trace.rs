@@ -19,8 +19,8 @@ impl<F: PrimeField32> MachineAir<F> for JalChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "Jal".to_string()
+    fn name(&self) -> &'static str {
+        "Jal"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

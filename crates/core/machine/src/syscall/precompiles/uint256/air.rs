@@ -95,8 +95,8 @@ impl<F: PrimeField32> MachineAir<F> for Uint256MulChip {
     type Record = ExecutionRecord;
     type Program = Program;
 
-    fn name(&self) -> String {
-        "Uint256MulMod".to_string()
+    fn name(&self) -> &'static str {
+        "Uint256MulMod"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

@@ -161,8 +161,8 @@ impl<F: PrimeField32> MachineAir<F> for UTypeChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "UType".to_string()
+    fn name(&self) -> &'static str {
+        "UType"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

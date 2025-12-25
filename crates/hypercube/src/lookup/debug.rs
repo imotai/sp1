@@ -55,8 +55,8 @@ pub fn debug_interactions<F: Field, A: MachineAir<F>>(
     let mut key_to_vec_data = BTreeMap::new();
     let mut key_to_count = BTreeMap::new();
 
-    let main = traces.get(&chip.name()).cloned().unwrap();
-    let pre_traces = preprocessed_traces.get(&chip.name()).cloned();
+    let main = traces.get(chip.name()).cloned().unwrap();
+    let pre_traces = preprocessed_traces.get(chip.name()).cloned();
 
     let height = main.clone().num_real_entries();
 
@@ -98,7 +98,7 @@ pub fn debug_interactions<F: Field, A: MachineAir<F>>(
                     vec_to_string(values)
                 );
                 key_to_vec_data.entry(key.clone()).or_insert_with(Vec::new).push(InteractionData {
-                    chip_name: chip.name(),
+                    chip_name: chip.name().to_string(),
                     kind: interaction.kind,
                     row,
                     interaction_number: m,
@@ -153,7 +153,7 @@ where
             let entry = final_map.entry(key.clone()).or_insert((F::zero(), BTreeMap::new()));
             entry.0 += *value;
             total += *value;
-            *entry.1.entry(chip.name()).or_insert(F::zero()) += *value;
+            *entry.1.entry(chip.name().to_string()).or_insert(F::zero()) += *value;
         }
 
         tracing::info!("{} chip has {} distinct events", chip.name(), total_events);

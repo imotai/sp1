@@ -121,8 +121,8 @@ impl<F: PrimeField32, E: EllipticCurve + EdwardsParameters> MachineAir<F> for Ed
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "EdAddAssign".to_string()
+    fn name(&self) -> &'static str {
+        "EdAddAssign"
     }
 
     fn num_rows(&self, input: &Self::Record) -> Option<usize> {

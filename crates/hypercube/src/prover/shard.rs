@@ -478,14 +478,14 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
             let ChipEvaluation {
                 main_trace_evaluations: main_opening,
                 preprocessed_trace_evaluations: prep_opening,
-            } = chip_openings.get(&chip.name()).unwrap();
+            } = chip_openings.get(chip.name()).unwrap();
 
-            let main_trace = traces.get(&air.name()).unwrap().clone();
+            let main_trace = traces.get(air.name()).unwrap().clone();
             let num_real_entries = main_trace.num_real_entries();
 
             let threshold_point =
                 Point::from_usize(num_real_entries, self.pcs_prover.max_log_row_count + 1);
-            chip_heights.insert(air.name(), threshold_point);
+            chip_heights.insert(air.name().to_string(), threshold_point);
             let name = air.name();
             let num_variables = main_trace.num_variables();
             assert_eq!(num_variables, self.pcs_prover.max_log_row_count as u32);
@@ -530,7 +530,7 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
                 .zerocheck_prover_data
                 .round_prover(air, public_values.clone(), alpha_powers, gkr_powers.clone())
                 .await;
-            let preprocessed_trace = preprocessed_traces.get(&name).cloned();
+            let preprocessed_trace = preprocessed_traces.get(name).cloned();
 
             let chip_sumcheck_claim = main_opening
                 .evaluations()
@@ -606,11 +606,11 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
                 let main = AirOpenedValues { local: main_evals.to_vec() };
 
                 (
-                    air.name().clone(),
+                    air.name().to_string(),
                     ChipOpenedValues {
                         preprocessed,
                         main,
-                        degree: chip_heights[&air.name()].clone(),
+                        degree: chip_heights[air.name()].clone(),
                     },
                 )
             })
@@ -659,7 +659,7 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
         challenger.observe(GC::F::from_canonical_usize(shard_chips.len()));
 
         for chips in shard_chips.iter() {
-            let num_real_entries = traces.get(&chips.air.name()).unwrap().num_real_entries();
+            let num_real_entries = traces.get(chips.air.name()).unwrap().num_real_entries();
             challenger.observe(GC::F::from_canonical_usize(num_real_entries));
             challenger.observe(GC::F::from_canonical_usize(chips.air.name().len()));
             for byte in chips.air.name().as_bytes() {

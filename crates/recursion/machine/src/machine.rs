@@ -171,7 +171,7 @@ impl<
             (Self::Select(SelectChip), heights.select_events),
             (Self::PublicValues(PublicValuesChip), 1 << PUB_VALUES_LOG_HEIGHT),
         ]
-        .map(|(chip, log_height)| (chip.name(), log_height))
+        .map(|(chip, log_height)| (chip.name().to_string(), log_height))
         .to_vec()
     }
 }

@@ -49,8 +49,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryConstChip<F> {
 
     type Program = RecursionProgram<F>;
 
-    fn name(&self) -> String {
-        "MemoryConst".to_string()
+    fn name(&self) -> &'static str {
+        "MemoryConst"
     }
     fn preprocessed_width(&self) -> usize {
         NUM_MEM_PREPROCESSED_INIT_COLS

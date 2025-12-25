@@ -191,7 +191,7 @@ where
 
 //         type Program = Program;
 
-//         fn name(&self) -> String {
+//         fn name(&self) -> &'static str {
 //             "EdSqrtChip".to_string()
 //         }
 
