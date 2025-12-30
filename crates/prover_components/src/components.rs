@@ -14,7 +14,7 @@ use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_hypercube::{air::MachineAir, prover::ZerocheckAir, SP1CoreJaggedConfig};
 use sp1_primitives::{SP1GlobalContext, SP1OuterGlobalContext};
-use sp1_prover::{components::SP1ProverComponents, CompressAir, WrapAir};
+use sp1_prover::{CompressAir, SP1ProverComponents, WrapAir};
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
 
 pub struct SP1CudaProverComponents;
