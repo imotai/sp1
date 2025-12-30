@@ -31,6 +31,7 @@ pub struct SP1ProverEngine<A, W, C: SP1ProverComponents> {
 }
 
 impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine<A, W, C> {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         config: SP1ProverConfig,
         opts: SP1CoreOpts,

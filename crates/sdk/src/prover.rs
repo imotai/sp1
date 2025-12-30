@@ -11,7 +11,7 @@ use sp1_core_machine::io::SP1Stdin;
 use sp1_hypercube::{air::PublicValues, PROOF_MAX_NUM_PVS};
 use sp1_primitives::types::Elf;
 use sp1_prover::{
-    verify::verify_public_values, worker::SP1LocalNode, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
+    verify::verify_public_values, worker::SP1NodeCore, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
 };
 use sp1_recursion_executor::RecursionPublicValues;
 use std::{
@@ -19,7 +19,6 @@ use std::{
     fmt,
     future::{Future, IntoFuture},
     str::FromStr,
-    sync::Arc,
 };
 use thiserror::Error;
 
@@ -49,7 +48,7 @@ pub trait Prover: Clone + Send + Sync {
         Self: 'a;
 
     /// The inner [`LocalProver`] struct used by the prover.
-    fn inner(&self) -> Arc<SP1LocalNode>;
+    fn inner(&self) -> &SP1NodeCore;
 
     /// The version of the current SP1 circuit.
     fn version(&self) -> &str {
@@ -76,7 +75,7 @@ pub trait Prover: Clone + Send + Sync {
         vkey: &SP1VerifyingKey,
         status_code: Option<StatusCode>,
     ) -> Result<(), SP1VerificationError> {
-        verify_proof(&self.inner(), self.version(), proof, vkey, status_code)
+        verify_proof(self.inner(), self.version(), proof, vkey, status_code)
     }
 }
 
@@ -142,7 +141,7 @@ pub enum SP1VerificationError {
 /// SHA256 and an input i2 for Blake3 that the same hash value. Doing so would require breaking both
 /// algorithms simultaneously.
 pub(crate) fn verify_proof(
-    prover: &SP1LocalNode,
+    node: &SP1NodeCore,
     version: &str,
     bundle: &SP1ProofWithPublicValues,
     vkey: &SP1VerifyingKey,
@@ -255,7 +254,7 @@ pub(crate) fn verify_proof(
                 .map_err(SP1VerificationError::Groth16)?;
         }
     }
-    prover.verify(vkey, &bundle.proof).map_err(|e| match bundle.proof {
+    node.verify(vkey, &bundle.proof).map_err(|e| match bundle.proof {
         SP1Proof::Core(_) => SP1VerificationError::Core(e),
         SP1Proof::Compressed(_) => SP1VerificationError::Recursion(e),
         SP1Proof::Plonk(_) => SP1VerificationError::Plonk(e),

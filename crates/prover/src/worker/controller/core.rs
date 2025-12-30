@@ -94,6 +94,7 @@ pub struct SP1CoreExecutor<A, W> {
 }
 
 impl<A, W> SP1CoreExecutor<A, W> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         splicing_engine: Arc<SplicingEngine<A, W>>,
         global_memory_buffer_size: usize,
@@ -383,6 +384,12 @@ impl FinalVmState {
 #[derive(Debug, Clone)]
 pub struct FinalVmStateLock {
     inner: Arc<OnceLock<FinalVmState>>,
+}
+
+impl Default for FinalVmStateLock {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FinalVmStateLock {

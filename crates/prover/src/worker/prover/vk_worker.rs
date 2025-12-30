@@ -1,10 +1,11 @@
-use sp1_hypercube::log2_ceil_usize;
+use sp1_hypercube::{log2_ceil_usize, prover::ProverSemaphore};
 use sp1_prover_types::ArtifactClient;
 
 use crate::{
+    components::RecursionProver,
     shapes::build_vk_map,
     worker::{RawTaskRequest, ShrinkProver, TaskError, VkeyMapChunkInput, VkeyMapChunkOutput},
-    ProverSemaphore, RecursionProver, SP1ProverComponents,
+    SP1ProverComponents,
 };
 use std::sync::Arc;
 

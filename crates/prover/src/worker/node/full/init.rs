@@ -11,9 +11,9 @@ use tracing::Instrument;
 use crate::{
     components::{CoreProver, RecursionProver, WrapProver},
     worker::{
-        run_vk_generation, LocalWorkerClient, LocalWorkerClientChannels, ProofId, RawTaskRequest,
-        SP1LocalNode, SP1NodeInner, SP1WorkerBuilder, TaskError, TaskId, TaskMetadata,
-        WorkerClient,
+        node::SP1NodeCore, run_vk_generation, LocalWorkerClient, LocalWorkerClientChannels,
+        ProofId, RawTaskRequest, SP1LocalNode, SP1NodeInner, SP1WorkerBuilder, TaskError, TaskId,
+        TaskMetadata, WorkerClient,
     },
     SP1ProverComponents,
 };
@@ -21,6 +21,12 @@ use crate::{
 pub struct SP1LocalNodeBuilder<C: SP1ProverComponents> {
     pub worker_builder: SP1WorkerBuilder<C, InMemoryArtifactClient, LocalWorkerClient>,
     pub channels: LocalWorkerClientChannels,
+}
+
+impl<C: SP1ProverComponents> Default for SP1LocalNodeBuilder<C> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
@@ -497,13 +503,9 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
         let verifier = worker.verifier().clone();
         let artifact_client = worker.artifact_client().clone();
         let worker_client = worker.worker_client().clone();
-        let inner = Arc::new(SP1NodeInner {
-            artifact_client,
-            worker_client,
-            verifier,
-            opts,
-            _tasks: join_set,
-        });
+        let core = SP1NodeCore::new(verifier, opts);
+        let inner =
+            Arc::new(SP1NodeInner { artifact_client, worker_client, core, _tasks: join_set });
         Ok(SP1LocalNode { inner })
     }
 }

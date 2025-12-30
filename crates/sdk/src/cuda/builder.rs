@@ -3,9 +3,9 @@
 //! This module provides a builder for the [`CudaProver`].
 
 use super::CudaProver;
-use crate::cpu::CpuProver;
 use sp1_core_executor::SP1CoreOpts;
 use sp1_cuda::CudaProver as CudaProverImpl;
+use sp1_prover::worker::SP1LightNode;
 
 /// A builder for the [`CudaProver`].
 ///
@@ -86,15 +86,12 @@ impl CudaProverBuilder {
     /// ```
     #[must_use]
     pub async fn build(self) -> CudaProver {
-        let cpu_prover = CpuProver::new_with_opts(self.core_opts).await;
+        let node = SP1LightNode::with_opts(self.core_opts.unwrap_or_default()).await;
         let cuda_prover = match self.cuda_device_id {
             Some(id) => CudaProverImpl::new_with_id(id).await,
             None => CudaProverImpl::new().await,
         };
 
-        CudaProver {
-            cpu_prover,
-            prover: cuda_prover.expect("Failed to create the CUDA prover impl"),
-        }
+        CudaProver { node, prover: cuda_prover.expect("Failed to create the CUDA prover impl") }
     }
 }

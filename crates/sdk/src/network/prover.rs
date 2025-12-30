@@ -3,14 +3,10 @@
 //! This module provides an implementation of the [`crate::Prover`] trait that can generate proofs
 //! on a remote RPC server.
 
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use super::prove::NetworkProveBuilder;
 use crate::{
-    cpu::CpuProver,
     network::{
         client::NetworkClient,
         proto::{
@@ -37,7 +33,10 @@ use anyhow::{Context, Result};
 use sp1_build::Elf;
 use sp1_core_executor::{SP1Context, StatusCode};
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::{worker::SP1LocalNode, SP1_CIRCUIT_VERSION};
+use sp1_prover::{
+    worker::{SP1LightNode, SP1NodeCore},
+    SP1_CIRCUIT_VERSION,
+};
 
 use tokio::time::sleep;
 
@@ -45,7 +44,7 @@ use tokio::time::sleep;
 #[derive(Clone)]
 pub struct NetworkProver {
     pub(crate) client: NetworkClient,
-    pub(crate) prover: CpuProver,
+    pub(crate) node: SP1LightNode,
     pub(crate) tee_signers: Vec<Address>,
     pub(crate) network_mode: NetworkMode,
 }
@@ -56,12 +55,16 @@ impl Prover for NetworkProver {
     type Error = anyhow::Error;
     type ProveRequest<'a> = NetworkProveBuilder<'a>;
 
-    fn inner(&self) -> Arc<SP1LocalNode> {
-        self.prover.prover.clone()
+    fn inner(&self) -> &SP1NodeCore {
+        self.node.inner()
     }
 
     fn setup(&self, elf: Elf) -> impl SendFutureResult<Self::ProvingKey, Self::Error> {
-        async move { Ok(self.prover.setup(elf).await?) }
+        async move {
+            let vk = self.node.setup(&elf).await?;
+            let pk = SP1ProvingKey { vk, elf };
+            Ok(pk)
+        }
     }
 
     fn prove<'a>(&'a self, pk: &'a Self::ProvingKey, stdin: SP1Stdin) -> Self::ProveRequest<'a> {
@@ -99,7 +102,7 @@ impl Prover for NetworkProver {
             verify_tee_proof(&self.tee_signers, tee_proof, vkey, proof.public_values.as_ref())?;
         }
 
-        verify_proof(&self.inner(), self.version(), proof, vkey, status_code)
+        verify_proof(self.inner(), self.version(), proof, vkey, status_code)
     }
 }
 
@@ -140,9 +143,9 @@ impl NetworkProver {
         let _ = rustls::crypto::ring::default_provider().install_default();
 
         let signer = signer.into();
-        let prover = CpuProver::new().await;
+        let node = SP1LightNode::new().await;
         let client = NetworkClient::new(signer, rpc_url, network_mode);
-        Self { client, prover, tee_signers: vec![], network_mode }
+        Self { client, node, tee_signers: vec![], network_mode }
     }
 
     /// Sets the list of TEE signers, used for verifying TEE proofs.
@@ -778,8 +781,7 @@ impl NetworkProver {
         // One of the limits were not provided and simulation is not skipped, so simulate to get
         // one. or both limits.
         let execute_result = self
-            .prover
-            .inner()
+            .node
             .execute(elf, stdin.clone(), SP1Context::builder().calculate_gas(true).build())
             .await
             .map_err(|_| Error::SimulationFailed)?;

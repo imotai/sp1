@@ -1,17 +1,18 @@
 use crate::{
+    recursion::RecursionVks,
     utils::{is_recursion_public_values_valid, is_root_public_values_valid},
-    CompressAir, HashableKey, OuterSC, WrapAir,
+    CompressAir, CpuSP1ProverComponents, HashableKey, OuterSC, SP1ProverComponents, WrapAir,
 };
 use anyhow::{anyhow, Result};
 use num_bigint::BigUint;
-use slop_algebra::{AbstractField, PrimeField, PrimeField64};
-use slop_challenger::IopCtx;
-use sp1_core_executor::{subproof::SubproofVerifier, SP1RecursionProof};
+use slop_algebra::{AbstractField, PrimeField};
+use slop_jagged::SP1OuterConfig;
+use sp1_core_executor::SP1RecursionProof;
 use sp1_core_machine::riscv::{RiscvAir, MAX_LOG_NUMBER_OF_SHARDS};
 use sp1_hypercube::{
     air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
     MachineVerifier, MachineVerifierConfigError, MachineVerifierError, MachineVerifyingKey,
-    SP1CoreJaggedConfig, SP1OuterConfig, PROOF_MAX_NUM_PVS,
+    SP1CoreJaggedConfig, PROOF_MAX_NUM_PVS,
 };
 use sp1_primitives::{
     io::{blake3_hash, SP1PublicValues},
@@ -25,8 +26,11 @@ use sp1_recursion_executor::RecursionPublicValues;
 use sp1_recursion_gnark_ffi::{
     Groth16Bn254Proof, Groth16Bn254Prover, PlonkBn254Proof, PlonkBn254Prover,
 };
-use std::{borrow::Borrow, collections::BTreeMap, path::Path, str::FromStr};
+use std::{borrow::Borrow, path::PathBuf, str::FromStr};
 use thiserror::Error;
+use tokio::sync::oneshot;
+
+use crate::{CoreSC, InnerSC, SP1CoreProofData, SP1VerifyingKey};
 
 #[derive(Error, Debug)]
 pub enum PlonkVerificationError {
@@ -55,19 +59,42 @@ bn254 proof"
     InvalidPublicValues,
 }
 
-struct SP1VerifierRef<'a> {
-    core: &'a MachineVerifier<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>,
-    compress: &'a MachineVerifier<SP1GlobalContext, InnerSC, CompressAir<SP1Field>>,
-    shrink: &'a MachineVerifier<SP1GlobalContext, InnerSC, CompressAir<InnerVal>>,
-    wrap: &'a MachineVerifier<SP1OuterGlobalContext, OuterSC, WrapAir<InnerVal>>,
-    recursion_vk_root: &'a <SP1GlobalContext as IopCtx>::Digest,
-    recursion_vk_map: &'a BTreeMap<<SP1GlobalContext as IopCtx>::Digest, usize>,
-    vk_verification: &'a bool,
-    shrink_vk: Option<MachineVerifyingKey<SP1GlobalContext, InnerSC>>,
-    wrap_vk: Option<MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>>,
+/// The verifying key for the program wrapping an SP1 proof into a SNARK friendly format.
+pub const WRAP_VK_BYTES: &[u8] = include_bytes!("../wrap_vk.bin");
+
+#[derive(Clone)]
+pub struct SP1Verifier {
+    pub core: MachineVerifier<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>,
+    pub compress: MachineVerifier<SP1GlobalContext, InnerSC, CompressAir<SP1Field>>,
+    pub shrink: MachineVerifier<SP1GlobalContext, InnerSC, CompressAir<InnerVal>>,
+    pub wrap: MachineVerifier<SP1OuterGlobalContext, OuterSC, WrapAir<InnerVal>>,
+    pub recursion_vks: RecursionVks,
+    pub shrink_vk: Option<MachineVerifyingKey<SP1GlobalContext, InnerSC>>,
+    pub wrap_vk: MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
 }
 
-impl SP1VerifierRef<'_> {
+impl SP1Verifier {
+    pub fn new(recursion_vks: RecursionVks) -> Self {
+        // Get the verifiers from the components.
+        let core = CpuSP1ProverComponents::core_verifier();
+        let compress = CpuSP1ProverComponents::compress_verifier();
+        let shrink = CpuSP1ProverComponents::shrink_verifier();
+        let wrap = CpuSP1ProverComponents::wrap_verifier();
+
+        // Get the wrap vk from the associated constant.
+        let wrap_vk = bincode::deserialize(WRAP_VK_BYTES).unwrap();
+
+        Self { core, compress, shrink, wrap, recursion_vks, shrink_vk: None, wrap_vk }
+    }
+
+    pub fn vk_verification(&self) -> bool {
+        self.recursion_vks.vk_verification()
+    }
+
+    pub fn set_shrink_vk(&mut self, shrink_vk: MachineVerifyingKey<SP1GlobalContext, InnerSC>) {
+        self.shrink_vk = Some(shrink_vk);
+    }
+
     /// Verify a core proof by verifying the shards, verifying lookup bus, verifying that the
     /// shards are contiguous and complete. Some of the public values verification is inside the
     /// `eval_public_values` function, which is a part of the core shard proof.
@@ -488,15 +515,13 @@ impl SP1VerifierRef<'_> {
         }
 
         // The `vk_root` is the expected `vk_root`.
-        if public_values.vk_root != *self.recursion_vk_root {
+        if public_values.vk_root != self.recursion_vks.root() {
             return Err(MachineVerifierError::InvalidPublicValues("vk_root mismatch"));
         }
 
         // If `vk_verification` is on, check the `vk` is within the expected list of `vk`'s.
         // This `vk_verification` must be only turned off for testing purposes.
-        if *self.vk_verification
-            && !self.recursion_vk_map.contains_key(&compress_vk.hash_koalabear())
-        {
+        if self.vk_verification() && !self.recursion_vks.contains(compress_vk) {
             return Err(MachineVerifierError::InvalidVerificationKey);
         }
 
@@ -553,14 +578,13 @@ impl SP1VerifierRef<'_> {
         }
 
         // The `vk_root` is the expected `vk_root`.
-        if public_values.vk_root != *self.recursion_vk_root {
+        if public_values.vk_root != self.recursion_vks.root() {
             return Err(MachineVerifierError::InvalidPublicValues("vk_root mismatch"));
         }
 
         // If `vk_verification` is on, check the `vk` is within the expected list of `vk`'s.
         // This `vk_verification` must be only turned off for testing purposes.
-        if *self.vk_verification && !self.recursion_vk_map.contains_key(&shrink_vk.hash_koalabear())
-        {
+        if self.vk_verification() && !self.recursion_vks.contains(shrink_vk) {
             return Err(MachineVerifierError::InvalidVerificationKey);
         }
 
@@ -584,10 +608,7 @@ impl SP1VerifierRef<'_> {
         proof: &SP1RecursionProof<SP1OuterGlobalContext, SP1OuterConfig>,
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerifierConfigError<SP1OuterGlobalContext, OuterSC>> {
-        if self.wrap_vk.is_none() {
-            return Err(MachineVerifierError::UninitializedVerificationKey);
-        }
-        let wrap_vk = self.wrap_vk.as_ref().unwrap();
+        let wrap_vk = &self.wrap_vk;
         if proof.vk != *wrap_vk {
             return Err(MachineVerifierError::InvalidVerificationKey);
         }
@@ -615,7 +636,7 @@ impl SP1VerifierRef<'_> {
         }
 
         // The `vk_root` is the expected `vk_root`.
-        if *public_values.vk_root() != *self.recursion_vk_root {
+        if *public_values.vk_root() != self.recursion_vks.root() {
             return Err(MachineVerifierError::InvalidPublicValues("vk_root mismatch"));
         }
 
@@ -628,13 +649,21 @@ impl SP1VerifierRef<'_> {
         Ok(())
     }
 
+    pub fn plonk_build_dir(&self) -> PathBuf {
+        if crate::build::use_development_mode() {
+            crate::build::plonk_bn254_artifacts_dev_dir(&self.wrap_vk)
+        } else {
+            let (tx, rx) = oneshot::channel();
+            tokio::spawn(async move {
+                let build_dir = crate::build::try_install_circuit_artifacts("plonk").await;
+                tx.send(build_dir).unwrap();
+            });
+            rx.blocking_recv().unwrap()
+        }
+    }
+
     /// Verifies a PLONK proof using the circuit artifacts in the build directory.
-    pub fn verify_plonk_bn254(
-        &self,
-        proof: &PlonkBn254Proof,
-        vk: &SP1VerifyingKey,
-        build_dir: &Path,
-    ) -> Result<()> {
+    pub fn verify_plonk_bn254(&self, proof: &PlonkBn254Proof, vk: &SP1VerifyingKey) -> Result<()> {
         let prover = PlonkBn254Prover::new();
 
         let vkey_hash = BigUint::from_str(&proof.public_inputs[0])?;
@@ -642,13 +671,14 @@ impl SP1VerifierRef<'_> {
         let exit_code = BigUint::from_str(&proof.public_inputs[2])?;
         let vk_root = BigUint::from_str(&proof.public_inputs[3])?;
         let proof_nonce = BigUint::from_str(&proof.public_inputs[4])?;
-        let expected_vk_root = koalabears_to_bn254(self.recursion_vk_root);
+        let expected_vk_root = koalabears_to_bn254(&self.recursion_vks.root());
 
         if vk_root != expected_vk_root.as_canonical_biguint() {
             return Err(anyhow!("vk_root mismatch"));
         }
 
         // Verify the proof with the corresponding public inputs.
+        let build_dir = self.plonk_build_dir();
         prover.verify(
             proof,
             &vkey_hash,
@@ -656,7 +686,7 @@ impl SP1VerifierRef<'_> {
             &exit_code,
             &vk_root,
             &proof_nonce,
-            build_dir,
+            &build_dir,
         )?;
 
         if vk.hash_bn254().as_canonical_biguint() != vkey_hash {
@@ -666,12 +696,24 @@ impl SP1VerifierRef<'_> {
         Ok(())
     }
 
+    pub fn groth16_build_dir(&self) -> PathBuf {
+        if crate::build::use_development_mode() {
+            crate::build::groth16_bn254_artifacts_dev_dir(&self.wrap_vk)
+        } else {
+            let (tx, rx) = oneshot::channel();
+            tokio::spawn(async move {
+                let build_dir = crate::build::try_install_circuit_artifacts("groth16").await;
+                tx.send(build_dir).unwrap();
+            });
+            rx.blocking_recv().unwrap()
+        }
+    }
+
     /// Verifies a Groth16 proof using the circuit artifacts in the build directory.
     pub fn verify_groth16_bn254(
         &self,
         proof: &Groth16Bn254Proof,
         vk: &SP1VerifyingKey,
-        build_dir: &Path,
     ) -> Result<()> {
         let prover = Groth16Bn254Prover::new();
 
@@ -680,13 +722,14 @@ impl SP1VerifierRef<'_> {
         let exit_code = BigUint::from_str(&proof.public_inputs[2])?;
         let vk_root = BigUint::from_str(&proof.public_inputs[3])?;
         let proof_nonce = BigUint::from_str(&proof.public_inputs[4])?;
-        let expected_vk_root = koalabears_to_bn254(self.recursion_vk_root);
+        let expected_vk_root = koalabears_to_bn254(&self.recursion_vks.root());
 
         if vk_root != expected_vk_root.as_canonical_biguint() {
             return Err(anyhow!("vk_root mismatch"));
         }
 
         // Verify the proof with the corresponding public inputs.
+        let build_dir = self.groth16_build_dir();
         prover.verify(
             proof,
             &vkey_hash,
@@ -694,7 +737,7 @@ impl SP1VerifierRef<'_> {
             &exit_code,
             &vk_root,
             &proof_nonce,
-            build_dir,
+            &build_dir,
         )?;
 
         if vk.hash_bn254().as_canonical_biguint() != vkey_hash {
@@ -729,197 +772,4 @@ pub fn verify_public_values(
     }
 
     Ok(())
-}
-
-impl<C: SP1ProverComponents> SP1Prover<C> {
-    fn verifier(&self) -> SP1VerifierRef<'_> {
-        let shrink_keys = self.recursion_prover.shrink_keys.lock().unwrap();
-        let shrink_vk = shrink_keys.as_ref().map(|(_, vk)| vk.clone());
-        let wrap_keys = self.recursion_prover.wrap_keys.lock().unwrap();
-        let wrap_vk = wrap_keys.as_ref().map(|(_, vk)| vk.clone());
-        SP1VerifierRef {
-            core: self.core_prover.verifier(),
-            compress: self.recursion_prover.verifier(),
-            shrink: self.recursion_prover.shrink_verifier(),
-            wrap: self.recursion_prover.wrap_verifier(),
-            recursion_vk_root: &self.recursion_prover.recursion_vk_root,
-            recursion_vk_map: &self.recursion_prover.recursion_vk_map,
-            vk_verification: &self.recursion_prover.vk_verification,
-            shrink_vk,
-            wrap_vk,
-        }
-    }
-
-    pub fn verify(
-        &self,
-        proof: &SP1CoreProofData,
-        vk: &SP1VerifyingKey,
-    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, CoreSC>> {
-        self.verifier().verify(proof, vk)
-    }
-
-    pub fn verify_compressed(
-        &self,
-        proof: &SP1RecursionProof<SP1GlobalContext, SP1CoreJaggedConfig>,
-        vk: &SP1VerifyingKey,
-    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, CoreSC>> {
-        self.verifier().verify_compressed(proof, vk)
-    }
-
-    pub fn verify_shrink(
-        &self,
-        proof: &SP1RecursionProof<SP1GlobalContext, SP1CoreJaggedConfig>,
-        vk: &SP1VerifyingKey,
-    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, CoreSC>> {
-        self.verifier().verify_shrink(proof, vk)
-    }
-
-    pub fn verify_wrap_bn254(
-        &self,
-        proof: &SP1RecursionProof<SP1OuterGlobalContext, SP1OuterConfig>,
-        vk: &SP1VerifyingKey,
-    ) -> Result<(), MachineVerifierConfigError<SP1OuterGlobalContext, OuterSC>> {
-        self.verifier().verify_wrap_bn254(proof, vk)
-    }
-
-    pub fn verify_plonk_bn254(
-        &self,
-        proof: &PlonkBn254Proof,
-        vk: &SP1VerifyingKey,
-        build_dir: &Path,
-    ) -> Result<()> {
-        self.verifier().verify_plonk_bn254(proof, vk, build_dir)
-    }
-
-    pub fn verify_groth16_bn254(
-        &self,
-        proof: &Groth16Bn254Proof,
-        vk: &SP1VerifyingKey,
-        build_dir: &Path,
-    ) -> Result<()> {
-        self.verifier().verify_groth16_bn254(proof, vk, build_dir)
-    }
-}
-
-#[derive(Clone)]
-pub struct SP1Verifier {
-    pub core: MachineVerifier<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>,
-    pub compress: MachineVerifier<SP1GlobalContext, InnerSC, CompressAir<SP1Field>>,
-    pub shrink: MachineVerifier<SP1GlobalContext, InnerSC, CompressAir<InnerVal>>,
-    pub wrap: MachineVerifier<SP1OuterGlobalContext, OuterSC, WrapAir<InnerVal>>,
-    pub recursion_vk_root: <SP1GlobalContext as IopCtx>::Digest,
-    pub recursion_vk_map: BTreeMap<<SP1GlobalContext as IopCtx>::Digest, usize>,
-    pub vk_verification: bool,
-    pub shrink_vk: MachineVerifyingKey<SP1GlobalContext, InnerSC>,
-    pub wrap_vk: MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
-}
-
-impl SP1Verifier {
-    fn verifier(&self) -> SP1VerifierRef<'_> {
-        SP1VerifierRef {
-            core: &self.core,
-            compress: &self.compress,
-            shrink: &self.shrink,
-            wrap: &self.wrap,
-            recursion_vk_root: &self.recursion_vk_root,
-            recursion_vk_map: &self.recursion_vk_map,
-            vk_verification: &self.vk_verification,
-            shrink_vk: Some(self.shrink_vk.clone()),
-            wrap_vk: Some(self.wrap_vk.clone()),
-        }
-    }
-
-    pub fn verify(
-        &self,
-        proof: &SP1CoreProofData,
-        vk: &SP1VerifyingKey,
-    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, CoreSC>> {
-        self.verifier().verify(proof, vk)
-    }
-
-    pub fn verify_compressed(
-        &self,
-        proof: &SP1RecursionProof<SP1GlobalContext, SP1CoreJaggedConfig>,
-        vk: &SP1VerifyingKey,
-    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, CoreSC>> {
-        self.verifier().verify_compressed(proof, vk)
-    }
-
-    pub fn verify_shrink(
-        &self,
-        proof: &SP1RecursionProof<SP1GlobalContext, SP1CoreJaggedConfig>,
-        vk: &SP1VerifyingKey,
-    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, CoreSC>> {
-        self.verifier().verify_shrink(proof, vk)
-    }
-
-    pub fn verify_wrap_bn254(
-        &self,
-        proof: &SP1RecursionProof<SP1OuterGlobalContext, SP1OuterConfig>,
-        vk: &SP1VerifyingKey,
-    ) -> Result<(), MachineVerifierConfigError<SP1OuterGlobalContext, OuterSC>> {
-        self.verifier().verify_wrap_bn254(proof, vk)
-    }
-
-    pub fn verify_plonk_bn254(
-        &self,
-        proof: &PlonkBn254Proof,
-        vk: &SP1VerifyingKey,
-        build_dir: &Path,
-    ) -> Result<()> {
-        self.verifier().verify_plonk_bn254(proof, vk, build_dir)
-    }
-
-    pub fn verify_groth16_bn254(
-        &self,
-        proof: &Groth16Bn254Proof,
-        vk: &SP1VerifyingKey,
-        build_dir: &Path,
-    ) -> Result<()> {
-        self.verifier().verify_groth16_bn254(proof, vk, build_dir)
-    }
-}
-
-use crate::{
-    components::SP1ProverComponents, CoreSC, InnerSC, SP1CoreProofData, SP1Prover, SP1VerifyingKey,
-};
-
-impl<C: SP1ProverComponents> SubproofVerifier for SP1Prover<C> {
-    fn verify_deferred_proof(
-        &self,
-        proof: &sp1_core_machine::recursion::SP1RecursionProof<SP1GlobalContext, InnerSC>,
-        vk: &sp1_hypercube::MachineVerifyingKey<SP1GlobalContext, CoreSC>,
-        vk_hash: [u64; 4],
-        committed_value_digest: [u64; 4],
-    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, CoreSC>> {
-        // Check that the vk hash matches the vk hash from the input.
-        if vk.hash_u64() != vk_hash {
-            return Err(MachineVerifierError::InvalidPublicValues(
-                "vk hash from syscall does not match vkey from input",
-            ));
-        }
-        // Check that proof is valid.
-        self.verify_compressed(
-            &SP1RecursionProof { vk: proof.vk.clone(), proof: proof.proof.clone() },
-            &SP1VerifyingKey { vk: vk.clone() },
-        )?;
-        // Check that the committed value digest matches the one from syscall
-        let public_values: &RecursionPublicValues<_> =
-            proof.proof.public_values.as_slice().borrow();
-        let pv_committed_value_digest: [u64; 4] = std::array::from_fn(|i| {
-            public_values.committed_value_digest[2 * i]
-                .iter()
-                .chain(public_values.committed_value_digest[2 * i + 1].iter())
-                .enumerate()
-                .fold(0u64, |acc, (j, &val)| acc | (val.as_canonical_u64() << (8 * j)))
-        });
-
-        if committed_value_digest != pv_committed_value_digest {
-            return Err(MachineVerifierError::InvalidPublicValues(
-                "committed_value_digest does not match",
-            ));
-        }
-
-        Ok(())
-    }
 }

@@ -4,13 +4,14 @@ use crate::{
     recursion::{
         compose_program_from_input, deferred_program_from_input, dummy_deferred_input,
         recursive_verifier, shrink_program_from_input, wrap_program_from_input, RecursionConfig,
+        RecursionVks,
     },
-    shapes::{create_all_input_shapes, SP1RecursionProofShape},
+    shapes::SP1RecursionProofShape,
     worker::{
         CommonProverInput, ProverMetrics, RangeProofs, RawTaskRequest, TaskContext, TaskError,
         TaskMetadata,
     },
-    CompressAir, CoreSC, HashableKey, InnerSC, OuterSC, SP1CircuitWitness, SP1ProverComponents,
+    CompressAir, CoreSC, InnerSC, OuterSC, SP1CircuitWitness, SP1ProverComponents,
 };
 use slop_algebra::PrimeField32;
 use slop_algebra::{AbstractField, PrimeField};
@@ -20,7 +21,6 @@ use slop_futures::pipeline::{
     AsyncEngine, AsyncWorker, BlockingEngine, BlockingWorker, Chain, Pipeline, SubmitError,
     SubmitHandle,
 };
-use sp1_core_machine::riscv::RiscvAir;
 use sp1_hypercube::{
     air::SP1CorePublicValues,
     inner_perm,
@@ -30,7 +30,6 @@ use sp1_hypercube::{
 use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_prover_types::{Artifact, ArtifactClient, ArtifactId};
 use sp1_recursion_circuit::{
-    basefold::merkle_tree::MerkleTree,
     machine::{
         SP1CompressWithVKeyWitnessValues, SP1MerkleProofWitnessValues, SP1NormalizeWitnessValues,
         SP1ShapedWitnessValues,
@@ -84,6 +83,7 @@ pub struct SP1RecursionProverConfig {
 }
 
 impl SP1RecursionProverConfig {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         num_prepare_reduce_workers: usize,
         prepare_reduce_buffer_size: usize,
@@ -445,60 +445,21 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
             let mut compose_programs = BTreeMap::new();
             let mut compose_keys = BTreeMap::new();
 
-            let vk_map = if let Some(vk_map_path) = config.vk_map_file.as_ref() {
-                let file = std::fs::File::open(vk_map_path).expect("failed to open vk map file");
-                bincode::deserialize_from(file)
-            } else {
-                let vk_map_bytes = include_bytes!("../../vk_map.bin");
-                bincode::deserialize::<BTreeMap<[SP1Field; DIGEST_SIZE], usize>>(vk_map_bytes)
-            };
+            let vk_map_path = config.vk_map_file.as_ref().map(std::path::PathBuf::from);
 
-            let num_shapes =
-                create_all_input_shapes(RiscvAir::machine().shape(), config.max_compose_arity)
-                    .into_iter()
-                    .collect::<BTreeSet<_>>()
-                    .len();
+            let recursion_vks =
+                RecursionVks::new(vk_map_path, config.max_compose_arity, config.vk_verification);
 
-            let mut allowed_vk_map: BTreeMap<[SP1Field; DIGEST_SIZE], usize> =
-                if config.vk_verification {
-                    vk_map.unwrap_or_else(|_| {
-                        tracing::warn!(
-                            "VK map file not found or failed to deserialize, using dummy vk map"
-                        );
-                        (0..num_shapes)
-                            .map(|i| ([SP1Field::from_canonical_u32(i as u32); DIGEST_SIZE], i))
-                            .collect()
-                    })
-                } else {
-                    tracing::warn!("VK verification disabled, using dummy vk map");
-                    // Dummy merkle tree when vk_verification is false.
-                    (0..num_shapes)
-                        .map(|i| ([SP1Field::from_canonical_u32(i as u32); DIGEST_SIZE], i))
-                        .collect()
-                };
-
-            let added_len = num_shapes.saturating_sub(allowed_vk_map.len());
-            let prev_len = allowed_vk_map.len();
-
-            allowed_vk_map.extend((0..added_len).map(|i| {
-                let index = i + prev_len;
-                ([SP1Field::from_canonical_u32(index as u32); DIGEST_SIZE], index)
-            }));
-
-            let vks = allowed_vk_map.into_keys().collect::<BTreeSet<_>>();
-            let allowed_vk_map: BTreeMap<_, _> =
-                vks.into_iter().enumerate().map(|(i, vk)| (vk, i)).collect();
+            let recursion_vks_height = recursion_vks.height();
 
             let compress_verifier = C::compress_verifier();
             let recursive_compress_verifier =
                 recursive_verifier::<SP1GlobalContext, _, InnerSC, InnerConfig>(
                     compress_verifier.shard_verifier(),
                 );
-            let (vk_root, recursion_vk_tree) =
-                MerkleTree::<SP1GlobalContext>::commit(allowed_vk_map.keys().copied().collect());
             for arity in 1..=config.max_compose_arity {
                 let dummy_input =
-                    dummy_compose_input::<C>(&reduce_shape, arity, recursion_vk_tree.height);
+                    dummy_compose_input::<C>(&reduce_shape, arity, recursion_vks_height);
                 let mut program = compose_program_from_input(
                     &recursive_compress_verifier,
                     config.vk_verification,
@@ -526,7 +487,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
 
             // Make the deferred program and keys.
             let deferred_input =
-                dummy_deferred_input(&compress_verifier, &reduce_shape, recursion_vk_tree.height);
+                dummy_deferred_input(&compress_verifier, &reduce_shape, recursion_vks_height);
             let mut deferred_program = deferred_program_from_input(
                 &recursive_compress_verifier,
                 config.vk_verification,
@@ -549,15 +510,12 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
             let deferred_keys = (pk, vk);
 
             let prover_data = Arc::new(RecursionProverData {
-                vk_root,
-                allowed_vk_map,
-                recursion_vk_tree,
+                recursion_vks,
                 reduce_shape,
                 compose_programs,
                 compose_keys,
                 deferred_program,
                 deferred_keys: Some(deferred_keys),
-                vk_verification: config.vk_verification,
             });
 
             let compress_verifier = C::compress_verifier();
@@ -823,17 +781,12 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
     #[inline]
     #[must_use]
     pub fn recursion_vk_root(&self) -> [SP1Field; DIGEST_SIZE] {
-        self.prover_data.vk_root
-    }
-
-    #[must_use]
-    pub fn recursion_vk_map(&self) -> &BTreeMap<[SP1Field; DIGEST_SIZE], usize> {
-        &self.prover_data.allowed_vk_map
+        self.prover_data.recursion_vks.root()
     }
 
     #[must_use]
     pub fn vk_verification(&self) -> bool {
-        self.prover_data.vk_verification
+        self.prover_data.vk_verification()
     }
 
     #[must_use]
@@ -866,59 +819,39 @@ type CompressKeys<C> = (
 );
 
 pub struct RecursionProverData<C: SP1ProverComponents> {
-    vk_root: [SP1Field; DIGEST_SIZE],
-    allowed_vk_map: BTreeMap<[SP1Field; DIGEST_SIZE], usize>,
-    recursion_vk_tree: MerkleTree<SP1GlobalContext>,
+    recursion_vks: RecursionVks,
     reduce_shape: SP1RecursionProofShape,
     compose_programs: BTreeMap<usize, Arc<RecursionProgram<SP1Field>>>,
     compose_keys: BTreeMap<usize, CompressKeys<C>>,
     deferred_program: Arc<RecursionProgram<SP1Field>>,
     deferred_keys: Option<CompressKeys<C>>,
-    vk_verification: bool,
 }
 
 impl<C: SP1ProverComponents> RecursionProverData<C> {
+    pub fn vk_verification(&self) -> bool {
+        self.recursion_vks.vk_verification()
+    }
+
+    pub fn recursion_vks(&self) -> &RecursionVks {
+        &self.recursion_vks
+    }
+
     pub fn make_merkle_proofs(
         &self,
         input: SP1ShapedWitnessValues<SP1GlobalContext, CoreSC>,
     ) -> Result<SP1CompressWithVKeyWitnessValues<CoreSC>, TaskError> {
-        let num_vks = self.allowed_vk_map.len();
-        let (vk_indices, vk_digest_values): (Vec<_>, Vec<_>) = if self.vk_verification {
-            input
-                .vks_and_proofs
-                .iter()
-                .map(|(vk, _)| {
-                    let vk_digest = vk.hash_koalabear();
-                    let index = self.allowed_vk_map.get(&vk_digest).expect("vk not allowed");
-                    (index, vk_digest)
-                })
-                .unzip()
-        } else {
-            input
-                .vks_and_proofs
-                .iter()
-                .map(|(vk, _)| {
-                    let vk_digest = vk.hash_koalabear();
-                    let index = (vk_digest[0].as_canonical_u32() as usize) % num_vks;
-                    (index, [SP1Field::from_canonical_usize(index); 8])
-                })
-                .unzip()
-        };
-
-        let proofs = vk_indices
-            .iter()
-            .map(|index| {
-                let (value, proof) = MerkleTree::open(&self.recursion_vk_tree, *index);
-
-                MerkleTree::verify(proof.clone(), value, self.vk_root).expect("invalid proof");
-                proof
-            })
-            .collect();
+        let mut values = Vec::with_capacity(input.vks_and_proofs.len());
+        let mut merkle_proofs = Vec::with_capacity(input.vks_and_proofs.len());
+        for (vk, _) in input.vks_and_proofs.iter() {
+            let (value, proof) = self.recursion_vks.open(vk)?;
+            values.push(value);
+            merkle_proofs.push(proof);
+        }
 
         let merkle_val = SP1MerkleProofWitnessValues {
-            root: self.vk_root,
-            values: vk_digest_values,
-            vk_merkle_proofs: proofs,
+            root: self.recursion_vks.root(),
+            values,
+            vk_merkle_proofs: merkle_proofs,
         };
 
         Ok(SP1CompressWithVKeyWitnessValues { compress_val: input, merkle_val })
@@ -990,7 +923,7 @@ impl<C: SP1ProverComponents> ShrinkProver<C> {
         let verifier = C::compress_verifier();
         let input = prover_data.reduce_shape.dummy_input(
             1,
-            prover_data.recursion_vk_tree.height,
+            prover_data.recursion_vks.height(),
             verifier.shard_verifier().machine().chips().iter().cloned().collect::<BTreeSet<_>>(),
             verifier.max_log_row_count(),
             *verifier.fri_config(),
@@ -1098,7 +1031,7 @@ impl<C: SP1ProverComponents> WrapProver<C> {
             SP1RecursionProofShape { shape: RecursionShape::new(shrink_shape) };
         let wrap_input = shrink_proof_shape.dummy_input(
             1,
-            prover_data.recursion_vk_tree.height,
+            prover_data.recursion_vks.height(),
             verifier.shard_verifier().machine().chips().iter().cloned().collect::<BTreeSet<_>>(),
             verifier.max_log_row_count(),
             *verifier.fri_config(),

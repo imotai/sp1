@@ -16,8 +16,7 @@ pub use pk::EnvProvingKey;
 use prove::EnvProveRequest;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::Elf;
-use sp1_prover::worker::SP1LocalNode;
-use std::sync::Arc;
+use sp1_prover::worker::SP1NodeCore;
 
 /// A prover that can execute programs and generate proofs with a different implementation based on
 /// the value of the `SP1_PROVER` environment variable.
@@ -96,7 +95,7 @@ impl Prover for EnvProver {
     type ProvingKey = EnvProvingKey;
     type ProveRequest<'a> = prove::EnvProveRequest<'a>;
 
-    fn inner(&self) -> Arc<SP1LocalNode> {
+    fn inner(&self) -> &SP1NodeCore {
         match self {
             Self::Cpu(prover) => prover.inner(),
             Self::Cuda(prover) => prover.inner(),

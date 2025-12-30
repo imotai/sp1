@@ -45,7 +45,13 @@ serde_json = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 anyhow = { workspace = true }
 dirs = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt", "sync"] }
+tokio = { workspace = true, features = [
+    "macros",
+    "rt",
+    "sync",
+    "fs",
+    "process",
+] }
 futures = { workspace = true }
 serial_test = { workspace = true }
 num-bigint = { workspace = true }
@@ -62,7 +68,9 @@ mti = { workspace = true }
 opentelemetry = { workspace = true }
 pin-project = { workspace = true }
 tonic = { workspace = true }
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["stream"] }
+indicatif = { workspace = true }
+tempfile = { workspace = true }
 
 [build-dependencies]
 downloader = { workspace = true, features = ["rustls-tls", "verify"] }
@@ -72,42 +80,15 @@ hex = { workspace = true }
 [dev-dependencies]
 test-artifacts = { workspace = true }
 anyhow = { workspace = true }
-# [[bin]]
-# name = "build_plonk_bn254"
-# path = "scripts/build_plonk_bn254.rs"
-
-# [[bin]]
-# name = "build_groth16_bn254"
-# path = "scripts/build_groth16_bn254.rs"
 
 [[bin]]
 name = "build_recursion_vks"
 path = "scripts/build_recursion_vks.rs"
 required-features = ["tokio/rt-multi-thread"]
 
-# [[bin]]
-# name = "find_maximal_shapes"
-# path = "scripts/find_maximal_shapes.rs"
-
-# [[bin]]
-# name = "find_small_shapes"
-# path = "scripts/find_small_shapes.rs"
-
-# [[bin]]
-# name = "find_oom_shapes"
-# path = "scripts/find_oom_shapes.rs"
-
-# [[bin]]
-# name = "find_recursion_shape"
-# path = "scripts/find_recursion_shape.rs"
-
-# [[bin]]
-# name = "test_shape_fixing"
-# path = "scripts/test_shape_fixing.rs"
-
-# [[bin]]
-# name = "post_trusted_setup"
-# path = "scripts/post_trusted_setup.rs"
+[[bin]]
+name = "post_trusted_setup"
+path = "scripts/post_trusted_setup.rs"
 
 [features]
 native-gnark = ["sp1-recursion-gnark-ffi/native"]

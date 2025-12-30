@@ -5,29 +5,28 @@
 use std::pin::Pin;
 
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::{worker::SP1LocalNode, Groth16Bn254Proof, PlonkBn254Proof, SP1VerifyingKey};
+use sp1_prover::{
+    worker::{SP1LightNode, SP1NodeCore},
+    Groth16Bn254Proof, PlonkBn254Proof, SP1VerifyingKey,
+};
 
 use crate::{
-    cpu::CpuProver,
     prover::{BaseProveRequest, ProveRequest},
     Prover, SP1Proof, SP1ProofWithPublicValues, SP1ProvingKey, SP1VerificationError, StatusCode,
 };
-use std::{
-    future::{Future, IntoFuture},
-    sync::Arc,
-};
+use std::future::{Future, IntoFuture};
 
 /// A mock prover that can be used for testing.
 #[derive(Clone)]
 pub struct MockProver {
-    inner: CpuProver,
+    inner: SP1LightNode,
 }
 
 impl MockProver {
     /// Create a new mock prover.
     #[must_use]
     pub async fn new() -> Self {
-        Self { inner: CpuProver::new().await }
+        Self { inner: SP1LightNode::new().await }
     }
 }
 
@@ -38,7 +37,7 @@ impl Prover for MockProver {
 
     type ProveRequest<'a> = MockProveRequest<'a>;
 
-    fn inner(&self) -> Arc<SP1LocalNode> {
+    fn inner(&self) -> &SP1NodeCore {
         self.inner.inner()
     }
 
@@ -50,7 +49,11 @@ impl Prover for MockProver {
         &self,
         elf: sp1_build::Elf,
     ) -> impl crate::prover::SendFutureResult<Self::ProvingKey, Self::Error> {
-        async move { Ok(self.inner.setup(elf).await.unwrap()) }
+        async move {
+            let vk = self.inner.setup(&elf).await?;
+            let pk = SP1ProvingKey { vk, elf };
+            Ok(pk)
+        }
     }
 
     fn verify(
@@ -95,7 +98,7 @@ impl<'a> IntoFuture for MockProveRequest<'a> {
             let BaseProveRequest { prover, pk, mode: _, stdin, context_builder } = self.base;
 
             // Override the context builder, in case there's anything added.
-            let mut req = prover.inner.execute(pk.elf.clone(), stdin);
+            let mut req = prover.execute(pk.elf.clone(), stdin);
             req.context_builder = context_builder;
 
             // Spawn blocking under the hood.

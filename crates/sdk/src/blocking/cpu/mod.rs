@@ -12,8 +12,9 @@ use prove::CpuProveBuilder;
 use sp1_core_executor::ExecutionError;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::Elf;
-use sp1_prover::error::SP1ProverError;
-use sp1_prover::worker::{cpu_worker_builder, SP1LocalNode, SP1LocalNodeBuilder};
+use sp1_prover::worker::{
+    cpu_worker_builder, SP1LocalNode, SP1LocalNodeBuilder, SP1NodeCore, TaskError,
+};
 
 use crate::blocking::prover::Prover;
 use crate::SP1ProvingKey;
@@ -37,7 +38,7 @@ impl Default for CpuProver {
 pub enum CPUProverError {
     /// An error occurred while proving.
     #[error(transparent)]
-    Prover(#[from] SP1ProverError),
+    Prover(#[from] TaskError),
 
     /// An error occurred while executing.
     #[error(transparent)]
@@ -53,8 +54,8 @@ impl Prover for CpuProver {
     type Error = CPUProverError;
     type ProveRequest<'a> = CpuProveBuilder<'a>;
 
-    fn inner(&self) -> Arc<SP1LocalNode> {
-        self.prover.clone()
+    fn inner(&self) -> &SP1NodeCore {
+        self.prover.core()
     }
 
     fn setup(&self, elf: Elf) -> Result<Self::ProvingKey, Self::Error> {

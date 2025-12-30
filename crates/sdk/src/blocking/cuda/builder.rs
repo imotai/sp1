@@ -2,11 +2,12 @@
 //!
 //! This module provides a builder for the [`CudaProver`].
 
-use crate::blocking::cpu::CpuProver;
-
 use super::CudaProver;
 use sp1_core_executor::SP1CoreOpts;
 use sp1_cuda::CudaProver as CudaProverImpl;
+use sp1_prover::worker::SP1LightNode;
+
+use crate::blocking::block_on;
 
 /// A builder for the [`CudaProver`].
 ///
@@ -83,15 +84,12 @@ impl CudaProverBuilder {
     /// ```
     #[must_use]
     pub fn build(self) -> CudaProver {
-        let cpu_prover = CpuProver::new_with_opts(self.core_opts);
+        let node = block_on(SP1LightNode::with_opts(self.core_opts.unwrap_or_default()));
         let cuda_prover = match self.cuda_device_id {
             Some(id) => crate::blocking::block_on(CudaProverImpl::new_with_id(id)),
             None => crate::blocking::block_on(CudaProverImpl::new()),
         };
 
-        CudaProver {
-            cpu_prover,
-            prover: cuda_prover.expect("Failed to create the CUDA prover impl"),
-        }
+        CudaProver { node, prover: cuda_prover.expect("Failed to create the CUDA prover impl") }
     }
 }

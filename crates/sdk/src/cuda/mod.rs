@@ -7,10 +7,7 @@ pub mod builder;
 /// The CUDA prove request type.
 pub mod prove;
 
-use std::sync::Arc;
-
 use crate::{
-    cpu::CpuProver,
     prover::{BaseProveRequest, Prover, SendFutureResult},
     ProvingKey,
 };
@@ -19,12 +16,15 @@ use prove::CudaProveRequest;
 use sp1_core_machine::io::SP1Stdin;
 use sp1_cuda::{CudaClientError, CudaProver as CudaProverImpl, CudaProvingKey};
 use sp1_primitives::Elf;
-use sp1_prover::{worker::SP1LocalNode, SP1VerifyingKey};
+use sp1_prover::{
+    worker::{SP1LightNode, SP1NodeCore},
+    SP1VerifyingKey,
+};
 
 /// A prover that uses the CPU for execution and the CUDA for proving.
 #[derive(Clone)]
 pub struct CudaProver {
-    pub(crate) cpu_prover: CpuProver,
+    pub(crate) node: SP1LightNode,
     pub(crate) prover: CudaProverImpl,
 }
 
@@ -33,8 +33,8 @@ impl Prover for CudaProver {
     type Error = CudaClientError;
     type ProveRequest<'a> = CudaProveRequest<'a>;
 
-    fn inner(&self) -> Arc<SP1LocalNode> {
-        self.cpu_prover.inner()
+    fn inner(&self) -> &SP1NodeCore {
+        self.node.inner()
     }
 
     fn setup(&self, elf: Elf) -> impl SendFutureResult<Self::ProvingKey, Self::Error> {

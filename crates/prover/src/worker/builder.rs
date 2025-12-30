@@ -27,7 +27,14 @@ pub struct SP1WorkerBuilder<
     worker_client: Option<W>,
 }
 
+impl<C: SP1ProverComponents> Default for SP1WorkerBuilder<C> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<C: SP1ProverComponents> SP1WorkerBuilder<C> {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let config = SP1WorkerConfig::default();
 
@@ -210,24 +217,22 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
         .await;
 
         // Create the verifier
-        let core_verifier = C::core_verifier();
-        let compress_verifier = C::compress_verifier();
-        let shrink_verifier = C::shrink_verifier();
-        let wrap_verifier = C::wrap_verifier();
-        let recursion_vk_root = prover_engine.recursion_prover.recursion_vk_root();
-        let recursion_vk_map = prover_engine.recursion_prover.recursion_vk_map().clone();
-        let vk_verification = prover_engine.recursion_prover.vk_verification();
-        let verifier = SP1Verifier {
-            core: core_verifier,
-            compress: compress_verifier,
-            shrink: shrink_verifier,
-            wrap: wrap_verifier,
-            recursion_vk_root,
-            recursion_vk_map,
-            vk_verification,
-            shrink_vk: prover_engine.recursion_prover.shrink_prover.verifying_key.clone(),
-            wrap_vk: prover_engine.recursion_prover.wrap_prover.verifying_key.clone(),
-        };
+        let recursion_vks = prover_engine.recursion_prover.prover_data.recursion_vks().clone();
+        let shrink_vk = prover_engine.recursion_prover.shrink_prover.verifying_key.clone();
+
+        let mut verifier = SP1Verifier::new(recursion_vks);
+        verifier.set_shrink_vk(shrink_vk);
+
+        // Check consitency of wrap vk
+        let wrap_vk = prover_engine.recursion_prover.wrap_prover.verifying_key.clone();
+        let expected_wrap_vk = verifier.wrap_vk.clone();
+        if wrap_vk != expected_wrap_vk {
+            return Err(anyhow::anyhow!(
+                "Wrap vk mismatch, expected: {:?}, got: {:?}",
+                expected_wrap_vk,
+                wrap_vk
+            ));
+        }
 
         let controller = SP1Controller::new(
             config.controller_config,

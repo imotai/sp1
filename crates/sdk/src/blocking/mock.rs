@@ -3,21 +3,31 @@
 //! A mock prover that can be used for testing.
 
 use sp1_core_machine::io::SP1Stdin;
-use sp1_prover::{worker::SP1LocalNode, Groth16Bn254Proof, PlonkBn254Proof, SP1VerifyingKey};
+use sp1_prover::{
+    worker::{SP1LightNode, SP1NodeCore},
+    Groth16Bn254Proof, PlonkBn254Proof, SP1VerifyingKey,
+};
 
 use crate::{
     blocking::{
-        cpu::{CPUProverError, CpuProver},
+        block_on,
+        cpu::CPUProverError,
         prover::{BaseProveRequest, ProveRequest, Prover},
     },
     SP1Proof, SP1ProofWithPublicValues, SP1ProvingKey, SP1VerificationError, StatusCode,
 };
-use std::sync::Arc;
 
 /// A mock prover that can be used for testing.
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct MockProver {
-    inner: CpuProver,
+    inner: SP1LightNode,
+}
+
+impl Default for MockProver {
+    fn default() -> Self {
+        let node = block_on(SP1LightNode::new());
+        Self { inner: node }
+    }
 }
 
 impl MockProver {
@@ -35,7 +45,7 @@ impl Prover for MockProver {
 
     type ProveRequest<'a> = MockProveRequest<'a>;
 
-    fn inner(&self) -> Arc<SP1LocalNode> {
+    fn inner(&self) -> &SP1NodeCore {
         self.inner.inner()
     }
 
@@ -44,7 +54,8 @@ impl Prover for MockProver {
     }
 
     fn setup(&self, elf: sp1_build::Elf) -> Result<Self::ProvingKey, Self::Error> {
-        Ok(self.inner.setup(elf).unwrap())
+        let vk = block_on(self.inner.setup(&elf))?;
+        Ok(SP1ProvingKey { vk, elf })
     }
 
     fn verify(
@@ -81,7 +92,7 @@ impl<'a> ProveRequest<'a, MockProver> for MockProveRequest<'a> {
 
     fn run(self) -> Result<SP1ProofWithPublicValues, CPUProverError> {
         let BaseProveRequest { prover, pk, mode, stdin, context_builder } = self.base;
-        let mut req = prover.inner.execute(pk.elf.clone(), stdin);
+        let mut req = prover.execute(pk.elf.clone(), stdin);
         req.context_builder = context_builder;
         let (public_values, _) = req.run()?;
         Ok(SP1ProofWithPublicValues::create_mock_proof(
