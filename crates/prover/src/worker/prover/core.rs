@@ -4,9 +4,7 @@ use anyhow::anyhow;
 use slop_air::BaseAir;
 use slop_algebra::AbstractField;
 use slop_challenger::IopCtx;
-use slop_futures::pipeline::{
-    AsyncEngine, AsyncWorker, Chain, Pipeline, SubmitError, SubmitHandle,
-};
+use slop_futures::pipeline::{AsyncEngine, AsyncWorker, Pipeline, SubmitError, SubmitHandle};
 use sp1_core_executor::{
     events::{PrecompileEvent, SyscallEvent},
     ExecutionRecord, Program, SP1CoreOpts, SplitOpts,
@@ -25,7 +23,7 @@ use sp1_prover_types::{
 use sp1_recursion_circuit::shard::RecursiveShardVerifier;
 use sp1_recursion_compiler::config::InnerConfig;
 use sp1_recursion_executor::RecursionProgram;
-use tokio::{sync::OnceCell, task::JoinHandle};
+use tokio::sync::OnceCell;
 use tracing::Instrument;
 
 use crate::{
@@ -104,7 +102,7 @@ impl ProveShardTaskRequest {
 }
 
 /// Generates traces and optionally deferred records for a core shard.
-pub struct TracingTask {
+pub struct CoreProvingTask {
     /// The proof id.
     pub proof_id: ProofId,
     /// The elf artifact.
@@ -173,38 +171,62 @@ impl NormalizeProgramCompiler {
     }
 }
 
-pub struct TracingWorker<A, W> {
+/// Unified worker that combines tracing, core proving, and normalize proving.
+pub struct CoreWorker<A, W, C: SP1ProverComponents> {
     normalize_program_compiler: Arc<NormalizeProgramCompiler>,
     opts: SP1CoreOpts,
     artifact_client: A,
     worker_client: W,
+    core_prover: Arc<CoreProver<C>>,
+    recursion_prover: SP1RecursionProver<A, C>,
+    permits: ProverSemaphore,
+    /// Optional fixed PK cache shared across workers.
+    pk: Option<CoreProvingKeyCache<C>>,
+    verify_intermediates: bool,
 }
 
-impl<A, W> TracingWorker<A, W> {
+impl<A, W, C: SP1ProverComponents> CoreWorker<A, W, C> {
     fn new(
         normalize_program_compiler: Arc<NormalizeProgramCompiler>,
         opts: SP1CoreOpts,
         artifact_client: A,
         worker_client: W,
+        core_prover: Arc<CoreProver<C>>,
+        recursion_prover: SP1RecursionProver<A, C>,
+        permits: ProverSemaphore,
+        pk: Option<CoreProvingKeyCache<C>>,
+        verify_intermediates: bool,
     ) -> Self {
-        Self { normalize_program_compiler, opts, artifact_client, worker_client }
+        Self {
+            normalize_program_compiler,
+            opts,
+            artifact_client,
+            worker_client,
+            core_prover,
+            recursion_prover,
+            permits,
+            pk,
+            verify_intermediates,
+        }
     }
-}
 
-impl<A, W> TracingWorker<A, W> {
-    pub fn machine(&self) -> &Machine<SP1Field, RiscvAir<SP1Field>> {
+    fn machine(&self) -> &Machine<SP1Field, RiscvAir<SP1Field>> {
         self.normalize_program_compiler.machine()
     }
 }
 
-impl<A, W> AsyncWorker<TracingTask, Result<CoreProveTask, TaskError>> for TracingWorker<A, W>
+impl<A, W, C> AsyncWorker<CoreProvingTask, Result<TaskMetadata, TaskError>> for CoreWorker<A, W, C>
 where
     A: ArtifactClient,
     W: WorkerClient,
+    C: SP1ProverComponents,
 {
-    async fn call(&self, input: TracingTask) -> Result<CoreProveTask, TaskError> {
+    async fn call(&self, input: CoreProvingTask) -> Result<TaskMetadata, TaskError> {
+        // === Phase 1: Tracing ===
         // Save the trace input artifact for later use in the task
         let record_artifact = input.record.clone();
+        let metrics = input.metrics.clone();
+
         // Ok to panic because it will send a JoinError.
         let (elf, common_input, record) = tokio::try_join!(
             self.artifact_client.download_program(&input.elf),
@@ -464,93 +486,7 @@ where
             None
         };
 
-        Ok(CoreProveTask {
-            program,
-            recursion_program_handle,
-            common_input,
-            record,
-            output: input.output,
-            record_artifact,
-            precompile_artifacts,
-            deferred_upload_handle,
-            metrics: input.metrics,
-        })
-    }
-}
-
-pub struct CoreProveTask {
-    program: Arc<Program>,
-    recursion_program_handle: Option<tokio::task::JoinHandle<Arc<RecursionProgram<SP1Field>>>>,
-    common_input: CommonProverInput,
-    record: ExecutionRecord,
-    output: Artifact,
-    record_artifact: Artifact,
-    precompile_artifacts: Option<Vec<PrecompileArtifactSlice>>,
-    deferred_upload_handle: Option<JoinHandle<std::result::Result<(), TaskError>>>,
-    metrics: ProverMetrics,
-}
-
-pub enum SP1CoreShardProof {
-    Core(ShardProof<SP1GlobalContext, CoreSC>),
-    Recursion(SP1RecursionProof<SP1GlobalContext, InnerSC>),
-}
-
-pub struct CoreProveOutput {
-    pub id: TaskId,
-    pub proof: SP1CoreShardProof,
-}
-
-pub type CoreProvingKey<C> =
-    MachineProvingKey<SP1GlobalContext, <C as SP1ProverComponents>::CoreComponents>;
-
-/// The Core Proving Key cache is initialized once and shared across all CoreProverWorkers.
-pub type CoreProvingKeyCache<C> = Arc<OnceCell<Arc<CoreProvingKey<C>>>>;
-
-pub struct CoreProverWorker<A, C: SP1ProverComponents> {
-    artifact_client: A,
-    core_prover: Arc<CoreProver<C>>,
-    recursion_prover: SP1RecursionProver<A, C>,
-    permits: ProverSemaphore,
-    /// Optional fixed PK cache shared across workers.
-    /// When Some, workers will use get_or_init to ensure only one does setup.
-    /// The Arc is needed because OnceCell doesn't implement Clone.
-    pk: Option<CoreProvingKeyCache<C>>,
-    verify_intermediates: bool,
-}
-
-impl<A, C: SP1ProverComponents> CoreProverWorker<A, C> {
-    pub fn new(
-        artifact_client: A,
-        core_prover: Arc<CoreProver<C>>,
-        recursion_prover: SP1RecursionProver<A, C>,
-        permits: ProverSemaphore,
-        pk: Option<CoreProvingKeyCache<C>>,
-        verify_intermediates: bool,
-    ) -> Self {
-        Self { artifact_client, core_prover, recursion_prover, permits, pk, verify_intermediates }
-    }
-}
-
-impl<A: ArtifactClient, C: SP1ProverComponents>
-    AsyncWorker<Result<CoreProveTask, TaskError>, Result<TaskMetadata, TaskError>>
-    for CoreProverWorker<A, C>
-{
-    async fn call(
-        &self,
-        input: Result<CoreProveTask, TaskError>,
-    ) -> Result<TaskMetadata, TaskError> {
-        let input = input?;
-        let CoreProveTask {
-            program,
-            recursion_program_handle,
-            common_input,
-            record,
-            output,
-            record_artifact,
-            precompile_artifacts,
-            deferred_upload_handle,
-            metrics,
-        } = input;
+        // === Phase 2: Core Proving ===
         let mut challenger = SP1GlobalContext::default_challenger();
 
         let permits = self.permits.clone();
@@ -610,8 +546,9 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
             .map_err(|e| TaskError::Fatal(e.into()))??;
         }
 
+        let output = input.output;
         if common_input.mode != ProofMode::Core {
-            let program = recursion_program_handle
+            let recursion_program = recursion_program_handle
                 .ok_or_else(|| {
                     TaskError::Fatal(anyhow::anyhow!("recursion program handle not found"))
                 })?
@@ -620,7 +557,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
             let input = self.recursion_prover.get_normalize_witness(&common_input, &proof, false);
             let witness = SP1CircuitWitness::Core(input);
             self.recursion_prover
-                .submit_prove_shard(program, witness, output, metrics.clone())
+                .submit_prove_shard(recursion_program, witness, output, metrics.clone())
                 .instrument(tracing::debug_span!("normalize prove shard"))
                 .await?
                 .await
@@ -660,8 +597,43 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
     }
 }
 
+pub enum SP1CoreShardProof {
+    Core(ShardProof<SP1GlobalContext, CoreSC>),
+    Recursion(SP1RecursionProof<SP1GlobalContext, InnerSC>),
+}
+
+pub struct CoreProveOutput {
+    pub id: TaskId,
+    pub proof: SP1CoreShardProof,
+}
+
+pub type CoreProvingKey<C> =
+    MachineProvingKey<SP1GlobalContext, <C as SP1ProverComponents>::CoreComponents>;
+
+/// The Core Proving Key cache is initialized once and shared across all CoreAndNormalizeWorkers.
+pub type CoreProvingKeyCache<C> = Arc<OnceCell<Arc<CoreProvingKey<C>>>>;
+
+/// Worker for handling setup tasks only.
+pub struct CoreAndNormalizeWorker<A, C: SP1ProverComponents> {
+    artifact_client: A,
+    core_prover: Arc<CoreProver<C>>,
+    permits: ProverSemaphore,
+    _marker: std::marker::PhantomData<C>,
+}
+
+impl<A, C: SP1ProverComponents> CoreAndNormalizeWorker<A, C> {
+    pub fn new(
+        artifact_client: A,
+        core_prover: Arc<CoreProver<C>>,
+        permits: ProverSemaphore,
+    ) -> Self {
+        Self { artifact_client, core_prover, permits, _marker: std::marker::PhantomData }
+    }
+}
+
 impl<A: ArtifactClient, C: SP1ProverComponents>
-    AsyncWorker<SetupTask, Result<(TaskId, TaskMetadata), TaskError>> for CoreProverWorker<A, C>
+    AsyncWorker<SetupTask, Result<(TaskId, TaskMetadata), TaskError>>
+    for CoreAndNormalizeWorker<A, C>
 {
     async fn call(&self, input: SetupTask) -> Result<(TaskId, TaskMetadata), TaskError> {
         let SetupTask { id, elf, output } = input;
@@ -684,26 +656,20 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
     }
 }
 
-pub type SetupEngine<A, P> =
-    Arc<AsyncEngine<SetupTask, Result<(TaskId, TaskMetadata), TaskError>, CoreProverWorker<A, P>>>;
-
-pub type TraceEngine<A, W> =
-    Arc<AsyncEngine<TracingTask, Result<CoreProveTask, TaskError>, TracingWorker<A, W>>>;
-pub type CoreProveEngine<A, P> = Arc<
-    AsyncEngine<
-        Result<CoreProveTask, TaskError>,
-        Result<TaskMetadata, TaskError>,
-        CoreProverWorker<A, P>,
-    >,
+pub type SetupEngine<A, P> = Arc<
+    AsyncEngine<SetupTask, Result<(TaskId, TaskMetadata), TaskError>, CoreAndNormalizeWorker<A, P>>,
 >;
-pub type SP1CoreEngine<A, W, P> = Chain<TraceEngine<A, W>, CoreProveEngine<A, P>>;
+
+/// Unified engine that handles both tracing and core proving in a single async task.
+pub type SP1CoreEngine<A, W, C> =
+    Arc<AsyncEngine<CoreProvingTask, Result<TaskMetadata, TaskError>, CoreWorker<A, W, C>>>;
 
 pub type CoreProveSubmitHandle<A, W, C> = SubmitHandle<SP1CoreEngine<A, W, C>>;
 
 pub type SetupSubmitHandle<A, C> = SubmitHandle<SetupEngine<A, C>>;
 
 pub struct SP1CoreProver<A, W, C: SP1ProverComponents> {
-    prove_shard_engine: Arc<SP1CoreEngine<A, W, C>>,
+    prove_shard_engine: SP1CoreEngine<A, W, C>,
     setup_engine: SetupEngine<A, C>,
 }
 
@@ -733,7 +699,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
         } = task;
 
         let metrics = ProverMetrics::new();
-        let tracing_task = TracingTask {
+        let tracing_task = CoreProvingTask {
             proof_id: context.proof_id,
             elf,
             common_input,
@@ -758,15 +724,11 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
 /// Configuration for the core prover.
 #[derive(Clone)]
 pub struct SP1CoreProverConfig {
-    /// The number of trace executor workers.
-    pub num_trace_executor_workers: usize,
-    /// The buffer size for the trace executor.
-    pub trace_executor_buffer_size: usize,
-    /// The number of core prover workers.
-    pub num_core_prover_workers: usize,
-    /// The buffer size for the core prover.
-    pub core_prover_buffer_size: usize,
-    /// The number of setup workers
+    /// The number of core workers (handles both tracing and proving).
+    pub num_core_workers: usize,
+    /// The buffer size for the core engine.
+    pub core_buffer_size: usize,
+    /// The number of setup workers.
     pub num_setup_workers: usize,
     /// The buffer size for the setup.
     pub setup_buffer_size: usize,
@@ -788,7 +750,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
         permits: ProverSemaphore,
         recursion_prover: SP1RecursionProver<A, C>,
     ) -> Self {
-        // Initialize the tracing engine
+        // Initialize the normalize program compiler
         let core_verifier = C::core_verifier();
 
         let normalize_program_cache = SP1NormalizeCache::new(config.normalize_program_cache_size);
@@ -806,27 +768,17 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
         );
         let normalize_program_compiler = Arc::new(normalize_program_compiler);
 
-        let trace_workers = (0..config.num_trace_executor_workers)
+        // Create a shared fixed PK cache if enabled
+        let pk_cache = if config.use_fixed_pk { Some(Arc::new(OnceCell::new())) } else { None };
+
+        // Initialize the unified core engine (handles both tracing and proving)
+        let core_workers = (0..config.num_core_workers)
             .map(|_| {
-                TracingWorker::new(
+                CoreWorker::new(
                     normalize_program_compiler.clone(),
                     opts.clone(),
                     artifact_client.clone(),
                     worker_client.clone(),
-                )
-            })
-            .collect();
-        let trace_engine =
-            Arc::new(AsyncEngine::new(trace_workers, config.trace_executor_buffer_size));
-
-        // Create a shared fixed PK cache if enabled
-        let pk_cache = if config.use_fixed_pk { Some(Arc::new(OnceCell::new())) } else { None };
-
-        // Initialize the core prove engine
-        let core_prover_workers = (0..config.num_core_prover_workers)
-            .map(|_| {
-                CoreProverWorker::new(
-                    artifact_client.clone(),
                     air_prover.clone(),
                     recursion_prover.clone(),
                     permits.clone(),
@@ -835,25 +787,19 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
                 )
             })
             .collect::<Vec<_>>();
-        let core_prove_engine =
-            Arc::new(AsyncEngine::new(core_prover_workers, config.core_prover_buffer_size));
+        let prove_shard_engine = Arc::new(AsyncEngine::new(core_workers, config.core_buffer_size));
 
         // Make the setup engine
         let setup_workers = (0..config.num_setup_workers)
             .map(|_| {
-                CoreProverWorker::new(
+                CoreAndNormalizeWorker::new(
                     artifact_client.clone(),
                     air_prover.clone(),
-                    recursion_prover.clone(),
                     permits.clone(),
-                    None,
-                    false,
                 )
             })
             .collect::<Vec<_>>();
         let setup_engine = Arc::new(AsyncEngine::new(setup_workers, config.setup_buffer_size));
-
-        let prove_shard_engine = Arc::new(Chain::new(trace_engine, core_prove_engine));
 
         Self { prove_shard_engine, setup_engine }
     }

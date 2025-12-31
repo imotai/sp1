@@ -75,22 +75,14 @@ impl Default for SP1WorkerConfig {
         };
 
         // Build the core prover config.
-        let num_trace_executor_workers = env::var("SP1_WORKER_NUM_TRACE_EXECUTOR_WORKERS")
+        let num_core_workers = env::var("SP1_WORKER_NUM_CORE_WORKERS")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(DEFAULT_NUM_TRACE_EXECUTOR_WORKERS);
-        let trace_executor_buffer_size = env::var("SP1_WORKER_TRACE_EXECUTOR_BUFFER_SIZE")
+            .unwrap_or(DEFAULT_NUM_CORE_WORKERS);
+        let core_buffer_size = env::var("SP1_WORKER_CORE_BUFFER_SIZE")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(DEFAULT_TRACE_EXECUTOR_BUFFER_SIZE);
-        let num_core_prover_workers = env::var("SP1_WORKER_NUM_CORE_PROVER_WORKERS")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(DEFAULT_NUM_CORE_PROVER_WORKERS);
-        let core_prover_buffer_size = env::var("SP1_WORKER_CORE_PROVER_BUFFER_SIZE")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(DEFAULT_CORE_PROVER_BUFFER_SIZE);
+            .unwrap_or(DEFAULT_CORE_BUFFER_SIZE);
         let num_setup_workers = env::var("SP1_WORKER_NUM_SETUP_WORKERS")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
@@ -105,10 +97,8 @@ impl Default for SP1WorkerConfig {
             .unwrap_or(DEFAULT_NORMALIZE_PROGRAM_CACHE_SIZE);
 
         let core_prover_config = SP1CoreProverConfig {
-            num_trace_executor_workers,
-            trace_executor_buffer_size,
-            num_core_prover_workers,
-            core_prover_buffer_size,
+            num_core_workers,
+            core_buffer_size,
             num_setup_workers,
             setup_buffer_size,
             normalize_program_cache_size,
@@ -186,10 +176,8 @@ pub(crate) const DEFAULT_NUMBER_OF_SEND_SPLICE_WORKERS_PER_SPLICE: usize = 2;
 pub(crate) const DEFAULT_SEND_SPLICE_INPUT_BUFFER_SIZE_PER_SPLICE: usize = 2;
 
 // Default values for the core prover config.
-pub(crate) const DEFAULT_NUM_TRACE_EXECUTOR_WORKERS: usize = 4;
-pub(crate) const DEFAULT_TRACE_EXECUTOR_BUFFER_SIZE: usize = 4;
-pub(crate) const DEFAULT_NUM_CORE_PROVER_WORKERS: usize = 4;
-pub(crate) const DEFAULT_CORE_PROVER_BUFFER_SIZE: usize = 4;
+pub(crate) const DEFAULT_NUM_CORE_WORKERS: usize = 4;
+pub(crate) const DEFAULT_CORE_BUFFER_SIZE: usize = 4;
 pub(crate) const DEFAULT_NUM_SETUP_WORKERS: usize = 2;
 pub(crate) const DEFAULT_SETUP_BUFFER_SIZE: usize = 2;
 pub(crate) const DEFAULT_NORMALIZE_PROGRAM_CACHE_SIZE: usize = 5;
