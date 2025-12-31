@@ -454,7 +454,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
 
             let compress_verifier = C::compress_verifier();
             let recursive_compress_verifier =
-                recursive_verifier::<SP1GlobalContext, _, InnerSC, InnerConfig>(
+                recursive_verifier::<SP1GlobalContext, _,  InnerConfig>(
                     compress_verifier.shard_verifier(),
                 );
             for arity in 1..=config.max_compose_arity {

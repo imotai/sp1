@@ -6,16 +6,13 @@ use std::{
 
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::CpuBackend;
-use slop_challenger::{FieldChallenger, IopCtx};
+use slop_challenger::FieldChallenger;
 use slop_multilinear::{Mle, PaddedMle, Point};
 use slop_sumcheck::reduce_sumcheck_to_evaluation;
 
 use crate::{air::MachineAir, prover::Traces, Chip, LogupRoundPolynomial, PolynomialLayer};
 
-use super::{
-    LogUpGkrCircuit, LogUpGkrOutput, LogUpGkrProverComponents, LogUpGkrRoundProver,
-    LogUpGkrTraceGenerator,
-};
+use super::LogUpGkrOutput;
 
 /// A trace generator for the GKR circuit.
 pub struct LogupGkrCpuTraceGenerator<F, EF, A>(PhantomData<(F, EF, A)>);
@@ -75,13 +72,9 @@ pub struct InteractionLayer<F, EF> {
     pub denominator_1: Arc<Mle<EF>>,
 }
 
-impl<F: Field, EF: ExtensionField<F>, A: MachineAir<F>> LogUpGkrTraceGenerator<F, EF, A, CpuBackend>
-    for LogupGkrCpuTraceGenerator<F, EF, A>
-{
-    type Circuit = LogupGkrCpuCircuit<F, EF>;
-
+impl<F: Field, EF: ExtensionField<F>, A: MachineAir<F>> LogupGkrCpuTraceGenerator<F, EF, A> {
     #[allow(unused_variables)]
-    async fn generate_gkr_circuit(
+    pub(crate) async fn generate_gkr_circuit(
         &self,
         chips: &BTreeSet<Chip<F, A>>,
         preprocessed_traces: Traces<F, CpuBackend>,
@@ -89,7 +82,7 @@ impl<F: Field, EF: ExtensionField<F>, A: MachineAir<F>> LogUpGkrTraceGenerator<F
         public_values: Vec<F>,
         alpha: EF,
         beta_seed: Point<EF>,
-    ) -> (LogUpGkrOutput<EF>, Self::Circuit) {
+    ) -> (LogUpGkrOutput<EF>, LogupGkrCpuCircuit<F, EF>) {
         let interactions = chips
             .iter()
             .map(|chip| {
@@ -144,127 +137,91 @@ impl<F: Field, EF: ExtensionField<F>> Iterator for LogupGkrCpuCircuit<F, EF> {
 }
 
 /// Basic information about the GKR circuit.
-impl<F: Field, EF: ExtensionField<F>> LogUpGkrCircuit for LogupGkrCpuCircuit<F, EF> {
-    type CircuitLayer = GkrCircuitLayer<F, EF>;
-
-    async fn next(&mut self) -> Option<Self::CircuitLayer> {
+impl<F: Field, EF: ExtensionField<F>> LogupGkrCpuCircuit<F, EF> {
+    pub(crate) fn next_layer(&mut self) -> Option<GkrCircuitLayer<F, EF>> {
         self.layers.pop()
     }
-
-    fn num_layers(&self) -> usize {
-        self.layers.len()
-    }
 }
 
-/// A prover for the GKR circuit.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct LogupGkrCpuRoundProver;
-
-impl<F: Field, EF: ExtensionField<F>, Challenger> LogUpGkrRoundProver<F, EF, Challenger, CpuBackend>
-    for LogupGkrCpuRoundProver
-where
+pub(crate) async fn prove_gkr_round<
     F: Field,
     EF: ExtensionField<F>,
-    Challenger: FieldChallenger<F> + 'static + Send + Sync,
-{
-    type CircuitLayer = GkrCircuitLayer<F, EF>;
+    Challenger: FieldChallenger<F>,
+>(
+    circuit: GkrCircuitLayer<F, EF>,
+    eval_point: &slop_multilinear::Point<EF>,
+    numerator_eval: EF,
+    denominator_eval: EF,
+    challenger: &mut Challenger,
+) -> super::LogupGkrRoundProof<EF> {
+    let lambda = challenger.sample_ext_element::<EF>();
 
-    #[allow(unused_variables)]
-    async fn prove_round(
-        &self,
-        circuit: Self::CircuitLayer,
-        eval_point: &slop_multilinear::Point<EF>,
-        numerator_eval: EF,
-        denominator_eval: EF,
-        challenger: &mut Challenger,
-    ) -> super::LogupGkrRoundProof<EF> {
-        let lambda = challenger.sample_ext_element::<EF>();
+    let (numerator_0, denominator_0, numerator_1, denominator_1, sumcheck_proof) = match circuit {
+        GkrCircuitLayer::Layer(layer) => {
+            let (interaction_point, row_point) =
+                eval_point.split_at(layer.num_interaction_variables);
+            let eq_interaction = Mle::partial_lagrange(&interaction_point).await;
+            let eq_row = Mle::partial_lagrange(&row_point).await;
+            let sumcheck_poly = LogupRoundPolynomial {
+                layer: PolynomialLayer::CircuitLayer(layer),
+                eq_row: Arc::new(eq_row),
+                eq_interaction: Arc::new(eq_interaction),
+                lambda,
+                eq_adjustment: EF::one(),
+                padding_adjustment: EF::one(),
+                point: eval_point.clone(),
+            };
+            let claim = numerator_eval * lambda + denominator_eval;
 
-        let (numerator_0, denominator_0, numerator_1, denominator_1, sumcheck_proof) = match circuit
-        {
-            GkrCircuitLayer::Layer(layer) => {
-                let (interaction_point, row_point) =
-                    eval_point.split_at(layer.num_interaction_variables);
-                let eq_interaction = Mle::partial_lagrange(&interaction_point).await;
-                let eq_row = Mle::partial_lagrange(&row_point).await;
-                let sumcheck_poly = LogupRoundPolynomial {
-                    layer: PolynomialLayer::CircuitLayer(layer),
-                    eq_row: Arc::new(eq_row),
-                    eq_interaction: Arc::new(eq_interaction),
-                    lambda,
-                    eq_adjustment: EF::one(),
-                    padding_adjustment: EF::one(),
-                    point: eval_point.clone(),
-                };
-                let claim = numerator_eval * lambda + denominator_eval;
+            let (sumcheck_proof, mut openings) = reduce_sumcheck_to_evaluation(
+                vec![sumcheck_poly],
+                challenger,
+                vec![claim],
+                1,
+                lambda,
+            )
+            .await;
 
-                let (sumcheck_proof, mut openings) = reduce_sumcheck_to_evaluation(
-                    vec![sumcheck_poly],
-                    challenger,
-                    vec![claim],
-                    1,
-                    lambda,
-                )
-                .await;
-
-                let openings = openings.pop().unwrap();
-                let [numerator_0, denominator_0, numerator_1, denominator_1] =
-                    openings.try_into().unwrap();
-                (numerator_0, denominator_0, numerator_1, denominator_1, sumcheck_proof)
-            }
-            GkrCircuitLayer::FirstLayer(layer) => {
-                let (interaction_point, row_point) =
-                    eval_point.split_at(layer.num_interaction_variables);
-                let eq_interaction = Mle::partial_lagrange(&interaction_point).await;
-                let eq_row = Mle::partial_lagrange(&row_point).await;
-                let sumcheck_poly = LogupRoundPolynomial {
-                    layer: PolynomialLayer::CircuitLayer(layer),
-                    eq_row: Arc::new(eq_row),
-                    eq_interaction: Arc::new(eq_interaction),
-                    lambda,
-                    eq_adjustment: EF::one(),
-                    padding_adjustment: EF::one(),
-                    point: eval_point.clone(),
-                };
-                let claim = numerator_eval * lambda + denominator_eval;
-                let (sumcheck_proof, mut openings) = reduce_sumcheck_to_evaluation(
-                    vec![sumcheck_poly],
-                    challenger,
-                    vec![claim],
-                    1,
-                    lambda,
-                )
-                .await;
-                let openings = openings.pop().unwrap();
-                let [numerator_0, denominator_0, numerator_1, denominator_1] =
-                    openings.try_into().unwrap();
-                (numerator_0, denominator_0, numerator_1, denominator_1, sumcheck_proof)
-            }
-        };
-
-        super::LogupGkrRoundProof {
-            numerator_0,
-            numerator_1,
-            denominator_0,
-            denominator_1,
-            sumcheck_proof,
+            let openings = openings.pop().unwrap();
+            let [numerator_0, denominator_0, numerator_1, denominator_1] =
+                openings.try_into().unwrap();
+            (numerator_0, denominator_0, numerator_1, denominator_1, sumcheck_proof)
         }
+        GkrCircuitLayer::FirstLayer(layer) => {
+            let (interaction_point, row_point) =
+                eval_point.split_at(layer.num_interaction_variables);
+            let eq_interaction = Mle::partial_lagrange(&interaction_point).await;
+            let eq_row = Mle::partial_lagrange(&row_point).await;
+            let sumcheck_poly = LogupRoundPolynomial {
+                layer: PolynomialLayer::CircuitLayer(layer),
+                eq_row: Arc::new(eq_row),
+                eq_interaction: Arc::new(eq_interaction),
+                lambda,
+                eq_adjustment: EF::one(),
+                padding_adjustment: EF::one(),
+                point: eval_point.clone(),
+            };
+            let claim = numerator_eval * lambda + denominator_eval;
+            let (sumcheck_proof, mut openings) = reduce_sumcheck_to_evaluation(
+                vec![sumcheck_poly],
+                challenger,
+                vec![claim],
+                1,
+                lambda,
+            )
+            .await;
+            let openings = openings.pop().unwrap();
+            let [numerator_0, denominator_0, numerator_1, denominator_1] =
+                openings.try_into().unwrap();
+            (numerator_0, denominator_0, numerator_1, denominator_1, sumcheck_proof)
+        }
+    };
+
+    super::LogupGkrRoundProof {
+        numerator_0,
+        numerator_1,
+        denominator_0,
+        denominator_1,
+        sumcheck_proof,
     }
-}
-
-/// The components of the GKR prover for the CPU.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct LogupGkrCpuProverComponents<F, EF, A, Challenger>(PhantomData<(F, EF, A, Challenger)>);
-
-impl<GC: IopCtx, A> LogUpGkrProverComponents<GC>
-    for LogupGkrCpuProverComponents<GC::F, GC::EF, A, GC::Challenger>
-where
-    A: MachineAir<GC::F>,
-{
-    type A = A;
-    type B = CpuBackend;
-    type CircuitLayer = GkrCircuitLayer<GC::F, GC::EF>;
-    type Circuit = LogupGkrCpuCircuit<GC::F, GC::EF>;
-    type TraceGenerator = LogupGkrCpuTraceGenerator<GC::F, GC::EF, A>;
-    type RoundProver = LogupGkrCpuRoundProver;
 }

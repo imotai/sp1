@@ -2,16 +2,9 @@ use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
 use slop_challenger::VariableLengthChallenger;
 use slop_challenger::{CanObserve, IopCtx};
-use slop_jagged::JaggedConfig;
+use slop_multilinear::MultilinearPcsVerifier;
 
 use crate::septic_digest::SepticDigest;
-
-#[allow(clippy::disallowed_types)]
-use slop_jagged::Poseidon2KoalaBearJaggedCpuProverComponents;
-
-#[allow(clippy::disallowed_types)]
-/// The CPU prover components for a jagged PCS prover in SP1.
-pub type SP1CpuJaggedProverComponents = Poseidon2KoalaBearJaggedCpuProverComponents;
 
 #[allow(clippy::disallowed_types)]
 use slop_jagged::KoalaBearPoseidon2;
@@ -47,8 +40,8 @@ pub struct ChipDimensions<T> {
 }
 
 /// A verifying key.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct MachineVerifyingKey<C: IopCtx, SC: JaggedConfig<C>> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MachineVerifyingKey<C: IopCtx, SC: MultilinearPcsVerifier<C>> {
     /// The start pc of the program.
     pub pc_start: [C::F; 3],
     /// The starting global digest of the program, after incorporating the initial memory.
@@ -61,7 +54,18 @@ pub struct MachineVerifyingKey<C: IopCtx, SC: JaggedConfig<C>> {
     pub marker: std::marker::PhantomData<SC>,
 }
 
-impl<C: IopCtx, SC: JaggedConfig<C>> MachineVerifyingKey<C, SC> {
+impl<C: IopCtx, SC: MultilinearPcsVerifier<C>> PartialEq for MachineVerifyingKey<C, SC> {
+    fn eq(&self, other: &Self) -> bool {
+        self.pc_start == other.pc_start
+            && self.initial_global_cumulative_sum == other.initial_global_cumulative_sum
+            && self.preprocessed_commit == other.preprocessed_commit
+            && self.enable_untrusted_programs == other.enable_untrusted_programs
+    }
+}
+
+impl<C: IopCtx, SC: MultilinearPcsVerifier<C>> Eq for MachineVerifyingKey<C, SC> {}
+
+impl<C: IopCtx, SC: MultilinearPcsVerifier<C>> MachineVerifyingKey<C, SC> {
     /// Observes the values of the proving key into the challenger.
     pub fn observe_into(&self, challenger: &mut C::Challenger) {
         challenger.observe(self.preprocessed_commit);

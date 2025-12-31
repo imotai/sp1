@@ -186,6 +186,7 @@ pub struct CoreWorker<A, W, C: SP1ProverComponents> {
 }
 
 impl<A, W, C: SP1ProverComponents> CoreWorker<A, W, C> {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         normalize_program_compiler: Arc<NormalizeProgramCompiler>,
         opts: SP1CoreOpts,
@@ -755,9 +756,8 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
 
         let normalize_program_cache = SP1NormalizeCache::new(config.normalize_program_cache_size);
 
-        let recursive_core_verifier = recursive_verifier::<SP1GlobalContext, _, CoreSC, InnerConfig>(
-            core_verifier.shard_verifier(),
-        );
+        let recursive_core_verifier =
+            recursive_verifier::<SP1GlobalContext, _, InnerConfig>(core_verifier.shard_verifier());
 
         let reduce_shape = recursion_prover.reduce_shape().clone();
         let normalize_program_compiler = NormalizeProgramCompiler::new(

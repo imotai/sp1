@@ -6,22 +6,21 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use slop_air::Air;
 use slop_algebra::extension::BinomialExtensionField;
-use slop_alloc::CpuBackend;
 use slop_challenger::IopCtx;
-use slop_jagged::{DefaultJaggedProver, JaggedConfig, JaggedProver, JaggedProverComponents};
-use slop_uni_stark::SymbolicAirBuilder;
+use slop_jagged::{DefaultJaggedProver, JaggedProver, JaggedProverComponents};
+use slop_multilinear::MultilinearPcsProver;
+use slop_stacked::StackedPcsProver;
 use sp1_primitives::{SP1Field, SP1GlobalContext};
 
 use super::{
     DefaultTraceGenerator, MachineProver, MachineProverBuilder, ProverSemaphore, ShardProver,
-    ShardProverComponents, ZerocheckAir, ZerocheckCpuProverData,
+    ShardProverComponents, ZerocheckAir,
 };
 use crate::{
-    air::MachineAir, debug::DebugConstraintBuilder, prover::MachineProverComponents,
-    ConstraintSumcheckFolder, GkrProverImpl, LogupGkrCpuProverComponents, LogupGkrCpuRoundProver,
-    LogupGkrCpuTraceGenerator, SP1CoreJaggedConfig, ShardVerifier,
+    air::MachineAir,
+    prover::{MachineProverComponents, SP1MerkleTreeProver},
+    GkrProverImpl, LogupGkrCpuTraceGenerator, SP1CoreJaggedConfig, ShardVerifier,
 };
 
 /// The components of a CPU shard prover.
@@ -36,16 +35,10 @@ impl<GC, PcsComponents, A> MachineProverComponents<GC>
     for CpuMachineProverComponents<GC, PcsComponents, A>
 where
     GC: IopCtx,
-    PcsComponents: JaggedProverComponents<GC, A = CpuBackend>,
-    A: std::fmt::Debug
-        + MachineAir<GC::F>
-        + Air<SymbolicAirBuilder<GC::F>>
-        + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::F, GC::EF>>
-        + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::EF, GC::EF>>
-        + for<'b> Air<DebugConstraintBuilder<'b, GC::F, GC::EF>>
-        + MachineAir<GC::F>,
+    PcsComponents: JaggedProverComponents<GC>,
+    A: ZerocheckAir<GC::F, GC::EF>,
 {
-    type Config = <PcsComponents as JaggedProverComponents<GC>>::Config;
+    type Config = <PcsComponents as MultilinearPcsProver<GC>>::Verifier;
     type Air = A;
     type Prover = ShardProver<GC, CpuShardProverComponents<GC, PcsComponents, A>>;
 
@@ -73,14 +66,8 @@ pub type CpuShardProver<GC, PcsComponents, A> =
 pub struct CpuProverBuilder<GC, PcsComponents, A>
 where
     GC: IopCtx,
-    PcsComponents: JaggedProverComponents<GC, A = CpuBackend>,
-    A: std::fmt::Debug
-        + MachineAir<GC::F>
-        + Air<SymbolicAirBuilder<GC::F>>
-        + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::F, GC::EF>>
-        + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::EF, GC::EF>>
-        + for<'b> Air<DebugConstraintBuilder<'b, GC::F, GC::EF>>
-        + MachineAir<GC::F>,
+    PcsComponents: JaggedProverComponents<GC>,
+    A: ZerocheckAir<GC::F, GC::EF>,
 {
     inner: MachineProverBuilder<GC, CpuMachineProverComponents<GC, PcsComponents, A>>,
 }
@@ -88,14 +75,8 @@ where
 impl<GC, PcsComponents, A> Deref for CpuProverBuilder<GC, PcsComponents, A>
 where
     GC: IopCtx,
-    PcsComponents: JaggedProverComponents<GC, A = CpuBackend>,
-    A: std::fmt::Debug
-        + MachineAir<GC::F>
-        + Air<SymbolicAirBuilder<GC::F>>
-        + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::F, GC::EF>>
-        + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::EF, GC::EF>>
-        + for<'b> Air<DebugConstraintBuilder<'b, GC::F, GC::EF>>
-        + MachineAir<GC::F>,
+    PcsComponents: JaggedProverComponents<GC>,
+    A: ZerocheckAir<GC::F, GC::EF>,
 {
     type Target = MachineProverBuilder<GC, CpuMachineProverComponents<GC, PcsComponents, A>>;
 
@@ -107,14 +88,8 @@ where
 impl<GC, PcsComponents, A> DerefMut for CpuProverBuilder<GC, PcsComponents, A>
 where
     GC: IopCtx,
-    PcsComponents: JaggedProverComponents<GC, A = CpuBackend>,
-    A: std::fmt::Debug
-        + MachineAir<GC::F>
-        + Air<SymbolicAirBuilder<GC::F>>
-        + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::F, GC::EF>>
-        + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::EF, GC::EF>>
-        + for<'b> Air<DebugConstraintBuilder<'b, GC::F, GC::EF>>
-        + MachineAir<GC::F>,
+    PcsComponents: JaggedProverComponents<GC>,
+    A: ZerocheckAir<GC::F, GC::EF>,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
@@ -125,63 +100,44 @@ impl<GC, A, PcsComponents> ShardProverComponents<GC>
     for CpuShardProverComponents<GC, PcsComponents, A>
 where
     GC: IopCtx,
-    PcsComponents: JaggedProverComponents<GC, A = CpuBackend>,
-    A: std::fmt::Debug
-        + MachineAir<GC::F>
-        + Air<SymbolicAirBuilder<GC::F>>
-        + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::F, GC::EF>>
-        + for<'b> Air<ConstraintSumcheckFolder<'b, GC::F, GC::EF, GC::EF>>
-        + for<'b> Air<DebugConstraintBuilder<'b, GC::F, GC::EF>>
-        + MachineAir<GC::F>,
+    PcsComponents: JaggedProverComponents<GC>,
+    A: ZerocheckAir<GC::F, GC::EF>,
 {
     type Program = <A as MachineAir<GC::F>>::Program;
     type Record = <A as MachineAir<GC::F>>::Record;
     type Air = A;
-    type B = CpuBackend;
 
-    type Config = <PcsComponents as JaggedProverComponents<GC>>::Config;
-
-    type TraceGenerator = DefaultTraceGenerator<GC::F, A, CpuBackend>;
-
-    type ZerocheckProverData = ZerocheckCpuProverData<A>;
-
-    type GkrProver =
-        GkrProverImpl<GC, LogupGkrCpuProverComponents<GC::F, GC::EF, A, GC::Challenger>>;
+    type Config = <PcsComponents as MultilinearPcsProver<GC>>::Verifier;
 
     type PcsProverComponents = PcsComponents;
 }
 
-impl<GC, Comp, A, Config> CpuShardProver<GC, Comp, A>
+impl<GC, Comp, A> CpuShardProver<GC, Comp, A>
 where
     GC: IopCtx,
-    Config: JaggedConfig<GC> + Sync,
-    Comp: JaggedProverComponents<GC, A = CpuBackend, Config = Config> + DefaultJaggedProver<GC>,
-    A: ZerocheckAir<GC::F, GC::EF> + std::fmt::Debug,
+    Comp: JaggedProverComponents<GC> + DefaultJaggedProver<GC>,
+    A: ZerocheckAir<GC::F, GC::EF>,
 {
     /// Create a new CPU prover.
     #[must_use]
-    pub fn new(verifier: ShardVerifier<GC, Config, A>) -> Self {
+    pub fn new(
+        verifier: ShardVerifier<GC, <Comp as MultilinearPcsProver<GC>>::Verifier, A>,
+    ) -> Self {
         // Construct the shard prover.
         let ShardVerifier { jagged_pcs_verifier: pcs_verifier, machine } = verifier;
         let pcs_prover = JaggedProver::from_verifier(&pcs_verifier);
         let trace_generator = DefaultTraceGenerator::new(machine);
-        let zerocheck_data = ZerocheckCpuProverData::default();
         let logup_gkr_trace_generator = LogupGkrCpuTraceGenerator::default();
-        let logup_gkr_prover =
-            GkrProverImpl::new(logup_gkr_trace_generator, LogupGkrCpuRoundProver);
+        let logup_gkr_prover = GkrProverImpl::new(logup_gkr_trace_generator);
 
-        Self {
-            trace_generator,
-            logup_gkr_prover,
-            zerocheck_prover_data: zerocheck_data,
-            pcs_prover,
-        }
+        Self { trace_generator, logup_gkr_prover, pcs_prover }
     }
 }
 
-impl<A> CpuProverBuilder<SP1GlobalContext, crate::SP1CpuJaggedProverComponents, A>
+impl<A>
+    CpuProverBuilder<SP1GlobalContext, StackedPcsProver<SP1MerkleTreeProver, SP1GlobalContext>, A>
 where
-    A: ZerocheckAir<SP1Field, BinomialExtensionField<SP1Field, 4>> + std::fmt::Debug,
+    A: ZerocheckAir<SP1Field, BinomialExtensionField<SP1Field, 4>>,
 {
     // /// Create a new CPU prover builder from a verifier and resource options.
     // #[must_use]

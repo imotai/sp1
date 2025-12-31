@@ -1,28 +1,25 @@
 use futures::{future::join_all, prelude::*};
 use rand::{distributions::Standard, prelude::Distribution, Rng};
+use slop_stacked::interleave_multilinears_with_fixed_rate;
 use std::sync::Arc;
 
 use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, Field};
-use slop_alloc::{Backend, CpuBackend, HasBackend, ToHost};
+use slop_alloc::{CpuBackend, HasBackend, ToHost};
 use slop_commit::Message;
-use slop_multilinear::{
-    Mle, MleBaseBackend, MleEvaluationBackend, MleFixLastVariableBackend,
-    MleFixLastVariableInPlaceBackend, Point, PointBackend,
-};
-use slop_stacked::{FixedRateInterleave, FixedRateInterleaveBackend, InterleaveMultilinears};
+use slop_multilinear::{Mle, Point};
 
 #[derive(Clone, Debug)]
-pub struct LongMle<F, A: Backend = CpuBackend> {
-    components: Message<Mle<F, A>>,
+pub struct LongMle<F> {
+    components: Message<Mle<F, CpuBackend>>,
     log_stacking_height: u32,
 }
 
-impl<F, A: Backend> LongMle<F, A> {
-    pub const fn new(components: Message<Mle<F, A>>, log_stacking_height: u32) -> Self {
+impl<F> LongMle<F> {
+    pub const fn new(components: Message<Mle<F>>, log_stacking_height: u32) -> Self {
         Self { components, log_stacking_height }
     }
 
-    pub fn from_components(components: Vec<Mle<F, A>>, log_stacking_height: u32) -> Self {
+    pub fn from_components(components: Vec<Mle<F>>, log_stacking_height: u32) -> Self {
         Self { components: Message::from(components), log_stacking_height }
     }
 
@@ -32,24 +29,22 @@ impl<F, A: Backend> LongMle<F, A> {
     }
 
     #[inline]
-    pub fn into_components(self) -> Message<Mle<F, A>> {
+    pub fn into_components(self) -> Message<Mle<F>> {
         self.components
     }
 
-    pub fn from_message(message: Message<Mle<F, A>>, log_stacking_height: u32) -> Self {
+    pub fn from_message(message: Message<Mle<F>>, log_stacking_height: u32) -> Self {
         Self { components: message, log_stacking_height }
     }
 
     pub async fn eval_at<EF>(&self, point: &Point<EF>) -> EF
     where
-        F: AbstractField,
+        F: Field,
         EF: AbstractExtensionField<F> + 'static + Send + Sync,
-        A: MleEvaluationBackend<F, EF> + PointBackend<EF>,
     {
         // Split the point into the interleaved and batched parts.
         let (batch_point, stack_point) =
             point.split_at(point.dimension() - self.log_stacking_height as usize);
-        let stack_point = self.backend().copy_to(&stack_point).await.unwrap();
 
         let component_evaluations = stream::iter(self.components.iter())
             .then(|mle| mle.eval_at(&stack_point))
@@ -71,11 +66,10 @@ impl<F, A: Backend> LongMle<F, A> {
         evaluations_mle.eval_at(&batch_point).await[0].clone()
     }
 
-    pub async fn fix_last_variable<EF>(self, alpha: EF) -> LongMle<EF, A>
+    pub async fn fix_last_variable<EF>(self, alpha: EF) -> LongMle<EF>
     where
         F: Field,
         EF: ExtensionField<F> + Copy,
-        A: MleFixLastVariableBackend<F, EF> + FixedRateInterleaveBackend<F>,
     {
         if self.log_stacking_height <= 2 {
             let total_num_of_variables = self
@@ -85,9 +79,9 @@ impl<F, A: Backend> LongMle<F, A> {
                 .sum::<usize>()
                 .next_power_of_two()
                 .ilog2();
-            let stacker = FixedRateInterleave::<F, A>::new(1);
             let new_components =
-                stacker.interleave_multilinears(self.components, total_num_of_variables).await;
+                interleave_multilinears_with_fixed_rate(1, self.components, total_num_of_variables)
+                    .await;
             let restacked_mle =
                 LongMle { components: new_components, log_stacking_height: total_num_of_variables };
             let components =
@@ -110,52 +104,10 @@ impl<F, A: Backend> LongMle<F, A> {
         }
     }
 
-    pub async fn fix_last_variable_in_place(self, alpha: F) -> Self
-    where
-        F: Field,
-        A: MleFixLastVariableInPlaceBackend<F>
-            + MleFixLastVariableBackend<F, F>
-            + FixedRateInterleaveBackend<F>,
-    {
-        if self.log_stacking_height == 0 {
-            let total_num_of_variables = self
-                .components
-                .iter()
-                .map(|mle| mle.num_polynomials())
-                .sum::<usize>()
-                .next_power_of_two()
-                .ilog2();
-            let stacker = FixedRateInterleave::<F, A>::new(1);
-            let new_components = stacker
-                .interleave_multilinears(self.components.clone(), total_num_of_variables)
-                .await;
-            let restacked_mle =
-                LongMle { components: new_components, log_stacking_height: total_num_of_variables };
-            let components = stream::iter(restacked_mle.components.iter())
-                .then(move |mle| mle.fix_last_variable(alpha))
-                .collect::<Message<_>>()
-                .await;
-            return LongMle {
-                components,
-                log_stacking_height: restacked_mle.log_stacking_height - 1,
-            };
-        }
-        let components = stream::iter(self.components.into_iter())
-            .then(move |mle| async move {
-                let mut mle = Arc::into_inner(mle).unwrap();
-                mle.fix_last_variable_in_place(alpha).await;
-                mle
-            })
-            .collect::<Message<_>>()
-            .await;
-        LongMle { components, log_stacking_height: self.log_stacking_height - 1 }
-    }
-
     #[inline]
     pub fn num_variables(&self) -> u32
     where
         F: AbstractField,
-        A: MleBaseBackend<F>,
     {
         self.components
             .iter()
@@ -165,12 +117,12 @@ impl<F, A: Backend> LongMle<F, A> {
     }
 
     #[inline]
-    pub fn get_component_mle(&self, index: usize) -> &Mle<F, A> {
+    pub fn get_component_mle(&self, index: usize) -> &Mle<F> {
         &self.components[index]
     }
 
     #[inline]
-    pub fn first_component_mle(&self) -> &Arc<Mle<F, A>> {
+    pub fn first_component_mle(&self) -> &Arc<Mle<F>> {
         &self.components[0]
     }
 
@@ -180,20 +132,20 @@ impl<F, A: Backend> LongMle<F, A> {
     }
 
     #[inline]
-    pub fn components(&self) -> &Message<Mle<F, A>> {
+    pub fn components(&self) -> &Message<Mle<F>> {
         &self.components
     }
 }
 
-impl<F, A: Backend> HasBackend for LongMle<F, A> {
-    type Backend = A;
+impl<F> HasBackend for LongMle<F> {
+    type Backend = CpuBackend;
     #[inline]
     fn backend(&self) -> &Self::Backend {
         self.components[0].backend()
     }
 }
 
-impl<F> LongMle<F, CpuBackend> {
+impl<F> LongMle<F> {
     pub fn rand<R: Rng>(
         rng: &mut R,
         num_variables: u32,

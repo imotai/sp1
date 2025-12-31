@@ -1,25 +1,28 @@
-use std::marker::PhantomData;
-
-use slop_algebra::AbstractField;
+use slop_algebra::{AbstractField, TwoAdicField};
 use slop_alloc::CpuBackend;
+use slop_basefold::BasefoldProof;
+use slop_basefold_prover::{BaseFoldConfigProverError, BasefoldProver, BasefoldProverData};
 use slop_challenger::IopCtx;
 use slop_commit::{Message, Rounds};
-use slop_multilinear::{
-    Evaluations, Mle, MultilinearPcsBatchProver, MultilinearPcsBatchVerifier, Point,
-};
+use slop_merkle_tree::ComputeTcsOpenings;
+use slop_multilinear::{Evaluations, Mle, Point};
 use slop_sumcheck::{reduce_sumcheck_to_evaluation, PartialSumcheckProof};
 
 use crate::{sparse_poly::SparsePolynomial, sumcheck_polynomials::SparsePCSSumcheckPoly};
 
-pub struct SparsePCSProver<GC: IopCtx, MP: MultilinearPcsBatchProver<GC>> {
-    pub multilinear_prover: MP,
-    _global_config: PhantomData<GC>,
+pub struct SparsePCSProver<GC: IopCtx, P: ComputeTcsOpenings<GC, CpuBackend>>
+where
+    GC::F: TwoAdicField,
+{
+    pub multilinear_prover: BasefoldProver<GC, P>,
 }
 
-pub struct ProverData<GC: IopCtx, MP: MultilinearPcsBatchProver<GC>> {
-    pub multilinear_prover_data: MP::ProverData,
-    pub mles: Message<Mle<GC::F, MP::A>>,
-    _prover: PhantomData<MP>,
+pub struct ProverData<GC: IopCtx, P: ComputeTcsOpenings<GC, CpuBackend>>
+where
+    GC::F: TwoAdicField,
+{
+    pub multilinear_prover_data: BasefoldProverData<GC::F, P::ProverData>,
+    pub mles: Message<Mle<GC::F, CpuBackend>>,
 }
 
 pub struct Proof<EF, PCSProof> {
@@ -28,15 +31,19 @@ pub struct Proof<EF, PCSProof> {
     pub pcs_proof: PCSProof,
 }
 
-impl<GC: IopCtx, MP: MultilinearPcsBatchProver<GC, A = CpuBackend>> SparsePCSProver<GC, MP> {
-    pub fn new(prover: MP) -> Self {
-        Self { multilinear_prover: prover, _global_config: PhantomData }
+impl<GC: IopCtx, P: ComputeTcsOpenings<GC, CpuBackend>> SparsePCSProver<GC, P>
+where
+    GC::F: TwoAdicField,
+    GC::EF: TwoAdicField,
+{
+    pub fn new(prover: BasefoldProver<GC, P>) -> Self {
+        Self { multilinear_prover: prover }
     }
 
     pub async fn commit_sparse_poly(
         &self,
         poly: &SparsePolynomial<GC::F>,
-    ) -> Result<(GC::Digest, ProverData<GC, MP>), MP::ProverError> {
+    ) -> Result<(GC::Digest, ProverData<GC, P>), BaseFoldConfigProverError<GC, P>> {
         // TODO: Implement batching
         // TODO: This is always done in a trusted setting, can something be optimized here?
 
@@ -46,25 +53,18 @@ impl<GC: IopCtx, MP: MultilinearPcsBatchProver<GC, A = CpuBackend>> SparsePCSPro
 
         // Commit them as a MLE
         let mles: Message<Mle<_>> = mles.into();
-        let (commitment, prover_data) =
-            self.multilinear_prover.commit_multilinears(mles.clone()).await?;
+        let (commitment, prover_data) = self.multilinear_prover.commit_mles(mles.clone()).await?;
 
-        Ok((
-            commitment,
-            ProverData { multilinear_prover_data: prover_data, mles, _prover: Default::default() },
-        ))
+        Ok((commitment, ProverData { multilinear_prover_data: prover_data, mles }))
     }
 
     pub async fn prove_evaluation(
         &self,
         poly: &SparsePolynomial<GC::F>,
         eval_point: &Point<GC::EF>,
-        prover_data: ProverData<GC, MP>,
+        prover_data: ProverData<GC, P>,
         challenger: &mut GC::Challenger,
-    ) -> Result<
-        Proof<GC::EF, <MP::Verifier as MultilinearPcsBatchVerifier<GC>>::Proof>,
-        MP::ProverError,
-    > {
+    ) -> Result<Proof<GC::EF, BasefoldProof<GC>>, BaseFoldConfigProverError<GC, P>> {
         // Compute the evaluation claim
         let v = poly.eval_at(eval_point);
 
@@ -113,7 +113,8 @@ mod tests {
     use slop_algebra::extension::BinomialExtensionField;
     use slop_baby_bear::{baby_bear_poseidon2::BabyBearDegree4Duplex, BabyBear};
     use slop_basefold::{BasefoldVerifier, FriConfig};
-    use slop_basefold_prover::{BasefoldProver, Poseidon2BabyBear16BasefoldCpuProverComponents};
+    use slop_basefold_prover::BasefoldProver;
+    use slop_merkle_tree::Poseidon2BabyBear16Prover;
 
     use crate::verifier::SparsePCSVerifier;
 
@@ -122,7 +123,7 @@ mod tests {
     #[tokio::test]
     async fn test_sparse_polynomial_prover() {
         type GC = BabyBearDegree4Duplex;
-        type BackendProver = BasefoldProver<GC, Poseidon2BabyBear16BasefoldCpuProverComponents>;
+        type BackendProver = BasefoldProver<GC, Poseidon2BabyBear16Prover>;
         type BackendVerifier = BasefoldVerifier<GC>;
         type F = BabyBear;
         type EF = BinomialExtensionField<BabyBear, 4>;

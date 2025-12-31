@@ -1,12 +1,15 @@
+use derive_where::derive_where;
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
+use slop_algebra::TwoAdicField;
+use slop_basefold::{BaseFoldVerifierError, BasefoldProof, BasefoldVerifier};
 use slop_challenger::IopCtx;
 use slop_commit::Rounds;
-use slop_multilinear::{Mle, MleEval, MultilinearPcsBatchVerifier, MultilinearPcsVerifier, Point};
+use slop_merkle_tree::MerkleTreeTcsError;
+use slop_multilinear::{Mle, MleEval, MultilinearPcsVerifier, Point};
 use thiserror::Error;
-#[derive(Debug, Clone)]
-pub struct StackedPcsVerifier<GC, P> {
-    pub pcs_verifier: P,
+#[derive(Clone, Debug)]
+pub struct StackedPcsVerifier<GC: IopCtx> {
+    pub basefold_verifier: BasefoldVerifier<GC>,
     pub log_stacking_height: u32,
     _marker: std::marker::PhantomData<GC>,
 }
@@ -21,20 +24,16 @@ pub enum StackedVerifierError<PcsError> {
     IncorrectShape,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StackedPcsProof<PcsProof, EF> {
-    pub pcs_proof: PcsProof,
-    pub batch_evaluations: Rounds<MleEval<EF>>,
+#[derive_where(Debug, Clone, Serialize, Deserialize; MleEval<GC::EF>, BasefoldProof<GC>)]
+pub struct StackedBasefoldProof<GC: IopCtx> {
+    pub basefold_proof: BasefoldProof<GC>,
+    pub batch_evaluations: Rounds<MleEval<GC::EF>>,
 }
 
-impl<GC: IopCtx, P: MultilinearPcsBatchVerifier<GC>> StackedPcsVerifier<GC, P> {
-    pub fn challenger(&self) -> GC::Challenger {
-        self.pcs_verifier.default_challenger()
-    }
-
+impl<GC: IopCtx> StackedPcsVerifier<GC> {
     #[inline]
-    pub const fn new(pcs_verifier: P, log_stacking_height: u32) -> Self {
-        Self { pcs_verifier, log_stacking_height, _marker: std::marker::PhantomData }
+    pub const fn new(basefold_verifier: BasefoldVerifier<GC>, log_stacking_height: u32) -> Self {
+        Self { basefold_verifier, log_stacking_height, _marker: std::marker::PhantomData }
     }
 
     pub fn verify_trusted_evaluation(
@@ -42,10 +41,13 @@ impl<GC: IopCtx, P: MultilinearPcsBatchVerifier<GC>> StackedPcsVerifier<GC, P> {
         commitments: &[GC::Digest],
         round_areas: &[usize],
         point: &Point<GC::EF>,
-        proof: &StackedPcsProof<P::Proof, GC::EF>,
+        proof: &StackedBasefoldProof<GC>,
         evaluation_claim: GC::EF,
         challenger: &mut GC::Challenger,
-    ) -> Result<(), StackedVerifierError<P::VerifierError>> {
+    ) -> Result<(), StackedVerifierError<BaseFoldVerifierError<MerkleTreeTcsError>>>
+    where
+        GC::F: TwoAdicField,
+    {
         if point.dimension() < self.log_stacking_height as usize {
             return Err(StackedVerifierError::IncorrectShape);
         }
@@ -84,33 +86,29 @@ impl<GC: IopCtx, P: MultilinearPcsBatchVerifier<GC>> StackedPcsVerifier<GC, P> {
         // Verify the PCS proof with respect to the claimed evaluations.
         // It is assumed that the multilinear batch PCS verifier checks that the number of
         // commitments is as expected.
-        self.pcs_verifier
+        self.basefold_verifier
             .verify_untrusted_evaluations(
                 commitments,
                 stack_point,
                 &proof.batch_evaluations,
-                &proof.pcs_proof,
+                &proof.basefold_proof,
                 challenger,
             )
             .map_err(StackedVerifierError::PcsError)
     }
 }
 
-impl<GC: IopCtx, P: MultilinearPcsBatchVerifier<GC>> MultilinearPcsVerifier<GC>
-    for StackedPcsVerifier<GC, P>
+impl<GC: IopCtx> MultilinearPcsVerifier<GC> for StackedPcsVerifier<GC>
+where
+    GC::F: TwoAdicField,
 {
-    type VerifierError = StackedVerifierError<P::VerifierError>;
+    type VerifierError = StackedVerifierError<BaseFoldVerifierError<MerkleTreeTcsError>>;
+
+    type Proof = StackedBasefoldProof<GC>;
 
     fn num_expected_commitments(&self) -> usize {
-        self.pcs_verifier.num_expected_commitments()
+        self.basefold_verifier.num_expected_commitments
     }
-
-    fn default_challenger(&self) -> GC::Challenger {
-        self.challenger()
-    }
-
-    type Proof = StackedPcsProof<P::Proof, GC::EF>;
-
     fn verify_trusted_evaluation(
         &self,
         commitments: &[<GC as IopCtx>::Digest],
@@ -128,5 +126,17 @@ impl<GC: IopCtx, P: MultilinearPcsBatchVerifier<GC>> MultilinearPcsVerifier<GC>
             evaluation_claim,
             challenger,
         )
+    }
+
+    /// The jagged verifier will assume that the underlying PCS will pad commitments to a multiple
+    /// of `1<<log.stacking_height(verifier)`.
+    fn log_stacking_height(verifier: &Self) -> u32 {
+        verifier.log_stacking_height
+    }
+
+    /// Functionality to deduce round by round from the proof the multiples of `1<<log.stacking_height`
+    /// corresponding to the round's total polynomial size.
+    fn round_multiples(proof: &StackedBasefoldProof<GC>) -> Vec<usize> {
+        proof.batch_evaluations.iter().map(|e| e.iter().count()).collect()
     }
 }

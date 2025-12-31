@@ -17,13 +17,9 @@
 //! the interleaving algorithm of `Ligero`(https://eprint.iacr.org/2022/1608).
 
 mod fixed_rate;
-mod greedy;
-mod interleave;
 mod prover;
 mod verifier;
 
 pub use fixed_rate::*;
-pub use greedy::*;
-pub use interleave::*;
 pub use prover::*;
 pub use verifier::*;

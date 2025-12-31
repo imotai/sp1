@@ -1,6 +1,5 @@
 use crate::{
-    JaggedConfig, JaggedError, JaggedEvalSumcheckConfig, JaggedLittlePolynomialVerifierParams,
-    JaggedSumcheckEvalProof,
+    JaggedEvalSumcheckConfig, JaggedLittlePolynomialVerifierParams, JaggedSumcheckEvalProof,
 };
 use itertools::{izip, Itertools};
 use serde::{Deserialize, Serialize};
@@ -16,8 +15,8 @@ use thiserror::Error;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(serialize = "", deserialize = ""))]
-pub struct JaggedPcsProof<GC: IopCtx, C: JaggedConfig<GC>> {
-    pub pcs_proof: <C::PcsVerifier as MultilinearPcsVerifier<GC>>::Proof,
+pub struct JaggedPcsProof<GC: IopCtx, C: MultilinearPcsVerifier<GC>> {
+    pub pcs_proof: C::Proof,
     pub sumcheck_proof: PartialSumcheckProof<GC::EF>,
     pub jagged_eval_proof: JaggedSumcheckEvalProof<GC::EF>,
     pub row_counts_and_column_counts: Rounds<Vec<(usize, usize)>>,
@@ -28,9 +27,16 @@ pub struct JaggedPcsProof<GC: IopCtx, C: JaggedConfig<GC>> {
 }
 
 #[derive(Debug, Clone)]
-pub struct JaggedPcsVerifier<GC: IopCtx, C: JaggedConfig<GC>> {
-    pub pcs_verifier: C::PcsVerifier,
+pub struct JaggedPcsVerifier<GC, C> {
+    pub pcs_verifier: C,
     pub max_log_row_count: usize,
+    _marker: std::marker::PhantomData<GC>,
+}
+
+impl<GC, C> JaggedPcsVerifier<GC, C> {
+    pub fn new(pcs_verifier: C, max_log_row_count: usize) -> Self {
+        Self { pcs_verifier, max_log_row_count, _marker: std::marker::PhantomData }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -96,9 +102,9 @@ pub fn unzip_and_prefix_sums(
     PrefixSumsMaxLogRowCount { row_counts, column_counts, usize_prefix_sums, log_m: log_trace }
 }
 
-impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
+impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>> JaggedPcsVerifier<GC, C> {
     pub fn challenger(&self) -> GC::Challenger {
-        self.pcs_verifier.default_challenger()
+        GC::default_challenger()
     }
 
     pub fn verify_trusted_evaluations(
@@ -108,7 +114,7 @@ impl<GC: IopCtx, C: JaggedConfig<GC>> JaggedPcsVerifier<GC, C> {
         evaluation_claims: &[MleEval<GC::EF>],
         proof: &JaggedPcsProof<GC, C>,
         challenger: &mut GC::Challenger,
-    ) -> Result<(), JaggedPcsVerifierError<GC::EF, JaggedError<GC, C>>> {
+    ) -> Result<(), JaggedPcsVerifierError<GC::EF, C::VerifierError>> {
         let JaggedPcsProof {
             pcs_proof,
             sumcheck_proof,

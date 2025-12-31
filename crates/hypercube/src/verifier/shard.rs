@@ -1,7 +1,9 @@
 use derive_where::derive_where;
 use slop_basefold::FriConfig;
 use slop_merkle_tree::MerkleTreeTcs;
-use slop_whir::{Verifier, WhirJaggedConfig, WhirProofShape};
+#[allow(clippy::disallowed_types)]
+use slop_stacked::StackedPcsVerifier;
+use slop_whir::{Verifier, WhirProofShape};
 use std::{
     cmp::max,
     collections::{BTreeMap, BTreeSet},
@@ -15,7 +17,7 @@ use slop_air::{Air, BaseAir};
 use slop_algebra::{AbstractField, PrimeField32, TwoAdicField};
 use slop_challenger::{CanObserve, FieldChallenger, IopCtx, VariableLengthChallenger};
 use slop_commit::Rounds;
-use slop_jagged::{JaggedBasefoldConfig, JaggedConfig, JaggedPcsVerifier, JaggedPcsVerifierError};
+use slop_jagged::{JaggedPcsVerifier, JaggedPcsVerifierError};
 use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{full_geq, Evaluations, Mle, MleEval, MultilinearPcsVerifier, Point};
 use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
@@ -34,9 +36,13 @@ use crate::record::MachineRecord;
 /// commitments.
 pub const NUM_SP1_COMMITMENTS: usize = 2;
 
+#[allow(clippy::disallowed_types)]
+/// The Multilinear PCS used in SP1 shard proofs.
+pub type SP1Pcs<GC> = StackedPcsVerifier<GC>;
+
 /// A verifier for shard proofs.
 #[derive_where(Clone)]
-pub struct ShardVerifier<GC: IopCtx, C: JaggedConfig<GC>, A: MachineAir<GC::F>> {
+pub struct ShardVerifier<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> {
     /// The jagged pcs verifier.
     pub jagged_pcs_verifier: JaggedPcsVerifier<GC, C>,
     /// The machine.
@@ -92,10 +98,8 @@ pub enum ShardVerifierError<EF, PcsError> {
 }
 
 /// Derive the error type from the jagged config.
-pub type ShardVerifierConfigError<GC, C> = ShardVerifierError<
-    <GC as IopCtx>::EF,
-    <<C as JaggedConfig<GC>>::PcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
->;
+pub type ShardVerifierConfigError<GC, C> =
+    ShardVerifierError<<GC as IopCtx>::EF, <C as MultilinearPcsVerifier<GC>>::VerifierError>;
 
 /// An error that occurs when the shape of the openings does not match the expected shape.
 #[derive(Debug, Error)]
@@ -108,7 +112,7 @@ pub enum OpeningShapeError {
     MainWidthMismatch(usize, usize),
 }
 
-impl<GC: IopCtx, C: JaggedConfig<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C, A> {
+impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C, A> {
     /// Get a shard verifier from a jagged pcs verifier.
     pub fn new(pcs_verifier: JaggedPcsVerifier<GC, C>, machine: Machine<GC::F, A>) -> Self {
         Self { jagged_pcs_verifier: pcs_verifier, machine }
@@ -247,7 +251,7 @@ impl<GC: IopCtx, C: JaggedConfig<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C,
     }
 }
 
-impl<GC: IopCtx, C: JaggedConfig<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C, A>
+impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C, A>
 where
     GC::F: PrimeField32,
 {
@@ -262,10 +266,7 @@ where
         proof: &ShardProof<GC, C>,
         public_values: &[GC::F],
         challenger: &mut GC::Challenger,
-    ) -> Result<
-        (),
-        ShardVerifierError<GC::EF, <C::PcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError>,
-    >
+    ) -> Result<(), ShardVerifierError<GC::EF, <C as MultilinearPcsVerifier<GC>>::VerifierError>>
     where
         A: for<'a> Air<VerifierConstraintFolder<'a, GC>>,
     {
@@ -337,7 +338,7 @@ where
         if proof.zerocheck_proof.point_and_eval.1 != rlc_eval {
             return Err(ShardVerifierError::<
                 _,
-                <C::PcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
+                <C as MultilinearPcsVerifier<GC>>::VerifierError,
             >::ConstraintsCheckFailed(SumcheckError::InconsistencyWithEval));
         }
 
@@ -372,7 +373,7 @@ where
         if proof.zerocheck_proof.claimed_sum != zerocheck_sum_modification {
             return Err(ShardVerifierError::<
                 _,
-                <C::PcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
+                <C as MultilinearPcsVerifier<GC>>::VerifierError,
             >::ConstraintsCheckFailed(
                 SumcheckError::InconsistencyWithClaimedSum
             ));
@@ -388,7 +389,7 @@ where
         .map_err(|e| {
             ShardVerifierError::<
                 _,
-                <C::PcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
+                <C as MultilinearPcsVerifier<GC>>::VerifierError,
             >::ConstraintsCheckFailed(e)
         })?;
 
@@ -426,7 +427,7 @@ where
         } else {
             Err(ShardVerifierError::<
                 _,
-                <C::PcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
+                <C as MultilinearPcsVerifier<GC>>::VerifierError,
             >::InvalidPublicValues)
         }
     }
@@ -771,8 +772,7 @@ where
     }
 }
 
-impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, A>
-    ShardVerifier<GC, JaggedBasefoldConfig<GC>, A>
+impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, A> ShardVerifier<GC, SP1Pcs<GC>, A>
 where
     A: MachineAir<GC::F>,
     GC::F: PrimeField32,
@@ -785,7 +785,7 @@ where
         max_log_row_count: usize,
         machine: Machine<GC::F, A>,
     ) -> Self {
-        let pcs_verifier = JaggedPcsVerifier::new(
+        let pcs_verifier = JaggedPcsVerifier::new_from_basefold_params(
             fri_config,
             log_stacking_height,
             max_log_row_count,
@@ -795,7 +795,7 @@ where
     }
 }
 
-impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, A> ShardVerifier<GC, WhirJaggedConfig<GC>, A>
+impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, A> ShardVerifier<GC, Verifier<GC>, A>
 where
     A: MachineAir<GC::F>,
     GC::F: PrimeField32,
@@ -812,10 +812,8 @@ where
         let verifier =
             Verifier::<GC>::new(merkle_verifier, config.clone(), num_expected_commitments);
 
-        let jagged_verifier = JaggedPcsVerifier::<GC, WhirJaggedConfig<GC>> {
-            pcs_verifier: verifier,
-            max_log_row_count,
-        };
+        let jagged_verifier =
+            JaggedPcsVerifier::<GC, Verifier<GC>>::new(verifier, max_log_row_count);
         Self { jagged_pcs_verifier: jagged_verifier, machine }
     }
 }

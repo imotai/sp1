@@ -3,16 +3,13 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
 use slop_algebra::{AbstractField, Field};
-use slop_alloc::{Backend, Buffer, CanCopyFrom, CanCopyFromRef, CanCopyIntoRef, CpuBackend};
+use slop_alloc::{Backend, CanCopyFromRef, CpuBackend};
 use slop_challenger::{CanObserve, FieldChallenger, IopCtx, VariableLengthChallenger};
 use slop_commit::Rounds;
-use slop_jagged::{
-    JaggedBackend, JaggedConfig, JaggedProver, JaggedProverComponents, JaggedProverData,
-};
+use slop_jagged::{JaggedProver, JaggedProverComponents, JaggedProverData};
 use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{
-    Evaluations, HostEvaluationBackend, Mle, MleEval, MultilinearPcsProver, PaddedMle, Point,
-    PointBackend, VirtualGeq,
+    Evaluations, MleEval, MultilinearPcsProver, MultilinearPcsVerifier, Point, VirtualGeq,
 };
 use slop_sumcheck::{reduce_sumcheck_to_evaluation, PartialSumcheckProof};
 use slop_tensor::Tensor;
@@ -28,24 +25,26 @@ use tracing::Instrument;
 
 use crate::{
     air::{MachineAir, MachineProgram},
-    prover::{ProverPermit, ProverSemaphore, ZeroCheckPoly, ZerocheckAir},
+    prover::{
+        DefaultTraceGenerator, ProverPermit, ProverSemaphore, ZeroCheckPoly, ZerocheckAir,
+        ZerocheckCpuProverData,
+    },
     septic_digest::SepticDigest,
     AirOpenedValues, Chip, ChipEvaluation, ChipOpenedValues, ChipStatistics,
-    ConstraintSumcheckFolder, LogUpEvaluations, LogUpGkrProver, Machine, MachineRecord,
+    ConstraintSumcheckFolder, GkrProverImpl, LogUpEvaluations, Machine, MachineRecord,
     MachineVerifyingKey, ShardOpenedValues, ShardProof,
 };
 
-use super::{TraceGenerator, Traces, ZercocheckBackend, ZerocheckProverData};
+use super::{TraceGenerator, Traces};
 
 type ShardProverComponentsJaggedProverData<GC, C> = JaggedProverData<
     GC,
-    <<<C as ShardProverComponents<GC>>::PcsProverComponents as JaggedProverComponents<GC>>::BatchPcsProver
-        as MultilinearPcsProver<GC>>::ProverData,
+    <<C as ShardProverComponents<GC>>::PcsProverComponents as MultilinearPcsProver<GC>>::ProverData,
 >;
 
 /// A prover for an AIR.
 #[allow(clippy::type_complexity)]
-pub trait AirProver<GC: IopCtx, C: JaggedConfig<GC>, Air: MachineAir<GC::F>>:
+pub trait AirProver<GC: IopCtx, C: MultilinearPcsVerifier<GC>, Air: MachineAir<GC::F>>:
     'static + Send + Sync + Sized
 {
     /// The proving key type.
@@ -107,7 +106,7 @@ pub trait AirProver<GC: IopCtx, C: JaggedConfig<GC>, Air: MachineAir<GC::F>>:
 /// A proving key for an AIR prover.
 pub struct ProvingKey<
     GC: IopCtx,
-    C: JaggedConfig<GC>,
+    C: MultilinearPcsVerifier<GC>,
     Air: MachineAir<GC::F>,
     Prover: AirProver<GC, C, Air>,
 > {
@@ -127,36 +126,13 @@ pub trait ShardProverComponents<GC: IopCtx>: 'static + Send + Sync + Sized {
     type Record: MachineRecord;
     /// The Air for which this prover.
     type Air: ZerocheckAir<GC::F, GC::EF, Program = Self::Program, Record = Self::Record>;
-    /// The backend used by the prover.
-    type B: JaggedBackend<GC::F, GC::EF>
-        + ZercocheckBackend<GC::F, GC::EF, Self::ZerocheckProverData>
-        + PointBackend<GC::EF>
-        + HostEvaluationBackend<GC::F, GC::EF>
-        + HostEvaluationBackend<GC::F, GC::F>
-        + HostEvaluationBackend<GC::EF, GC::EF>
-        + CanCopyFrom<Buffer<GC::EF>, CpuBackend, Output = Buffer<GC::EF, Self::B>>
-        + CanCopyIntoRef<Mle<GC::F, Self::B>, CpuBackend, Output = Mle<GC::F>>
-        + CanCopyIntoRef<PaddedMle<GC::F, Self::B>, CpuBackend, Output = PaddedMle<GC::F>>;
 
     /// The machine configuration for which this prover can make proofs for.
-    type Config: JaggedConfig<GC>;
-
-    /// The trace generator.
-    type TraceGenerator: TraceGenerator<GC::F, Self::Air, Self::B>;
-
-    /// The zerocheck prover data.
-    ///
-    /// The zerocheck prover data contains the information needed to make a zerocheck prover given
-    /// an AIR. The zerocheck prover implements the zerocheck IOP and reduces the claim that
-    /// constraints vanish into an evaluation claim at a random point for the traces, considered
-    /// as multilinear polynomials.
-    type ZerocheckProverData: ZerocheckProverData<GC::F, GC::EF, Self::B, Air = Self::Air>;
-
-    /// The necessary pieces to form a GKR proof for the `LogUp` permutation argument.
-    type GkrProver: LogUpGkrProver<GC, A = Self::Air, B = Self::B>;
+    type Config: MultilinearPcsVerifier<GC>;
 
     /// The components of the jagged PCS prover.
-    type PcsProverComponents: JaggedProverComponents<GC, A = Self::B, Config = Self::Config>
+    type PcsProverComponents: MultilinearPcsProver<GC, Verifier = Self::Config>
+        + JaggedProverComponents<GC>
         + Send
         + Sync
         + 'static;
@@ -168,7 +144,7 @@ pub struct ShardData<GC: IopCtx, C: ShardProverComponents<GC>> {
     /// The proving key.
     pub pk: Arc<ProvingKey<GC, C::Config, C::Air, ShardProver<GC, C>>>,
     /// Main trace data
-    pub main_trace_data: MainTraceData<GC::F, C::Air, C::B>,
+    pub main_trace_data: MainTraceData<GC::F, C::Air, CpuBackend>,
 }
 
 /// The main traces for a program, with a permit.
@@ -222,11 +198,9 @@ impl<T> PreprocessedData<T> {
 /// A prover for the hypercube STARK, given a configuration.
 pub struct ShardProver<GC: IopCtx, C: ShardProverComponents<GC>> {
     /// The trace generator.
-    pub trace_generator: C::TraceGenerator,
+    pub trace_generator: DefaultTraceGenerator<GC::F, C::Air, CpuBackend>,
     /// The logup GKR prover.
-    pub logup_gkr_prover: C::GkrProver,
-    /// A prover for the zerocheck IOP.
-    pub zerocheck_prover_data: C::ZerocheckProverData,
+    pub logup_gkr_prover: GkrProverImpl<GC, (C::Config, C::Air)>,
     /// A prover for the PCS.
     pub pcs_prover: JaggedProver<GC, C::PcsProverComponents>,
 }
@@ -381,7 +355,7 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
         &self,
         pc_start: [GC::F; 3],
         initial_global_cumulative_sum: SepticDigest<GC::F>,
-        preprocessed_traces: Traces<GC::F, C::B>,
+        preprocessed_traces: Traces<GC::F, CpuBackend>,
         enable_untrusted_programs: GC::F,
     ) -> (ShardProverData<GC, C>, MachineVerifyingKey<GC, C::Config>) {
         // Commit to the preprocessed traces, if there are any.
@@ -440,7 +414,7 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
 
     async fn commit_traces(
         &self,
-        traces: &Traces<GC::F, C::B>,
+        traces: &Traces<GC::F, CpuBackend>,
     ) -> (GC::Digest, ShardProverComponentsJaggedProverData<GC, C>) {
         let message = traces.values().cloned().collect::<Vec<_>>();
         self.pcs_prover.commit_multilinears(message).await.unwrap()
@@ -451,8 +425,8 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
     async fn zerocheck(
         &self,
         chips: &BTreeSet<Chip<GC::F, C::Air>>,
-        preprocessed_traces: Traces<GC::F, C::B>,
-        traces: Traces<GC::F, C::B>,
+        preprocessed_traces: Traces<GC::F, CpuBackend>,
+        traces: Traces<GC::F, CpuBackend>,
         batching_challenge: GC::EF,
         gkr_opening_batch_randomness: GC::EF,
         logup_evaluations: &LogUpEvaluations<GC::EF>,
@@ -526,10 +500,12 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
             let gkr_powers = Arc::new(gkr_opening_batch_randomness_powers);
 
             let alpha_powers = Arc::new(chip_powers_of_alpha);
-            let air_data = self
-                .zerocheck_prover_data
-                .round_prover(air, public_values.clone(), alpha_powers, gkr_powers.clone())
-                .await;
+            let air_data = ZerocheckCpuProverData::round_prover(
+                air,
+                public_values.clone(),
+                alpha_powers,
+                gkr_powers.clone(),
+            );
             let preprocessed_trace = preprocessed_traces.get(name).cloned();
 
             let chip_sumcheck_claim = main_opening
@@ -728,7 +704,7 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
 
         // Get the evaluation point for the trace polynomials.
         let evaluation_point = zerocheck_partial_sumcheck_proof.point_and_eval.0.clone();
-        let mut preprocessed_evaluation_claims: Option<Evaluations<GC::EF, C::B>> = None;
+        let mut preprocessed_evaluation_claims: Option<Evaluations<GC::EF, CpuBackend>> = None;
         let mut main_evaluation_claims = Evaluations::new(vec![]);
 
         let alloc = self.trace_generator.allocator();
@@ -829,15 +805,15 @@ where
 /// A proving key for a STARK.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(
-    serialize = "Tensor<GC::F, C::B>: Serialize, ShardProverComponentsJaggedProverData<GC, C>: Serialize, GC::F: Serialize, C::B: Serialize, "
+    serialize = "Tensor<GC::F, CpuBackend>: Serialize, ShardProverComponentsJaggedProverData<GC, C>: Serialize, GC::F: Serialize,"
 ))]
 #[serde(bound(
-    deserialize = "Tensor<GC::F, C::B>: Deserialize<'de>, ShardProverComponentsJaggedProverData<GC, C>: Deserialize<'de>, GC::F: Deserialize<'de>, C::B: Deserialize<'de>, "
+    deserialize = "Tensor<GC::F, CpuBackend>: Deserialize<'de>, ShardProverComponentsJaggedProverData<GC, C>: Deserialize<'de>, GC::F: Deserialize<'de>, "
 ))]
 pub struct ShardProverData<GC: IopCtx, C: ShardProverComponents<GC>> {
     /// The preprocessed traces.
-    pub preprocessed_traces: Traces<GC::F, C::B>,
+    pub preprocessed_traces: Traces<GC::F, CpuBackend>,
     /// The pcs data for the preprocessed traces.
     pub preprocessed_data:
-        JaggedProverData<GC, <<C::PcsProverComponents as JaggedProverComponents<GC>>::BatchPcsProver as MultilinearPcsProver<GC>>::ProverData>,
+        JaggedProverData<GC, <C::PcsProverComponents as MultilinearPcsProver<GC>>::ProverData>,
 }

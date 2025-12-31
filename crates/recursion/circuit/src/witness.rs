@@ -10,7 +10,6 @@ use slop_algebra::{extension::BinomialExtensionField, AbstractExtensionField, Ab
 use slop_bn254::Bn254Fr;
 use slop_challenger::IopCtx;
 use slop_commit::Rounds;
-use slop_jagged::JaggedConfig;
 use slop_multilinear::MultilinearPcsVerifier;
 use sp1_hypercube::{
     septic_curve::SepticCurve, septic_digest::SepticDigest, septic_extension::SepticExtension,
@@ -283,10 +282,10 @@ impl<C, GC, SC> Witnessable<C> for ShardProof<GC, SC>
 where
     C: CircuitConfig,
     GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + SP1FieldConfigVariable<C>,
-    SC: JaggedConfig<GC>,
+    SC: MultilinearPcsVerifier<GC>,
     <GC as IopCtx>::Digest:
         Witnessable<C, WitnessVariable = <GC as FieldHasherVariable<C>>::DigestVariable>,
-    <SC::PcsVerifier as MultilinearPcsVerifier<GC>>::Proof: Witnessable<
+    <SC as MultilinearPcsVerifier<GC>>::Proof: Witnessable<
         C,
         WitnessVariable = RecursiveStackedPcsProof<
             RecursiveBasefoldProof<C, GC>,
@@ -328,7 +327,7 @@ impl<C, GC, SC> Witnessable<C> for MachineVerifyingKey<GC, SC>
 where
     C: CircuitConfig,
     GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + SP1FieldConfigVariable<C>,
-    SC: JaggedConfig<GC>,
+    SC: MultilinearPcsVerifier<GC>,
     <GC as IopCtx>::Digest:
         Witnessable<C, WitnessVariable = <GC as FieldHasherVariable<C>>::DigestVariable>,
 {

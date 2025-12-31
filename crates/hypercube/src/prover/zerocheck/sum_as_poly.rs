@@ -1,5 +1,4 @@
 use std::{
-    future::Future,
     marker::PhantomData,
     ops::{Add, Mul, Sub},
     sync::Arc,
@@ -14,65 +13,14 @@ use slop_algebra::{
     UnivariatePolynomial,
 };
 use slop_matrix::dense::RowMajorMatrixView;
-use slop_multilinear::{
-    HostEvaluationBackend, Mle, MleBaseBackend, PaddedMle, PartialLagrangeBackend, PointBackend,
-};
+use slop_multilinear::{Mle, PaddedMle};
 use slop_sumcheck::SumcheckPolyBase;
 use tokio::sync::oneshot;
 
 use crate::{air::MachineAir, ConstraintSumcheckFolder};
-use slop_alloc::{Backend, CanCopyIntoRef, CpuBackend, HasBackend};
+use slop_alloc::HasBackend;
 
 use super::ZeroCheckPoly;
-
-/// The data required for a zerocheck sumcheck.
-pub trait ZerocheckRoundProver<F: Field, K, EF, B: Backend = CpuBackend>:
-    'static + Send + Sync
-{
-    /// The AIR that contains the constraint polynomial.
-    type Air: for<'b> Air<ConstraintSumcheckFolder<'b, F, K, EF>> + MachineAir<F>;
-
-    /// Get a reference to the AIR.
-    fn air(&self) -> &Self::Air;
-
-    /// Get the public values.
-    fn public_values(&self) -> &[F];
-
-    /// Get the powers of alpha.
-    fn powers_of_alpha(&self) -> &[EF];
-
-    /// The powers of the randomness for batching the GKR opening claims for the columns into the
-    /// sumcheck.
-    fn gkr_powers(&self) -> &[EF];
-
-    /// Sum the zerocheck polynomial in the last variable.
-    fn sum_as_poly_in_last_variable<const IS_FIRST_ROUND: bool>(
-        &self,
-        partial_lagrange: Arc<Mle<EF, B>>,
-        preprocessed_values: Option<PaddedMle<K, B>>,
-        main_values: PaddedMle<K, B>,
-    ) -> impl Future<Output = (EF, EF, EF)> + Send;
-}
-
-/// The data required to produce zerocheck proofs.
-pub trait ZerocheckProverData<F: Field, EF: ExtensionField<F>, B: Backend = CpuBackend>:
-    'static + Send + Sync
-{
-    /// The AIR that contains the constraint polynomial.
-    type Air;
-    /// The round prover for the zerocheck sumcheck.
-    type RoundProver: ZerocheckRoundProver<F, F, EF, B, Air = Self::Air>
-        + ZerocheckRoundProver<F, EF, EF, B, Air = Self::Air>;
-
-    /// Generate a round prover for the zerocheck sumcheck from constraint data.
-    fn round_prover(
-        &self,
-        air: Arc<Self::Air>,
-        public_values: Arc<Vec<F>>,
-        powers_of_alpha: Arc<Vec<EF>>,
-        gkr_powers: Arc<Vec<EF>>,
-    ) -> impl Future<Output = Self::RoundProver> + Send;
-}
 
 /// Zerocheck data for the CPU backend.
 #[derive(Clone)]
@@ -98,41 +46,22 @@ impl<F, EF, A> ZerocheckCpuProver<F, EF, A> {
     }
 }
 
-impl<F, K, EF, A> ZerocheckRoundProver<F, K, EF> for ZerocheckCpuProver<F, EF, A>
+impl<F, EF, A> ZerocheckCpuProver<F, EF, A>
 where
-    K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
     F: Field,
-    EF: ExtensionField<F> + From<K> + ExtensionField<F> + AbstractExtensionField<K>,
-    A: for<'b> Air<ConstraintSumcheckFolder<'b, F, K, EF>> + MachineAir<F>,
+    EF: ExtensionField<F>,
 {
-    type Air = A;
-
-    #[inline]
-    fn air(&self) -> &Self::Air {
-        &self.air
-    }
-
-    #[inline]
-    fn public_values(&self) -> &[F] {
-        &self.public_values
-    }
-
-    #[inline]
-    fn powers_of_alpha(&self) -> &[EF] {
-        &self.powers_of_alpha
-    }
-
-    #[inline]
-    fn gkr_powers(&self) -> &[EF] {
-        &self.gkr_powers
-    }
-
-    async fn sum_as_poly_in_last_variable<const IS_FIRST_ROUND: bool>(
+    pub(crate) async fn sum_as_poly_in_last_variable<K, const IS_FIRST_ROUND: bool>(
         &self,
         partial_lagrange: Arc<Mle<EF>>,
         preprocessed_values: Option<PaddedMle<K>>,
         main_values: PaddedMle<K>,
-    ) -> (EF, EF, EF) {
+    ) -> (EF, EF, EF)
+    where
+        K: ExtensionField<F>,
+        EF: ExtensionField<K>,
+        A: for<'b> Air<ConstraintSumcheckFolder<'b, F, K, EF>> + MachineAir<F>,
+    {
         let air = self.air.clone();
         let public_values = self.public_values.clone();
         let powers_of_alpha = self.powers_of_alpha.clone();
@@ -263,20 +192,18 @@ where
 /// are summed on the boolean hypercube and the last variable is left as a free variable.
 /// TODO:  Add flexibility to support degree 2 and degree 3 constraint polynomials.
 pub async fn zerocheck_sum_as_poly_in_last_variable<
-    K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
+    K: ExtensionField<F>,
     F: Field,
     EF: ExtensionField<F> + ExtensionField<K> + ExtensionField<F> + AbstractExtensionField<K>,
-    AirData: ZerocheckRoundProver<F, K, EF, B>,
-    B: MleBaseBackend<K>
-        + PartialLagrangeBackend<EF>
-        + HostEvaluationBackend<K, K>
-        + CanCopyIntoRef<Mle<K, B>, CpuBackend, Output = Mle<K, CpuBackend>>
-        + PointBackend<EF>,
+    AirData,
     const IS_FIRST_ROUND: bool,
 >(
-    poly: &ZeroCheckPoly<K, F, EF, AirData, B>,
+    poly: &ZeroCheckPoly<K, F, EF, AirData>,
     claim: Option<EF>,
-) -> UnivariatePolynomial<EF> {
+) -> UnivariatePolynomial<EF>
+where
+    AirData: for<'b> Air<ConstraintSumcheckFolder<'b, F, K, EF>> + MachineAir<F>,
+{
     let num_real_entries = poly.main_columns.num_real_entries();
     if num_real_entries == 0 {
         // NOTE: We hard-code the degree of the zerocheck to be three here. This is important to get
@@ -290,9 +217,7 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
     let last = *last[0];
 
     // TODO:  Optimization of computing this once per zerocheck sumcheck.
-    let backend = poly.main_columns.backend();
-    let rest_point = backend.copy_to(&rest_point_host).await.unwrap();
-    let partial_lagrange: Mle<EF, B> = Mle::partial_lagrange(&rest_point).await;
+    let partial_lagrange: Mle<EF> = Mle::partial_lagrange(&rest_point_host).await;
     let partial_lagrange = Arc::new(partial_lagrange);
 
     // For the first round, we know that at point 0 and 1, the zerocheck polynomial will evaluate to
@@ -309,7 +234,7 @@ pub async fn zerocheck_sum_as_poly_in_last_variable<
 
     let (mut y_0, mut y_2, mut y_4) = poly
         .air_data
-        .sum_as_poly_in_last_variable::<IS_FIRST_ROUND>(
+        .sum_as_poly_in_last_variable::<K, IS_FIRST_ROUND>(
             partial_lagrange.clone(),
             poly.preprocessed_columns.clone(),
             poly.main_columns.clone(),
@@ -401,24 +326,21 @@ impl<A> Default for ZerocheckCpuProverData<A> {
     }
 }
 
-impl<F, EF, A> ZerocheckProverData<F, EF, CpuBackend> for ZerocheckCpuProverData<A>
-where
-    F: Field,
-    EF: ExtensionField<F>,
-    A: for<'b> Air<ConstraintSumcheckFolder<'b, F, F, EF>>
-        + for<'b> Air<ConstraintSumcheckFolder<'b, F, EF, EF>>
-        + MachineAir<F>,
-{
-    type Air = A;
-    type RoundProver = ZerocheckCpuProver<F, EF, A>;
-
-    async fn round_prover(
-        &self,
+impl<A> ZerocheckCpuProverData<A> {
+    /// Creates a round prover for zerocheck.
+    pub fn round_prover<F, EF>(
         air: Arc<A>,
         public_values: Arc<Vec<F>>,
         powers_of_alpha: Arc<Vec<EF>>,
         gkr_powers: Arc<Vec<EF>>,
-    ) -> Self::RoundProver {
+    ) -> ZerocheckCpuProver<F, EF, A>
+    where
+        F: Field,
+        EF: ExtensionField<F>,
+        A: for<'b> Air<ConstraintSumcheckFolder<'b, F, F, EF>>
+            + for<'b> Air<ConstraintSumcheckFolder<'b, F, EF, EF>>
+            + MachineAir<F>,
+    {
         ZerocheckCpuProver::new(air, public_values, powers_of_alpha, gkr_powers)
     }
 }

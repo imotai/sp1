@@ -22,11 +22,7 @@ use slop_challenger::{
 };
 use slop_commit::{Message, Rounds};
 use slop_dft::{p3::Radix2DitParallel, Dft};
-use slop_jagged::{
-    CpuJaggedMleGenerator, DefaultJaggedProver, HadamardJaggedSumcheckProver,
-    JaggedAssistSumAsPolyCPUImpl, JaggedConfig, JaggedEvalSumcheckProver, JaggedProver,
-    JaggedProverComponents,
-};
+use slop_jagged::{DefaultJaggedProver, JaggedEvalSumcheckProver, JaggedProver};
 use slop_koala_bear::KoalaBearDegree4Duplex;
 use slop_merkle_tree::{
     ComputeTcsOpenings, FieldMerkleTreeProver, MerkleTreeOpeningAndProof,
@@ -36,7 +32,7 @@ use slop_multilinear::{
     monomial_basis_evals_blocking, partial_lagrange_blocking, Mle, MultilinearPcsProver, PaddedMle,
     Point,
 };
-use slop_stacked::{FixedRateInterleave, ToMle};
+use slop_stacked::ToMle;
 use slop_tensor::Tensor;
 use slop_utils::reverse_bits_len;
 
@@ -556,26 +552,6 @@ where
     }
 }
 
-#[derive(Clone, Default, Debug, Serialize, Deserialize)]
-pub struct WhirJaggedConfig<GC>(PhantomData<GC>);
-
-impl<GC> JaggedConfig<GC> for WhirJaggedConfig<GC>
-where
-    GC: IopCtx,
-{
-    type PcsVerifier = Verifier<GC>;
-
-    fn log_stacking_height(verifier: &Self::PcsVerifier) -> u32 {
-        verifier.config.starting_interleaved_log_height as u32
-    }
-
-    fn round_multiples(
-        proof: &<Self::PcsVerifier as slop_multilinear::MultilinearPcsVerifier<GC>>::Proof,
-    ) -> Vec<usize> {
-        proof.merkle_proofs[0].iter().map(|p| p.values.sizes()[1]).collect()
-    }
-}
-
 impl<GC, MerkleProver, D> MultilinearPcsProver<GC> for Prover<GC, MerkleProver, D>
 where
     GC: IopCtx,
@@ -659,52 +635,23 @@ where
             )
             .await)
     }
+
+    fn log_max_padding_amount(&self) -> u32 {
+        self.config.starting_interleaved_log_height as u32
+    }
 }
 
 #[derive(Default, Serialize, Deserialize)]
 #[derive_where(Clone)]
 pub struct JaggedWhirProverComponents<GC, MerkleProver, D>(PhantomData<(GC, MerkleProver, D)>);
 
-impl<GC, MerkleProver, D> JaggedProverComponents<GC>
-    for JaggedWhirProverComponents<GC, MerkleProver, D>
-where
-    GC: IopCtx,
-    MerkleProver: TensorCsProver<GC, CpuBackend> + ComputeTcsOpenings<GC, CpuBackend>,
-    D: Dft<GC::F>,
-{
-    type A = CpuBackend;
-
-    type Config = WhirJaggedConfig<GC>;
-
-    type JaggedSumcheckProver = HadamardJaggedSumcheckProver<CpuJaggedMleGenerator>;
-
-    type BatchPcsProver = Prover<GC, MerkleProver, D>;
-
-    type Stacker = FixedRateInterleave<GC::F>;
-
-    type JaggedEvalProver = JaggedEvalSumcheckProver<
-        GC::F,
-        JaggedAssistSumAsPolyCPUImpl<GC::F, GC::EF, GC::Challenger>,
-        CpuBackend,
-        GC::Challenger,
-    >;
-
-    fn log_stacking_height(prover: &JaggedProver<GC, Self>) -> u32 {
-        prover.pcs_prover.config.starting_interleaved_log_height as u32
-    }
-}
-
 impl DefaultJaggedProver<KoalaBearDegree4Duplex>
-    for JaggedWhirProverComponents<
-        KoalaBearDegree4Duplex,
-        Poseidon2KoalaBear16Prover,
-        Radix2DitParallel,
-    >
+    for Prover<KoalaBearDegree4Duplex, Poseidon2KoalaBear16Prover, Radix2DitParallel>
 {
     fn prover_from_verifier(
         verifier: &slop_jagged::JaggedPcsVerifier<
             KoalaBearDegree4Duplex,
-            WhirJaggedConfig<KoalaBearDegree4Duplex>,
+            Verifier<KoalaBearDegree4Duplex>,
         >,
     ) -> slop_jagged::JaggedProver<KoalaBearDegree4Duplex, Self> {
         let merkle_prover = FieldMerkleTreeProver::default();
@@ -714,16 +661,7 @@ impl DefaultJaggedProver<KoalaBearDegree4Duplex>
             verifier.pcs_verifier.config.clone(),
         );
 
-        let jagged_generator = CpuJaggedMleGenerator;
-
-        let jagged_sumcheck_prover = HadamardJaggedSumcheckProver { jagged_generator };
-
-        JaggedProver::new(
-            verifier.max_log_row_count,
-            prover,
-            jagged_sumcheck_prover,
-            JaggedEvalSumcheckProver::default(),
-        )
+        JaggedProver::new(verifier.max_log_row_count, prover, JaggedEvalSumcheckProver::default())
     }
 }
 
@@ -912,10 +850,7 @@ mod tests {
     use slop_baby_bear::BabyBear;
     use slop_commit::Rounds;
     use slop_dft::p3::Radix2DitParallel;
-    use slop_jagged::{
-        CpuJaggedMleGenerator, HadamardJaggedSumcheckProver, JaggedEvalSumcheckProver,
-        JaggedPcsVerifier, JaggedProver,
-    };
+    use slop_jagged::{JaggedEvalSumcheckProver, JaggedPcsVerifier, JaggedProver};
     use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
     use slop_matrix::{bitrev::BitReversableMatrix, dense::RowMajorMatrix, Matrix};
     use slop_merkle_tree::{
@@ -1520,24 +1455,14 @@ mod tests {
         let merkle_verifier = MerkleTreeTcs::default();
         let verifier = Verifier::<GC>::new(merkle_verifier, config.clone(), num_rounds);
 
-        let jagged_verifier = JaggedPcsVerifier::<GC, WhirJaggedConfig<GC>> {
-            pcs_verifier: verifier,
-            max_log_row_count: max_log_row_count as usize,
-        };
+        let jagged_verifier =
+            JaggedPcsVerifier::<GC, Verifier<GC>>::new(verifier, max_log_row_count as usize);
 
         let prover = Prover::<_, _, _>::new(Radix2DitParallel, merkle_prover, config.clone());
 
-        let jagged_generator = CpuJaggedMleGenerator;
-
-        let jagged_sumcheck_prover = HadamardJaggedSumcheckProver { jagged_generator };
-
-        let jagged_prover = JaggedProver::<
-            GC,
-            JaggedWhirProverComponents<GC, MerkleProver, Radix2DitParallel>,
-        >::new(
+        let jagged_prover = JaggedProver::<GC, Prover<GC, MerkleProver, Radix2DitParallel>>::new(
             max_log_row_count as usize,
             prover,
-            jagged_sumcheck_prover,
             JaggedEvalSumcheckProver::default(),
         );
 

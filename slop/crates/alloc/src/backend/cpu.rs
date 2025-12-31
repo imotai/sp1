@@ -3,6 +3,8 @@ use std::{
     ptr::{self, NonNull},
 };
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     mem::{CopyDirection, CopyError, DeviceMemory},
     AllocError, Allocator,
@@ -12,7 +14,9 @@ use super::{Backend, GlobalBackend};
 
 pub const GLOBAL_CPU_BACKEND: CpuBackend = CpuBackend;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct CpuBackend;
 
 impl GlobalBackend for CpuBackend {

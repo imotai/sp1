@@ -1,14 +1,14 @@
-use std::marker::PhantomData;
-
+use slop_algebra::TwoAdicField;
+use slop_basefold::{BaseFoldVerifierError, BasefoldProof, BasefoldVerifier};
 use slop_challenger::IopCtx;
-use slop_multilinear::{Mle, MultilinearPcsBatchVerifier, Point};
+use slop_merkle_tree::MerkleTreeTcsError;
+use slop_multilinear::{Mle, Point};
 use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
 
 use crate::prover::Proof;
 
-pub struct SparsePCSVerifier<GC: IopCtx, MV: MultilinearPcsBatchVerifier<GC>> {
-    pub multilinear_verifier: MV,
-    _global_config: PhantomData<GC>,
+pub struct SparsePCSVerifier<GC: IopCtx> {
+    pub multilinear_verifier: BasefoldVerifier<GC>,
 }
 
 #[derive(Debug)]
@@ -19,13 +19,12 @@ pub enum VerifierError<PCSError> {
     InvalidMLEEvalClaims,
 }
 
-impl<GC: IopCtx, MV: MultilinearPcsBatchVerifier<GC>> SparsePCSVerifier<GC, MV> {
-    pub fn new(verifier: MV) -> Self {
-        Self { multilinear_verifier: verifier, _global_config: PhantomData }
-    }
-
-    pub fn default_challenger(&self) -> GC::Challenger {
-        self.multilinear_verifier.default_challenger()
+impl<GC: IopCtx> SparsePCSVerifier<GC>
+where
+    GC::F: TwoAdicField,
+{
+    pub fn new(verifier: BasefoldVerifier<GC>) -> Self {
+        Self { multilinear_verifier: verifier }
     }
 
     pub fn verify_trusted_evaluations(
@@ -33,9 +32,9 @@ impl<GC: IopCtx, MV: MultilinearPcsBatchVerifier<GC>> SparsePCSVerifier<GC, MV> 
         commitment: GC::Digest,
         eval_point: &Point<GC::EF>,
         evaluation_claim: GC::EF,
-        proof: &Proof<GC::EF, MV::Proof>,
+        proof: &Proof<GC::EF, BasefoldProof<GC>>,
         challenger: &mut GC::Challenger,
-    ) -> Result<(), VerifierError<MV::VerifierError>> {
+    ) -> Result<(), VerifierError<BaseFoldVerifierError<MerkleTreeTcsError>>> {
         // Verify the sumcheck proof
         partially_verify_sumcheck_proof(
             &proof.sparse_sumcheck_proof,

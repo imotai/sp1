@@ -1,7 +1,6 @@
 use core::marker::PhantomData;
-use slop_algebra::TwoAdicField;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FriConfig<F> {
     pub log_blowup: usize,
     pub num_queries: usize,
@@ -9,7 +8,15 @@ pub struct FriConfig<F> {
     _marker: PhantomData<F>,
 }
 
-impl<F: TwoAdicField> FriConfig<F> {
+impl<F> Copy for FriConfig<F> {}
+
+impl<F> Clone for FriConfig<F> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<F> FriConfig<F> {
     #[inline]
     pub const fn new(log_blowup: usize, num_queries: usize, proof_of_work_bits: usize) -> Self {
         Self { log_blowup, num_queries, proof_of_work_bits, _marker: PhantomData }

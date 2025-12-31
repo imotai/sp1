@@ -598,9 +598,7 @@ impl<K: ExtensionField<F>, F: Field> SumcheckPolyFirstRound<K> for LogupRoundPol
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        GkrCircuitLayer, LogUpGkrRoundProver, LogupGkrCpuRoundProver, LogupGkrCpuTraceGenerator,
-    };
+    use crate::{prove_gkr_round, GkrCircuitLayer, LogupGkrCpuTraceGenerator};
 
     use super::*;
     use itertools::Itertools;
@@ -1202,7 +1200,6 @@ mod tests {
 
         let mut rng = thread_rng();
 
-        let prover = LogupGkrCpuRoundProver;
         let interaction_counts = vec![4, 5, 6];
         let num_interaction_variables =
             interaction_counts.iter().sum::<usize>().next_power_of_two().ilog2();
@@ -1248,9 +1245,14 @@ mod tests {
         let mut eval_point = first_eval_point.clone();
 
         for layer in layers {
-            let round_proof = prover
-                .prove_round(layer, &eval_point, numerator_eval, denominator_eval, &mut challenger)
-                .await;
+            let round_proof = prove_gkr_round(
+                layer,
+                &eval_point,
+                numerator_eval,
+                denominator_eval,
+                &mut challenger,
+            )
+            .await;
             // Observe the prover message.
             challenger.observe_ext_element(round_proof.numerator_0);
             challenger.observe_ext_element(round_proof.denominator_0);

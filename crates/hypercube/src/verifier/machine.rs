@@ -2,7 +2,6 @@ use derive_where::derive_where;
 use slop_algebra::{PrimeField32, TwoAdicField};
 use slop_basefold::FriConfig;
 use slop_challenger::IopCtx;
-use slop_jagged::{JaggedBasefoldConfig, JaggedConfig};
 
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
@@ -10,26 +9,46 @@ use slop_multilinear::MultilinearPcsVerifier;
 use thiserror::Error;
 
 use crate::{
-    air::MachineAir, prover::CoreProofShape, Machine, ShardVerifierConfigError,
-    VerifierConstraintFolder,
+    air::MachineAir,
+    prover::{CoreProofShape, ZerocheckAir},
+    Machine, SP1Pcs, ShardVerifierConfigError, VerifierConstraintFolder,
 };
 
 use super::{MachineVerifyingKey, ShardProof, ShardVerifier, ShardVerifierError};
 /// A complete proof of program execution.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(
-    serialize = "C: JaggedConfig<GC>, GC::Challenger: Serialize",
-    deserialize = "C: JaggedConfig<GC>, GC::Challenger: Deserialize<'de>"
+    serialize = "C: MultilinearPcsVerifier<GC>, GC::Challenger: Serialize",
+    deserialize = "C: MultilinearPcsVerifier<GC>, GC::Challenger: Deserialize<'de>"
 ))]
-pub struct MachineProof<GC: IopCtx, C: JaggedConfig<GC>> {
+pub struct MachineProof<GC: IopCtx, C: MultilinearPcsVerifier<GC>> {
     /// The shard proofs.
     pub shard_proofs: Vec<ShardProof<GC, C>>,
 }
 
-impl<GC: IopCtx, C: JaggedConfig<GC>> From<Vec<ShardProof<GC, C>>> for MachineProof<GC, C> {
+impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>> From<Vec<ShardProof<GC, C>>>
+    for MachineProof<GC, C>
+{
     fn from(shard_proofs: Vec<ShardProof<GC, C>>) -> Self {
         Self { shard_proofs }
     }
+}
+
+/// A shortcute trait to package a multilinear PCS verifier and a zerocheck AIR.
+pub trait ShardContext<GC: IopCtx> {
+    /// The multilinear PCS verifier.
+    type Config: MultilinearPcsVerifier<GC>;
+    /// The AIR for which we'll be proving zerocheck.
+    type Air: ZerocheckAir<GC::F, GC::EF>;
+}
+
+impl<GC: IopCtx, C, A> ShardContext<GC> for (C, A)
+where
+    C: MultilinearPcsVerifier<GC>,
+    A: ZerocheckAir<GC::F, GC::EF>,
+{
+    type Config = C;
+    type Air = A;
 }
 
 /// An error that occurs during the verification of a machine proof.
@@ -56,19 +75,17 @@ pub enum MachineVerifierError<EF, PcsError> {
 }
 
 /// Derive the error type from the machine config.
-pub type MachineVerifierConfigError<GC, C> = MachineVerifierError<
-    <GC as IopCtx>::EF,
-    <<C as JaggedConfig<GC>>::PcsVerifier as MultilinearPcsVerifier<GC>>::VerifierError,
->;
+pub type MachineVerifierConfigError<GC, C> =
+    MachineVerifierError<<GC as IopCtx>::EF, <C as MultilinearPcsVerifier<GC>>::VerifierError>;
 
 /// A verifier for a machine proof.
 #[derive_where(Clone)]
-pub struct MachineVerifier<GC: IopCtx, C: JaggedConfig<GC>, A: MachineAir<GC::F>> {
+pub struct MachineVerifier<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> {
     /// Shard proof verifier.
     shard_verifier: ShardVerifier<GC, C, A>,
 }
 
-impl<GC: IopCtx, C: JaggedConfig<GC>, A: MachineAir<GC::F>> MachineVerifier<GC, C, A> {
+impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> MachineVerifier<GC, C, A> {
     /// Create a new machine verifier.
     pub fn new(shard_verifier: ShardVerifier<GC, C, A>) -> Self {
         Self { shard_verifier }
@@ -109,7 +126,7 @@ impl<GC: IopCtx, C: JaggedConfig<GC>, A: MachineAir<GC::F>> MachineVerifier<GC, 
     }
 }
 
-impl<GC: IopCtx, C: JaggedConfig<GC>, A: MachineAir<GC::F>> MachineVerifier<GC, C, A>
+impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> MachineVerifier<GC, C, A>
 where
     GC::F: PrimeField32,
 {
@@ -152,7 +169,7 @@ where
     }
 }
 
-impl<GC: IopCtx, A: MachineAir<GC::F>> MachineVerifier<GC, JaggedBasefoldConfig<GC>, A>
+impl<GC: IopCtx, A: MachineAir<GC::F>> MachineVerifier<GC, SP1Pcs<GC>, A>
 where
     GC::F: TwoAdicField,
     GC::EF: TwoAdicField,
@@ -161,6 +178,6 @@ where
     #[must_use]
     #[inline]
     pub fn fri_config(&self) -> &FriConfig<GC::F> {
-        &self.shard_verifier.jagged_pcs_verifier.pcs_verifier.pcs_verifier.fri_config
+        &self.shard_verifier.jagged_pcs_verifier.pcs_verifier.basefold_verifier.fri_config
     }
 }

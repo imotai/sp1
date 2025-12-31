@@ -1,13 +1,16 @@
-use slop_jagged::{Poseidon2Bn254JaggedCpuProverComponents, SP1OuterConfig};
+use slop_jagged::SP1OuterConfig;
 use sp1_core_executor::HEIGHT_THRESHOLD;
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_hypercube::{
-    prover::{CpuMachineProverComponents, MachineProverComponents},
-    MachineVerifier, SP1CoreJaggedConfig, SP1CpuJaggedProverComponents, ShardVerifier,
+    prover::{
+        CpuMachineProverComponents, MachineProverComponents, SP1CpuJaggedProverComponents,
+        SP1OuterCpuJaggedProverComponents,
+    },
+    MachineVerifier, SP1CoreJaggedConfig, ShardVerifier,
 };
 use sp1_primitives::{
     fri_params::{core_fri_config, recursion_fri_config, shrink_fri_config, wrap_fri_config},
-    SP1ExtensionField, SP1Field, SP1GlobalContext, SP1OuterGlobalContext,
+    SP1Field, SP1GlobalContext, SP1OuterGlobalContext,
 };
 use sp1_recursion_circuit::machine::InnerVal;
 use sp1_verifier::compressed::{RECURSION_LOG_STACKING_HEIGHT, RECURSION_MAX_LOG_ROW_COUNT};
@@ -186,7 +189,7 @@ impl SP1ProverComponents for CpuSP1ProverComponents {
     >;
     type WrapComponents = CpuMachineProverComponents<
         SP1OuterGlobalContext,
-        Poseidon2Bn254JaggedCpuProverComponents<SP1Field, SP1ExtensionField>,
+        SP1OuterCpuJaggedProverComponents,
         WrapAir<SP1Field>,
     >;
 }

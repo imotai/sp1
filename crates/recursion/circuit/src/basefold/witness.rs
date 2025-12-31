@@ -9,7 +9,7 @@ use slop_basefold::BasefoldProof;
 use slop_challenger::{GrindingChallenger, IopCtx};
 use slop_merkle_tree::{MerkleTreeOpeningAndProof, MerkleTreeTcsProof};
 use slop_multilinear::{Evaluations, Mle, MleEval};
-use slop_stacked::StackedPcsProof;
+use slop_stacked::StackedBasefoldProof;
 use slop_tensor::Tensor;
 use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::ir::{Builder, Felt};
@@ -165,16 +165,17 @@ where
     }
 }
 
-impl<C, PcsProof, RecursivePcsProof> Witnessable<C> for StackedPcsProof<PcsProof, SP1ExtensionField>
+impl<GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>, C, RecursivePcsProof> Witnessable<C>
+    for StackedBasefoldProof<GC>
 where
     C: CircuitConfig,
-    PcsProof: Witnessable<C, WitnessVariable = RecursivePcsProof>,
+    BasefoldProof<GC>: Witnessable<C, WitnessVariable = RecursivePcsProof>,
 {
     type WitnessVariable = RecursiveStackedPcsProof<RecursivePcsProof, SP1Field, SP1ExtensionField>;
 
     fn read(&self, builder: &mut Builder<C>) -> Self::WitnessVariable {
         let batch_evaluations = self.batch_evaluations.read(builder);
-        let pcs_proof = self.pcs_proof.read(builder);
+        let pcs_proof = self.basefold_proof.read(builder);
         RecursiveStackedPcsProof::<RecursivePcsProof, SP1Field, SP1ExtensionField> {
             pcs_proof,
             batch_evaluations,
@@ -183,6 +184,6 @@ where
 
     fn write(&self, witness: &mut impl WitnessWriter<C>) {
         self.batch_evaluations.write(witness);
-        self.pcs_proof.write(witness);
+        self.basefold_proof.write(witness);
     }
 }

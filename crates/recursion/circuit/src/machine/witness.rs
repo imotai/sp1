@@ -8,7 +8,7 @@ use crate::{
 };
 use slop_algebra::AbstractField;
 use slop_challenger::{DuplexChallenger, IopCtx};
-use slop_jagged::JaggedConfig;
+use slop_multilinear::MultilinearPcsVerifier;
 use slop_symmetric::Hash;
 use sp1_primitives::{SP1Field, SP1GlobalContext, SP1Perm};
 use std::{borrow::Borrow, marker::PhantomData};
@@ -117,7 +117,7 @@ impl Witnessable<InnerConfig> for SP1NormalizeWitnessValues<SP1GlobalContext, SP
 impl<
         GC: IopCtx + SP1FieldConfigVariable<C>,
         C: CircuitConfig,
-        SC: JaggedConfig<GC> + Send + Sync,
+        SC: MultilinearPcsVerifier<GC> + Send + Sync,
     > Witnessable<C> for SP1ShapedWitnessValues<GC, SC>
 where
     MachineVerifyingKey<GC, SC>:
@@ -236,11 +236,11 @@ where
     }
 }
 
-impl<C: CircuitConfig, SC: JaggedConfig<SP1GlobalContext>> Witnessable<C>
+impl<C: CircuitConfig, SC: MultilinearPcsVerifier<SP1GlobalContext>> Witnessable<C>
     for SP1CompressWithVKeyWitnessValues<SC>
 where
     // This trait bound is redundant, but Rust-Analyzer is not able to infer it.
-    SC: JaggedConfig<SP1GlobalContext>,
+    SC: MultilinearPcsVerifier<SP1GlobalContext>,
     <SP1GlobalContext as IopCtx>::Digest: Witnessable<
         C,
         WitnessVariable = <SP1GlobalContext as FieldHasherVariable<C>>::DigestVariable,

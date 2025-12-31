@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use slop_challenger::IopCtx;
-use slop_jagged::{JaggedConfig, JaggedPcsProof};
+use slop_jagged::JaggedPcsProof;
 use slop_matrix::dense::RowMajorMatrixView;
-use slop_multilinear::Point;
+use slop_multilinear::{MultilinearPcsVerifier, Point};
 use slop_sumcheck::PartialSumcheckProof;
 
 use crate::{LogupGkrProof, MachineVerifyingKey};
@@ -31,10 +31,10 @@ pub struct TestingData<GC: IopCtx> {
 /// A proof for a shard.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(
-    serialize = "C: JaggedConfig<GC>, GC::Challenger: Serialize",
-    deserialize = "C: JaggedConfig<GC>, GC::Challenger: Deserialize<'de>"
+    serialize = "C: MultilinearPcsVerifier<GC>, GC::Challenger: Serialize",
+    deserialize = "C: MultilinearPcsVerifier<GC>, GC::Challenger: Deserialize<'de>"
 ))]
-pub struct ShardProof<GC: IopCtx, C: JaggedConfig<GC>> {
+pub struct ShardProof<GC: IopCtx, C: MultilinearPcsVerifier<GC>> {
     /// The public values
     pub public_values: Vec<GC::F>,
     /// The commitments to main traces.
@@ -96,14 +96,14 @@ impl<T> AirOpenedValues<T> {
     serialize = "GC: IopCtx, GC::Challenger: Serialize",
     deserialize = "GC: IopCtx, GC::Challenger: Deserialize<'de>"
 ))]
-pub struct SP1RecursionProof<GC: IopCtx, C: JaggedConfig<GC>> {
+pub struct SP1RecursionProof<GC: IopCtx, C: MultilinearPcsVerifier<GC>> {
     /// The verifying key associated with the proof.
     pub vk: MachineVerifyingKey<GC, C>,
     /// The shard proof representing the shard proof.
     pub proof: ShardProof<GC, C>,
 }
 
-impl<GC: IopCtx, C: JaggedConfig<GC>> std::fmt::Debug for SP1RecursionProof<GC, C> {
+impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>> std::fmt::Debug for SP1RecursionProof<GC, C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut debug_struct = f.debug_struct("SP1ReduceProof");
         // TODO: comment back after debug enabled.

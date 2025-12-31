@@ -6,7 +6,7 @@ use slop_challenger::{
     VariableLengthChallenger,
 };
 use slop_merkle_tree::{MerkleTreeOpeningAndProof, MerkleTreeTcs, MerkleTreeTcsError};
-use slop_multilinear::{MleEval, MultilinearPcsBatchVerifier, Point};
+use slop_multilinear::{MleEval, Point};
 use slop_utils::reverse_bits_len;
 use thiserror::Error;
 
@@ -18,10 +18,17 @@ pub struct BasefoldVerifier<GC: IopCtx> {
     pub tcs: MerkleTreeTcs<GC>,
     pub num_expected_commitments: usize,
 }
-impl<GC: IopCtx> BasefoldVerifier<GC>
-where
-    GC::F: TwoAdicField,
-{
+
+impl<GC: IopCtx> std::fmt::Debug for BasefoldVerifier<GC> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BasefoldVerifier")
+            .field("fri_config", &self.fri_config)
+            .field("num_expected_commitments", &self.num_expected_commitments)
+            .finish()
+    }
+}
+
+impl<GC: IopCtx> BasefoldVerifier<GC> {
     pub fn new(fri_config: crate::FriConfig<GC::F>, num_expected_commitments: usize) -> Self {
         assert_ne!(num_expected_commitments, 0, "commitment must exist");
         Self { fri_config, tcs: MerkleTreeTcs::default(), num_expected_commitments }
@@ -98,38 +105,11 @@ pub struct BasefoldProof<GC: IopCtx> {
     pub pow_witness: <GC::Challenger as GrindingChallenger>::Witness,
 }
 
-impl<GC: IopCtx> MultilinearPcsBatchVerifier<GC> for BasefoldVerifier<GC>
-where
-    GC::F: TwoAdicField,
-{
-    type Proof = BasefoldProof<GC>;
-    type VerifierError = BaseFoldVerifierError<MerkleTreeTcsError>;
-
-    fn default_challenger(&self) -> GC::Challenger {
-        GC::default_challenger()
-    }
-
-    fn num_expected_commitments(&self) -> usize {
-        self.num_expected_commitments
-    }
-
-    fn verify_trusted_evaluations(
-        &self,
-        commitments: &[GC::Digest],
-        point: Point<GC::EF>,
-        evaluation_claims: &[MleEval<GC::EF>],
-        proof: &Self::Proof,
-        challenger: &mut GC::Challenger,
-    ) -> Result<(), Self::VerifierError> {
-        self.verify_mle_evaluations(commitments, point, evaluation_claims, proof, challenger)
-    }
-}
-
 impl<GC: IopCtx> BasefoldVerifier<GC>
 where
     GC::F: TwoAdicField,
 {
-    fn verify_mle_evaluations(
+    pub fn verify_mle_evaluations(
         &self,
         commitments: &[GC::Digest],
         mut point: Point<GC::EF>,
@@ -408,5 +388,24 @@ where
         }
 
         Ok(())
+    }
+
+    pub fn verify_untrusted_evaluations(
+        &self,
+        commitments: &[GC::Digest],
+        eval_point: Point<GC::EF>,
+        evaluation_claims: &[MleEval<GC::EF>],
+        proof: &BasefoldProof<GC>,
+        challenger: &mut GC::Challenger,
+    ) -> Result<(), BaseFoldVerifierError<MerkleTreeTcsError>> {
+        // Observe the evaluation claims.
+        for round in evaluation_claims.iter() {
+            // We assume that in the process of producing `commitments`, the prover is bound
+            // to the number of polynomials in each round. Thus, we can observe the evaluation
+            // claims without observing their length.
+            challenger.observe_constant_length_extension_slice(round);
+        }
+
+        self.verify_mle_evaluations(commitments, eval_point, evaluation_claims, proof, challenger)
     }
 }

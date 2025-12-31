@@ -3,9 +3,11 @@ use std::sync::Arc;
 use slop_basefold::FriConfig;
 use sp1_core_executor::{Executor, Program, SP1Context, SP1CoreOpts, Trace};
 use sp1_hypercube::{
-    prover::{AirProver, CpuMachineProverComponents, CpuShardProver, ProverSemaphore},
-    MachineProof, MachineVerifier, MachineVerifierConfigError, SP1CoreJaggedConfig,
-    SP1CpuJaggedProverComponents, ShardVerifier,
+    prover::{
+        AirProver, CpuMachineProverComponents, CpuShardProver, ProverSemaphore,
+        SP1CpuJaggedProverComponents,
+    },
+    MachineProof, MachineVerifier, MachineVerifierConfigError, SP1CoreJaggedConfig, ShardVerifier,
 };
 use sp1_primitives::{io::SP1PublicValues, SP1Field, SP1GlobalContext};
 use tracing::Instrument;

@@ -564,10 +564,6 @@ where
         self.num_expected_commitments
     }
 
-    fn default_challenger(&self) -> <GC as IopCtx>::Challenger {
-        <GC as IopCtx>::default_challenger()
-    }
-
     fn verify_trusted_evaluation(
         &self,
         commitments: &[<GC as IopCtx>::Digest],
@@ -596,6 +592,18 @@ where
             return Err(WhirProofError::FinalEvalError);
         }
         Ok(())
+    }
+
+    /// The jagged verifier will assume that the underlying PCS will pad commitments to a multiple
+    /// of `1<<log.stacking_height(verifier)`.
+    fn log_stacking_height(verifier: &Self) -> u32 {
+        verifier.config.starting_interleaved_log_height as u32
+    }
+
+    /// Functionality to deduce round by round from the proof the multiples of `1<<log.stacking_height`
+    /// corresponding to the round's total polynomial size.
+    fn round_multiples(proof: &<Self as MultilinearPcsVerifier<GC>>::Proof) -> Vec<usize> {
+        proof.merkle_proofs[0].iter().map(|p| p.values.sizes()[1]).collect()
     }
 }
 

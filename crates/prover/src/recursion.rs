@@ -5,15 +5,12 @@ use std::{
 };
 
 use slop_algebra::{AbstractField, PrimeField32};
-use slop_basefold::BasefoldVerifier;
 use slop_challenger::IopCtx;
-use slop_jagged::JaggedConfig;
-use slop_stacked::StackedPcsVerifier;
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_hypercube::{
     air::{MachineAir, POSEIDON_NUM_WORDS, PROOF_NONCE_NUM_WORDS},
     prover::MachineProverComponents,
-    MachineVerifier, MachineVerifyingKey, ShardVerifier,
+    MachineVerifier, MachineVerifyingKey, SP1Pcs, ShardVerifier,
 };
 use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_recursion_circuit::{
@@ -402,12 +399,11 @@ pub(crate) fn dummy_deferred_input(
     }
 }
 
-pub(crate) fn recursive_verifier<GC, A, SC, C>(
-    shard_verifier: &ShardVerifier<GC, SC, A>,
+pub(crate) fn recursive_verifier<GC, A, C>(
+    shard_verifier: &ShardVerifier<GC, SP1Pcs<GC>, A>,
 ) -> RecursiveShardVerifier<GC, A, C>
 where
     GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + SP1FieldConfigVariable<C>,
-    SC: JaggedConfig<GC, PcsVerifier = StackedPcsVerifier<GC, BasefoldVerifier<GC>>>,
     A: MachineAir<GC::F>,
     C: CircuitConfig,
 {
@@ -415,7 +411,7 @@ where
     let max_log_row_count = shard_verifier.max_log_row_count();
     let machine = shard_verifier.machine().clone();
     let pcs_verifier = RecursiveBasefoldVerifier {
-        fri_config: shard_verifier.jagged_pcs_verifier.pcs_verifier.pcs_verifier.fri_config,
+        fri_config: shard_verifier.jagged_pcs_verifier.pcs_verifier.basefold_verifier.fri_config,
         tcs: RecursiveMerkleTreeTcs::<C, GC>(PhantomData),
     };
     let recursive_verifier = RecursiveStackedPcsVerifier::new(pcs_verifier, log_stacking_height);

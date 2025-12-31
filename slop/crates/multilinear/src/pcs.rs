@@ -9,89 +9,14 @@ use crate::{Mle, MleEval, MleEvaluationBackend, Point};
 use derive_where::derive_where;
 use serde::{de::DeserializeOwned, Serialize};
 use slop_algebra::{ExtensionField, Field};
-use slop_alloc::{Backend, CpuBackend, HasBackend, ToHost};
-use slop_challenger::{FieldChallenger, IopCtx, VariableLengthChallenger};
+use slop_alloc::{Backend, CpuBackend, HasBackend};
+use slop_challenger::{FieldChallenger, IopCtx};
 use slop_commit::{Message, Rounds};
 
 #[derive(Debug, Clone)]
 #[derive_where(PartialEq, Eq, Serialize, Deserialize; MleEval<F, A>)]
 pub struct Evaluations<F, A: Backend = CpuBackend> {
     pub round_evaluations: Vec<MleEval<F, A>>,
-}
-
-/// A verifier of a multilinear commitment scheme.
-///
-/// A verifier for a multilinear commitment scheme (or PCS) is a protocol that enables getting
-/// succinct commitments representing multiplinear polynomials and later making query checks for
-/// their evaluation.
-///
-/// The verifier described by this trait supports compiling a multi-stage multilinear polynomial
-/// IOP. In each round of the protocol, the prover is allowed to send a commitment of type
-/// [MultilinearPcsVerifier::Commitment] which represents a batch of multilinear polynomials. After
-/// all the rounds are complete, the verifier can check an evaluation claim for all the polynomials
-/// in all rounds, evaluated at same [Point].
-pub trait MultilinearPcsBatchVerifier<GC: IopCtx>: 'static + Send + Sync + Clone {
-    /// The proof of a multilinear PCS evaluation.
-    type Proof: 'static + Clone + Serialize + DeserializeOwned + Send + Sync;
-
-    /// The error type of the verifier.
-    type VerifierError: Error;
-
-    /// A default challenger for Fiat-Shamir.
-    ///
-    /// The challenger returned by this method is un-seeded and it's state can be determinstic.
-    fn default_challenger(&self) -> GC::Challenger;
-
-    /// The number of expected commitments in each proof.
-    fn num_expected_commitments(&self) -> usize;
-
-    /// Verify an evaluation proofs for multilinear polynomials sent.
-    ///
-    /// All inputs are assumed to "trusted" in the sense of Fiat-Shamir. Namely, it is assumed that
-    /// the inputs have already been absorbed into the Fiat-Shamir randomness represented by the
-    /// challenger.
-    ///
-    /// ### Arguments
-    ///
-    /// * `commitments` - The commitments to the multilinear polynomials sent by the prover. A
-    ///   commitment is sent for each round of the protocol.
-    /// * `point` - The evaluation point at which the multilinear polynomials are evaluated.
-    /// * `evaluation_claims` - The evaluation claims for the multilinear polynomials. the slice
-    ///   contains one [MleEval] for each round of the protocol.
-    /// * `proof` - The proof of the evaluation claims.
-    /// * `challenger` - The challenger that creates the verifier messages of the IOP.
-    fn verify_trusted_evaluations(
-        &self,
-        commitments: &[GC::Digest],
-        point: Point<GC::EF>,
-        evaluation_claims: &[MleEval<GC::EF>],
-        proof: &Self::Proof,
-        challenger: &mut GC::Challenger,
-    ) -> Result<(), Self::VerifierError>;
-
-    /// Verify an evaluation proof for a multilinear polynomial.
-    ///
-    /// This is a variant of [MultilinearPcsVerifier::verify_trusted_evaluations] that allows the
-    /// evaluations to be "untrusted" in the sense of Fiat-Shamir. Namely, the verifier will first
-    /// absorb the evaluation claims into the Fiat-Shamir randomness represented by the challenger.
-    fn verify_untrusted_evaluations(
-        &self,
-        commitments: &[GC::Digest],
-        point: Point<GC::EF>,
-        evaluation_claims: &[MleEval<GC::EF>],
-        proof: &Self::Proof,
-        challenger: &mut GC::Challenger,
-    ) -> Result<(), Self::VerifierError> {
-        // Observe the evaluation claims.
-        for round in evaluation_claims.iter() {
-            // We assume that in the process of producing `commitments`, the prover is bound
-            // to the number of polynomials in each round. Thus, we can observe the evaluation
-            // claims without observing their length.
-            challenger.observe_constant_length_extension_slice(round);
-        }
-
-        self.verify_trusted_evaluations(commitments, point, evaluation_claims, proof, challenger)
-    }
 }
 
 /// A verifier of a multilinear commitment scheme.
@@ -113,11 +38,6 @@ pub trait MultilinearPcsVerifier<GC: IopCtx>: 'static + Send + Sync + Clone {
     type VerifierError: Error;
 
     fn num_expected_commitments(&self) -> usize;
-
-    /// A default challenger for Fiat-Shamir.
-    ///
-    /// The challenger returned by this method is un-seeded and its state can be determinstic.
-    fn default_challenger(&self) -> GC::Challenger;
 
     /// Verify an evaluation proof for multilinear polynomials sent.
     ///
@@ -169,86 +89,14 @@ pub trait MultilinearPcsVerifier<GC: IopCtx>: 'static + Send + Sync + Clone {
             challenger,
         )
     }
-}
 
-/// The prover of a multilinear commitment scheme.
-pub trait MultilinearPcsBatchProver<GC: IopCtx>: 'static + Debug + Send + Sync {
-    /// The verifier associated to this prover.
-    type Verifier: MultilinearPcsBatchVerifier<GC>;
+    /// The jagged verifier will assume that the underlying PCS will pad commitments to a multiple
+    /// of `1<<log.stacking_height(verifier)`.
+    fn log_stacking_height(verifier: &Self) -> u32;
 
-    /// The auxilary data for a prover.
-    ///
-    /// When committing to a batch of multilinear polynomials, it is often necessary to keep track
-    /// of additional information that was produced during the commitment phase.
-    type ProverData: 'static + Send + Sync + Debug + Clone;
-
-    /// The backend used by the prover.
-    ///
-    /// The backend parametrizes the type of hardware assumptions this prover is using.
-    type A: MleEvaluationBackend<GC::F, GC::EF>;
-
-    /// The error type of the prover.
-    type ProverError: Error;
-
-    fn commit_multilinears(
-        &self,
-        mles: Message<Mle<GC::F, Self::A>>,
-    ) -> impl Future<Output = Result<(GC::Digest, Self::ProverData), Self::ProverError>> + Send;
-
-    /// Prove a collection of evaluations of multilinear polynomials. The signature of this function
-    /// enables the prover to group the evaluations in each round by "table", if desired.
-    /// When passed to the verifier, however, the evaluations within each `Evaluations` should be
-    /// concatenated into a single `MleEval` per round.
-    fn prove_trusted_evaluations(
-        &self,
-        eval_point: Point<GC::EF>,
-        mle_rounds: Rounds<Message<Mle<GC::F, Self::A>>>,
-        evaluation_claims: Rounds<Evaluations<GC::EF, Self::A>>,
-        prover_data: Rounds<Self::ProverData>,
-        challenger: &mut GC::Challenger,
-    ) -> impl Future<
-        Output = Result<
-            <Self::Verifier as MultilinearPcsBatchVerifier<GC>>::Proof,
-            Self::ProverError,
-        >,
-    > + Send;
-
-    fn prove_untrusted_evaluations(
-        &self,
-        eval_point: Point<GC::EF>,
-        mle_rounds: Rounds<Message<Mle<GC::F, Self::A>>>,
-        evaluation_claims: Rounds<Evaluations<GC::EF, Self::A>>,
-        prover_data: Rounds<Self::ProverData>,
-        challenger: &mut GC::Challenger,
-    ) -> impl Future<
-        Output = Result<
-            <Self::Verifier as MultilinearPcsBatchVerifier<GC>>::Proof,
-            Self::ProverError,
-        >,
-    > + Send {
-        async {
-            // Observe the evaluation claims.
-            for round in evaluation_claims.iter() {
-                for claim in round.iter() {
-                    let host_claim = claim.to_host().await.unwrap();
-
-                    // We assume that in the process of producing `commitments`, the prover is bound
-                    // to the number of polynomials in each round. Thus, we can observe the evaluation
-                    // claims without observing their length.
-                    challenger.observe_constant_length_extension_slice(&host_claim);
-                }
-            }
-
-            self.prove_trusted_evaluations(
-                eval_point,
-                mle_rounds,
-                evaluation_claims,
-                prover_data,
-                challenger,
-            )
-            .await
-        }
-    }
+    /// Functionality to deduce round by round from the proof the multiples of `1<<log.stacking_height`
+    /// corresponding to the round's total polynomial size.
+    fn round_multiples(proof: &<Self as MultilinearPcsVerifier<GC>>::Proof) -> Vec<usize>;
 }
 
 // A prover trait for proving evaluations of a single multilinear polynomial.
@@ -304,6 +152,8 @@ pub trait MultilinearPcsProver<GC: IopCtx>: 'static + Send + Sync {
                 .await
         }
     }
+
+    fn log_max_padding_amount(&self) -> u32;
 }
 
 impl<F, A: Backend> IntoIterator for Evaluations<F, A> {

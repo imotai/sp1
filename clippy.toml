@@ -11,6 +11,7 @@ disallowed-types = [
  { path = "slop_jagged::Poseidon2KoalaBearJaggedCpuProverComponents", reason = "use SP1CpuJaggedProverComponents instead", replacement = "sp1_hypercube::verifier::SP1CpuJaggedProverComponents" },
  { path = "slop_koala_bear::DiffusionMatrixKoalaBear", reason = "use SP1DiffusionMatrix instead", replacement = "sp1_primitives::SP1DiffusionMatrix" },
  { path = "slop_koala_bear::KoalaPerm", reason = "use SP1Perm instead", replacement = "sp1_primitives::SP1Perm" },
+  { path = "slop_stacked::StackedPcsVerifier", reason = "use SP1Pcs instead", replacement = "sp1_hypercube::SP1Pcs" },
 ]
 
 disallowed-methods = [

@@ -3,162 +3,32 @@
 mod fix_last_variable;
 mod sum_as_poly;
 
-use slop_air::Air;
-use slop_uni_stark::SymbolicAirBuilder;
-
-use std::marker::PhantomData;
+use std::fmt::Debug;
 
 pub use fix_last_variable::*;
+use slop_air::Air;
 use slop_algebra::{ExtensionField, Field, UnivariatePolynomial};
-use slop_alloc::{Backend, CpuBackend, HasBackend};
-use slop_multilinear::{MleBaseBackend, PaddedMle, Point, VirtualGeq};
+use slop_alloc::{CpuBackend, HasBackend};
+use slop_multilinear::{PaddedMle, Point, VirtualGeq};
 use slop_sumcheck::{
     ComponentPolyEvalBackend, SumCheckPolyFirstRoundBackend, SumcheckPolyBackend, SumcheckPolyBase,
 };
+use slop_uni_stark::SymbolicAirBuilder;
 pub use sum_as_poly::*;
 
-use crate::{air::MachineAir, debug::DebugConstraintBuilder, ConstraintSumcheckFolder};
-
-/// A zerocheck backend. This trait is automatically implemented for any backend satisfying the
-/// required bounds.
-pub trait ZercocheckBackend<
-    F: Field,
-    EF: ExtensionField<F>,
-    ProverData: ZerocheckProverData<F, EF, Self>,
->:
-    Backend
-    + MleBaseBackend<EF>
-    + MleBaseBackend<F>
-    + ComponentPolyEvalBackend<
-        ZeroCheckPoly<
-            EF,
-            F,
-            EF,
-            <ProverData as ZerocheckProverData<F, EF, Self>>::RoundProver,
-            Self,
-        >,
-        EF,
-    > + ComponentPolyEvalBackend<
-        ZeroCheckPoly<
-            F,
-            F,
-            EF,
-            <ProverData as ZerocheckProverData<F, EF, Self>>::RoundProver,
-            Self,
-        >,
-        EF,
-    > + SumcheckPolyBackend<
-        ZeroCheckPoly<
-            EF,
-            F,
-            EF,
-            <ProverData as ZerocheckProverData<F, EF, Self>>::RoundProver,
-            Self,
-        >,
-        EF,
-    > + SumCheckPolyFirstRoundBackend<
-        ZeroCheckPoly<
-            F,
-            F,
-            EF,
-            <ProverData as ZerocheckProverData<F, EF, Self>>::RoundProver,
-            Self,
-        >,
-        EF,
-        NextRoundPoly = ZeroCheckPoly<
-            EF,
-            F,
-            EF,
-            <ProverData as ZerocheckProverData<F, EF, Self>>::RoundProver,
-            Self,
-        >,
-    >
-{
-}
-
-/// An AIR compatible with the standard zerocheck prover.
-pub trait ZerocheckAir<F: Field, EF: ExtensionField<F>>:
-    MachineAir<F>
-    + Air<SymbolicAirBuilder<F>>
-    + for<'b> Air<ConstraintSumcheckFolder<'b, F, F, EF>>
-    + for<'b> Air<ConstraintSumcheckFolder<'b, F, EF, EF>>
-    + for<'b> Air<DebugConstraintBuilder<'b, F, EF>>
-{
-}
-
-impl<F: Field, EF: ExtensionField<F>, A> ZerocheckAir<F, EF> for A where
-    A: MachineAir<F>
-        + Air<SymbolicAirBuilder<F>>
-        + for<'b> Air<ConstraintSumcheckFolder<'b, F, F, EF>>
-        + for<'b> Air<ConstraintSumcheckFolder<'b, F, EF, EF>>
-        + for<'b> Air<DebugConstraintBuilder<'b, F, EF>>
-{
-}
-
-impl<F: Field, EF: ExtensionField<F>, ProverData: ZerocheckProverData<F, EF, B>, B>
-    ZercocheckBackend<F, EF, ProverData> for B
-where
-    B: Backend
-        + MleBaseBackend<EF>
-        + MleBaseBackend<F>
-        + ComponentPolyEvalBackend<
-            ZeroCheckPoly<
-                EF,
-                F,
-                EF,
-                <ProverData as ZerocheckProverData<F, EF, Self>>::RoundProver,
-                Self,
-            >,
-            EF,
-        > + ComponentPolyEvalBackend<
-            ZeroCheckPoly<
-                F,
-                F,
-                EF,
-                <ProverData as ZerocheckProverData<F, EF, Self>>::RoundProver,
-                Self,
-            >,
-            EF,
-        > + SumcheckPolyBackend<
-            ZeroCheckPoly<
-                EF,
-                F,
-                EF,
-                <ProverData as ZerocheckProverData<F, EF, Self>>::RoundProver,
-                Self,
-            >,
-            EF,
-        > + SumCheckPolyFirstRoundBackend<
-            ZeroCheckPoly<
-                F,
-                F,
-                EF,
-                <ProverData as ZerocheckProverData<F, EF, Self>>::RoundProver,
-                Self,
-            >,
-            EF,
-            NextRoundPoly = ZeroCheckPoly<
-                EF,
-                F,
-                EF,
-                <ProverData as ZerocheckProverData<F, EF, Self>>::RoundProver,
-                Self,
-            >,
-        >,
-{
-}
+use crate::{air::MachineAir, ConstraintSumcheckFolder, DebugConstraintBuilder};
 
 /// Zerocheck sumcheck polynomial.
-#[derive(Debug, Clone)]
-pub struct ZeroCheckPoly<K, F, EF, AirData, B: Backend = CpuBackend> {
+#[derive(Clone)]
+pub struct ZeroCheckPoly<K, F, EF, A> {
     /// The data that contains the constraint polynomial.
-    pub air_data: AirData,
+    pub air_data: ZerocheckCpuProver<F, EF, A>,
     /// The random challenge point at which the polynomial is evaluated.
     pub zeta: Point<EF>,
     /// The preprocessed trace.
-    pub preprocessed_columns: Option<PaddedMle<K, B>>,
+    pub preprocessed_columns: Option<PaddedMle<K>>,
     /// The main trace.
-    pub main_columns: PaddedMle<K, B>,
+    pub main_columns: PaddedMle<K>,
     /// The adjustment factor from the constant part of the eq polynomial.
     pub eq_adjustment: EF,
     ///  The geq polynomial value.  This will be 0 for all zerocheck polys that are at least one
@@ -173,21 +43,17 @@ pub struct ZeroCheckPoly<K, F, EF, AirData, B: Backend = CpuBackend> {
     /// A virtual materialization keeping track the geq polynomial which is used to adjust the sums
     /// for airs in which the zero row doesn't satisfy the constraints.
     pub virtual_geq: VirtualGeq<K>,
-
-    _marker: PhantomData<F>,
 }
 
-impl<K: Field, F: Field, EF: ExtensionField<F>, AirData, B: Backend + MleBaseBackend<K>>
-    ZeroCheckPoly<K, F, EF, AirData, B>
-{
+impl<K: Field, F: Field, EF: ExtensionField<F>, AirData> ZeroCheckPoly<K, F, EF, AirData> {
     /// Creates a new `ZeroCheckPoly`.
     #[allow(clippy::too_many_arguments)]
     #[inline]
     pub fn new(
-        air_data: AirData,
+        air_data: ZerocheckCpuProver<F, EF, AirData>,
         zeta: Point<EF>,
-        preprocessed_values: Option<PaddedMle<K, B>>,
-        main_values: PaddedMle<K, B>,
+        preprocessed_values: Option<PaddedMle<K>>,
+        main_values: PaddedMle<K>,
         eq_adjustment: EF,
         geq_value: EF,
         padded_row_adjustment: EF,
@@ -202,15 +68,13 @@ impl<K: Field, F: Field, EF: ExtensionField<F>, AirData, B: Backend + MleBaseBac
             geq_value,
             padded_row_adjustment,
             virtual_geq,
-            _marker: PhantomData,
         }
     }
 }
 
-impl<K: Field, F: Field, EF, AirData, B> SumcheckPolyBase for ZeroCheckPoly<K, F, EF, AirData, B>
+impl<K: Field, F: Field, EF, AirData> SumcheckPolyBase for ZeroCheckPoly<K, F, EF, AirData>
 where
     K: Field,
-    B: MleBaseBackend<K>,
 {
     #[inline]
     fn num_variables(&self) -> u32 {
@@ -224,7 +88,7 @@ where
     K: Field,
     F: Field,
     EF: ExtensionField<F> + ExtensionField<K>,
-    AirData: Sync,
+    AirData: Sync + Send,
 {
     async fn get_component_poly_evals(poly: &ZeroCheckPoly<K, F, EF, AirData>) -> Vec<EF> {
         assert!(poly.num_variables() == 0);
@@ -249,18 +113,18 @@ where
     }
 }
 
-impl<F, EF, AirData> SumCheckPolyFirstRoundBackend<ZeroCheckPoly<F, F, EF, AirData>, EF>
+impl<F, EF, A: Send + Sync> SumCheckPolyFirstRoundBackend<ZeroCheckPoly<F, F, EF, A>, EF>
     for CpuBackend
 where
     F: Field,
     EF: ExtensionField<F>,
-    AirData: ZerocheckRoundProver<F, F, EF> + ZerocheckRoundProver<F, EF, EF>,
+    A: ZerocheckAir<F, EF>,
 {
-    type NextRoundPoly = ZeroCheckPoly<EF, F, EF, AirData>;
+    type NextRoundPoly = ZeroCheckPoly<EF, F, EF, A>;
 
     #[inline]
     async fn fix_t_variables(
-        poly: ZeroCheckPoly<F, F, EF, AirData>,
+        poly: ZeroCheckPoly<F, F, EF, A>,
         alpha: EF,
         t: usize,
     ) -> Self::NextRoundPoly {
@@ -270,47 +134,66 @@ where
 
     #[inline]
     async fn sum_as_poly_in_last_t_variables(
-        poly: &ZeroCheckPoly<F, F, EF, AirData>,
+        poly: &ZeroCheckPoly<F, F, EF, A>,
         claim: Option<EF>,
         t: usize,
     ) -> UnivariatePolynomial<EF> {
         debug_assert!(t == 1);
         debug_assert!(poly.num_variables() > 0);
-        zerocheck_sum_as_poly_in_last_variable::<F, F, EF, AirData, CpuBackend, true>(poly, claim)
-            .await
+        zerocheck_sum_as_poly_in_last_variable::<F, F, EF, A, true>(poly, claim).await
     }
 }
 
-impl<F, EF, AirData> SumcheckPolyBackend<ZeroCheckPoly<EF, F, EF, AirData>, EF> for CpuBackend
+impl<F, EF, A: Send + Sync> SumcheckPolyBackend<ZeroCheckPoly<EF, F, EF, A>, EF> for CpuBackend
 where
     F: Field,
     EF: ExtensionField<F>,
-    AirData: ZerocheckRoundProver<F, F, EF> + ZerocheckRoundProver<F, EF, EF>,
+    A: ZerocheckAir<F, EF>,
 {
     #[inline]
     async fn fix_last_variable(
-        poly: ZeroCheckPoly<EF, F, EF, AirData>,
+        poly: ZeroCheckPoly<EF, F, EF, A>,
         alpha: EF,
-    ) -> ZeroCheckPoly<EF, F, EF, AirData> {
+    ) -> ZeroCheckPoly<EF, F, EF, A> {
         zerocheck_fix_last_variable(poly, alpha).await
     }
 
     #[inline]
     async fn sum_as_poly_in_last_variable(
-        poly: &ZeroCheckPoly<EF, F, EF, AirData>,
+        poly: &ZeroCheckPoly<EF, F, EF, A>,
         claim: Option<EF>,
     ) -> UnivariatePolynomial<EF> {
         debug_assert!(poly.num_variables() > 0);
-        zerocheck_sum_as_poly_in_last_variable::<EF, F, EF, AirData, CpuBackend, false>(poly, claim)
-            .await
+        zerocheck_sum_as_poly_in_last_variable::<EF, F, EF, A, false>(poly, claim).await
     }
 }
 
-impl<K, F, EF, AirData, B: Backend> HasBackend for ZeroCheckPoly<K, F, EF, AirData, B> {
-    type Backend = B;
+impl<K, F, EF, AirData> HasBackend for ZeroCheckPoly<K, F, EF, AirData> {
+    type Backend = CpuBackend;
 
     #[inline]
     fn backend(&self) -> &Self::Backend {
         self.main_columns.backend()
     }
+}
+
+/// An AIR compatible with the standard zerocheck prover.
+pub trait ZerocheckAir<F: Field, EF: ExtensionField<F>>:
+    Debug
+    + MachineAir<F>
+    + Air<SymbolicAirBuilder<F>>
+    + for<'b> Air<ConstraintSumcheckFolder<'b, F, F, EF>>
+    + for<'b> Air<ConstraintSumcheckFolder<'b, F, EF, EF>>
+    + for<'b> Air<DebugConstraintBuilder<'b, F, EF>>
+{
+}
+
+impl<F: Field, EF: ExtensionField<F>, A> ZerocheckAir<F, EF> for A where
+    A: MachineAir<F>
+        + Debug
+        + Air<SymbolicAirBuilder<F>>
+        + for<'b> Air<ConstraintSumcheckFolder<'b, F, F, EF>>
+        + for<'b> Air<ConstraintSumcheckFolder<'b, F, EF, EF>>
+        + for<'b> Air<DebugConstraintBuilder<'b, F, EF>>
+{
 }

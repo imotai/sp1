@@ -1,121 +1,31 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    future::Future,
-};
+use std::collections::{BTreeMap, BTreeSet};
 
 use futures::future::OptionFuture;
-use slop_algebra::{AbstractField, ExtensionField, Field};
-use slop_alloc::{Backend, CanCopyFromRef, CanCopyIntoRef, CpuBackend, ToHost};
+use slop_algebra::AbstractField;
+use slop_alloc::{CanCopyFromRef, CpuBackend, ToHost};
 use slop_challenger::{CanObserve, FieldChallenger, IopCtx, VariableLengthChallenger};
-use slop_multilinear::{
-    Mle, MleBaseBackend, MleEvaluationBackend, MultilinearPcsChallenger, PaddedMle,
-    PartialLagrangeBackend, Point, PointBackend,
-};
-use slop_tensor::AddAssignBackend;
+use slop_multilinear::{Mle, MultilinearPcsChallenger, Point};
 use tracing::Instrument;
 
-use crate::{air::MachineAir, prover::Traces, Chip, ChipEvaluation};
-
-use super::{
-    LogUpEvaluations, LogUpGkrCircuit, LogUpGkrOutput, LogUpGkrTraceGenerator, LogupGkrProof,
-    LogupGkrRoundProof,
+use crate::{
+    air::MachineAir, prove_gkr_round, prover::Traces, Chip, ChipEvaluation, LogupGkrCpuCircuit,
+    LogupGkrCpuTraceGenerator, ShardContext,
 };
 
-/// TODO
-pub trait LogUpGkrProver<GC: IopCtx>: 'static + Send + Sync {
-    /// TODO
-    type A: MachineAir<GC::F>;
-    /// TODO
-    type B: Backend;
+use super::{LogUpEvaluations, LogUpGkrOutput, LogupGkrProof, LogupGkrRoundProof};
 
+/// TODO
+pub struct GkrProverImpl<GC: IopCtx, SC: ShardContext<GC>> {
     /// TODO
-    #[allow(clippy::too_many_arguments)]
-    fn prove_logup_gkr(
-        &self,
-        chips: &BTreeSet<Chip<GC::F, Self::A>>,
-        preprocessed_traces: Traces<GC::F, Self::B>,
-        traces: Traces<GC::F, Self::B>,
-        public_values: Vec<GC::F>,
-        alpha: GC::EF,
-        beta_seed: Point<GC::EF>,
-        challenger: &mut GC::Challenger,
-    ) -> impl Future<Output = LogupGkrProof<GC::EF>> + Send;
+    trace_generator: LogupGkrCpuTraceGenerator<GC::F, GC::EF, SC::Air>,
 }
 
 /// TODO
-pub trait LogUpGkrRoundProver<F: Field, EF: ExtensionField<F>, Challenger, B: Backend>:
-    'static + Send + Sync
-{
+impl<GC: IopCtx, SC: ShardContext<GC>> GkrProverImpl<GC, SC> {
     /// TODO
-    type CircuitLayer;
-
-    /// TODO
-    fn prove_round(
-        &self,
-        circuit: Self::CircuitLayer,
-        eval_point: &Point<EF>,
-        numerator_eval: EF,
-        denominator_eval: EF,
-        challenger: &mut Challenger,
-    ) -> impl Future<Output = LogupGkrRoundProof<EF>> + Send;
-}
-
-/// TODO
-pub trait LogUpGkrProverComponents<GC: IopCtx>: 'static + Send + Sync {
-    /// TODO
-    type A: MachineAir<GC::F>;
-    /// TODO
-    type B: MleBaseBackend<GC::F>
-        + MleBaseBackend<GC::EF>
-        + MleEvaluationBackend<GC::F, GC::EF>
-        + MleEvaluationBackend<GC::EF, GC::EF>
-        + MleEvaluationBackend<GC::F, GC::F>
-        + PartialLagrangeBackend<GC::EF>
-        + PointBackend<GC::EF>
-        + AddAssignBackend<GC::EF>
-        + CanCopyIntoRef<Mle<GC::EF, Self::B>, CpuBackend, Output = Mle<GC::EF>>
-        + CanCopyIntoRef<PaddedMle<GC::F, Self::B>, CpuBackend, Output = PaddedMle<GC::F>>;
-
-    /// TODO
-    type CircuitLayer: 'static + Send + Sync;
-    /// TODO
-    type Circuit: LogUpGkrCircuit<CircuitLayer = Self::CircuitLayer> + 'static + Send + Sync;
-
-    /// TODO
-    type TraceGenerator: LogUpGkrTraceGenerator<
-        GC::F,
-        GC::EF,
-        Self::A,
-        Self::B,
-        Circuit = Self::Circuit,
-    >;
-
-    /// TODO
-    type RoundProver: LogUpGkrRoundProver<
-        GC::F,
-        GC::EF,
-        GC::Challenger,
-        Self::B,
-        CircuitLayer = Self::CircuitLayer,
-    >;
-}
-
-/// TODO
-pub struct GkrProverImpl<GC: IopCtx, GkrComponents: LogUpGkrProverComponents<GC>> {
-    /// TODO
-    trace_generator: GkrComponents::TraceGenerator,
-    /// TODO
-    round_prover: GkrComponents::RoundProver,
-}
-
-/// TODO
-impl<GC: IopCtx, GkrComponents: LogUpGkrProverComponents<GC>> GkrProverImpl<GC, GkrComponents> {
-    /// TODO
-    pub fn new(
-        trace_generator: GkrComponents::TraceGenerator,
-        round_prover: GkrComponents::RoundProver,
-    ) -> Self {
-        Self { trace_generator, round_prover }
+    #[must_use]
+    pub fn new(trace_generator: LogupGkrCpuTraceGenerator<GC::F, GC::EF, SC::Air>) -> Self {
+        Self { trace_generator }
     }
 
     /// TODO
@@ -124,7 +34,7 @@ impl<GC: IopCtx, GkrComponents: LogUpGkrProverComponents<GC>> GkrProverImpl<GC, 
         numerator_value: GC::EF,
         denominator_value: GC::EF,
         eval_point: Point<GC::EF>,
-        mut circuit: GkrComponents::Circuit,
+        mut circuit: LogupGkrCpuCircuit<GC::F, GC::EF>,
         challenger: &mut GC::Challenger,
     ) -> (Point<GC::EF>, Vec<LogupGkrRoundProof<GC::EF>>) {
         let mut round_proofs = Vec::new();
@@ -132,11 +42,10 @@ impl<GC: IopCtx, GkrComponents: LogUpGkrProverComponents<GC>> GkrProverImpl<GC, 
         let mut numerator_eval = numerator_value;
         let mut denominator_eval = denominator_value;
         let mut eval_point = eval_point;
-        while let Some(layer) = circuit.next().await {
-            let round_proof = self
-                .round_prover
-                .prove_round(layer, &eval_point, numerator_eval, denominator_eval, challenger)
-                .await;
+        while let Some(layer) = circuit.next_layer() {
+            let round_proof =
+                prove_gkr_round(layer, &eval_point, numerator_eval, denominator_eval, challenger)
+                    .await;
             // Observe the prover message.
             challenger.observe_ext_element(round_proof.numerator_0);
             challenger.observe_ext_element(round_proof.numerator_1);
@@ -157,19 +66,13 @@ impl<GC: IopCtx, GkrComponents: LogUpGkrProverComponents<GC>> GkrProverImpl<GC, 
         }
         (eval_point, round_proofs)
     }
-}
 
-impl<GC: IopCtx, GkrComponents: LogUpGkrProverComponents<GC>> LogUpGkrProver<GC>
-    for GkrProverImpl<GC, GkrComponents>
-{
-    type A = GkrComponents::A;
-    type B = GkrComponents::B;
-
-    async fn prove_logup_gkr(
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn prove_logup_gkr(
         &self,
-        chips: &BTreeSet<Chip<GC::F, Self::A>>,
-        preprocessed_traces: Traces<GC::F, Self::B>,
-        traces: Traces<GC::F, Self::B>,
+        chips: &BTreeSet<Chip<GC::F, SC::Air>>,
+        preprocessed_traces: Traces<GC::F, CpuBackend>,
+        traces: Traces<GC::F, CpuBackend>,
         public_values: Vec<GC::F>,
         alpha: GC::EF,
         beta_seed: Point<GC::EF>,

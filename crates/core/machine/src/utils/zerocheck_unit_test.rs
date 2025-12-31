@@ -103,6 +103,12 @@ where
     }
 }
 
+impl std::fmt::Debug for MinimalAddChip {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MinimalAddChip")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::print_stdout)]
@@ -122,7 +128,7 @@ mod tests {
     use sp1_hypercube::{
         air::MachineAir,
         debug_constraints,
-        prover::{ZeroCheckPoly, ZerocheckCpuProverData, ZerocheckProverData},
+        prover::{ZeroCheckPoly, ZerocheckCpuProverData},
         AirOpenedValues, Chip, ChipOpenedValues, ConstraintSumcheckFolder, SP1CoreJaggedConfig,
         ShardVerifier, PROOF_MAX_NUM_PVS,
     };
@@ -168,8 +174,6 @@ mod tests {
 
         let gkr_powers = gkr_power.powers().take(NUM_MINIMAL_ADD_COLS).collect::<Vec<_>>();
 
-        let prover_data = ZerocheckCpuProverData::default();
-
         let main_trace = PaddedMle::new(
             Some(Arc::new(virtually_padded_trace.clone().into())),
             num_variables,
@@ -179,14 +183,12 @@ mod tests {
         let virtual_geq =
             VirtualGeq::new(num_real_entries as u32, F::one(), F::zero(), num_variables);
 
-        let air_data = prover_data
-            .round_prover(
-                Arc::new(air),
-                Arc::new(vec![F::zero(); PROOF_MAX_NUM_PVS]),
-                Arc::new(alpha_powers.clone()),
-                Arc::new(gkr_powers.clone()),
-            )
-            .await;
+        let air_data = ZerocheckCpuProverData::round_prover(
+            Arc::new(air),
+            Arc::new(vec![F::zero(); PROOF_MAX_NUM_PVS]),
+            Arc::new(alpha_powers.clone()),
+            Arc::new(gkr_powers.clone()),
+        );
 
         let dummy_main = vec![F::zero(); NUM_MINIMAL_ADD_COLS];
 
@@ -216,7 +218,7 @@ mod tests {
             .map(|(a, b)| *a * *b)
             .sum::<EF>();
 
-        let zerocheck_poly = ZeroCheckPoly::<F, F, EF, _, CpuBackend>::new(
+        let zerocheck_poly = ZeroCheckPoly::<F, F, EF, _>::new(
             air_data,
             zeta.clone(),
             None,

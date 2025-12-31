@@ -213,7 +213,7 @@ mod tests {
     use slop_jagged::{JaggedPcsProof, JaggedPcsVerifier, JaggedProver};
     use slop_multilinear::{Evaluations, Mle, MleEval, PaddedMle, Point};
     use sp1_core_machine::utils::setup_logger;
-    use sp1_hypercube::{inner_perm, SP1CoreJaggedConfig, SP1CpuJaggedProverComponents};
+    use sp1_hypercube::{inner_perm, prover::SP1CpuJaggedProverComponents, SP1CoreJaggedConfig};
     use sp1_primitives::{SP1DiffusionMatrix, SP1ExtensionField, SP1Field, SP1GlobalContext};
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler, AsmConfig, CircuitV2Builder};
     use sp1_recursion_executor::Executor;
@@ -345,7 +345,7 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let jagged_verifier = JaggedPcsVerifier::<GC, JC>::new(
+        let jagged_verifier = JaggedPcsVerifier::<GC, JC>::new_from_basefold_params(
             FriConfig::default_fri_config(),
             log_stacking_height,
             max_log_row_count as usize,

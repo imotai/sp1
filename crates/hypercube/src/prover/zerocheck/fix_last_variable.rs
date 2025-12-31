@@ -2,26 +2,19 @@ use std::ops::{Add, Mul};
 
 use futures::future::OptionFuture;
 use slop_algebra::{ExtensionField, Field};
-use slop_multilinear::{
-    HostEvaluationBackend, MleBaseBackend, MleEvaluationBackend, MleFixLastVariableBackend,
-};
 
-use super::{sum_as_poly::ZerocheckRoundProver, ZeroCheckPoly};
+use super::ZeroCheckPoly;
 
 /// This function will set the last variable to `alpha`.
 pub async fn zerocheck_fix_last_variable<
     K: Field,
     F: Field,
     EF: ExtensionField<F> + Add<K, Output = EF> + Mul<K, Output = EF> + From<K> + ExtensionField<K>,
-    A: ZerocheckRoundProver<F, K, EF, B>,
-    B: MleFixLastVariableBackend<K, EF>
-        + MleBaseBackend<EF>
-        + MleEvaluationBackend<K, EF>
-        + HostEvaluationBackend<K, K>,
+    A,
 >(
-    poly: ZeroCheckPoly<K, F, EF, A, B>,
+    poly: ZeroCheckPoly<K, F, EF, A>,
     alpha: EF,
-) -> ZeroCheckPoly<EF, F, EF, A, B> {
+) -> ZeroCheckPoly<EF, F, EF, A> {
     let preprocessed_columns = OptionFuture::from(
         poly.preprocessed_columns.as_ref().map(|mle| mle.fix_last_variable(alpha)),
     )

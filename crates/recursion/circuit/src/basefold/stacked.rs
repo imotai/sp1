@@ -86,8 +86,8 @@ mod tests {
 
     use crate::challenger::CanObserveVariable;
     use slop_multilinear::{Mle, MultilinearPcsProver};
-    use slop_stacked::{FixedRateInterleave, StackedPcsProver};
-    use sp1_hypercube::{inner_perm, prover::SP1BasefoldCpuProverComponents};
+    use slop_stacked::StackedPcsProver;
+    use sp1_hypercube::{inner_perm, prover::SP1MerkleTreeProver};
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler};
     use sp1_recursion_executor::Executor;
 
@@ -101,7 +101,7 @@ mod tests {
     ) {
         type C = InnerConfig;
         type SC = SP1GlobalContext;
-        type Prover = BasefoldProver<SP1GlobalContext, SP1BasefoldCpuProverComponents>;
+        type Prover = BasefoldProver<SP1GlobalContext, SP1MerkleTreeProver>;
         type EF = BinomialExtensionField<SP1Field, 4>;
         let total_data_length = round_widths_and_log_heights
             .iter()
@@ -125,9 +125,8 @@ mod tests {
             round_widths_and_log_heights.len(),
         );
         let pcs_prover = Prover::new(&pcs_verifier);
-        let stacker = FixedRateInterleave::new(batch_size);
 
-        let prover = StackedPcsProver::new(pcs_prover, stacker, log_stacking_height);
+        let prover = StackedPcsProver::new(pcs_prover, log_stacking_height, batch_size);
 
         let mut challenger = SC::default_challenger();
         let mut commitments = vec![];

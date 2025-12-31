@@ -8,7 +8,10 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+slop-basefold = { workspace = true }
+slop-basefold-prover = { workspace = true }
 slop-multilinear = { workspace = true }
+slop-merkle-tree = { workspace = true }
 slop-alloc = { workspace = true }
 slop-challenger = { workspace = true }
 slop-futures = { workspace = true }
@@ -28,6 +31,7 @@ slop-basefold-prover = { workspace = true }
 slop-basefold = { workspace = true }
 slop-baby-bear = { workspace = true }
 slop-challenger = { workspace = true }
+slop-merkle-tree = { workspace = true }
 
 rand = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }

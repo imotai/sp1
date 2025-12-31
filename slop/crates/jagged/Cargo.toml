@@ -18,6 +18,7 @@ slop-utils = { workspace = true }
 slop-challenger = { workspace = true }
 slop-stacked = { workspace = true }
 slop-alloc = { workspace = true }
+slop-merkle-tree = { workspace = true }
 slop-commit = { workspace = true }
 slop-basefold-prover = { workspace = true }
 slop-basefold = { workspace = true }

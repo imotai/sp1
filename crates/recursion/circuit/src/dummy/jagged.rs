@@ -5,7 +5,7 @@ use slop_commit::Rounds;
 use slop_jagged::{JaggedPcsProof, JaggedSumcheckEvalProof};
 use slop_merkle_tree::{MerkleTreeOpeningAndProof, MerkleTreeTcsProof};
 use slop_multilinear::MleEval;
-use slop_stacked::StackedPcsProof;
+use slop_stacked::StackedBasefoldProof;
 use slop_tensor::Tensor;
 use sp1_hypercube::{log2_ceil_usize, SP1CoreJaggedConfig, NUM_SP1_COMMITMENTS};
 use sp1_primitives::{SP1Field, SP1GlobalContext};
@@ -95,7 +95,7 @@ pub fn dummy_pcs_proof(
             .collect(),
     };
 
-    let stacked_proof = StackedPcsProof { pcs_proof: basefold_proof, batch_evaluations };
+    let stacked_proof = StackedBasefoldProof { basefold_proof, batch_evaluations };
 
     let total_trace = log2_ceil_usize(
         log_stacking_height_multiples.iter().sum::<usize>() * (1 << log_stacking_height),
@@ -145,7 +145,7 @@ mod tests {
     use slop_jagged::{JaggedPcsVerifier, JaggedProver};
     use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
 
-    use sp1_hypercube::{SP1CoreJaggedConfig, SP1CpuJaggedProverComponents};
+    use sp1_hypercube::{prover::SP1CpuJaggedProverComponents, SP1CoreJaggedConfig};
 
     use crate::dummy::jagged::dummy_pcs_proof;
 
@@ -190,7 +190,7 @@ mod tests {
             })
             .collect::<Rounds<_>>();
 
-        let jagged_verifier = JaggedPcsVerifier::<_, JC>::new(
+        let jagged_verifier = JaggedPcsVerifier::<_, JC>::new_from_basefold_params(
             FriConfig::default_fri_config(),
             log_stacking_height,
             max_log_row_count as usize,
@@ -349,7 +349,7 @@ mod tests {
                 dummy_component_polynomials_query_openings,
             query_phase_openings_and_proofs: dummy_query_phase_openings,
             ..
-        } = dummy_proof.pcs_proof.pcs_proof;
+        } = dummy_proof.pcs_proof.basefold_proof;
 
         let BasefoldProof {
             univariate_messages,
@@ -357,7 +357,7 @@ mod tests {
             component_polynomials_query_openings_and_proofs,
             query_phase_openings_and_proofs,
             ..
-        } = proof.pcs_proof.pcs_proof;
+        } = proof.pcs_proof.basefold_proof;
 
         assert_eq!(dummy_univariate_messages.len(), univariate_messages.len());
         assert_eq!(dummy_fri_commitments.len(), fri_commitments.len());

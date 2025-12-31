@@ -467,8 +467,11 @@ mod tests {
         utils::{prove_core, setup_logger},
     };
     use sp1_hypercube::{
-        prover::{AirProver, CpuMachineProverComponents, CpuShardProver, ProverSemaphore},
-        MachineVerifier, SP1CpuJaggedProverComponents, ShardVerifier, NUM_SP1_COMMITMENTS,
+        prover::{
+            AirProver, CpuMachineProverComponents, CpuShardProver, ProverSemaphore,
+            SP1CpuJaggedProverComponents,
+        },
+        MachineVerifier, ShardVerifier, NUM_SP1_COMMITMENTS,
     };
     use sp1_recursion_compiler::{
         circuit::{AsmCompiler, AsmConfig},

@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use slop_challenger::IopCtx;
-use slop_jagged::JaggedConfig;
+use slop_multilinear::MultilinearPcsVerifier;
 
 use crate::machine::{
     assert_recursion_public_values_valid, SP1MerkleProofVerifier, SP1MerkleProofWitnessValues,
@@ -49,7 +49,7 @@ pub struct SP1DeferredVerifier<GC, C, A> {
 ))]
 pub struct SP1DeferredWitnessValues<
     GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + FieldHasher,
-    SC: JaggedConfig<GC>,
+    SC: MultilinearPcsVerifier<GC>,
 > {
     pub vks_and_proofs: Vec<(MachineVerifyingKey<GC, SC>, ShardProof<GC, SC>)>,
     pub vk_merkle_data: SP1MerkleProofWitnessValues<GC>,
@@ -60,8 +60,10 @@ pub struct SP1DeferredWitnessValues<
     pub deferred_proof_index: GC::F,
 }
 
-impl<GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + FieldHasher, SC: JaggedConfig<GC>>
-    SP1DeferredWitnessValues<GC, SC>
+impl<
+        GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + FieldHasher,
+        SC: MultilinearPcsVerifier<GC>,
+    > SP1DeferredWitnessValues<GC, SC>
 {
     /// The deferred proof range.
     ///

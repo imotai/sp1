@@ -4,8 +4,7 @@ use slop_algebra::{
     interpolate_univariate_polynomial, AbstractExtensionField, AbstractField, ExtensionField,
     Field, UnivariatePolynomial,
 };
-use slop_alloc::{Backend, CpuBackend, HasBackend};
-use slop_multilinear::MleBaseBackend;
+use slop_alloc::{CpuBackend, HasBackend};
 use slop_sumcheck::{
     ComponentPolyEvalBackend, SumCheckPolyFirstRoundBackend, SumcheckPolyBackend, SumcheckPolyBase,
     SumcheckPolyFirstRound,
@@ -15,29 +14,27 @@ use tokio::sync::oneshot;
 use crate::LongMle;
 
 #[derive(Clone, Debug)]
-pub struct HadamardProduct<F, EF = F, A: Backend = CpuBackend> {
-    pub base: LongMle<F, A>,
-    pub ext: LongMle<EF, A>,
+pub struct HadamardProduct<F, EF = F> {
+    pub base: LongMle<F>,
+    pub ext: LongMle<EF>,
 }
 
-impl<F, EF, A> HasBackend for HadamardProduct<F, EF, A>
+impl<F, EF> HasBackend for HadamardProduct<F, EF>
 where
-    A: Backend,
     F: AbstractField,
     EF: AbstractExtensionField<F>,
 {
-    type Backend = A;
+    type Backend = CpuBackend;
     #[inline]
     fn backend(&self) -> &Self::Backend {
         self.base.backend()
     }
 }
 
-impl<F, EF, A> SumcheckPolyBase for HadamardProduct<F, EF, A>
+impl<F, EF> SumcheckPolyBase for HadamardProduct<F, EF>
 where
     F: AbstractField,
     EF: AbstractExtensionField<F>,
-    A: MleBaseBackend<F> + MleBaseBackend<EF>,
 {
     #[inline]
     fn num_variables(&self) -> u32 {
@@ -45,12 +42,12 @@ where
     }
 }
 
-impl<F, EF> ComponentPolyEvalBackend<HadamardProduct<F, EF, CpuBackend>, EF> for CpuBackend
+impl<F, EF> ComponentPolyEvalBackend<HadamardProduct<F, EF>, EF> for CpuBackend
 where
     F: AbstractField,
     EF: AbstractExtensionField<F>,
 {
-    async fn get_component_poly_evals(poly: &HadamardProduct<F, EF, CpuBackend>) -> Vec<EF> {
+    async fn get_component_poly_evals(poly: &HadamardProduct<F, EF>) -> Vec<EF> {
         assert_eq!(poly.base.num_components(), 1);
         let base_eval: EF = (*poly.base.first_component_mle().guts()[[0, 0]]).clone().into();
         let ext_eval: EF = (*poly.ext.first_component_mle().guts()[[0, 0]]).clone();
@@ -58,14 +55,11 @@ where
     }
 }
 
-impl<F> SumcheckPolyBackend<HadamardProduct<F, F, CpuBackend>, F> for CpuBackend
+impl<F> SumcheckPolyBackend<HadamardProduct<F, F>, F> for CpuBackend
 where
     F: Field,
 {
-    async fn fix_last_variable(
-        poly: HadamardProduct<F, F, CpuBackend>,
-        alpha: F,
-    ) -> HadamardProduct<F, F, CpuBackend> {
+    async fn fix_last_variable(poly: HadamardProduct<F, F>, alpha: F) -> HadamardProduct<F, F> {
         let base = poly.base.fix_last_variable(alpha).await;
         let ext = poly.ext.fix_last_variable(alpha).await;
         HadamardProduct { base, ext }
@@ -73,24 +67,24 @@ where
 
     #[inline]
     async fn sum_as_poly_in_last_variable(
-        poly: &HadamardProduct<F, F, CpuBackend>,
+        poly: &HadamardProduct<F, F>,
         claim: Option<F>,
     ) -> UnivariatePolynomial<F> {
         poly.sum_as_poly_in_last_t_variables(claim, 1).await
     }
 }
 
-impl<F, EF> SumCheckPolyFirstRoundBackend<HadamardProduct<F, EF, CpuBackend>, EF> for CpuBackend
+impl<F, EF> SumCheckPolyFirstRoundBackend<HadamardProduct<F, EF>, EF> for CpuBackend
 where
     F: Field,
     EF: ExtensionField<F>,
 {
-    type NextRoundPoly = HadamardProduct<EF, EF, CpuBackend>;
+    type NextRoundPoly = HadamardProduct<EF, EF>;
     async fn fix_t_variables(
-        poly: HadamardProduct<F, EF, CpuBackend>,
+        poly: HadamardProduct<F, EF>,
         alpha: EF,
         t: usize,
-    ) -> HadamardProduct<EF, EF, CpuBackend> {
+    ) -> HadamardProduct<EF, EF> {
         assert_eq!(t, 1);
         let base = poly.base.fix_last_variable(alpha).await;
         let ext = poly.ext.fix_last_variable(alpha).await;
@@ -98,7 +92,7 @@ where
     }
 
     async fn sum_as_poly_in_last_t_variables(
-        poly: &HadamardProduct<F, EF, CpuBackend>,
+        poly: &HadamardProduct<F, EF>,
         claim: Option<EF>,
         t: usize,
     ) -> UnivariatePolynomial<EF> {

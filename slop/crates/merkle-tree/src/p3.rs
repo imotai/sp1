@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, Field, PackedField, PackedValue};
 use slop_alloc::{Backend, CpuBackend};
 use slop_baby_bear::{baby_bear_poseidon2::BabyBearDegree4Duplex, BabyBear};
+use slop_bn254::{Bn254Fr, BNGC, OUTER_DIGEST_SIZE};
 use slop_challenger::IopCtx;
 use slop_commit::Message;
 use slop_futures::OwnedBorrow;
@@ -42,7 +43,7 @@ pub trait TensorCsProver<GC: IopCtx, A: Backend>: 'static + Send + Sync {
     ) -> impl Future<Output = Result<MerkleTreeTcsProof<GC::Digest>, Self::ProverError>> + Send;
 }
 
-pub trait ComputeTcsOpenings<GC: IopCtx, A: Backend>: TensorCsProver<GC, A> {
+pub trait ComputeTcsOpenings<GC: IopCtx, A: Backend>: TensorCsProver<GC, A> + Default {
     fn compute_openings_at_indices<T>(
         &self,
         tensors: Message<T>,
@@ -52,11 +53,13 @@ pub trait ComputeTcsOpenings<GC: IopCtx, A: Backend>: TensorCsProver<GC, A> {
         T: OwnedBorrow<Tensor<GC::F, A>>;
 }
 
-#[derive(Default)]
+#[derive(Clone)]
 pub struct FieldMerkleTreeProver<P, PW, GC: IopCtx, const DIGEST_ELEMS: usize> {
     tcs: Arc<MerkleTreeTcs<GC>>,
     _phantom: PhantomData<(P, PW)>,
 }
+
+pub type BnProver<F, EF> = FieldMerkleTreeProver<F, Bn254Fr, BNGC<F, EF>, OUTER_DIGEST_SIZE>;
 
 impl<P, PW, GC: IopCtx, const DIGEST_ELEMS: usize> std::fmt::Debug
     for FieldMerkleTreeProver<P, PW, GC, DIGEST_ELEMS>
@@ -257,6 +260,14 @@ where
             paths,
         };
         Ok(proof)
+    }
+}
+
+impl<GC: IopCtx, P, PW, const DIGEST_ELEMS: usize> Default
+    for FieldMerkleTreeProver<P, PW, GC, DIGEST_ELEMS>
+{
+    fn default() -> Self {
+        Self::new(MerkleTreeTcs::default())
     }
 }
 

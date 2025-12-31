@@ -1,23 +1,21 @@
-use derive_where::derive_where;
 use futures::prelude::*;
-use slop_algebra::Field;
-use slop_alloc::{HasBackend, ToHost};
+use serde::{Deserialize, Serialize};
+use slop_algebra::{Field, TwoAdicField};
+use slop_alloc::{CpuBackend, ToHost};
+use slop_basefold_prover::{BasefoldProver, BasefoldProverData, BasefoldProverError};
 use slop_challenger::IopCtx;
 use slop_commit::{Message, Rounds};
-use slop_multilinear::{
-    Evaluations, Mle, MleBaseBackend, MleEval, MultilinearPcsBatchProver, MultilinearPcsProver,
-    Point,
-};
+use slop_merkle_tree::ComputeTcsOpenings;
+use slop_multilinear::{Evaluations, Mle, MleBaseBackend, MleEval, MultilinearPcsProver, Point};
 use std::fmt::Debug;
-use thiserror::Error;
 
-use crate::{InterleaveMultilinears, StackedPcsProof, StackedPcsVerifier};
+use crate::{interleave_multilinears_with_fixed_rate, StackedBasefoldProof, StackedPcsVerifier};
 
-#[derive(Debug, Clone)]
-pub struct StackedPcsProver<P, S, GC> {
-    pcs_prover: P,
-    stacker: S,
+#[derive(Clone)]
+pub struct StackedPcsProver<P: ComputeTcsOpenings<GC, CpuBackend>, GC: IopCtx<F: TwoAdicField>> {
+    basefold_prover: BasefoldProver<GC, P>,
     pub log_stacking_height: u32,
+    pub batch_size: usize,
     _marker: std::marker::PhantomData<GC>,
 }
 
@@ -25,42 +23,36 @@ pub trait ToMle<F: Field, A: MleBaseBackend<F>> {
     fn interleaved_mles(&self) -> Message<Mle<F, A>>;
 }
 
-#[derive_where(Debug, Clone; P::ProverData: Debug + Clone)]
-#[derive_where(Serialize, Deserialize; P::ProverData, Mle<GC::F, P::A>)]
-pub struct StackedPcsProverData<GC: IopCtx, P: MultilinearPcsBatchProver<GC>> {
-    pcs_batch_data: P::ProverData,
-    pub interleaved_mles: Message<Mle<GC::F, P::A>>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StackedBasefoldProverData<M, F, TcsProverData> {
+    pcs_batch_data: BasefoldProverData<F, TcsProverData>,
+    pub interleaved_mles: Message<M>,
 }
 
-impl<GC: IopCtx, P: MultilinearPcsBatchProver<GC>> ToMle<GC::F, P::A>
-    for StackedPcsProverData<GC, P>
-{
-    fn interleaved_mles(&self) -> Message<Mle<GC::F, P::A>> {
+impl<F: Field, PD> ToMle<F, CpuBackend> for StackedBasefoldProverData<Mle<F>, F, PD> {
+    fn interleaved_mles(&self) -> Message<Mle<F, CpuBackend>> {
         self.interleaved_mles.clone()
     }
 }
 
-#[derive(Error, Debug)]
-pub enum StackedPcsProverError<E> {
-    #[error("PCS prover error: {0}")]
-    PcsProverError(E),
-}
-
-impl<GC, P, S> StackedPcsProver<P, S, GC>
+impl<GC, P> StackedPcsProver<P, GC>
 where
-    GC: IopCtx,
-    P: MultilinearPcsBatchProver<GC>,
-    S: InterleaveMultilinears<GC::F, P::A>,
+    GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>,
+    P: ComputeTcsOpenings<GC, CpuBackend>,
 {
-    pub const fn new(pcs_prover: P, stacker: S, log_stacking_height: u32) -> Self {
-        Self { pcs_prover, stacker, log_stacking_height, _marker: std::marker::PhantomData }
+    pub const fn new(
+        basefold_prover: BasefoldProver<GC, P>,
+        log_stacking_height: u32,
+        batch_size: usize,
+    ) -> Self {
+        Self { basefold_prover, log_stacking_height, batch_size, _marker: std::marker::PhantomData }
     }
 
     pub async fn round_batch_evaluations(
         &self,
-        stacked_point: &Point<GC::EF, P::A>,
-        prover_data: &StackedPcsProverData<GC, P>,
-    ) -> Evaluations<GC::EF, P::A> {
+        stacked_point: &Point<GC::EF>,
+        prover_data: &StackedBasefoldProverData<Mle<GC::F>, GC::F, P::ProverData>,
+    ) -> Evaluations<GC::EF> {
         stream::iter(prover_data.interleaved_mles.iter())
             .then(|mle| mle.eval_at(stacked_point))
             .collect::<Evaluations<_, _>>()
@@ -69,10 +61,10 @@ where
 
     pub async fn commit_multilinears(
         &self,
-        multilinears: Message<Mle<GC::F, P::A>>,
+        multilinears: Message<Mle<GC::F>>,
     ) -> Result<
-        (GC::Digest, StackedPcsProverData<GC, P>, usize),
-        StackedPcsProverError<P::ProverError>,
+        (GC::Digest, StackedBasefoldProverData<Mle<GC::F>, GC::F, P::ProverData>, usize),
+        BasefoldProverError<P::ProverError>,
     > {
         // To commit to the batch of padded Mles, the underlying PCS prover commits to the dense
         // representation of all of these Mles (i.e. a single "giga" Mle consisting of all the
@@ -92,36 +84,30 @@ where
                 .map(|mle| mle.num_non_zero_entries() * mle.num_polynomials())
                 .sum::<usize>();
 
-        let interleaved_mles =
-            self.stacker.interleave_multilinears(multilinears, self.log_stacking_height).await;
-        let (commit, pcs_batch_data) = self
-            .pcs_prover
-            .commit_multilinears(interleaved_mles.clone())
-            .await
-            .map_err(StackedPcsProverError::PcsProverError)?;
-        let prover_data = StackedPcsProverData { pcs_batch_data, interleaved_mles };
+        let interleaved_mles = interleave_multilinears_with_fixed_rate(
+            self.batch_size,
+            multilinears,
+            self.log_stacking_height,
+        )
+        .await;
+        let (commit, pcs_batch_data) =
+            self.basefold_prover.commit_mles(interleaved_mles.clone()).await?;
+        let prover_data = StackedBasefoldProverData { pcs_batch_data, interleaved_mles };
 
         Ok((commit, prover_data, num_added_vals))
     }
 }
 
-impl<GC: IopCtx, P: MultilinearPcsBatchProver<GC>> HasBackend for StackedPcsProverData<GC, P> {
-    type Backend = P::A;
-
-    fn backend(&self) -> &Self::Backend {
-        self.interleaved_mles[0].backend()
-    }
-}
-impl<GC: IopCtx, P: MultilinearPcsBatchProver<GC>, S: InterleaveMultilinears<GC::F, P::A>>
-    MultilinearPcsProver<GC> for StackedPcsProver<P, S, GC>
+impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, P: ComputeTcsOpenings<GC, CpuBackend>>
+    MultilinearPcsProver<GC> for StackedPcsProver<P, GC>
 {
-    type Verifier = StackedPcsVerifier<GC, P::Verifier>;
+    type Verifier = StackedPcsVerifier<GC>;
 
-    type ProverData = StackedPcsProverData<GC, P>;
+    type ProverData = StackedBasefoldProverData<Mle<GC::F>, GC::F, P::ProverData>;
 
-    type A = P::A;
+    type A = CpuBackend;
 
-    type ProverError = StackedPcsProverError<P::ProverError>;
+    type ProverError = BasefoldProverError<P::ProverError>;
 
     async fn commit_multilinear(
         &self,
@@ -140,10 +126,8 @@ impl<GC: IopCtx, P: MultilinearPcsBatchProver<GC>, S: InterleaveMultilinears<GC:
         <Self::Verifier as slop_multilinear::MultilinearPcsVerifier<GC>>::Proof,
         Self::ProverError,
     > {
-        let backend = prover_data.backend();
         let (_, stack_point) =
             eval_point.split_at(eval_point.dimension() - self.log_stacking_height as usize);
-        let stack_point = stack_point.copy_into(backend);
         let batch_evaluations = stream::iter(prover_data.iter())
             .then(|data| self.round_batch_evaluations(&stack_point, data))
             .collect::<Rounds<_>>()
@@ -168,7 +152,7 @@ impl<GC: IopCtx, P: MultilinearPcsBatchProver<GC>, S: InterleaveMultilinears<GC:
             eval_point.split_at(eval_point.dimension() - self.log_stacking_height as usize);
 
         let pcs_proof = self
-            .pcs_prover
+            .basefold_prover
             .prove_untrusted_evaluations(
                 stack_point,
                 mle_rounds,
@@ -176,15 +160,21 @@ impl<GC: IopCtx, P: MultilinearPcsBatchProver<GC>, S: InterleaveMultilinears<GC:
                 pcs_prover_data,
                 challenger,
             )
-            .await
-            .map_err(StackedPcsProverError::PcsProverError)?;
+            .await?;
 
         let host_batch_evaluations = host_batch_evaluations
             .into_iter()
             .map(|round| round.into_iter().flatten().collect::<MleEval<_>>())
             .collect::<Rounds<_>>();
 
-        Ok(StackedPcsProof { pcs_proof, batch_evaluations: host_batch_evaluations })
+        Ok(StackedBasefoldProof {
+            basefold_proof: pcs_proof,
+            batch_evaluations: host_batch_evaluations,
+        })
+    }
+
+    fn log_max_padding_amount(&self) -> u32 {
+        self.log_stacking_height
     }
 }
 #[cfg(test)]
@@ -193,11 +183,12 @@ mod tests {
     use slop_algebra::extension::BinomialExtensionField;
     use slop_baby_bear::{baby_bear_poseidon2::BabyBearDegree4Duplex, BabyBear};
     use slop_basefold::{BasefoldVerifier, FriConfig};
-    use slop_basefold_prover::{BasefoldProver, Poseidon2BabyBear16BasefoldCpuProverComponents};
+    use slop_basefold_prover::BasefoldProver;
     use slop_challenger::CanObserve;
+    use slop_merkle_tree::Poseidon2BabyBear16Prover;
     use slop_tensor::Tensor;
 
-    use crate::{FixedRateInterleave, StackedPcsVerifier};
+    use crate::StackedPcsVerifier;
 
     use super::*;
 
@@ -207,7 +198,7 @@ mod tests {
         let batch_size = 10;
 
         type GC = BabyBearDegree4Duplex;
-        type Prover = BasefoldProver<GC, Poseidon2BabyBear16BasefoldCpuProverComponents>;
+        type Prover = BasefoldProver<GC, Poseidon2BabyBear16Prover>;
         type EF = BinomialExtensionField<BabyBear, 4>;
 
         let round_widths_and_log_heights = [vec![(1 << 10, 10), (1 << 4, 11), (496, 11)]];
@@ -243,10 +234,9 @@ mod tests {
             round_widths_and_log_heights.len(),
         );
         let pcs_prover = Prover::new(&pcs_verifier);
-        let stacker = FixedRateInterleave::new(batch_size);
 
         let verifier = StackedPcsVerifier::new(pcs_verifier, log_stacking_height);
-        let prover = StackedPcsProver::new(pcs_prover, stacker, log_stacking_height);
+        let prover = StackedPcsProver::new(pcs_prover, log_stacking_height, batch_size);
 
         let mut challenger = GC::default_challenger();
         let mut commitments = vec![];

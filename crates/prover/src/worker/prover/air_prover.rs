@@ -1,7 +1,7 @@
 use std::{future::Future, sync::Arc};
 
 use slop_challenger::IopCtx;
-use slop_jagged::JaggedConfig;
+use slop_multilinear::MultilinearPcsVerifier;
 use sp1_hypercube::{
     air::MachineAir,
     prover::{AirProver, ProverPermit, ProverSemaphore, ProvingKey},
@@ -11,7 +11,7 @@ use sp1_hypercube::{
 /// A prover for an AIR.
 pub trait AirProverWorker<
     GC: IopCtx,
-    C: JaggedConfig<GC>,
+    C: MultilinearPcsVerifier<GC>,
     Air: MachineAir<GC::F>,
     P: AirProver<GC, C, Air>,
 >: 'static + Send + Sync
@@ -57,7 +57,7 @@ pub trait AirProverWorker<
 impl<GC, C, Air, P> AirProverWorker<GC, C, Air, P> for P
 where
     GC: IopCtx,
-    C: JaggedConfig<GC>,
+    C: MultilinearPcsVerifier<GC>,
     Air: MachineAir<GC::F>,
     P: AirProver<GC, C, Air>,
 {

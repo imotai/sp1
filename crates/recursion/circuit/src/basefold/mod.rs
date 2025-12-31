@@ -447,8 +447,7 @@ mod tests {
         type C = InnerConfig;
         type SC = SP1GlobalContext;
 
-        type Prover =
-            BasefoldProver<SP1GlobalContext, sp1_hypercube::prover::SP1BasefoldCpuProverComponents>;
+        type Prover = BasefoldProver<SP1GlobalContext, sp1_hypercube::prover::SP1MerkleTreeProver>;
 
         let num_variables = 16;
         let round_widths = [vec![16, 10, 14], vec![20, 78, 34], vec![10, 10]];
@@ -551,8 +550,7 @@ mod tests {
     async fn test_invalid_basefold_proof() {
         type C = InnerConfig;
         type SC = SP1GlobalContext;
-        type Prover =
-            BasefoldProver<SP1GlobalContext, sp1_hypercube::prover::SP1BasefoldCpuProverComponents>;
+        type Prover = BasefoldProver<SP1GlobalContext, sp1_hypercube::prover::SP1MerkleTreeProver>;
 
         let num_variables = 16;
         let round_widths = [vec![16, 10, 14], vec![20, 78, 34], vec![10, 10]];

@@ -1,91 +1,52 @@
 use serde::{Deserialize, Serialize};
 
-use slop_tensor::TransposeBackend;
 use slop_utils::log2_ceil_usize;
 use std::{fmt::Debug, iter::once, sync::Arc};
 use tracing::Instrument;
 
-use slop_algebra::{AbstractField, ExtensionField, Field};
-use slop_alloc::{mem::CopyError, Buffer, HasBackend, ToHost};
+use slop_algebra::AbstractField;
+use slop_alloc::{mem::CopyError, Buffer, CpuBackend, HasBackend, ToHost};
 use slop_challenger::{FieldChallenger, IopCtx};
 use slop_commit::{Message, Rounds};
-use slop_multilinear::{
-    Evaluations, Mle, MleBaseBackend, MleEvaluationBackend, MultilinearPcsProver, PaddedMle, Point,
-};
-use slop_stacked::{FixedRateInterleaveBackend, InterleaveMultilinears, ToMle};
-use slop_sumcheck::{
-    reduce_sumcheck_to_evaluation, ComponentPolyEvalBackend, SumCheckPolyFirstRoundBackend,
-    SumcheckPolyBackend,
-};
+use slop_multilinear::{Evaluations, Mle, MultilinearPcsProver, PaddedMle, Point};
+use slop_stacked::ToMle;
+use slop_sumcheck::reduce_sumcheck_to_evaluation;
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 use thiserror::Error;
 
 use crate::{
-    HadamardProduct, JaggedConfig, JaggedEvalProver, JaggedLittlePolynomialProverParams,
-    JaggedPcsProof, JaggedPcsVerifier, JaggedSumcheckProver,
+    sumcheck::jagged_sumcheck_poly, JaggedAssistSumAsPolyCPUImpl, JaggedEvalProver,
+    JaggedEvalSumcheckProver, JaggedLittlePolynomialProverParams, JaggedPcsProof,
+    JaggedPcsVerifier,
 };
 
-pub trait JaggedBackend<F: Field, EF: ExtensionField<F>>:
-    MleBaseBackend<F>
-    + MleBaseBackend<EF>
-    + MleEvaluationBackend<F, EF>
-    + MleEvaluationBackend<EF, EF>
-    + FixedRateInterleaveBackend<F>
-    + ComponentPolyEvalBackend<HadamardProduct<F, EF, Self>, EF>
-    + ComponentPolyEvalBackend<HadamardProduct<EF, EF, Self>, EF>
-    + SumcheckPolyBackend<HadamardProduct<EF, EF, Self>, EF>
-    + SumCheckPolyFirstRoundBackend<HadamardProduct<F, EF, Self>, EF, NextRoundPoly: Send + Sync>
-    + TransposeBackend<F>
+pub trait JaggedProverComponents<GC: IopCtx>:
+    Sized
+    + Send
+    + Sync
+    + 'static
+    + MultilinearPcsProver<GC, A = CpuBackend, ProverData: ToMle<GC::F, CpuBackend>>
 {
 }
 
-impl<F, EF, A> JaggedBackend<F, EF> for A
-where
-    F: Field,
-    EF: ExtensionField<F>,
-    A: MleBaseBackend<F>
-        + MleBaseBackend<EF>
-        + MleEvaluationBackend<F, EF>
-        + MleEvaluationBackend<EF, EF>
-        + FixedRateInterleaveBackend<F>
-        + ComponentPolyEvalBackend<HadamardProduct<F, EF, Self>, EF>
-        + ComponentPolyEvalBackend<HadamardProduct<EF, EF, Self>, EF>
-        + SumcheckPolyBackend<HadamardProduct<EF, EF, Self>, EF>
-        + SumCheckPolyFirstRoundBackend<HadamardProduct<F, EF, Self>, EF>
-        + TransposeBackend<F>,
-    <A as SumCheckPolyFirstRoundBackend<HadamardProduct<F, EF, Self>, EF>>::NextRoundPoly:
-        Send + Sync,
+impl<
+        P: MultilinearPcsProver<GC, A = CpuBackend, ProverData: ToMle<GC::F, CpuBackend>>,
+        GC: IopCtx,
+    > JaggedProverComponents<GC> for P
 {
 }
 
-pub trait JaggedProverComponents<GC: IopCtx>: Clone + Send + Sync + 'static {
-    type A: JaggedBackend<GC::F, GC::EF>;
-
-    type Config: JaggedConfig<GC> + 'static + Send + Sync + Clone;
-
-    type JaggedSumcheckProver: JaggedSumcheckProver<GC::F, GC::EF, Self::A>;
-
-    type BatchPcsProver: MultilinearPcsProver<
-        GC,
-        A = Self::A,
-        Verifier = <Self::Config as JaggedConfig<GC>>::PcsVerifier,
-        ProverData: ToMle<GC::F, Self::A>,
-    >;
-    type Stacker: InterleaveMultilinears<GC::F, Self::A>;
-
-    type JaggedEvalProver: JaggedEvalProver<GC::F, GC::EF, GC::Challenger, A = Self::A>
-        + 'static
-        + Send
-        + Sync;
-
-    fn log_stacking_height(prover: &JaggedProver<GC, Self>) -> u32;
-}
+pub type JaggedAssistProver<GC> = JaggedEvalSumcheckProver<
+    <GC as IopCtx>::F,
+    JaggedAssistSumAsPolyCPUImpl<<GC as IopCtx>::F, <GC as IopCtx>::EF, <GC as IopCtx>::Challenger>,
+    CpuBackend,
+    <GC as IopCtx>::Challenger,
+>;
 
 #[derive(Clone)]
 pub struct JaggedProver<GC: IopCtx, C: JaggedProverComponents<GC>> {
-    pub pcs_prover: C::BatchPcsProver,
-    jagged_sumcheck_prover: C::JaggedSumcheckProver,
-    jagged_eval_prover: C::JaggedEvalProver,
+    pub pcs_prover: C,
+    jagged_eval_prover: JaggedAssistProver<GC>,
     pub max_log_row_count: usize,
 }
 
@@ -109,21 +70,22 @@ pub enum JaggedProverError<Error> {
 
 pub trait DefaultJaggedProver<GC: IopCtx>: JaggedProverComponents<GC> {
     fn prover_from_verifier(
-        verifier: &JaggedPcsVerifier<GC, Self::Config>,
+        verifier: &JaggedPcsVerifier<GC, <Self as MultilinearPcsProver<GC>>::Verifier>,
     ) -> JaggedProver<GC, Self>;
 }
 
 impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
     pub const fn new(
         max_log_row_count: usize,
-        pcs_prover: C::BatchPcsProver,
-        jagged_sumcheck_prover: C::JaggedSumcheckProver,
-        jagged_eval_prover: C::JaggedEvalProver,
+        pcs_prover: C,
+        jagged_eval_prover: JaggedAssistProver<GC>,
     ) -> Self {
-        Self { pcs_prover, jagged_sumcheck_prover, jagged_eval_prover, max_log_row_count }
+        Self { pcs_prover, jagged_eval_prover, max_log_row_count }
     }
 
-    pub fn from_verifier(verifier: &JaggedPcsVerifier<GC, C::Config>) -> Self
+    pub fn from_verifier(
+        verifier: &JaggedPcsVerifier<GC, <C as MultilinearPcsProver<GC>>::Verifier>,
+    ) -> Self
     where
         C: DefaultJaggedProver<GC>,
     {
@@ -137,13 +99,10 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
     /// **Note** the padding values will be ignored and treated as though they are zero.
     pub async fn commit_multilinears(
         &self,
-        multilinears: Vec<PaddedMle<GC::F, C::A>>,
+        multilinears: Vec<PaddedMle<GC::F>>,
     ) -> Result<
-        (
-            GC::Digest,
-            JaggedProverData<GC, <C::BatchPcsProver as MultilinearPcsProver<GC>>::ProverData>,
-        ),
-        JaggedProverError<<C::BatchPcsProver as MultilinearPcsProver<GC>>::ProverError>,
+        (GC::Digest, JaggedProverData<GC, <C as MultilinearPcsProver<GC>>::ProverData>),
+        JaggedProverError<<C as MultilinearPcsProver<GC>>::ProverError>,
     > {
         let mut row_counts = multilinears.iter().map(|x| x.num_real_entries()).collect::<Vec<_>>();
         let mut column_counts =
@@ -186,7 +145,7 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
 
         let final_commitment = compressor.compress([commitment, hash]);
 
-        let jagged_prover_data = JaggedProverData {
+        let jagged_prover_data = JaggedProverData::<GC, _> {
             pcs_prover_data: data,
             row_counts: Arc::new(row_counts),
             column_counts: Arc::new(column_counts),
@@ -200,14 +159,12 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
     pub async fn prove_trusted_evaluations(
         &self,
         eval_point: Point<GC::EF>,
-        evaluation_claims: Rounds<Evaluations<GC::EF, C::A>>,
-        prover_data: Rounds<
-            JaggedProverData<GC, <C::BatchPcsProver as MultilinearPcsProver<GC>>::ProverData>,
-        >,
+        evaluation_claims: Rounds<Evaluations<GC::EF>>,
+        prover_data: Rounds<JaggedProverData<GC, <C as MultilinearPcsProver<GC>>::ProverData>>,
         challenger: &mut GC::Challenger,
     ) -> Result<
-        JaggedPcsProof<GC, C::Config>,
-        JaggedProverError<<C::BatchPcsProver as MultilinearPcsProver<GC>>::ProverError>,
+        JaggedPcsProof<GC, <C as MultilinearPcsProver<GC>>::Verifier>,
+        JaggedProverError<<C as MultilinearPcsProver<GC>>::ProverError>,
     > {
         let num_col_variables = prover_data
             .iter()
@@ -221,7 +178,7 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
 
         let z_row = eval_point;
 
-        let backend = evaluation_claims[0][0].backend().clone();
+        let backend = *evaluation_claims[0][0].backend();
 
         // First, allocate a buffer for all of the column claims on device.
         let total_column_claims = evaluation_claims
@@ -233,8 +190,7 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
         // Add in the dummy padding columns added during the stacked PCS commitment.
             + prover_data.iter().map(|data| data.padding_column_count).sum::<usize>();
 
-        let mut column_claims: Buffer<GC::EF, C::A> =
-            Buffer::with_capacity_in(total_len, backend.clone());
+        let mut column_claims: Buffer<GC::EF> = Buffer::with_capacity_in(total_len, backend);
 
         // Then, copy the column claims from the evaluation claims into the buffer, inserting extra
         // zeros for the dummy columns.
@@ -284,24 +240,22 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
             .map(|data| data.pcs_prover_data.interleaved_mles().clone())
             .collect::<Rounds<_>>();
 
-        let sumcheck_poly = self
-            .jagged_sumcheck_prover
-            .jagged_sumcheck_poly(
-                all_mles.clone(),
-                &params,
-                row_data,
-                column_data,
-                <C as JaggedProverComponents<_>>::log_stacking_height(self),
-                &z_row_backend,
-                &z_col_backend,
-            )
-            .instrument(tracing::debug_span!("create jagged sumcheck poly"))
-            .await;
+        let sumcheck_poly = jagged_sumcheck_poly(
+            all_mles.clone(),
+            &params,
+            row_data,
+            column_data,
+            self.pcs_prover.log_max_padding_amount(),
+            &z_row_backend,
+            &z_col_backend,
+        )
+        .instrument(tracing::debug_span!("create jagged sumcheck poly"))
+        .await;
 
         // The overall evaluation claim of the sparse polynomial is inferred from the individual
         // table claims.
 
-        let column_claims: Mle<GC::EF, C::A> = Mle::from_buffer(column_claims);
+        let column_claims: Mle<GC::EF> = Mle::from_buffer(column_claims);
 
         let sumcheck_claims = column_claims.eval_at(&z_col_backend).await;
         let sumcheck_claims_host = sumcheck_claims.to_host().await.unwrap();
@@ -327,7 +281,7 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
                 &z_col,
                 &final_eval_point,
                 challenger,
-                backend.clone(),
+                backend,
             )
             .instrument(tracing::debug_span!("jagged evaluation proof"))
             .await;

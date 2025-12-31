@@ -1,4 +1,4 @@
-use std::{error::Error, future::Future, marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc};
 
 use itertools::Itertools;
 
@@ -11,73 +11,12 @@ use slop_commit::Message;
 pub use slop_fri::fold_even_odd as host_fold_even_odd;
 use slop_futures::OwnedBorrow;
 use slop_merkle_tree::TensorCsProver;
-use slop_multilinear::{Mle, MleEval, Point};
+use slop_multilinear::{Mle, MleEval};
 use slop_tensor::Tensor;
 
-use crate::ReedSolomonEncoder;
+use crate::CpuDftEncoder;
 
-pub trait BasefoldBatcher<
-    GC: IopCtx<F: TwoAdicField>,
-    E: ReedSolomonEncoder<GC::F, A> + Clone,
-    A: Backend = CpuBackend,
->: 'static + Send + Sync
-{
-    #[allow(clippy::type_complexity)]
-    fn batch<M, Code>(
-        &self,
-        batching_challenge: GC::EF,
-        mles: Message<M>,
-        codewords: Message<Code>,
-        evaluation_claims: Vec<MleEval<GC::EF, A>>,
-        encoder: &E,
-    ) -> impl Future<Output = (Mle<GC::EF, A>, RsCodeWord<GC::F, A>, GC::EF)> + Send
-    where
-        M: OwnedBorrow<Mle<GC::F, A>>,
-        Code: OwnedBorrow<RsCodeWord<GC::F, A>>;
-}
-
-pub trait FixedAtZero<EF: Field, A: Backend> {
-    fn fixed_at_zero(&self, mle: &Mle<EF, A>, point: &Point<EF, A>) -> EF;
-}
-
-pub trait FriIoppProver<
-    GC: IopCtx<F: TwoAdicField>,
-    E: ReedSolomonEncoder<GC::F, A> + Clone,
-    A: Backend = CpuBackend,
->: BasefoldBatcher<GC, E, A>
-{
-    type FriProverError: Error;
-    type TcsProver: TensorCsProver<GC, A>;
-    type Encoder: ReedSolomonEncoder<GC::F, A>;
-    #[allow(clippy::type_complexity)]
-    fn commit_phase_round(
-        &self,
-        current_mle: Mle<GC::EF, A>,
-        current_codeword: RsCodeWord<GC::F, A>,
-        encoder: &Self::Encoder,
-        tcs_prover: &Self::TcsProver,
-        challenger: &mut GC::Challenger,
-    ) -> impl Future<
-        Output = Result<
-            (
-                GC::EF,
-                Mle<GC::EF, A>,
-                RsCodeWord<GC::F, A>,
-                GC::Digest,
-                Arc<Tensor<GC::F, A>>,
-                <Self::TcsProver as TensorCsProver<GC, A>>::ProverData,
-            ),
-            Self::FriProverError,
-        >,
-    > + Send;
-
-    fn final_poly(
-        &self,
-        final_codeword: RsCodeWord<GC::F, A>,
-    ) -> impl Future<Output = GC::EF> + Send;
-}
-
-pub struct MleBatch<F: TwoAdicField, EF: ExtensionField<F>, A: Backend = CpuBackend> {
+pub struct MleBatch<F: Field, EF: ExtensionField<F>, A: Backend = CpuBackend> {
     pub batched_poly: Mle<F, A>,
     _marker: PhantomData<EF>,
 }
@@ -85,21 +24,16 @@ pub struct MleBatch<F: TwoAdicField, EF: ExtensionField<F>, A: Backend = CpuBack
 #[derive(
     Debug, Clone, Default, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
-pub struct FriCpuProver<E, P>(pub PhantomData<(E, P)>);
+pub struct FriCpuProver<GC, P>(pub PhantomData<(GC, P)>);
 
-impl<
-        GC: IopCtx<F: TwoAdicField>,
-        E: ReedSolomonEncoder<GC::F, CpuBackend> + Clone,
-        P: TensorCsProver<GC, CpuBackend>,
-    > BasefoldBatcher<GC, E, CpuBackend> for FriCpuProver<E, P>
-{
-    async fn batch<M, Code>(
+impl<GC: IopCtx<F: TwoAdicField>, P: TensorCsProver<GC, CpuBackend>> FriCpuProver<GC, P> {
+    pub(crate) async fn batch<M, Code>(
         &self,
         batching_challenge: GC::EF,
         mles: Message<M>,
         _codewords: Message<Code>,
         evaluation_claims: Vec<MleEval<GC::EF, CpuBackend>>,
-        encoder: &E,
+        encoder: &CpuDftEncoder<GC::F>,
     ) -> (Mle<GC::EF, CpuBackend>, RsCodeWord<GC::F, CpuBackend>, GC::EF)
     where
         M: OwnedBorrow<Mle<GC::F>>,
@@ -164,19 +98,14 @@ impl<
 
 impl<
         GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>,
-        E: ReedSolomonEncoder<GC::F, CpuBackend> + Clone,
         P: TensorCsProver<GC, CpuBackend> + Send + Sync + 'static,
-    > FriIoppProver<GC, E, CpuBackend> for FriCpuProver<E, P>
+    > FriCpuProver<GC, P>
 {
-    type FriProverError = P::ProverError;
-    type TcsProver = P;
-    type Encoder = E;
-    async fn commit_phase_round(
+    pub(crate) async fn commit_phase_round(
         &self,
         current_mle: Mle<GC::EF, CpuBackend>,
         current_codeword: RsCodeWord<GC::F, CpuBackend>,
-        _encoder: &Self::Encoder,
-        tcs_prover: &Self::TcsProver,
+        tcs_prover: &P,
         challenger: &mut GC::Challenger,
     ) -> Result<
         (GC::EF, Mle<GC::EF>, RsCodeWord<GC::F>, GC::Digest, Arc<Tensor<GC::F>>, P::ProverData),
@@ -214,7 +143,7 @@ impl<
         Ok((beta, folded_mle, folded_codeword, commit, leaves, prover_data))
     }
 
-    async fn final_poly(&self, final_codeword: RsCodeWord<GC::F, CpuBackend>) -> GC::EF {
+    pub(crate) async fn final_poly(&self, final_codeword: RsCodeWord<GC::F, CpuBackend>) -> GC::EF {
         GC::EF::from_base_slice(&final_codeword.data.storage.as_slice()[0..GC::EF::D])
     }
 }

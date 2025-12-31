@@ -324,7 +324,7 @@ impl SP1RecursionProofShape {
         let mut arity = 0;
         let compress_verifier = C::compress_verifier();
         let recursive_compress_verifier =
-            recursive_verifier::<_, _, _, InnerConfig>(compress_verifier.shard_verifier());
+            recursive_verifier::<_, _, InnerConfig>(compress_verifier.shard_verifier());
         for possible_arity in 1.. {
             let input = dummy_compose_input(&compress_verifier, self, possible_arity, height);
             let program =
@@ -394,7 +394,7 @@ pub async fn build_vk_map<A: ArtifactClient, C: SP1ProverComponents + 'static>(
                 // eprintln!("shape: {:?}", shape);
                 let compress_verifier = C::compress_verifier();
                 let recursive_compress_verifier =
-                    recursive_verifier::<_, _, _, InnerConfig>(compress_verifier.shard_verifier());
+                    recursive_verifier::<_, _, InnerConfig>(compress_verifier.shard_verifier());
                 // Spawn on another thread to handle panics.
                 let program_thread = tokio::spawn(async move {
                     let reduce_shape =
@@ -409,10 +409,9 @@ pub async fn build_vk_map<A: ArtifactClient, C: SP1ProverComponents + 'static>(
                             };
                             let dummy_vk = dummy_vk();
                             let core_verifier = C::core_verifier();
-                            let recursive_core_verifier =
-                                recursive_verifier::<_, _, InnerSC, InnerConfig>(
-                                    core_verifier.shard_verifier(),
-                                );
+                            let recursive_core_verifier = recursive_verifier::<_, _, InnerConfig>(
+                                core_verifier.shard_verifier(),
+                            );
                             let witness =
                                 normalize_shape.dummy_input(SP1VerifyingKey { vk: dummy_vk });
                             let mut program =
@@ -809,9 +808,8 @@ mod tests {
         let mut max_cluster_count = RecursionAirEventCount::default();
 
         let core_verifier = CpuSP1ProverComponents::core_verifier();
-        let recursive_core_verifier = recursive_verifier::<SP1GlobalContext, _, CoreSC, InnerConfig>(
-            core_verifier.shard_verifier(),
-        );
+        let recursive_core_verifier =
+            recursive_verifier::<SP1GlobalContext, _, InnerConfig>(core_verifier.shard_verifier());
 
         for cluster in chip_clusters {
             let shape = create_test_shape(cluster);
@@ -994,14 +992,11 @@ mod tests {
                 dummy_compose_input(&verifier, current_shape, DEFAULT_ARITY, allowed_vk_height)
             };
         let core_verifier = CpuSP1ProverComponents::core_verifier();
-        let recursive_core_verifier = recursive_verifier::<SP1GlobalContext, _, CoreSC, InnerConfig>(
-            core_verifier.shard_verifier(),
-        );
+        let recursive_core_verifier =
+            recursive_verifier::<SP1GlobalContext, _, InnerConfig>(core_verifier.shard_verifier());
 
         let recursive_compress_verifier =
-            recursive_verifier::<SP1GlobalContext, _, InnerSC, InnerConfig>(
-                verifier.shard_verifier(),
-            );
+            recursive_verifier::<SP1GlobalContext, _, InnerConfig>(verifier.shard_verifier());
         let compose_program =
             |input: &SP1CompressWithVKeyWitnessValues<InnerSC>| -> Arc<RecursionProgram<SP1Field>> {
                 Arc::new(compose_program_from_input(

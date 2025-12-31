@@ -166,7 +166,7 @@ fn build_outer_circuit(
     let wrap_verifier = CpuSP1ProverComponents::wrap_verifier();
     let wrap_verifier = wrap_verifier.shard_verifier();
     let recursive_wrap_verifier =
-        crate::recursion::recursive_verifier::<_, _, OuterSC, OuterConfig>(wrap_verifier);
+        crate::recursion::recursive_verifier::<_, _, OuterConfig>(wrap_verifier);
 
     let wrap_span = tracing::debug_span!("build wrap circuit").entered();
     let mut builder = Builder::<OuterConfig>::default();

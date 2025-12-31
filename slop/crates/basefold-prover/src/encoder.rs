@@ -1,45 +1,28 @@
-use std::{error::Error, future::Future, sync::Arc};
+use std::{convert::Infallible, sync::Arc};
 
 use slop_algebra::TwoAdicField;
-use slop_alloc::{Backend, CpuBackend};
 use slop_basefold::{FriConfig, RsCodeWord};
 use slop_commit::Message;
-use slop_dft::{Dft, DftOrdering};
+use slop_dft::{p3::Radix2DitParallel, Dft, DftOrdering};
 use slop_futures::OwnedBorrow;
 use slop_multilinear::Mle;
 
-pub trait ReedSolomonEncoder<F: TwoAdicField, A: Backend = CpuBackend>:
-    'static + Send + Sync
-{
-    /// The error type returned by the encoder.
-    type Error: Error;
-
-    fn config(&self) -> FriConfig<F>;
-
-    /// Encodes the input into a new codeword.
-    fn encode_batch<M>(
-        &self,
-        data: Message<M>,
-    ) -> impl Future<Output = Result<Message<RsCodeWord<F, A>>, Self::Error>> + Send
-    where
-        M: OwnedBorrow<Mle<F, A>>;
-}
-
 #[derive(Debug, Clone)]
-pub struct CpuDftEncoder<F: TwoAdicField, D> {
+pub struct CpuDftEncoder<F> {
     pub config: FriConfig<F>,
-    pub dft: Arc<D>,
+    pub dft: Arc<Radix2DitParallel>,
 }
 
-impl<F: TwoAdicField, D: Dft<F>> ReedSolomonEncoder<F> for CpuDftEncoder<F, D> {
-    type Error = D::Error;
-
+impl<F: TwoAdicField> CpuDftEncoder<F> {
     #[inline]
-    fn config(&self) -> FriConfig<F> {
+    pub(crate) fn config(&self) -> FriConfig<F> {
         self.config
     }
 
-    async fn encode_batch<M>(&self, data: Message<M>) -> Result<Message<RsCodeWord<F>>, Self::Error>
+    pub(crate) async fn encode_batch<M>(
+        &self,
+        data: Message<M>,
+    ) -> Result<Message<RsCodeWord<F>>, Infallible>
     where
         M: OwnedBorrow<Mle<F>>,
     {
