@@ -371,7 +371,7 @@ mod tests {
     use slop_commit::Message;
     use slop_futures::queue::WorkerQueue;
     use slop_multilinear::Mle;
-    use slop_stacked::{FixedRateInterleave, InterleaveMultilinears};
+    use slop_stacked::interleave_multilinears_with_fixed_rate;
     use sp1_hypercube::prover::{DefaultTraceGenerator, ProverSemaphore, TraceGenerator};
 
     use csl_jagged_tracegen::test_utils::tracegen_setup::{
@@ -410,10 +410,8 @@ mod tests {
                 .map(|x| Clone::clone(x.as_ref()))
                 .collect::<Message<Mle<_, _>>>();
 
-            let interleaver = FixedRateInterleave::<Felt, CpuBackend>::new(32);
-
             let interleaved_message =
-                interleaver.interleave_multilinears(message, LOG_STACKING_HEIGHT).await;
+                interleave_multilinears_with_fixed_rate(32, message, LOG_STACKING_HEIGHT).await;
 
             let interleaved_message = interleaved_message
                 .into_iter()
@@ -494,7 +492,7 @@ mod tests {
                 .collect::<Message<Mle<_, _>>>();
 
             let interleaved_message =
-                interleaver.interleave_multilinears(message, LOG_STACKING_HEIGHT).await;
+                interleave_multilinears_with_fixed_rate(32, message, LOG_STACKING_HEIGHT).await;
 
             let interleaved_message = interleaved_message
                 .into_iter()

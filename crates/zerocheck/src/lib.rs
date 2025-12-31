@@ -772,6 +772,7 @@ pub mod tests {
     use sp1_core_executor::{ExecutionRecord, Program};
     use sp1_derive::AlignedBorrow;
 
+    #[derive(Debug)]
     pub enum ZerocheckTestChip {
         Chip1(ZerocheckTestChip1),
         Chip2(ZerocheckTestChip2),
@@ -866,6 +867,12 @@ pub mod tests {
 
     #[derive(Default, Clone)]
     pub struct ZerocheckTestChip1;
+
+    impl std::fmt::Debug for ZerocheckTestChip1 {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "ZerocheckTestChip1")
+        }
+    }
 
     /// The number of main trace columns for `ZerocheckTestChip1`.
     pub const NUM_ZEROCHECK_TEST1_COLS: usize = size_of::<ZerocheckTestCols1<u8>>();
@@ -974,6 +981,12 @@ pub mod tests {
 
     #[derive(Default, Clone)]
     pub struct ZerocheckTestChip2;
+
+    impl std::fmt::Debug for ZerocheckTestChip2 {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "ZerocheckTestChip2")
+        }
+    }
 
     /// The number of main trace columns for `ZerocheckTestChip2`.
     pub const NUM_ZEROCHECK_TEST2_COLS: usize = size_of::<ZerocheckTestCols2<u8>>();
@@ -1106,6 +1119,12 @@ pub mod tests {
 
     #[derive(Default, Clone)]
     pub struct ZerocheckTestChip3;
+
+    impl std::fmt::Debug for ZerocheckTestChip3 {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "ZerocheckTestChip3")
+        }
+    }
 
     // The number of prep trace columns for `ZerocheckTestChip3`.
     pub const NUM_ZEROCHECK_TEST3_PREP_COLS: usize = size_of::<ZerocheckTestPrepCols3<u8>>();

@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use std::{convert::Infallible, marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc};
 
 use slop_algebra::{
     extension::BinomialExtensionField, AbstractExtensionField, AbstractField, ExtensionField,
@@ -320,14 +320,7 @@ where
         mles: &JaggedTraceMle<GC::F, TaskScope>,
         prover_data: Rounds<&CudaStackedPcsProverData<GC>>,
         challenger: &mut GC::Challenger,
-    ) -> Result<
-        BasefoldProof<GC>,
-        BasefoldProverError<
-            SingleLayerMerkleTreeProverError,
-            Infallible,
-            SingleLayerMerkleTreeProverError,
-        >,
-    >
+    ) -> Result<BasefoldProof<GC>, BasefoldProverError<SingleLayerMerkleTreeProverError>>
     where
         GC::Challenger: DeviceGrindingChallenger<Witness = GC::F>,
     {
@@ -484,12 +477,13 @@ mod tests {
     use futures::future::join_all;
     use slop_alloc::{CpuBackend, ToHost};
     use slop_basefold::BasefoldVerifier;
-    use slop_basefold_prover::{BasefoldProver, Poseidon2KoalaBear16BasefoldCpuProverComponents};
+    use slop_basefold_prover::BasefoldProver;
     use slop_commit::Message;
     use slop_futures::queue::WorkerQueue;
     use slop_koala_bear::KoalaBearDegree4Duplex;
-    use slop_multilinear::{Mle, MultilinearPcsBatchVerifier};
-    use slop_stacked::{FixedRateInterleave, InterleaveMultilinears};
+    use slop_merkle_tree::Poseidon2KoalaBear16Prover;
+    use slop_multilinear::Mle;
+    use slop_stacked::interleave_multilinears_with_fixed_rate;
     use sp1_hypercube::prover::{ProverSemaphore, TraceGenerator};
 
     use csl_jagged_tracegen::test_utils::tracegen_setup::{
@@ -508,10 +502,10 @@ mod tests {
 
         run_in_place(|scope| async move {
             let verifier = BasefoldVerifier::<KoalaBearDegree4Duplex>::new(core_fri_config(), 2);
-            let old_prover = BasefoldProver::<
-                KoalaBearDegree4Duplex,
-                Poseidon2KoalaBear16BasefoldCpuProverComponents,
-            >::new(&verifier);
+            let old_prover =
+                BasefoldProver::<KoalaBearDegree4Duplex, Poseidon2KoalaBear16Prover>::new(
+                    &verifier,
+                );
 
             let new_cuda_prover = FriCudaProver::<TestGC, _, Felt> {
                 tcs_prover: Poseidon2KoalaBear16CudaProver::default(),
@@ -546,10 +540,9 @@ mod tests {
                     .into_iter()
                     .collect::<Message<_>>();
 
-            let host_interleaver = FixedRateInterleave::<Felt, CpuBackend>::new(32);
-
             let interleaved_message =
-                host_interleaver.interleave_multilinears(host_message, LOG_STACKING_HEIGHT).await;
+                interleave_multilinears_with_fixed_rate(32, host_message, LOG_STACKING_HEIGHT)
+                    .await;
 
             let interleaved_message =
                 interleaved_message.into_iter().map(|x| x.as_ref().clone()).collect::<Message<_>>();
@@ -616,7 +609,8 @@ mod tests {
             let host_message = host_message.into_iter().collect::<Message<Mle<Felt, CpuBackend>>>();
 
             let interleaved_message_2 =
-                host_interleaver.interleave_multilinears(host_message, LOG_STACKING_HEIGHT).await;
+                interleave_multilinears_with_fixed_rate(32, host_message, LOG_STACKING_HEIGHT)
+                    .await;
 
             let (old_main_commitment, old_main_prover_data) =
                 old_prover.commit_mles(interleaved_message_2.clone()).await.unwrap();
@@ -746,7 +740,7 @@ mod tests {
             // same between the new and old proofs. However, the new proof should still verify.
 
             verifier
-                .verify_trusted_evaluations(
+                .verify_mle_evaluations(
                     &[new_preprocessed_commit, new_main_commit],
                     eval_point_host,
                     &flattened_evaluation_claims,

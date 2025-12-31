@@ -4,8 +4,6 @@ mod device;
 mod error;
 mod event;
 mod global;
-mod interleave;
-mod long;
 mod mle;
 mod pinned;
 mod scan;

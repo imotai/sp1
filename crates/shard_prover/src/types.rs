@@ -2,7 +2,7 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use csl_utils::{Ext, Felt};
 use slop_challenger::IopCtx;
-use slop_jagged::JaggedConfig;
+use slop_multilinear::MultilinearPcsVerifier;
 use sp1_hypercube::{
     air::MachineAir,
     prover::{AirProver, ProverPermit, ProvingKey},
@@ -24,7 +24,7 @@ where
 pub struct MainTraceData<
     GC: IopCtx<F = Felt, EF = Ext>,
     Air: MachineAir<GC::F>,
-    C: JaggedConfig<GC>,
+    C: MultilinearPcsVerifier<GC>,
     Prover: AirProver<GC, C, Air>,
 > {
     /// The traces.

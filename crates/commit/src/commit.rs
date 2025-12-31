@@ -100,10 +100,9 @@ mod tests {
     use slop_alloc::{CpuBackend, ToHost};
     use slop_challenger::IopCtx;
     use slop_futures::queue::WorkerQueue;
-    use slop_jagged::{
-        JaggedPcsVerifier, JaggedProver, KoalaBearPoseidon2,
-        Poseidon2KoalaBearJaggedCpuProverComponents,
-    };
+    use slop_jagged::{JaggedPcsVerifier, JaggedProver, KoalaBearPoseidon2};
+    use slop_merkle_tree::Poseidon2KoalaBear16Prover;
+    use slop_stacked::StackedPcsProver;
     use sp1_hypercube::prover::{DefaultTraceGenerator, ProverSemaphore, TraceGenerator};
     use sp1_primitives::fri_params::core_fri_config;
 
@@ -114,7 +113,7 @@ mod tests {
         let (machine, record, program) = tracegen_setup::setup().await;
 
         type JC = KoalaBearPoseidon2;
-        type Prover = JaggedProver<TestGC, Poseidon2KoalaBearJaggedCpuProverComponents>;
+        type Prover = JaggedProver<TestGC, StackedPcsProver<Poseidon2KoalaBear16Prover, TestGC>>;
 
         run_in_place(|scope| async move {
             let semaphore = ProverSemaphore::new(1);
@@ -133,7 +132,7 @@ mod tests {
 
             let num_rounds = 2;
 
-            let jagged_verifier = JaggedPcsVerifier::<_, JC>::new(
+            let jagged_verifier = JaggedPcsVerifier::<_, JC>::new_from_basefold_params(
                 core_fri_config(),
                 LOG_STACKING_HEIGHT,
                 CORE_MAX_LOG_ROW_COUNT as usize,
@@ -188,7 +187,7 @@ mod tests {
 
             let basefold_prover = FriCudaProver::<TestGC, _, <TestGC as IopCtx>::F>::new(
                 tcs_prover,
-                jagged_verifier.pcs_verifier.pcs_verifier.fri_config,
+                jagged_verifier.pcs_verifier.basefold_verifier.fri_config,
                 LOG_STACKING_HEIGHT,
             );
 

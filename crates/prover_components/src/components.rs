@@ -9,10 +9,10 @@ use slop_algebra::extension::BinomialExtensionField;
 use slop_basefold::BasefoldVerifier;
 use slop_challenger::IopCtx;
 use slop_futures::queue::WorkerQueue;
-use slop_jagged::{JaggedBasefoldConfig, SP1OuterConfig};
+use slop_jagged::SP1OuterConfig;
 use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_hypercube::{air::MachineAir, prover::ZerocheckAir, SP1CoreJaggedConfig};
+use sp1_hypercube::{air::MachineAir, prover::ZerocheckAir, SP1CoreJaggedConfig, SP1Pcs};
 use sp1_primitives::{SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_prover::{CompressAir, SP1ProverComponents, WrapAir};
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
@@ -56,7 +56,7 @@ impl CudaShardProverComponents<SP1OuterGlobalContext> for CudaProverWrapComponen
 }
 
 pub async fn new_cuda_prover<GC, PC>(
-    verifier: sp1_hypercube::MachineVerifier<GC, JaggedBasefoldConfig<GC>, PC::Air>,
+    verifier: sp1_hypercube::MachineVerifier<GC, SP1Pcs<GC>, PC::Air>,
     max_trace_size: usize,
     num_workers: usize,
     scope: TaskScope,

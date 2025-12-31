@@ -25,6 +25,7 @@ slop-challenger = { workspace = true }
 slop-koala-bear = { workspace = true }
 slop-jagged = { workspace = true }
 slop-symmetric = { workspace = true }
+slop-merkle-tree = { workspace = true }
 slop-dft = { workspace = true }
 
 # sp1

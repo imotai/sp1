@@ -16,17 +16,16 @@ use csl_zerocheck::zerocheck;
 use csl_zerocheck::CudaEvalResult;
 use slop_algebra::AbstractField;
 use slop_alloc::{Buffer, CanCopyFromRef, HasBackend, ToHost};
-use slop_basefold::BasefoldProof;
 use slop_challenger::{CanObserve, FieldChallenger, FromChallenger, IopCtx};
 use slop_commit::Rounds;
 use slop_futures::queue::{Worker, WorkerQueue};
 use slop_jagged::{
-    unzip_and_prefix_sums, JaggedConfig, JaggedEvalProver, JaggedEvalSumcheckProver,
+    unzip_and_prefix_sums, JaggedEvalProver, JaggedEvalSumcheckProver,
     JaggedLittlePolynomialProverParams, JaggedPcsProof, JaggedProverData, JaggedProverError,
     PrefixSumsMaxLogRowCount,
 };
 use slop_multilinear::{Evaluations, Mle, MleEval, MultilinearPcsVerifier, Point};
-use slop_stacked::StackedPcsProof;
+use slop_stacked::StackedBasefoldProof;
 use sp1_hypercube::prover::ZerocheckAir;
 use sp1_hypercube::{
     air::{MachineAir, MachineProgram},
@@ -45,7 +44,7 @@ pub trait CudaShardProverComponents<GC: IopCtx>: Send + Sync + 'static {
     type Air: CudaTracegenAir<GC::F>
         + ZerocheckAir<Felt, Ext>
         + for<'a> BlockAir<SymbolicProverFolder<'a>>;
-    type C: JaggedConfig<GC> + Send + Sync;
+    type C: MultilinearPcsVerifier<GC> + Send + Sync;
 }
 /// A prover for the hypercube STARK, given a configuration.
 pub struct CudaShardProver<GC: IopCtx, PC: CudaShardProverComponents<GC>> {
@@ -75,8 +74,7 @@ where
     GC::Challenger: slop_challenger::FieldChallenger<
         <GC::Challenger as slop_challenger::GrindingChallenger>::Witness,
     >,
-    StackedPcsProof<BasefoldProof<GC>, GC::EF>:
-        Into<<<PC::C as JaggedConfig<GC>>::PcsVerifier as MultilinearPcsVerifier<GC>>::Proof>,
+    StackedBasefoldProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
     TaskScope: csl_jagged_assist::BranchingProgramKernel<
         GC::F,
         GC::EF,
@@ -330,8 +328,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
         GC::Challenger: slop_challenger::FieldChallenger<
             <GC::Challenger as slop_challenger::GrindingChallenger>::Witness,
         >,
-        StackedPcsProof<BasefoldProof<GC>, GC::EF>:
-            Into<<<PC::C as JaggedConfig<GC>>::PcsVerifier as MultilinearPcsVerifier<GC>>::Proof>,
+        StackedBasefoldProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
         TaskScope: csl_jagged_assist::BranchingProgramKernel<
             GC::F,
             GC::EF,
@@ -509,14 +506,16 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
             .map(|round| round.into_iter().flatten().collect::<MleEval<_>>())
             .collect::<Rounds<_>>();
 
-        let stacked_pcs_proof =
-            StackedPcsProof { pcs_proof, batch_evaluations: host_batch_evaluations };
+        let stacked_basefold_proof = StackedBasefoldProof {
+            basefold_proof: pcs_proof,
+            batch_evaluations: host_batch_evaluations,
+        };
 
         let PrefixSumsMaxLogRowCount { log_m, .. } =
             unzip_and_prefix_sums(&row_counts_and_column_counts);
 
         Ok(JaggedPcsProof {
-            pcs_proof: stacked_pcs_proof.into(),
+            pcs_proof: stacked_basefold_proof.into(),
             sumcheck_proof,
             jagged_eval_proof,
             row_counts_and_column_counts,
@@ -551,8 +550,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
         GC::Challenger: slop_challenger::FieldChallenger<
             <GC::Challenger as slop_challenger::GrindingChallenger>::Witness,
         >,
-        StackedPcsProof<BasefoldProof<GC>, GC::EF>:
-            Into<<<PC::C as JaggedConfig<GC>>::PcsVerifier as MultilinearPcsVerifier<GC>>::Proof>,
+        StackedBasefoldProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
         TaskScope: csl_jagged_assist::BranchingProgramKernel<
             GC::F,
             GC::EF,
@@ -832,12 +830,13 @@ mod tests {
                 .await
                 .unwrap();
 
-            let jagged_verifier = JaggedPcsVerifier::<_, SP1CoreJaggedConfig>::new(
-                core_fri_config(),
-                LOG_STACKING_HEIGHT,
-                CORE_MAX_LOG_ROW_COUNT as usize,
-                2,
-            );
+            let jagged_verifier =
+                JaggedPcsVerifier::<_, SP1CoreJaggedConfig>::new_from_basefold_params(
+                    core_fri_config(),
+                    LOG_STACKING_HEIGHT,
+                    CORE_MAX_LOG_ROW_COUNT as usize,
+                    2,
+                );
 
             let mut all_evaluations = Vec::new();
             for round_evals in evaluation_claims.iter() {

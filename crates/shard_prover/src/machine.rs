@@ -3,11 +3,9 @@ use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
 use csl_challenger::DeviceGrindingChallenger;
 use csl_cuda::TaskScope;
 use csl_utils::{Ext, Felt};
-use slop_basefold::BasefoldProof;
 use slop_challenger::{FromChallenger, IopCtx};
-use slop_jagged::JaggedConfig;
 use slop_multilinear::MultilinearPcsVerifier;
-use slop_stacked::StackedPcsProof;
+use slop_stacked::StackedBasefoldProof;
 use sp1_hypercube::prover::{MachineProverComponents, ProvingKey};
 
 use crate::{CudaShardProver, CudaShardProverComponents};
@@ -25,8 +23,7 @@ where
     GC::Challenger: slop_challenger::FieldChallenger<
         <GC::Challenger as slop_challenger::GrindingChallenger>::Witness,
     >,
-    StackedPcsProof<BasefoldProof<GC>, GC::EF>:
-        Into<<<PC::C as JaggedConfig<GC>>::PcsVerifier as MultilinearPcsVerifier<GC>>::Proof>,
+    StackedBasefoldProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
     TaskScope: csl_jagged_assist::BranchingProgramKernel<
         GC::F,
         GC::EF,
