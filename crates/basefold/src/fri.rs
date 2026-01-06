@@ -470,9 +470,8 @@ unsafe impl MleFlattenKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> fo
 mod tests {
     use std::sync::Arc;
 
-    // use csl_basefold::Poseidon2KoalaBear16BasefoldCudaProverComponents;
     use csl_cuda::{run_in_place, PinnedBuffer, ToDevice};
-    use csl_merkle_tree::Poseidon2KoalaBear16CudaProver;
+    use csl_merkle_tree::{CudaTcsProver, Poseidon2KoalaBear16CudaProver};
     use csl_tracegen::CudaTraceGenerator;
     use futures::future::join_all;
     use slop_alloc::{CpuBackend, ToHost};
@@ -508,7 +507,7 @@ mod tests {
                 );
 
             let new_cuda_prover = FriCudaProver::<TestGC, _, Felt> {
-                tcs_prover: Poseidon2KoalaBear16CudaProver::default(),
+                tcs_prover: Poseidon2KoalaBear16CudaProver::new(&scope).await,
                 config: verifier.fri_config,
                 log_height: LOG_STACKING_HEIGHT,
                 _marker: PhantomData::<TestGC>,

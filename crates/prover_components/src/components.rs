@@ -64,7 +64,7 @@ pub async fn new_cuda_prover<GC, PC>(
 where
     GC: IopCtx<F = KoalaBear, EF = BinomialExtensionField<KoalaBear, 4>>,
     PC: CudaShardProverComponents<GC>,
-    PC::P: CudaTcsProver<GC> + Default,
+    PC::P: CudaTcsProver<GC>,
     PC::Air: CudaTracegenAir<GC::F>
         + for<'a> BlockAir<SymbolicProverFolder<'a>>
         + ZerocheckAir<GC::F, GC::EF>
@@ -85,8 +85,9 @@ where
     // TODO: get this straight from the verifier.
     let basefold_verifier = BasefoldVerifier::<GC>::new(*verifier.fri_config(), 2);
 
+    let tcs_prover = PC::P::new(&scope).await;
     let basefold_prover = FriCudaProver::<GC, PC::P, GC::F>::new(
-        PC::P::default(),
+        tcs_prover,
         basefold_verifier.fri_config,
         log_stacking_height,
     );

@@ -94,7 +94,7 @@ mod tests {
         self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT,
     };
     use csl_jagged_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
-    use csl_merkle_tree::Poseidon2KoalaBear16CudaProver;
+    use csl_merkle_tree::{CudaTcsProver, Poseidon2KoalaBear16CudaProver};
     use csl_utils::{Felt, TestGC};
     use serial_test::serial;
     use slop_alloc::{CpuBackend, ToHost};
@@ -183,7 +183,7 @@ mod tests {
             )
             .await;
 
-            let tcs_prover = Poseidon2KoalaBear16CudaProver::default();
+            let tcs_prover = Poseidon2KoalaBear16CudaProver::new(&scope).await;
 
             let basefold_prover = FriCudaProver::<TestGC, _, <TestGC as IopCtx>::F>::new(
                 tcs_prover,

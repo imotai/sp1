@@ -703,7 +703,7 @@ mod tests {
         self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT,
     };
     use csl_jagged_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
-    use csl_merkle_tree::Poseidon2KoalaBear16CudaProver;
+    use csl_merkle_tree::{CudaTcsProver, Poseidon2KoalaBear16CudaProver};
     use csl_utils::TestGC;
     use csl_zerocheck::primitives::round_batch_evaluations;
     use serial_test::serial;
@@ -752,7 +752,7 @@ mod tests {
             let verifier = BasefoldVerifier::<TestGC>::new(core_fri_config(), 2);
 
             let basefold_prover = FriCudaProver::<TestGC, _, Felt>::new(
-                Poseidon2KoalaBear16CudaProver::default(),
+                Poseidon2KoalaBear16CudaProver::new(&scope).await,
                 verifier.fri_config,
                 LOG_STACKING_HEIGHT,
             );

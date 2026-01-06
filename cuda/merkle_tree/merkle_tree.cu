@@ -6,19 +6,16 @@
 template <typename Hasher_t, typename HashParams, typename HasherState_t>
 __global__ void leafHash(
     Hasher_t hasher,
-    kb31_t** inputs,
+    kb31_t* input,
     typename HashParams::F_t (*digests)[HashParams::DIGEST_WIDTH],
-    size_t* widths,
-    size_t num_inputs,
+    size_t widths,
     size_t tree_height) {
     HasherState_t state;
 
     size_t matrixHeight = 1 << tree_height;
     for (size_t idx = (blockIdx.x * blockDim.x) + threadIdx.x; idx < matrixHeight;
          idx += blockDim.x * gridDim.x) {
-        for (size_t j = 0; j < num_inputs; j++) {
-            state.absorbRow(hasher, inputs[j], idx, widths[j], matrixHeight);
-        }
+        state.absorbRow(hasher, input, idx, widths, matrixHeight);
         size_t digestIdx = idx + (matrixHeight - 1);
         state.finalize(hasher, digests[digestIdx]);
     }

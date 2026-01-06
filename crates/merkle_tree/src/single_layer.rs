@@ -16,8 +16,8 @@ use csl_cuda::{
 };
 use slop_algebra::extension::BinomialExtensionField;
 use slop_algebra::{AbstractField, Field};
-use slop_alloc::CpuBackend;
 use slop_alloc::{mem::CopyError, Buffer, HasBackend, IntoHost};
+use slop_alloc::{CpuBackend, ToHost};
 use slop_bn254::{bn254_poseidon2_rc3, Bn254Fr, BNGC};
 use slop_challenger::IopCtx;
 use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
@@ -46,8 +46,10 @@ pub trait Hasher<F: Field, const WIDTH: usize>: 'static + Send + Sync {
     fn hasher() -> MerkleTreeHasher<F, CpuBackend, WIDTH>;
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MerkleTreeSingleLayerProver<GC, W, K, H, const WIDTH: usize>(PhantomData<(GC, W, K, H)>);
+pub struct MerkleTreeSingleLayerProver<GC, W: Field, K, H, const WIDTH: usize> {
+    hasher_device: MerkleTreeHasher<W, TaskScope, WIDTH>,
+    _marker: PhantomData<(GC, K, H)>,
+}
 
 #[derive(Debug, Clone, Copy, Error)]
 pub enum SingleLayerMerkleTreeProverError {
@@ -64,6 +66,10 @@ pub type MerkleTreeProverData<Digest> = (MerkleTree<Digest, TaskScope>, Digest, 
 /// to be propagated up the stack, this trait defines the minimal API necessary to interact with the
 /// Merkle tree prover and is generic only in the IopCtx.
 pub trait CudaTcsProver<GC: IopCtx>: Send + Sync + 'static {
+    fn new(scope: &TaskScope) -> impl Future<Output = Self> + Send
+    where
+        Self: Sized;
+
     fn commit_tensors(
         &self,
         tensor: &Tensor<GC::F, TaskScope>,
@@ -89,22 +95,21 @@ where
     K: MerkleTreeSingleLayerKernels<GC>,
     H: Hasher<W, WIDTH>,
 {
+    async fn new(scope: &TaskScope) -> Self {
+        let hasher = H::hasher();
+        let hasher_device = scope.to_device(&hasher).await.unwrap();
+        Self { hasher_device, _marker: PhantomData }
+    }
+
     async fn commit_tensors(
         &self,
         tensor: &Tensor<GC::F, TaskScope>,
     ) -> Result<(GC::Digest, MerkleTreeProverData<GC::Digest>), ProverError> {
         let scope = tensor.backend();
-        let hasher = H::hasher();
-        let hasher_device = scope.to_device(&hasher).await.unwrap();
-
-        let (tensor_ptrs_host, widths_host): (Vec<_>, Vec<usize>) =
-            (vec![tensor.as_ptr()], vec![tensor.sizes()[0]]);
-        let mut tensor_ptrs = Buffer::with_capacity_in(tensor_ptrs_host.len(), scope.clone());
-        tensor_ptrs.extend_from_host_slice(&tensor_ptrs_host)?;
-        let mut widths = Buffer::with_capacity_in(widths_host.len(), scope.clone());
-        widths.extend_from_host_slice(&widths_host)?;
+        let hasher_device = &self.hasher_device;
 
         let height = tensor.sizes()[1].ilog2() as usize;
+        let width = tensor.sizes()[0];
 
         assert_eq!(1 << height, tensor.sizes()[1], "Height must be a power of two");
         assert_eq!(tensor.sizes().len(), 2, "Tensor must be 2D");
@@ -117,10 +122,9 @@ where
             let grid_dim = (1usize << height).div_ceil(block_dim);
             let args = args!(
                 hasher_device.as_raw(),
-                tensor_ptrs.as_ptr(),
+                tensor.as_ptr(),
                 tree.digests.as_mut_ptr(),
-                widths.as_ptr(),
-                1usize,
+                width,
                 height
             );
             scope.launch_kernel(K::leaf_hash_kernel(), grid_dim, block_dim, &args, 0)?;
@@ -138,7 +142,7 @@ where
 
         let (hasher, compressor) = GC::default_hasher_and_compressor();
 
-        let root = tree.digests[0].copy_into_host(scope);
+        let root = *tree.digests.to_host().await?[0];
 
         let total_width = tensor.sizes()[0];
 
@@ -442,7 +446,7 @@ mod tests {
             .await;
             let new_traces = Arc::new(new_traces);
 
-            let tensor_prover = Poseidon2KoalaBear16CudaProver::default();
+            let tensor_prover = Poseidon2KoalaBear16CudaProver::new(&scope).await;
 
             let (new_preprocessed_commit, new_cuda_prover_data) = tensor_prover
                 .commit_tensors(&new_traces.dense().preprocessed_tensor(LOG_STACKING_HEIGHT))
