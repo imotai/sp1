@@ -8,8 +8,9 @@ use slop_algebra::AbstractField;
 use slop_alloc::{mem::CopyError, Buffer, CpuBackend, HasBackend, ToHost};
 use slop_challenger::{FieldChallenger, IopCtx};
 use slop_commit::{Message, Rounds};
-use slop_multilinear::{Evaluations, Mle, MultilinearPcsProver, PaddedMle, Point};
-use slop_stacked::ToMle;
+use slop_multilinear::{
+    Evaluations, Mle, MultilinearPcsProver, MultilinearPcsVerifier, PaddedMle, Point, ToMle,
+};
 use slop_sumcheck::reduce_sumcheck_to_evaluation;
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 use thiserror::Error;
@@ -20,22 +21,6 @@ use crate::{
     JaggedPcsVerifier,
 };
 
-pub trait JaggedProverComponents<GC: IopCtx>:
-    Sized
-    + Send
-    + Sync
-    + 'static
-    + MultilinearPcsProver<GC, A = CpuBackend, ProverData: ToMle<GC::F, CpuBackend>>
-{
-}
-
-impl<
-        P: MultilinearPcsProver<GC, A = CpuBackend, ProverData: ToMle<GC::F, CpuBackend>>,
-        GC: IopCtx,
-    > JaggedProverComponents<GC> for P
-{
-}
-
 pub type JaggedAssistProver<GC> = JaggedEvalSumcheckProver<
     <GC as IopCtx>::F,
     JaggedAssistSumAsPolyCPUImpl<<GC as IopCtx>::F, <GC as IopCtx>::EF, <GC as IopCtx>::Challenger>,
@@ -44,10 +29,11 @@ pub type JaggedAssistProver<GC> = JaggedEvalSumcheckProver<
 >;
 
 #[derive(Clone)]
-pub struct JaggedProver<GC: IopCtx, C: JaggedProverComponents<GC>> {
+pub struct JaggedProver<GC: IopCtx, Proof, C: MultilinearPcsProver<GC, Proof>> {
     pub pcs_prover: C,
     jagged_eval_prover: JaggedAssistProver<GC>,
     pub max_log_row_count: usize,
+    _marker: std::marker::PhantomData<Proof>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,26 +54,32 @@ pub enum JaggedProverError<Error> {
     CopyError(#[from] CopyError),
 }
 
-pub trait DefaultJaggedProver<GC: IopCtx>: JaggedProverComponents<GC> {
+pub trait DefaultJaggedProver<GC: IopCtx, Verifier: MultilinearPcsVerifier<GC>>:
+    MultilinearPcsProver<GC, Verifier::Proof> + Sized
+{
     fn prover_from_verifier(
-        verifier: &JaggedPcsVerifier<GC, <Self as MultilinearPcsProver<GC>>::Verifier>,
-    ) -> JaggedProver<GC, Self>;
+        verifier: &JaggedPcsVerifier<GC, Verifier>,
+    ) -> JaggedProver<GC, Verifier::Proof, Self>;
 }
 
-impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
+impl<GC: IopCtx, Proof, C: MultilinearPcsProver<GC, Proof>> JaggedProver<GC, Proof, C> {
     pub const fn new(
         max_log_row_count: usize,
         pcs_prover: C,
         jagged_eval_prover: JaggedAssistProver<GC>,
     ) -> Self {
-        Self { pcs_prover, jagged_eval_prover, max_log_row_count }
+        Self {
+            pcs_prover,
+            jagged_eval_prover,
+            max_log_row_count,
+            _marker: std::marker::PhantomData,
+        }
     }
 
-    pub fn from_verifier(
-        verifier: &JaggedPcsVerifier<GC, <C as MultilinearPcsProver<GC>>::Verifier>,
-    ) -> Self
+    pub fn from_verifier<Verifier>(verifier: &JaggedPcsVerifier<GC, Verifier>) -> Self
     where
-        C: DefaultJaggedProver<GC>,
+        Verifier: MultilinearPcsVerifier<GC, Proof = Proof>,
+        C: DefaultJaggedProver<GC, Verifier>,
     {
         C::prover_from_verifier(verifier)
     }
@@ -101,8 +93,8 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
         &self,
         multilinears: Vec<PaddedMle<GC::F>>,
     ) -> Result<
-        (GC::Digest, JaggedProverData<GC, <C as MultilinearPcsProver<GC>>::ProverData>),
-        JaggedProverError<<C as MultilinearPcsProver<GC>>::ProverError>,
+        (GC::Digest, JaggedProverData<GC, <C as MultilinearPcsProver<GC, Proof>>::ProverData>),
+        JaggedProverError<<C as MultilinearPcsProver<GC, Proof>>::ProverError>,
     > {
         let mut row_counts = multilinears.iter().map(|x| x.num_real_entries()).collect::<Vec<_>>();
         let mut column_counts =
@@ -160,11 +152,13 @@ impl<GC: IopCtx, C: JaggedProverComponents<GC>> JaggedProver<GC, C> {
         &self,
         eval_point: Point<GC::EF>,
         evaluation_claims: Rounds<Evaluations<GC::EF>>,
-        prover_data: Rounds<JaggedProverData<GC, <C as MultilinearPcsProver<GC>>::ProverData>>,
+        prover_data: Rounds<
+            JaggedProverData<GC, <C as MultilinearPcsProver<GC, Proof>>::ProverData>,
+        >,
         challenger: &mut GC::Challenger,
     ) -> Result<
-        JaggedPcsProof<GC, <C as MultilinearPcsProver<GC>>::Verifier>,
-        JaggedProverError<<C as MultilinearPcsProver<GC>>::ProverError>,
+        JaggedPcsProof<GC, Proof>,
+        JaggedProverError<<C as MultilinearPcsProver<GC, Proof>>::ProverError>,
     > {
         let num_col_variables = prover_data
             .iter()

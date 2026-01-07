@@ -1,7 +1,6 @@
 use std::{
     convert::Infallible,
     iter::{self, once},
-    marker::PhantomData,
     sync::Arc,
 };
 
@@ -13,7 +12,6 @@ use crate::{
 use derive_where::derive_where;
 use futures::{stream, StreamExt};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_alloc::CpuBackend;
 use slop_challenger::{
@@ -30,9 +28,8 @@ use slop_merkle_tree::{
 };
 use slop_multilinear::{
     monomial_basis_evals_blocking, partial_lagrange_blocking, Mle, MultilinearPcsProver, PaddedMle,
-    Point,
+    Point, ToMle,
 };
-use slop_stacked::ToMle;
 use slop_tensor::Tensor;
 use slop_utils::reverse_bits_len;
 
@@ -552,23 +549,19 @@ where
     }
 }
 
-impl<GC, MerkleProver, D> MultilinearPcsProver<GC> for Prover<GC, MerkleProver, D>
+impl<GC, MerkleProver, D> MultilinearPcsProver<GC, WhirProof<GC>> for Prover<GC, MerkleProver, D>
 where
     GC: IopCtx,
     D: Dft<GC::F>,
     MerkleProver: TensorCsProver<GC, CpuBackend> + ComputeTcsOpenings<GC, CpuBackend>,
 {
-    type Verifier = Verifier<GC>;
-
     type ProverData = WhirProverData<GC, MerkleProver>;
-
-    type A = CpuBackend;
 
     type ProverError = Infallible;
 
     async fn commit_multilinear(
         &self,
-        mles: Message<Mle<<GC as IopCtx>::F, Self::A>>,
+        mles: Message<Mle<<GC as IopCtx>::F>>,
     ) -> Result<(<GC as IopCtx>::Digest, Self::ProverData, usize), Self::ProverError> {
         let len: usize = mles.iter().map(|mle| mle.guts().as_slice().len()).sum();
         let added_zeroes =
@@ -614,10 +607,7 @@ where
         evaluation_claim: <GC as IopCtx>::EF,
         prover_data: slop_commit::Rounds<Self::ProverData>,
         challenger: &mut <GC as IopCtx>::Challenger,
-    ) -> Result<
-        <Self::Verifier as slop_multilinear::MultilinearPcsVerifier<GC>>::Proof,
-        Self::ProverError,
-    > {
+    ) -> Result<WhirProof<GC>, Self::ProverError> {
         let (folding_point, stacked_point) = eval_point
             .split_at(eval_point.dimension() - self.config.starting_interleaved_log_height);
         let eval_point = stacked_point
@@ -641,11 +631,7 @@ where
     }
 }
 
-#[derive(Default, Serialize, Deserialize)]
-#[derive_where(Clone)]
-pub struct JaggedWhirProverComponents<GC, MerkleProver, D>(PhantomData<(GC, MerkleProver, D)>);
-
-impl DefaultJaggedProver<KoalaBearDegree4Duplex>
+impl DefaultJaggedProver<KoalaBearDegree4Duplex, Verifier<KoalaBearDegree4Duplex>>
     for Prover<KoalaBearDegree4Duplex, Poseidon2KoalaBear16Prover, Radix2DitParallel>
 {
     fn prover_from_verifier(
@@ -653,7 +639,8 @@ impl DefaultJaggedProver<KoalaBearDegree4Duplex>
             KoalaBearDegree4Duplex,
             Verifier<KoalaBearDegree4Duplex>,
         >,
-    ) -> slop_jagged::JaggedProver<KoalaBearDegree4Duplex, Self> {
+    ) -> slop_jagged::JaggedProver<KoalaBearDegree4Duplex, WhirProof<KoalaBearDegree4Duplex>, Self>
+    {
         let merkle_prover = FieldMerkleTreeProver::default();
         let prover = Prover::<_, _, _>::new(
             Radix2DitParallel,
@@ -1460,11 +1447,12 @@ mod tests {
 
         let prover = Prover::<_, _, _>::new(Radix2DitParallel, merkle_prover, config.clone());
 
-        let jagged_prover = JaggedProver::<GC, Prover<GC, MerkleProver, Radix2DitParallel>>::new(
-            max_log_row_count as usize,
-            prover,
-            JaggedEvalSumcheckProver::default(),
-        );
+        let jagged_prover =
+            JaggedProver::<GC, WhirProof<GC>, Prover<GC, MerkleProver, Radix2DitParallel>>::new(
+                max_log_row_count as usize,
+                prover,
+                JaggedEvalSumcheckProver::default(),
+            );
 
         let eval_point = (0..max_log_row_count).map(|_| rng.gen::<GC::EF>()).collect::<Point<_>>();
 

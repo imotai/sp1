@@ -3,7 +3,7 @@
 
 use alloc::boxed::Box;
 
-use sp1_hypercube::{MachineVerifierConfigError, SP1CoreJaggedConfig};
+use sp1_hypercube::{MachineVerifierConfigError, SP1InnerPcs};
 use sp1_primitives::{SP1Field, SP1GlobalContext};
 use strum::IntoDiscriminant;
 use thiserror::Error;
@@ -30,7 +30,7 @@ pub enum CompressedError {
     #[error("failed to deserialize vkey hash: {0}")]
     DeserializeVkeyHash(Box<bincode::ErrorKind>),
     #[error("failed to verify proof: {0}")]
-    ProofRejected(#[from] MachineVerifierConfigError<SP1GlobalContext, SP1CoreJaggedConfig>),
+    ProofRejected(#[from] MachineVerifierConfigError<SP1GlobalContext, SP1InnerPcs>),
     #[error("given public values do not match the commitment in the proof")]
     PublicValuesMismatch,
 }

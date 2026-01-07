@@ -3,7 +3,7 @@
 use itertools::Itertools;
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_bn254::Bn254Fr;
-use sp1_hypercube::{MachineVerifyingKey, ShardProof};
+use sp1_hypercube::{MachineVerifyingKey, SP1PcsProofOuter, ShardProof};
 use sp1_primitives::{io::sha256_hash, SP1Field, SP1OuterGlobalContext};
 use sp1_recursion_circuit::{
     hash::FieldHasherVariable,
@@ -33,13 +33,13 @@ use {
 use crate::{
     components::{CpuSP1ProverComponents, SP1ProverComponents},
     utils::words_to_bytes,
-    OuterSC, SP1_CIRCUIT_VERSION,
+    SP1_CIRCUIT_VERSION,
 };
 
 /// Tries to build the PLONK artifacts inside the development directory.
 pub fn try_build_plonk_bn254_artifacts_dev(
-    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
-    template_proof: &ShardProof<SP1OuterGlobalContext, OuterSC>,
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
+    template_proof: &ShardProof<SP1OuterGlobalContext, SP1PcsProofOuter>,
 ) -> PathBuf {
     let build_dir = plonk_bn254_artifacts_dev_dir(template_vk);
     if build_dir.exists() {
@@ -56,8 +56,8 @@ pub fn try_build_plonk_bn254_artifacts_dev(
 
 /// Tries to build the groth16 bn254 artifacts in the current environment.
 pub fn try_build_groth16_bn254_artifacts_dev(
-    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
-    template_proof: &ShardProof<SP1OuterGlobalContext, OuterSC>,
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
+    template_proof: &ShardProof<SP1OuterGlobalContext, SP1PcsProofOuter>,
 ) -> PathBuf {
     let build_dir = groth16_bn254_artifacts_dev_dir(template_vk);
     if build_dir.exists() {
@@ -74,7 +74,7 @@ pub fn try_build_groth16_bn254_artifacts_dev(
 
 /// Gets the directory where the PLONK artifacts are installed in development mode.
 pub fn plonk_bn254_artifacts_dev_dir(
-    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
 ) -> PathBuf {
     let serialized_vk = bincode::serialize(template_vk).unwrap();
     let vk_hash_prefix = hex_prefix(sha256_hash(&serialized_vk));
@@ -87,7 +87,7 @@ pub fn plonk_bn254_artifacts_dev_dir(
 
 /// Gets the directory where the groth16 artifacts are installed in development mode.
 pub fn groth16_bn254_artifacts_dev_dir(
-    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
 ) -> PathBuf {
     let serialized_vk = bincode::serialize(template_vk).unwrap();
     let vk_hash_prefix = hex_prefix(sha256_hash(&serialized_vk));
@@ -105,8 +105,8 @@ fn hex_prefix(input: Vec<u8>) -> String {
 /// Build the plonk bn254 artifacts to the given directory for the given verification key and
 /// template proof.
 pub fn build_plonk_bn254_artifacts(
-    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
-    template_proof: &ShardProof<SP1OuterGlobalContext, OuterSC>,
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
+    template_proof: &ShardProof<SP1OuterGlobalContext, SP1PcsProofOuter>,
     build_dir: impl Into<PathBuf>,
 ) {
     let build_dir = build_dir.into();
@@ -118,8 +118,8 @@ pub fn build_plonk_bn254_artifacts(
 /// Build the groth16 bn254 artifacts to the given directory for the given verification key and
 /// template proof.
 pub fn build_groth16_bn254_artifacts(
-    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
-    template_proof: &ShardProof<SP1OuterGlobalContext, OuterSC>,
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
+    template_proof: &ShardProof<SP1OuterGlobalContext, SP1PcsProofOuter>,
     build_dir: impl Into<PathBuf>,
 ) {
     let build_dir = build_dir.into();
@@ -130,8 +130,8 @@ pub fn build_groth16_bn254_artifacts(
 
 /// Build the verifier constraints and template witness for the circuit.
 pub fn build_constraints_and_witness(
-    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext, OuterSC>,
-    template_proof: &ShardProof<SP1OuterGlobalContext, OuterSC>,
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
+    template_proof: &ShardProof<SP1OuterGlobalContext, SP1PcsProofOuter>,
 ) -> (Vec<Constraint>, OuterWitness<OuterConfig>) {
     tracing::info!("building verifier constraints");
     let template_input = SP1ShapedWitnessValues {
@@ -161,7 +161,7 @@ pub fn build_constraints_and_witness(
 }
 
 fn build_outer_circuit(
-    template_input: &SP1ShapedWitnessValues<SP1OuterGlobalContext, OuterSC>,
+    template_input: &SP1ShapedWitnessValues<SP1OuterGlobalContext, SP1PcsProofOuter>,
 ) -> Vec<Constraint> {
     let wrap_verifier = CpuSP1ProverComponents::wrap_verifier();
     let wrap_verifier = wrap_verifier.shard_verifier();

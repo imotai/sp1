@@ -5,9 +5,10 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::{PrimeField, PrimeField32};
 use slop_bn254::Bn254Fr;
 use slop_challenger::IopCtx;
-use slop_multilinear::MultilinearPcsVerifier;
 use sp1_core_machine::io::SP1Stdin;
-use sp1_hypercube::{air::ShardRange, MachineVerifyingKey, ShardProof, DIGEST_SIZE};
+use sp1_hypercube::{
+    air::ShardRange, MachineVerifyingKey, SP1PcsProofInner, ShardProof, DIGEST_SIZE,
+};
 use sp1_primitives::{io::SP1PublicValues, poseidon2_hash, SP1Field, SP1GlobalContext};
 use sp1_recursion_circuit::{
     machine::{
@@ -15,18 +16,15 @@ use sp1_recursion_circuit::{
         SP1ShapedWitnessValues,
     },
     utils::koalabears_to_bn254,
-    InnerSC,
 };
 pub use sp1_recursion_gnark_ffi::proof::{Groth16Bn254Proof, PlonkBn254Proof};
 use std::{borrow::Borrow, fs::File, path::Path};
 use thiserror::Error;
 
-use crate::CoreSC;
-
 /// The information necessary to verify a proof for a given RISC-V program.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SP1VerifyingKey {
-    pub vk: MachineVerifyingKey<SP1GlobalContext, CoreSC>,
+    pub vk: MachineVerifyingKey<SP1GlobalContext>,
 }
 
 /// A trait for keys that can be hashed into a digest.
@@ -87,8 +85,7 @@ impl HashableKey for SP1VerifyingKey {
     }
 }
 
-impl<GC: IopCtx<F = SP1Field>, C: MultilinearPcsVerifier<GC>> HashableKey
-    for MachineVerifyingKey<GC, C>
+impl<GC: IopCtx<F = SP1Field>> HashableKey for MachineVerifyingKey<GC>
 where
     GC::Digest: Borrow<[SP1Field; DIGEST_SIZE]>,
 {
@@ -160,10 +157,10 @@ pub type SP1Groth16Bn254Proof = SP1ProofWithMetadata<SP1Groth16Bn254ProofData>;
 pub type SP1Proof = SP1ProofWithMetadata<SP1Bn254ProofData>;
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct SP1CoreProofData(pub Vec<ShardProof<SP1GlobalContext, CoreSC>>);
+pub struct SP1CoreProofData(pub Vec<ShardProof<SP1GlobalContext, SP1PcsProofInner>>);
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct SP1ReducedProofData(pub ShardProof<SP1GlobalContext, InnerSC>);
+pub struct SP1ReducedProofData(pub ShardProof<SP1GlobalContext, SP1PcsProofInner>);
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SP1PlonkBn254ProofData(pub PlonkBn254Proof);
@@ -224,15 +221,15 @@ pub enum SP1RecursionProverError {
     RuntimeError(String),
 }
 
-pub type SP1CompressWitness = SP1ShapedWitnessValues<SP1GlobalContext, InnerSC>;
+pub type SP1CompressWitness = SP1ShapedWitnessValues<SP1GlobalContext, SP1PcsProofInner>;
 
 #[allow(clippy::large_enum_variant)]
 pub enum SP1CircuitWitness {
-    Core(SP1NormalizeWitnessValues<SP1GlobalContext, CoreSC>),
-    Deferred(SP1DeferredWitnessValues<SP1GlobalContext, InnerSC>),
+    Core(SP1NormalizeWitnessValues<SP1GlobalContext, SP1PcsProofInner>),
+    Deferred(SP1DeferredWitnessValues<SP1GlobalContext, SP1PcsProofInner>),
     Compress(SP1CompressWitness),
-    Shrink(SP1CompressWithVKeyWitnessValues<InnerSC>),
-    Wrap(SP1CompressWithVKeyWitnessValues<InnerSC>),
+    Shrink(SP1CompressWithVKeyWitnessValues<SP1PcsProofInner>),
+    Wrap(SP1CompressWithVKeyWitnessValues<SP1PcsProofInner>),
 }
 
 impl SP1CircuitWitness {

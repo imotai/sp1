@@ -8,7 +8,7 @@ use slop_algebra::{AbstractField, Field};
 use slop_bn254::{outer_perm, Bn254Fr, OUTER_CHALLENGER_STATE_WIDTH};
 use slop_challenger::IopCtx;
 use slop_symmetric::{CryptographicHasher, Permutation};
-use sp1_hypercube::{inner_perm, SP1CoreJaggedConfig};
+use sp1_hypercube::{inner_perm, SP1InnerPcs};
 use sp1_primitives::{SP1Field, SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_recursion_compiler::ir::{Builder, DslIr, Felt, Var};
 use sp1_recursion_executor::{DIGEST_SIZE, HASH_RATE, PERMUTATION_WIDTH};
@@ -89,7 +89,7 @@ impl FieldHasher for SP1GlobalContext {
     }
 }
 
-impl<C: CircuitConfig> Poseidon2SP1FieldHasherVariable<C> for SP1CoreJaggedConfig {
+impl<C: CircuitConfig> Poseidon2SP1FieldHasherVariable<C> for SP1InnerPcs {
     fn poseidon2_permute(
         builder: &mut Builder<C>,
         input: [Felt<SP1Field>; PERMUTATION_WIDTH],

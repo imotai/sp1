@@ -22,7 +22,7 @@ use sp1_core_executor::{MinimalExecutor, SP1CoreOpts};
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
 use sp1_hypercube::{
     air::{PublicValues, PROOF_NONCE_NUM_WORDS},
-    ShardProof, DIGEST_SIZE,
+    SP1PcsProofInner, ShardProof, DIGEST_SIZE,
 };
 use sp1_primitives::{io::SP1PublicValues, SP1Field, SP1GlobalContext};
 use sp1_prover_types::{
@@ -39,7 +39,7 @@ use tracing::Instrument;
 use crate::{
     verify::SP1Verifier,
     worker::{RawTaskRequest, TaskContext, TaskError, WorkerClient},
-    CoreSC, SP1VerifyingKey, SP1_CIRCUIT_VERSION,
+    SP1VerifyingKey, SP1_CIRCUIT_VERSION,
 };
 
 #[derive(Clone)]
@@ -459,8 +459,9 @@ async fn collect_core_proofs(
             return Err(TaskError::Fatal(anyhow::anyhow!("core proof task failed: {:?}", task_id)));
         }
         // Download the proof
-        let proof =
-            artifact_client.download::<ShardProof<SP1GlobalContext, CoreSC>>(&proof).await?;
+        let proof = artifact_client
+            .download::<ShardProof<SP1GlobalContext, SP1PcsProofInner>>(&proof)
+            .await?;
         shard_proofs.push(proof);
     }
     shard_proofs.sort_by_key(|shard_proof| {

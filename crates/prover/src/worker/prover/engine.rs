@@ -6,7 +6,6 @@ use sp1_hypercube::prover::ProverSemaphore;
 use sp1_prover_types::{Artifact, ArtifactClient};
 
 use crate::{
-    components::{CoreProver, RecursionProver},
     worker::{
         CoreProveSubmitHandle, RawTaskRequest, RecursionVkWorker, ReduceSubmitHandle,
         SP1CoreProver, SP1CoreProverConfig, SP1DeferredProver, SP1DeferredProverConfig,
@@ -37,10 +36,10 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1ProverEngine
         opts: SP1CoreOpts,
         artifact_client: A,
         worker_client: W,
-        core_prover_and_permits: (Arc<CoreProver<C>>, ProverSemaphore),
-        recursion_prover_and_permits: (Arc<RecursionProver<C>>, ProverSemaphore),
-        shrink_air_prover_and_permits: (Arc<RecursionProver<C>>, ProverSemaphore),
-        wrap_air_prover_and_permits: (Arc<crate::components::WrapProver<C>>, ProverSemaphore),
+        core_prover_and_permits: (Arc<C::CoreProver>, ProverSemaphore),
+        recursion_prover_and_permits: (Arc<C::RecursionProver>, ProverSemaphore),
+        shrink_air_prover_and_permits: (Arc<C::RecursionProver>, ProverSemaphore),
+        wrap_air_prover_and_permits: (Arc<C::WrapProver>, ProverSemaphore),
     ) -> Self {
         let recursion_prover = SP1RecursionProver::new(
             config.recursion_prover_config,

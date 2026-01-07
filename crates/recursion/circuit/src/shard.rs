@@ -467,11 +467,8 @@ mod tests {
         utils::{prove_core, setup_logger},
     };
     use sp1_hypercube::{
-        prover::{
-            AirProver, CpuMachineProverComponents, CpuShardProver, ProverSemaphore,
-            SP1CpuJaggedProverComponents,
-        },
-        MachineVerifier, ShardVerifier, NUM_SP1_COMMITMENTS,
+        prover::{AirProver, CpuShardProver, ProverSemaphore, SP1InnerPcsProver},
+        InnerSC, MachineVerifier, SP1InnerPcs, ShardVerifier, NUM_SP1_COMMITMENTS,
     };
     use sp1_recursion_compiler::{
         circuit::{AsmCompiler, AsmConfig},
@@ -510,7 +507,7 @@ mod tests {
         let elf = test_artifacts::FIBONACCI_ELF;
         let program = Arc::new(Program::from(&elf).unwrap());
         let prover =
-            Arc::new(CpuShardProver::<SP1GlobalContext, SP1CpuJaggedProverComponents, _>::new(
+            Arc::new(CpuShardProver::<SP1GlobalContext, SP1InnerPcs, SP1InnerPcsProver, _>::new(
                 verifier.clone(),
             ));
 
@@ -518,11 +515,8 @@ mod tests {
         let pk = unsafe { pk.into_inner() };
         let (proof, _) = prove_core::<
             SP1GlobalContext,
-            CpuMachineProverComponents<
-                SP1GlobalContext,
-                SP1CpuJaggedProverComponents,
-                RiscvAir<SP1Field>,
-            >,
+            InnerSC<_>,
+            CpuShardProver<SP1GlobalContext, SP1InnerPcs, SP1InnerPcsProver, _>,
         >(
             verifier.clone(),
             prover,

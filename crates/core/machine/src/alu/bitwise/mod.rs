@@ -289,7 +289,7 @@ where
 //     use sp1_core_executor::{events::AluEvent, ExecutionRecord, Opcode};
 //     use sp1_hypercube::{
 //         air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
-//         koala_bear_poseidon2::SP1CoreJaggedConfig,
+//         koala_bear_poseidon2::SP1InnerPcs,
 //         Chip, StarkMachine,
 //     };
 
@@ -319,7 +319,7 @@ where
 
 //         // Run setup.
 //         let air = BitwiseChip::default();
-//         let config = SP1CoreJaggedConfig::new();
+//         let config = SP1InnerPcs::new();
 //         let chip = Chip::new(air);
 //         let (pk, vk) = setup_test_machine(StarkMachine::new(
 //             config.clone(),
@@ -332,7 +332,7 @@ where
 //         let air = BitwiseChip::default();
 //         let chip: Chip<SP1Field, BitwiseChip> = Chip::new(air);
 //         let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
-//         run_test_machine::<SP1CoreJaggedConfig, BitwiseChip>(vec![shard], machine, pk,
+//         run_test_machine::<SP1InnerPcs, BitwiseChip>(vec![shard], machine, pk,
 // vk).unwrap();     }
 
 //     // TODO: Re-enable when we LOGUP-GKR working.
@@ -363,13 +363,13 @@ where
 //     //             let program = Program::new(instructions, 0, 0);
 //     //             let stdin = SP1Stdin::new();
 
-//     //             type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
+//     //             type P = CpuProver<SP1InnerPcs, RiscvAir<SP1Field>>;
 
 //     //             let malicious_trace_pv_generator = move |prover: &P,
 //     //                                                      record: &mut ExecutionRecord|
 //     //                   -> Vec<(
 //     //                 String,
-//     //                 RowMajorMatrix<Val<SP1CoreJaggedConfig>>,
+//     //                 RowMajorMatrix<Val<SP1InnerPcs>>,
 //     //             )> {
 //     //                 let mut malicious_record = record.clone();
 //     //                 malicious_record.cpu_events[0].a = op_a;

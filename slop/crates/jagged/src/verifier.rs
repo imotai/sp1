@@ -14,9 +14,8 @@ use std::{fmt::Debug, iter::once};
 use thiserror::Error;
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "", deserialize = ""))]
-pub struct JaggedPcsProof<GC: IopCtx, C: MultilinearPcsVerifier<GC>> {
-    pub pcs_proof: C::Proof,
+pub struct JaggedPcsProof<GC: IopCtx, Proof> {
+    pub pcs_proof: Proof,
     pub sumcheck_proof: PartialSumcheckProof<GC::EF>,
     pub jagged_eval_proof: JaggedSumcheckEvalProof<GC::EF>,
     pub row_counts_and_column_counts: Rounds<Vec<(usize, usize)>>,
@@ -102,7 +101,7 @@ pub fn unzip_and_prefix_sums(
     PrefixSumsMaxLogRowCount { row_counts, column_counts, usize_prefix_sums, log_m: log_trace }
 }
 
-impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>> JaggedPcsVerifier<GC, C> {
+impl<GC: IopCtx, Verifier: MultilinearPcsVerifier<GC>> JaggedPcsVerifier<GC, Verifier> {
     pub fn challenger(&self) -> GC::Challenger {
         GC::default_challenger()
     }
@@ -112,9 +111,9 @@ impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>> JaggedPcsVerifier<GC, C> {
         commitments: &[GC::Digest],
         point: Point<GC::EF>,
         evaluation_claims: &[MleEval<GC::EF>],
-        proof: &JaggedPcsProof<GC, C>,
+        proof: &JaggedPcsProof<GC, Verifier::Proof>,
         challenger: &mut GC::Challenger,
-    ) -> Result<(), JaggedPcsVerifierError<GC::EF, C::VerifierError>> {
+    ) -> Result<(), JaggedPcsVerifierError<GC::EF, Verifier::VerifierError>> {
         let JaggedPcsProof {
             pcs_proof,
             sumcheck_proof,
@@ -239,8 +238,9 @@ impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>> JaggedPcsVerifier<GC, C> {
         let expected_added_vals_and_cols: Vec<(usize, usize)> = round_areas
             .iter()
             .map(|area| {
-                let next_multiple =
-                    area.next_multiple_of(1 << C::log_stacking_height(&self.pcs_verifier) as usize);
+                let next_multiple = area.next_multiple_of(
+                    1 << Verifier::log_stacking_height(&self.pcs_verifier) as usize,
+                );
                 // No underflow because `next_multiple>=area`.
                 let added_vals = next_multiple - area;
                 (added_vals, added_vals.div_ceil(1 << self.max_log_row_count).max(1))

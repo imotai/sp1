@@ -8,7 +8,6 @@ use crate::{
 };
 use slop_algebra::AbstractField;
 use slop_challenger::{DuplexChallenger, IopCtx};
-use slop_multilinear::MultilinearPcsVerifier;
 use slop_symmetric::Hash;
 use sp1_primitives::{SP1Field, SP1GlobalContext, SP1Perm};
 use std::{borrow::Borrow, marker::PhantomData};
@@ -21,12 +20,12 @@ use crate::{
     basefold::RecursiveBasefoldVerifier,
     challenger::DuplexChallengerVariable,
     hash::FieldHasherVariable,
-    jagged::RecursiveJaggedConfigImpl,
+    jagged::RecursivePcsImpl,
     shard::{MachineVerifyingKeyVariable, ShardProofVariable},
     witness::{WitnessWriter, Witnessable},
     CircuitConfig, SP1FieldConfigVariable,
 };
-use sp1_hypercube::{MachineVerifyingKey, SP1CoreJaggedConfig, ShardProof, Word};
+use sp1_hypercube::{MachineVerifyingKey, SP1PcsProofInner, ShardProof, Word};
 use sp1_recursion_compiler::{
     config::InnerConfig,
     ir::{Builder, Felt},
@@ -82,9 +81,9 @@ where
     }
 }
 
-pub type JC<C, SC> = RecursiveJaggedConfigImpl<C, SC, RecursiveBasefoldVerifier<C, SC>>;
+pub type JC<C, SC> = RecursivePcsImpl<C, SC, RecursiveBasefoldVerifier<C, SC>>;
 
-impl Witnessable<InnerConfig> for SP1NormalizeWitnessValues<SP1GlobalContext, SP1CoreJaggedConfig> {
+impl Witnessable<InnerConfig> for SP1NormalizeWitnessValues<SP1GlobalContext, SP1PcsProofInner> {
     type WitnessVariable = SP1RecursionWitnessVariable<InnerConfig, SP1GlobalContext>;
 
     fn read(&self, builder: &mut Builder<InnerConfig>) -> Self::WitnessVariable {
@@ -114,15 +113,11 @@ impl Witnessable<InnerConfig> for SP1NormalizeWitnessValues<SP1GlobalContext, SP
     }
 }
 
-impl<
-        GC: IopCtx + SP1FieldConfigVariable<C>,
-        C: CircuitConfig,
-        SC: MultilinearPcsVerifier<GC> + Send + Sync,
-    > Witnessable<C> for SP1ShapedWitnessValues<GC, SC>
+impl<GC: IopCtx + SP1FieldConfigVariable<C>, C: CircuitConfig, Proof> Witnessable<C>
+    for SP1ShapedWitnessValues<GC, Proof>
 where
-    MachineVerifyingKey<GC, SC>:
-        Witnessable<C, WitnessVariable = MachineVerifyingKeyVariable<C, GC>>,
-    ShardProof<GC, SC>: Witnessable<C, WitnessVariable = ShardProofVariable<C, GC>>,
+    MachineVerifyingKey<GC>: Witnessable<C, WitnessVariable = MachineVerifyingKeyVariable<C, GC>>,
+    ShardProof<GC, Proof>: Witnessable<C, WitnessVariable = ShardProofVariable<C, GC>>,
 {
     type WitnessVariable = SP1ShapedWitnessVariable<C, GC>;
 
@@ -139,7 +134,7 @@ where
     }
 }
 
-impl<C> Witnessable<C> for SP1DeferredWitnessValues<SP1GlobalContext, SP1CoreJaggedConfig>
+impl<C> Witnessable<C> for SP1DeferredWitnessValues<SP1GlobalContext, SP1PcsProofInner>
 where
     C: CircuitConfig<Bit = Felt<InnerVal>>,
 {
@@ -236,18 +231,15 @@ where
     }
 }
 
-impl<C: CircuitConfig, SC: MultilinearPcsVerifier<SP1GlobalContext>> Witnessable<C>
-    for SP1CompressWithVKeyWitnessValues<SC>
+impl<C: CircuitConfig, Proof> Witnessable<C> for SP1CompressWithVKeyWitnessValues<Proof>
 where
-    // This trait bound is redundant, but Rust-Analyzer is not able to infer it.
-    SC: MultilinearPcsVerifier<SP1GlobalContext>,
     <SP1GlobalContext as IopCtx>::Digest: Witnessable<
         C,
         WitnessVariable = <SP1GlobalContext as FieldHasherVariable<C>>::DigestVariable,
     >,
-    MachineVerifyingKey<SP1GlobalContext, SC>:
+    MachineVerifyingKey<SP1GlobalContext>:
         Witnessable<C, WitnessVariable = MachineVerifyingKeyVariable<C, SP1GlobalContext>>,
-    ShardProof<SP1GlobalContext, SC>:
+    ShardProof<SP1GlobalContext, Proof>:
         Witnessable<C, WitnessVariable = ShardProofVariable<C, SP1GlobalContext>>,
     SP1GlobalContext: SP1FieldConfigVariable<C>,
 {

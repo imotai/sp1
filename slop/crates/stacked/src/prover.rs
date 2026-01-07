@@ -6,10 +6,10 @@ use slop_basefold_prover::{BasefoldProver, BasefoldProverData, BasefoldProverErr
 use slop_challenger::IopCtx;
 use slop_commit::{Message, Rounds};
 use slop_merkle_tree::ComputeTcsOpenings;
-use slop_multilinear::{Evaluations, Mle, MleBaseBackend, MleEval, MultilinearPcsProver, Point};
+use slop_multilinear::{Evaluations, Mle, MleEval, MultilinearPcsProver, Point, ToMle};
 use std::fmt::Debug;
 
-use crate::{interleave_multilinears_with_fixed_rate, StackedBasefoldProof, StackedPcsVerifier};
+use crate::{interleave_multilinears_with_fixed_rate, StackedBasefoldProof};
 
 #[derive(Clone)]
 pub struct StackedPcsProver<P: ComputeTcsOpenings<GC, CpuBackend>, GC: IopCtx<F: TwoAdicField>> {
@@ -17,10 +17,6 @@ pub struct StackedPcsProver<P: ComputeTcsOpenings<GC, CpuBackend>, GC: IopCtx<F:
     pub log_stacking_height: u32,
     pub batch_size: usize,
     _marker: std::marker::PhantomData<GC>,
-}
-
-pub trait ToMle<F: Field, A: MleBaseBackend<F>> {
-    fn interleaved_mles(&self) -> Message<Mle<F, A>>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,19 +95,15 @@ where
 }
 
 impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, P: ComputeTcsOpenings<GC, CpuBackend>>
-    MultilinearPcsProver<GC> for StackedPcsProver<P, GC>
+    MultilinearPcsProver<GC, StackedBasefoldProof<GC>> for StackedPcsProver<P, GC>
 {
-    type Verifier = StackedPcsVerifier<GC>;
-
     type ProverData = StackedBasefoldProverData<Mle<GC::F>, GC::F, P::ProverData>;
-
-    type A = CpuBackend;
 
     type ProverError = BasefoldProverError<P::ProverError>;
 
     async fn commit_multilinear(
         &self,
-        mles: Message<Mle<<GC as IopCtx>::F, Self::A>>,
+        mles: Message<Mle<<GC as IopCtx>::F>>,
     ) -> Result<(<GC as IopCtx>::Digest, Self::ProverData, usize), Self::ProverError> {
         self.commit_multilinears(mles).await
     }
@@ -122,10 +114,7 @@ impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, P: ComputeTcsOpenings<GC, Cp
         _evaluation_claim: <GC as IopCtx>::EF,
         prover_data: Rounds<Self::ProverData>,
         challenger: &mut <GC as IopCtx>::Challenger,
-    ) -> Result<
-        <Self::Verifier as slop_multilinear::MultilinearPcsVerifier<GC>>::Proof,
-        Self::ProverError,
-    > {
+    ) -> Result<StackedBasefoldProof<GC>, Self::ProverError> {
         let (_, stack_point) =
             eval_point.split_at(eval_point.dimension() - self.log_stacking_height as usize);
         let batch_evaluations = stream::iter(prover_data.iter())

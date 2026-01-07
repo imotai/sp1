@@ -7,7 +7,6 @@ use itertools::Itertools;
 use slop_air::Air;
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_challenger::IopCtx;
-use slop_multilinear::MultilinearPcsVerifier;
 use sp1_primitives::{SP1Field, SP1GlobalContext};
 
 use serde::{Deserialize, Serialize};
@@ -42,19 +41,19 @@ pub struct SP1RecursionWitnessVariable<C: CircuitConfig, SC: SP1FieldConfigVaria
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "ShardProof<GC,SC>: Serialize"))]
-#[serde(bound(deserialize = "ShardProof<GC,SC>: Deserialize<'de>"))]
+#[serde(bound(serialize = "ShardProof<GC,Proof>: Serialize"))]
+#[serde(bound(deserialize = "ShardProof<GC,Proof>: Deserialize<'de>"))]
 /// A struct to contain the inputs to the `normalize` program.
-pub struct SP1NormalizeWitnessValues<GC: IopCtx, SC: MultilinearPcsVerifier<GC>> {
-    pub vk: MachineVerifyingKey<GC, SC>,
-    pub shard_proofs: Vec<ShardProof<GC, SC>>,
+pub struct SP1NormalizeWitnessValues<GC: IopCtx, Proof> {
+    pub vk: MachineVerifyingKey<GC>,
+    pub shard_proofs: Vec<ShardProof<GC, Proof>>,
     pub is_complete: bool,
     pub vk_root: [GC::F; DIGEST_SIZE],
     pub reconstruct_deferred_digest: [GC::F; 8],
     pub num_deferred_proofs: GC::F,
 }
 
-impl<GC: IopCtx, SC: MultilinearPcsVerifier<GC>> SP1NormalizeWitnessValues<GC, SC> {
+impl<GC: IopCtx, Proof> SP1NormalizeWitnessValues<GC, Proof> {
     pub fn range(&self) -> ShardRange
     where
         GC::F: PrimeField32,

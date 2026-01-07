@@ -20,7 +20,7 @@ use sp1_recursion_executor::{RecursionPublicValues, DIGEST_SIZE, NUM_BITS, PERMU
 use std::iter::{repeat, zip};
 use utils::{felt_bytes_to_bn254_var, felts_to_bn254_var, words_to_bytes};
 
-use sp1_hypercube::SP1CoreJaggedConfig;
+use sp1_hypercube::SP1InnerPcs;
 pub mod basefold;
 pub mod challenger;
 pub mod dummy;
@@ -41,7 +41,7 @@ use crate::utils::felt_proof_nonce_to_bn254_var;
 
 pub type Digest<C, SC> = <SC as FieldHasherVariable<C>>::DigestVariable;
 
-pub type InnerSC = SP1CoreJaggedConfig;
+pub type InnerSC = SP1InnerPcs;
 pub trait SP1FieldConfigVariable<C: CircuitConfig>:
     IopCtx + FieldHasherVariable<C> + Poseidon2SP1FieldHasherVariable<C> + Send + Sync
 {

@@ -5,11 +5,10 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use slop_challenger::IopCtx;
-use slop_multilinear::MultilinearPcsVerifier;
 
 use crate::machine::{
     assert_recursion_public_values_valid, SP1MerkleProofVerifier, SP1MerkleProofWitnessValues,
-    SP1MerkleProofWitnessVariable,
+    SP1MerkleProofWitnessVariable, VkAndProof,
 };
 use slop_air::Air;
 use slop_algebra::{AbstractField, PrimeField32};
@@ -17,7 +16,7 @@ use sp1_hypercube::{
     air::{MachineAir, ShardRange, POSEIDON_NUM_WORDS, PROOF_NONCE_NUM_WORDS},
     septic_curve::SepticCurve,
     septic_digest::SepticDigest,
-    MachineVerifyingKey, ShardProof,
+    ShardProof,
 };
 use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::ir::{Builder, Felt};
@@ -42,16 +41,16 @@ pub struct SP1DeferredVerifier<GC, C, A> {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(
-    serialize = "GC::Challenger: Serialize, ShardProof<GC, SC>: Serialize, [GC::F; DIGEST_SIZE]: Serialize"
+    serialize = "GC::Challenger: Serialize, ShardProof<GC, Proof>: Serialize, [GC::F; DIGEST_SIZE]: Serialize"
 ))]
 #[serde(bound(
-    deserialize = "GC::Challenger: Deserialize<'de>, ShardProof<GC, SC>: Deserialize<'de>,  [GC::F; DIGEST_SIZE]: Deserialize<'de>"
+    deserialize = "GC::Challenger: Deserialize<'de>, ShardProof<GC, Proof>: Deserialize<'de>,  [GC::F; DIGEST_SIZE]: Deserialize<'de>"
 ))]
 pub struct SP1DeferredWitnessValues<
     GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + FieldHasher,
-    SC: MultilinearPcsVerifier<GC>,
+    Proof,
 > {
-    pub vks_and_proofs: Vec<(MachineVerifyingKey<GC, SC>, ShardProof<GC, SC>)>,
+    pub vks_and_proofs: Vec<VkAndProof<GC, Proof>>,
     pub vk_merkle_data: SP1MerkleProofWitnessValues<GC>,
     pub start_reconstruct_deferred_digest: [GC::F; POSEIDON_NUM_WORDS],
     pub sp1_vk_digest: [GC::F; DIGEST_SIZE],
@@ -60,10 +59,8 @@ pub struct SP1DeferredWitnessValues<
     pub deferred_proof_index: GC::F,
 }
 
-impl<
-        GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + FieldHasher,
-        SC: MultilinearPcsVerifier<GC>,
-    > SP1DeferredWitnessValues<GC, SC>
+impl<GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + FieldHasher, Proof>
+    SP1DeferredWitnessValues<GC, Proof>
 {
     /// The deferred proof range.
     ///

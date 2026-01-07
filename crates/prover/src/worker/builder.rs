@@ -5,7 +5,6 @@ use sp1_hypercube::prover::{CpuShardProver, ProverSemaphore};
 use sp1_prover_types::{ArtifactClient, InMemoryArtifactClient};
 
 use crate::{
-    components::{CoreProver, RecursionProver, WrapProver},
     verify::SP1Verifier,
     worker::{
         LocalWorkerClient, SP1Controller, SP1ProverEngine, SP1Worker, SP1WorkerConfig, WorkerClient,
@@ -19,10 +18,10 @@ pub struct SP1WorkerBuilder<
     W = LocalWorkerClient,
 > {
     config: SP1WorkerConfig,
-    core_air_prover_and_permits: Option<(Arc<CoreProver<C>>, ProverSemaphore)>,
-    compress_air_prover_and_permits: Option<(Arc<RecursionProver<C>>, ProverSemaphore)>,
-    shrink_air_prover_and_permits: Option<(Arc<RecursionProver<C>>, ProverSemaphore)>,
-    wrap_air_prover_and_permits: Option<(Arc<WrapProver<C>>, ProverSemaphore)>,
+    core_air_prover_and_permits: Option<(Arc<C::CoreProver>, ProverSemaphore)>,
+    compress_air_prover_and_permits: Option<(Arc<C::RecursionProver>, ProverSemaphore)>,
+    shrink_air_prover_and_permits: Option<(Arc<C::RecursionProver>, ProverSemaphore)>,
+    wrap_air_prover_and_permits: Option<(Arc<C::WrapProver>, ProverSemaphore)>,
     artifact_client: Option<A>,
     worker_client: Option<W>,
 }
@@ -109,7 +108,7 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
     #[must_use]
     pub fn with_core_air_prover(
         mut self,
-        core_air_prover: Arc<CoreProver<C>>,
+        core_air_prover: Arc<C::CoreProver>,
         permit: ProverSemaphore,
     ) -> Self {
         self.core_air_prover_and_permits = Some((core_air_prover, permit));
@@ -120,7 +119,7 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
     #[must_use]
     pub fn with_compress_air_prover(
         mut self,
-        compress_air_prover: Arc<RecursionProver<C>>,
+        compress_air_prover: Arc<C::RecursionProver>,
         permit: ProverSemaphore,
     ) -> Self {
         self.compress_air_prover_and_permits = Some((compress_air_prover, permit));
@@ -131,7 +130,7 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
     #[must_use]
     pub fn with_shrink_air_prover(
         mut self,
-        shrink_air_prover: Arc<RecursionProver<C>>,
+        shrink_air_prover: Arc<C::RecursionProver>,
         permit: ProverSemaphore,
     ) -> Self {
         self.shrink_air_prover_and_permits = Some((shrink_air_prover, permit));
@@ -142,7 +141,7 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
     #[must_use]
     pub fn with_wrap_air_prover(
         mut self,
-        wrap_air_prover: Arc<WrapProver<C>>,
+        wrap_air_prover: Arc<C::WrapProver>,
         permit: ProverSemaphore,
     ) -> Self {
         self.wrap_air_prover_and_permits = Some((wrap_air_prover, permit));

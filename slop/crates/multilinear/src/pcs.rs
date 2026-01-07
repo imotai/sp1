@@ -5,7 +5,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::{Mle, MleEval, MleEvaluationBackend, Point};
+use crate::{Mle, MleBaseBackend, MleEval, Point};
 use derive_where::derive_where;
 use serde::{de::DeserializeOwned, Serialize};
 use slop_algebra::{ExtensionField, Field};
@@ -99,21 +99,18 @@ pub trait MultilinearPcsVerifier<GC: IopCtx>: 'static + Send + Sync + Clone {
     fn round_multiples(proof: &<Self as MultilinearPcsVerifier<GC>>::Proof) -> Vec<usize>;
 }
 
-// A prover trait for proving evaluations of a single multilinear polynomial.
-pub trait MultilinearPcsProver<GC: IopCtx>: 'static + Send + Sync {
-    /// The verifier associated to this prover.
-    type Verifier: MultilinearPcsVerifier<GC>;
+/// A trait for prover data that can be converted into the original "committed-to" MLEs.
+pub trait ToMle<F: Field, A: MleBaseBackend<F>> {
+    fn interleaved_mles(&self) -> Message<Mle<F, A>>;
+}
 
+// A prover trait for proving evaluations of a single multilinear polynomial.
+pub trait MultilinearPcsProver<GC: IopCtx, Proof>: 'static + Send + Sync {
     /// The auxilary data for a prover.
     ///
     /// When committing to a batch of multilinear polynomials, it is often necessary to keep track
     /// of additional information that was produced during the commitment phase.
-    type ProverData: 'static + Send + Sync + Debug + Clone;
-
-    /// The backend used by the prover.
-    ///
-    /// The backend parametrizes the type of hardware assumptions this prover is using.
-    type A: MleEvaluationBackend<GC::F, GC::EF>;
+    type ProverData: 'static + Send + Sync + Debug + Clone + ToMle<GC::F, CpuBackend>;
 
     /// The error type of the prover.
     type ProverError: Error;
@@ -122,7 +119,7 @@ pub trait MultilinearPcsProver<GC: IopCtx>: 'static + Send + Sync {
     /// represent the multilinear polynomial whose evaluation is to be proved.
     fn commit_multilinear(
         &self,
-        mles: Message<Mle<GC::F, Self::A>>,
+        mles: Message<Mle<GC::F>>,
     ) -> impl Future<Output = Result<(GC::Digest, Self::ProverData, usize), Self::ProverError>> + Send;
 
     fn prove_trusted_evaluation(
@@ -131,9 +128,7 @@ pub trait MultilinearPcsProver<GC: IopCtx>: 'static + Send + Sync {
         evaluation_claim: GC::EF,
         prover_data: Rounds<Self::ProverData>,
         challenger: &mut GC::Challenger,
-    ) -> impl Future<
-        Output = Result<<Self::Verifier as MultilinearPcsVerifier<GC>>::Proof, Self::ProverError>,
-    > + Send;
+    ) -> impl Future<Output = Result<Proof, Self::ProverError>> + Send;
 
     fn prove_untrusted_evaluation(
         &self,
@@ -141,9 +136,7 @@ pub trait MultilinearPcsProver<GC: IopCtx>: 'static + Send + Sync {
         evaluation_claim: GC::EF,
         prover_data: Rounds<Self::ProverData>,
         challenger: &mut GC::Challenger,
-    ) -> impl Future<
-        Output = Result<<Self::Verifier as MultilinearPcsVerifier<GC>>::Proof, Self::ProverError>,
-    > + Send {
+    ) -> impl Future<Output = Result<Proof, Self::ProverError>> + Send {
         async move {
             // Observe the evaluation claim.
             challenger.observe_ext_element(evaluation_claim);

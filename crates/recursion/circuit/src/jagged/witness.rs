@@ -4,7 +4,7 @@ use slop_jagged::{
     unzip_and_prefix_sums, JaggedLittlePolynomialVerifierParams, JaggedPcsProof,
     JaggedSumcheckEvalProof, PrefixSumsMaxLogRowCount,
 };
-use slop_multilinear::{MultilinearPcsVerifier, Point};
+use slop_multilinear::Point;
 use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::ir::Builder;
 
@@ -52,11 +52,11 @@ impl<C: CircuitConfig, T: Witnessable<C>> Witnessable<C>
     }
 }
 
-impl<GC, C, JC: MultilinearPcsVerifier<GC>> Witnessable<C> for JaggedPcsProof<GC, JC>
+impl<GC, C, Proof> Witnessable<C> for JaggedPcsProof<GC, Proof>
 where
     GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + SP1FieldConfigVariable<C>,
     C: CircuitConfig,
-    <JC as MultilinearPcsVerifier<GC>>::Proof: Witnessable<
+    Proof: Witnessable<
         C,
         WitnessVariable = RecursiveStackedPcsProof<
             RecursiveBasefoldProof<C, GC>,

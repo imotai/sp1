@@ -8,7 +8,7 @@ use either::Either;
 use mti::prelude::{MagicTypeIdExt, V7};
 use sp1_core_executor::{ExecutionReport, SP1Context};
 use sp1_core_machine::io::SP1Stdin;
-use sp1_hypercube::SP1RecursionProof;
+use sp1_hypercube::{SP1PcsProofOuter, SP1RecursionProof};
 use sp1_primitives::{io::SP1PublicValues, SP1OuterGlobalContext};
 use sp1_prover_types::{
     network_base_types::ProofMode, Artifact, ArtifactClient, ArtifactType, InMemoryArtifactClient,
@@ -24,7 +24,7 @@ use crate::{
         LocalWorkerClient, ProofId, RawTaskRequest, RequesterId, SP1NodeCore, TaskContext,
         VkeyMapControllerInput, VkeyMapControllerOutput, WorkerClient,
     },
-    OuterSC, SP1VerifyingKey,
+    SP1VerifyingKey,
 };
 
 pub(crate) struct SP1NodeInner {
@@ -243,9 +243,7 @@ impl SP1LocalNode {
 
     #[cfg(test)]
     #[allow(dead_code)]
-    pub(crate) fn wrap_vk(
-        &self,
-    ) -> &sp1_hypercube::MachineVerifyingKey<SP1OuterGlobalContext, OuterSC> {
+    pub(crate) fn wrap_vk(&self) -> &sp1_hypercube::MachineVerifyingKey<SP1OuterGlobalContext> {
         self.inner.core.wrap_vk()
     }
 
@@ -253,7 +251,7 @@ impl SP1LocalNode {
     pub async fn shrink_wrap(
         &self,
         compressed_proof: &SP1Proof,
-    ) -> anyhow::Result<SP1RecursionProof<SP1OuterGlobalContext, OuterSC>> {
+    ) -> anyhow::Result<SP1RecursionProof<SP1OuterGlobalContext, SP1PcsProofOuter>> {
         let compressed_proof = match compressed_proof {
             SP1Proof::Compressed(proof) => *proof.clone(),
             _ => return Err(anyhow::anyhow!("given proof is not a compressed proof")),
@@ -289,7 +287,9 @@ impl SP1LocalNode {
         let proof = self
             .inner
             .artifact_client
-            .download::<SP1RecursionProof<SP1OuterGlobalContext, OuterSC>>(&output_artifact)
+            .download::<SP1RecursionProof<SP1OuterGlobalContext, SP1PcsProofOuter>>(
+                &output_artifact,
+            )
             .await?;
         // Clean up the input and output artifacts
         tokio::try_join!(

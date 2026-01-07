@@ -551,7 +551,7 @@ impl<V: Copy, P: FieldParameters> FieldOpCols<V, P> {
 //         edwards::ed25519::Ed25519BaseField, weierstrass::secp256k1::Secp256k1BaseField,
 //     };
 //     use sp1_derive::AlignedBorrow;
-//     use sp1_hypercube::koala_bear_poseidon2::SP1CoreJaggedConfig;
+//     use sp1_hypercube::koala_bear_poseidon2::SP1InnerPcs;
 //     use std::mem::size_of;
 
 //     #[derive(AlignedBorrow, Debug, Clone)]
@@ -683,7 +683,7 @@ impl<V: Copy, P: FieldParameters> FieldOpCols<V, P> {
 //             );
 
 //             // Run setup.
-//             let config = SP1CoreJaggedConfig::new();
+//             let config = SP1InnerPcs::new();
 //             let chip: Chip<SP1Field, FieldOpChip<Ed25519BaseField>> = Chip::new(air);
 //             let (pk, vk) = setup_test_machine(StarkMachine::new(
 //                 config.clone(),
@@ -697,7 +697,7 @@ impl<V: Copy, P: FieldParameters> FieldOpCols<V, P> {
 //             let chip: Chip<SP1Field, FieldOpChip<Ed25519BaseField>> = Chip::new(air);
 //             let machine =
 //                 StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
-//             run_test_machine::<SP1CoreJaggedConfig, FieldOpChip<Ed25519BaseField>>(
+//             run_test_machine::<SP1InnerPcs, FieldOpChip<Ed25519BaseField>>(
 //                 vec![shard],
 //                 machine,
 //                 pk,

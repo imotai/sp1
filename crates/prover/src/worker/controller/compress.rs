@@ -7,7 +7,7 @@ use futures::future::try_join_all;
 use hashbrown::HashMap;
 use sp1_hypercube::{
     air::{ShardBoundary, ShardRange},
-    SP1RecursionProof,
+    SP1PcsProofInner, SP1RecursionProof,
 };
 use sp1_primitives::SP1GlobalContext;
 use sp1_prover_types::{Artifact, ArtifactClient, ArtifactId, ArtifactType, TaskStatus, TaskType};
@@ -17,7 +17,7 @@ use tracing::Instrument;
 
 use crate::{
     worker::{ProofData, ReduceTaskRequest, TaskContext, TaskError, TaskId, WorkerClient},
-    InnerSC, SP1CircuitWitness, SP1CompressWitness,
+    SP1CircuitWitness, SP1CompressWitness,
 };
 
 pub struct CompressTask {
@@ -145,7 +145,7 @@ impl RangeProofs {
         // Download the proofs
         let proofs = try_join_all(self.proofs.iter().map(|proof| async {
             let downloaded_proof = artifact_client
-                .download::<SP1RecursionProof<SP1GlobalContext, InnerSC>>(&proof.proof)
+                .download::<SP1RecursionProof<SP1GlobalContext, SP1PcsProofInner>>(&proof.proof)
                 .await?;
 
             Ok::<_, TaskError>(downloaded_proof)

@@ -256,7 +256,7 @@ where
 //     use slop_algebra::extension::BinomialExtensionField;
 //     use sp1_primitives::SP1DiffusionMatrix;
 //     use slop_basefold::{BasefoldVerifier, SP1BasefoldConfig};
-//     use slop_jagged::SP1CoreJaggedConfig;
+//     use slop_jagged::SP1InnerPcs;
 //     use sp1_hypercube::inner_perm;
 //     use sp1_core_executor::{Program, SP1Context};
 //     use sp1_core_machine::{io::SP1Stdin, riscv::RiscvAir, utils::prove_core};
@@ -281,7 +281,7 @@ where
 
 //     use sp1_primitives::SP1Field;
 //    type F = SP1Field;
-//     type SC = SP1CoreJaggedConfig;
+//     type SC = SP1InnerPcs;
 //     type JC = RecursiveJaggedConfigImpl<
 //         C,
 //         SC,
@@ -366,7 +366,7 @@ where
 //                 RecursiveBasefoldVerifier<RecursiveBasefoldConfigImpl<C, SC>>,
 //             >,
 //         > { stacked_pcs_verifier: recursive_verifier, max_log_row_count, jagged_evaluator:
-//         > RecursiveJaggedEvalSumcheckConfig::<SP1CoreJaggedConfig>(PhantomData),
+//         > RecursiveJaggedEvalSumcheckConfig::<SP1InnerPcs>(PhantomData),
 //         };
 
 //         let stark_verifier = StarkVerifier::<A, SC, C, JC> {

@@ -164,7 +164,7 @@ where
 //     use sp1_core_executor::events::ByteRecord;
 //     use sp1_curves::edwards::ed25519::{ed25519_sqrt, Ed25519BaseField};
 //     use sp1_derive::AlignedBorrow;
-//     use sp1_hypercube::koala_bear_poseidon2::SP1CoreJaggedConfig;
+//     use sp1_hypercube::koala_bear_poseidon2::SP1InnerPcs;
 
 //     use super::FieldSqrtCols;
 
@@ -284,7 +284,7 @@ where
 //         );
 
 //         // Run setup.
-//         let config = SP1CoreJaggedConfig::new();
+//         let config = SP1InnerPcs::new();
 //         let chip: Chip<SP1Field, EdSqrtChip<Ed25519BaseField>> = Chip::new(air);
 //         let (pk, vk) = setup_test_machine(StarkMachine::new(
 //             config.clone(),
@@ -297,7 +297,7 @@ where
 //         let air: EdSqrtChip<Ed25519BaseField> = EdSqrtChip::new();
 //         let chip: Chip<SP1Field, EdSqrtChip<Ed25519BaseField>> = Chip::new(air);
 //         let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
-//         run_test_machine::<SP1CoreJaggedConfig, EdSqrtChip<Ed25519BaseField>>(
+//         run_test_machine::<SP1InnerPcs, EdSqrtChip<Ed25519BaseField>>(
 //             vec![shard],
 //             machine,
 //             pk,

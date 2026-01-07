@@ -12,8 +12,8 @@ use sp1_core_executor::{
 use sp1_core_machine::{executor::trace_chunk, riscv::RiscvAir};
 use sp1_hypercube::{
     air::MachineAir,
-    prover::{CoreProofShape, MachineProvingKey, ProverSemaphore},
-    Machine, MachineProof, MachineVerifier, SP1RecursionProof, ShardProof,
+    prover::{CoreProofShape, ProverSemaphore, ProvingKey},
+    Machine, MachineProof, MachineVerifier,
 };
 use sp1_jit::TraceChunk;
 use sp1_primitives::{SP1Field, SP1GlobalContext};
@@ -27,7 +27,6 @@ use tokio::sync::OnceCell;
 use tracing::Instrument;
 
 use crate::{
-    components::CoreProver,
     recursion::{normalize_program_from_input, recursive_verifier},
     shapes::{SP1NormalizeCache, SP1NormalizeInputShape, SP1RecursionProofShape},
     worker::{
@@ -35,7 +34,7 @@ use crate::{
         PrecompileArtifactSlice, ProofId, ProverMetrics, RawTaskRequest, SP1RecursionProver,
         TaskContext, TaskError, TaskId, TaskMetadata, TraceData, WorkerClient,
     },
-    CoreSC, InnerSC, SP1CircuitWitness, SP1ProverComponents, SP1VerifyingKey,
+    CoreSC, SP1CircuitWitness, SP1ProverComponents, SP1VerifyingKey,
 };
 
 pub struct SetupTask {
@@ -125,7 +124,7 @@ struct NormalizeProgramCompiler {
     cache: SP1NormalizeCache,
     recursive_verifier: RecursiveShardVerifier<SP1GlobalContext, RiscvAir<SP1Field>, InnerConfig>,
     reduce_shape: SP1RecursionProofShape,
-    verifier: MachineVerifier<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>,
+    verifier: MachineVerifier<SP1GlobalContext, CoreSC>,
 }
 
 impl NormalizeProgramCompiler {
@@ -138,7 +137,7 @@ impl NormalizeProgramCompiler {
         >,
 
         reduce_shape: SP1RecursionProofShape,
-        machine_verifier: MachineVerifier<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>,
+        machine_verifier: MachineVerifier<SP1GlobalContext, CoreSC>,
     ) -> Self {
         Self { cache, recursive_verifier, reduce_shape, verifier: machine_verifier }
     }
@@ -177,7 +176,7 @@ pub struct CoreWorker<A, W, C: SP1ProverComponents> {
     opts: SP1CoreOpts,
     artifact_client: A,
     worker_client: W,
-    core_prover: Arc<CoreProver<C>>,
+    core_prover: Arc<C::CoreProver>,
     recursion_prover: SP1RecursionProver<A, C>,
     permits: ProverSemaphore,
     /// Optional fixed PK cache shared across workers.
@@ -192,7 +191,7 @@ impl<A, W, C: SP1ProverComponents> CoreWorker<A, W, C> {
         opts: SP1CoreOpts,
         artifact_client: A,
         worker_client: W,
-        core_prover: Arc<CoreProver<C>>,
+        core_prover: Arc<C::CoreProver>,
         recursion_prover: SP1RecursionProver<A, C>,
         permits: ProverSemaphore,
         pk: Option<CoreProvingKeyCache<C>>,
@@ -598,18 +597,8 @@ where
     }
 }
 
-pub enum SP1CoreShardProof {
-    Core(ShardProof<SP1GlobalContext, CoreSC>),
-    Recursion(SP1RecursionProof<SP1GlobalContext, InnerSC>),
-}
-
-pub struct CoreProveOutput {
-    pub id: TaskId,
-    pub proof: SP1CoreShardProof,
-}
-
 pub type CoreProvingKey<C> =
-    MachineProvingKey<SP1GlobalContext, <C as SP1ProverComponents>::CoreComponents>;
+    ProvingKey<SP1GlobalContext, CoreSC, <C as SP1ProverComponents>::CoreProver>;
 
 /// The Core Proving Key cache is initialized once and shared across all CoreAndNormalizeWorkers.
 pub type CoreProvingKeyCache<C> = Arc<OnceCell<Arc<CoreProvingKey<C>>>>;
@@ -617,7 +606,7 @@ pub type CoreProvingKeyCache<C> = Arc<OnceCell<Arc<CoreProvingKey<C>>>>;
 /// Worker for handling setup tasks only.
 pub struct CoreAndNormalizeWorker<A, C: SP1ProverComponents> {
     artifact_client: A,
-    core_prover: Arc<CoreProver<C>>,
+    core_prover: Arc<C::CoreProver>,
     permits: ProverSemaphore,
     _marker: std::marker::PhantomData<C>,
 }
@@ -625,7 +614,7 @@ pub struct CoreAndNormalizeWorker<A, C: SP1ProverComponents> {
 impl<A, C: SP1ProverComponents> CoreAndNormalizeWorker<A, C> {
     pub fn new(
         artifact_client: A,
-        core_prover: Arc<CoreProver<C>>,
+        core_prover: Arc<C::CoreProver>,
         permits: ProverSemaphore,
     ) -> Self {
         Self { artifact_client, core_prover, permits, _marker: std::marker::PhantomData }
@@ -747,7 +736,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
         opts: SP1CoreOpts,
         artifact_client: A,
         worker_client: W,
-        air_prover: Arc<CoreProver<C>>,
+        air_prover: Arc<C::CoreProver>,
         permits: ProverSemaphore,
         recursion_prover: SP1RecursionProver<A, C>,
     ) -> Self {
@@ -807,7 +796,7 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
 
 /// Given a record, compute the shape of the resulting shard proof.
 fn shape_from_record(
-    verifier: &MachineVerifier<SP1GlobalContext, CoreSC, RiscvAir<SP1Field>>,
+    verifier: &MachineVerifier<SP1GlobalContext, CoreSC>,
     record: &ExecutionRecord,
 ) -> Option<CoreProofShape<SP1Field, RiscvAir<SP1Field>>> {
     let log_stacking_height = verifier.log_stacking_height() as usize;

@@ -5,7 +5,7 @@ use slop_algebra::{AbstractField, PrimeField32};
 
 use sp1_hypercube::{
     air::{ShardRange, POSEIDON_NUM_WORDS},
-    SP1RecursionProof,
+    SP1PcsProofInner, SP1RecursionProof,
 };
 use sp1_primitives::{hash_deferred_proof, SP1Field, SP1GlobalContext};
 use sp1_prover_types::{Artifact, ArtifactClient, TaskType};
@@ -16,12 +16,11 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::{
     utils::words_to_bytes,
     worker::{ProofData, RecursionDeferredTaskRequest, TaskContext, TaskError, WorkerClient},
-    InnerSC,
 };
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SP1DeferredData {
-    pub input: SP1ShapedWitnessValues<SP1GlobalContext, InnerSC>,
+    pub input: SP1ShapedWitnessValues<SP1GlobalContext, SP1PcsProofInner>,
     pub start_reconstruct_deferred_digest: [SP1Field; POSEIDON_NUM_WORDS],
     pub deferred_proof_index: SP1Field,
 }
@@ -33,7 +32,7 @@ pub struct DeferredInputs {
 
 impl DeferredInputs {
     pub fn new(
-        deferred_proofs: impl IntoIterator<Item = SP1RecursionProof<SP1GlobalContext, InnerSC>>,
+        deferred_proofs: impl IntoIterator<Item = SP1RecursionProof<SP1GlobalContext, SP1PcsProofInner>>,
         initial_deferred_digest: [SP1Field; DIGEST_SIZE],
     ) -> Self {
         // Prepare the inputs for the deferred proofs recursive verification.
@@ -111,7 +110,7 @@ impl DeferredInputs {
 
 pub fn hash_deferred_proofs(
     prev_digest: [SP1Field; DIGEST_SIZE],
-    deferred_proofs: &[SP1RecursionProof<SP1GlobalContext, InnerSC>],
+    deferred_proofs: &[SP1RecursionProof<SP1GlobalContext, SP1PcsProofInner>],
 ) -> [SP1Field; 8] {
     let mut digest = prev_digest;
     for proof in deferred_proofs.iter() {

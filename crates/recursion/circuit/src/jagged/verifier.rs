@@ -23,7 +23,7 @@ use crate::{
 
 use super::jagged_eval::{RecursiveJaggedEvalConfig, RecursiveJaggedEvalSumcheckConfig};
 
-pub struct RecursiveJaggedConfigImpl<C, SC, P> {
+pub struct RecursivePcsImpl<C, SC, P> {
     _marker: PhantomData<(C, SC, P)>,
 }
 
@@ -213,7 +213,9 @@ mod tests {
     use slop_jagged::{JaggedPcsProof, JaggedPcsVerifier, JaggedProver};
     use slop_multilinear::{Evaluations, Mle, MleEval, PaddedMle, Point};
     use sp1_core_machine::utils::setup_logger;
-    use sp1_hypercube::{inner_perm, prover::SP1CpuJaggedProverComponents, SP1CoreJaggedConfig};
+    use sp1_hypercube::{
+        inner_perm, prover::SP1InnerPcsProver, SP1InnerPcs, SP1PcsProof, SP1PcsProofInner,
+    };
     use sp1_primitives::{SP1DiffusionMatrix, SP1ExtensionField, SP1Field, SP1GlobalContext};
     use sp1_recursion_compiler::circuit::{AsmBuilder, AsmCompiler, AsmConfig, CircuitV2Builder};
     use sp1_recursion_executor::Executor;
@@ -232,18 +234,22 @@ mod tests {
     };
 
     type SC = SP1GlobalContext;
-    type JC = SP1CoreJaggedConfig;
+    type JC = SP1InnerPcs;
     type GC = SP1GlobalContext;
     type F = SP1Field;
     type EF = SP1ExtensionField;
     type C = AsmConfig;
-    type Prover = JaggedProver<SP1GlobalContext, SP1CpuJaggedProverComponents>;
+    type Prover = JaggedProver<SP1GlobalContext, SP1PcsProofInner, SP1InnerPcsProver>;
 
     async fn generate_jagged_proof(
         jagged_verifier: &JaggedPcsVerifier<GC, JC>,
         round_mles: Rounds<Vec<PaddedMle<F>>>,
         eval_point: Point<EF>,
-    ) -> (JaggedPcsProof<GC, JC>, Rounds<<GC as IopCtx>::Digest>, Rounds<Evaluations<EF>>) {
+    ) -> (
+        JaggedPcsProof<GC, SP1PcsProof<GC>>,
+        Rounds<<GC as IopCtx>::Digest>,
+        Rounds<Evaluations<EF>>,
+    ) {
         let jagged_prover = Prover::from_verifier(jagged_verifier);
 
         let mut challenger = jagged_verifier.challenger();

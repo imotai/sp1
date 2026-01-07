@@ -606,7 +606,7 @@ where
 //     };
 //     use sp1_hypercube::{
 //         air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
-//         koala_bear_poseidon2::SP1CoreJaggedConfig,
+//         koala_bear_poseidon2::SP1InnerPcs,
 //         chip_name, Chip, CpuProver, MachineProver, StarkMachine, Val,
 //     };
 
@@ -670,7 +670,7 @@ where
 
 //         // Run setup.
 //         let air = ShiftRightChip::default();
-//         let config = SP1CoreJaggedConfig::new();
+//         let config = SP1InnerPcs::new();
 //         let chip = Chip::new(air);
 //         let (pk, vk) = setup_test_machine(StarkMachine::new(
 //             config.clone(),
@@ -683,7 +683,7 @@ where
 //         let air = ShiftRightChip::default();
 //         let chip: Chip<SP1Field, ShiftRightChip> = Chip::new(air);
 //         let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
-//         run_test_machine::<SP1CoreJaggedConfig, ShiftRightChip>(vec![shard], machine, pk, vk)
+//         run_test_machine::<SP1InnerPcs, ShiftRightChip>(vec![shard], machine, pk, vk)
 //             .unwrap();
 //     }
 
@@ -716,13 +716,13 @@ where
 //                 let program = Program::new(instructions, 0, 0);
 //                 let stdin = SP1Stdin::new();
 
-//                 type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
+//                 type P = CpuProver<SP1InnerPcs, RiscvAir<SP1Field>>;
 
 //                 let malicious_trace_pv_generator = move |prover: &P,
 //                                                          record: &mut ExecutionRecord|
 //                       -> Vec<(
 //                     String,
-//                     RowMajorMatrix<Val<SP1CoreJaggedConfig>>,
+//                     RowMajorMatrix<Val<SP1InnerPcs>>,
 //                 )> {
 //                     let mut malicious_record = record.clone();
 //                     malicious_record.cpu_events[0].a = op_a as u32;

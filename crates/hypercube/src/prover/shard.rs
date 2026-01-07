@@ -6,7 +6,7 @@ use slop_algebra::{AbstractField, Field};
 use slop_alloc::{Backend, CanCopyFromRef, CpuBackend};
 use slop_challenger::{CanObserve, FieldChallenger, IopCtx, VariableLengthChallenger};
 use slop_commit::Rounds;
-use slop_jagged::{JaggedProver, JaggedProverComponents, JaggedProverData};
+use slop_jagged::{DefaultJaggedProver, JaggedProver, JaggedProverData};
 use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{
     Evaluations, MleEval, MultilinearPcsProver, MultilinearPcsVerifier, Point, VirtualGeq,
@@ -26,64 +26,59 @@ use tracing::Instrument;
 use crate::{
     air::{MachineAir, MachineProgram},
     prover::{
-        DefaultTraceGenerator, ProverPermit, ProverSemaphore, ZeroCheckPoly, ZerocheckAir,
+        DefaultTraceGenerator, Program, ProverPermit, ProverSemaphore, Record, ZeroCheckPoly,
         ZerocheckCpuProverData,
     },
     septic_digest::SepticDigest,
     AirOpenedValues, Chip, ChipEvaluation, ChipOpenedValues, ChipStatistics,
-    ConstraintSumcheckFolder, GkrProverImpl, LogUpEvaluations, Machine, MachineRecord,
-    MachineVerifyingKey, ShardOpenedValues, ShardProof,
+    ConstraintSumcheckFolder, GkrProverImpl, LogUpEvaluations, Machine, MachineVerifyingKey,
+    ShardContext, ShardOpenedValues, ShardProof,
 };
 
 use super::{TraceGenerator, Traces};
 
-type ShardProverComponentsJaggedProverData<GC, C> = JaggedProverData<
-    GC,
-    <<C as ShardProverComponents<GC>>::PcsProverComponents as MultilinearPcsProver<GC>>::ProverData,
->;
+/// The PCS proof type associated to a shard context.
+pub type PcsProof<GC, SC> = <<SC as ShardContext<GC>>::Config as MultilinearPcsVerifier<GC>>::Proof;
 
 /// A prover for an AIR.
 #[allow(clippy::type_complexity)]
-pub trait AirProver<GC: IopCtx, C: MultilinearPcsVerifier<GC>, Air: MachineAir<GC::F>>:
-    'static + Send + Sync + Sized
-{
+pub trait AirProver<GC: IopCtx, SC: ShardContext<GC>>: 'static + Send + Sync + Sized {
     /// The proving key type.
     type PreprocessedData: 'static + Send + Sync;
 
     /// Get the machine.
-    fn machine(&self) -> &Machine<GC::F, Air>;
+    fn machine(&self) -> &Machine<GC::F, SC::Air>;
 
     /// Setup from a verifying key.
     fn setup_from_vk(
         &self,
-        program: Arc<Air::Program>,
-        vk: Option<MachineVerifyingKey<GC, C>>,
+        program: Arc<Program<GC, SC>>,
+        vk: Option<MachineVerifyingKey<GC>>,
         prover_permits: ProverSemaphore,
-    ) -> impl Future<
-        Output = (PreprocessedData<ProvingKey<GC, C, Air, Self>>, MachineVerifyingKey<GC, C>),
-    > + Send;
+    ) -> impl Future<Output = (PreprocessedData<ProvingKey<GC, SC, Self>>, MachineVerifyingKey<GC>)> + Send;
 
     /// Setup and prove a shard.
     fn setup_and_prove_shard(
         &self,
-        program: Arc<Air::Program>,
-        record: Air::Record,
-        vk: Option<MachineVerifyingKey<GC, C>>,
+        program: Arc<Program<GC, SC>>,
+        record: Record<GC, SC>,
+        vk: Option<MachineVerifyingKey<GC>>,
         prover_permits: ProverSemaphore,
         challenger: &mut GC::Challenger,
-    ) -> impl Future<Output = (MachineVerifyingKey<GC, C>, ShardProof<GC, C>, ProverPermit)> + Send;
+    ) -> impl Future<
+        Output = (MachineVerifyingKey<GC>, ShardProof<GC, PcsProof<GC, SC>>, ProverPermit),
+    > + Send;
 
     /// Prove a shard with a given proving key.
     fn prove_shard_with_pk(
         &self,
-        pk: Arc<ProvingKey<GC, C, Air, Self>>,
-        record: Air::Record,
+        pk: Arc<ProvingKey<GC, SC, Self>>,
+        record: Record<GC, SC>,
         prover_permits: ProverSemaphore,
         challenger: &mut GC::Challenger,
-    ) -> impl Future<Output = (ShardProof<GC, C>, ProverPermit)> + Send;
-
+    ) -> impl Future<Output = (ShardProof<GC, PcsProof<GC, SC>>, ProverPermit)> + Send;
     /// Get all the chips in the machine.
-    fn all_chips(&self) -> &[Chip<GC::F, Air>] {
+    fn all_chips(&self) -> &[Chip<GC::F, SC::Air>] {
         self.machine().chips()
     }
 
@@ -94,57 +89,34 @@ pub trait AirProver<GC: IopCtx, C: MultilinearPcsVerifier<GC>, Air: MachineAir<G
     /// a specific execution.
     fn setup(
         &self,
-        program: Arc<Air::Program>,
+        program: Arc<Program<GC, SC>>,
         setup_permits: ProverSemaphore,
-    ) -> impl Future<
-        Output = (PreprocessedData<ProvingKey<GC, C, Air, Self>>, MachineVerifyingKey<GC, C>),
-    > + Send {
+    ) -> impl Future<Output = (PreprocessedData<ProvingKey<GC, SC, Self>>, MachineVerifyingKey<GC>)> + Send
+    {
         self.setup_from_vk(program, None, setup_permits)
     }
+
+    /// A function which deduces preprocessed table heights from the proving key.
+    fn preprocessed_table_heights(
+        pk: Arc<ProvingKey<GC, SC, Self>>,
+    ) -> impl Future<Output = BTreeMap<String, usize>> + Send;
 }
 
 /// A proving key for an AIR prover.
-pub struct ProvingKey<
-    GC: IopCtx,
-    C: MultilinearPcsVerifier<GC>,
-    Air: MachineAir<GC::F>,
-    Prover: AirProver<GC, C, Air>,
-> {
+pub struct ProvingKey<GC: IopCtx, SC: ShardContext<GC>, Prover: AirProver<GC, SC>> {
     /// The verifying key.
-    pub vk: MachineVerifyingKey<GC, C>,
+    pub vk: MachineVerifyingKey<GC>,
     /// The preprocessed data.
     pub preprocessed_data: Prover::PreprocessedData,
 }
 
-/// The components of the machine prover.
-///
-/// This trait is used specify a configuration of a hypercube prover.
-pub trait ShardProverComponents<GC: IopCtx>: 'static + Send + Sync + Sized {
-    /// The program type.
-    type Program: MachineProgram<GC::F> + Send + Sync + 'static;
-    /// The record type.
-    type Record: MachineRecord;
-    /// The Air for which this prover.
-    type Air: ZerocheckAir<GC::F, GC::EF, Program = Self::Program, Record = Self::Record>;
-
-    /// The machine configuration for which this prover can make proofs for.
-    type Config: MultilinearPcsVerifier<GC>;
-
-    /// The components of the jagged PCS prover.
-    type PcsProverComponents: MultilinearPcsProver<GC, Verifier = Self::Config>
-        + JaggedProverComponents<GC>
-        + Send
-        + Sync
-        + 'static;
-}
-
 /// A collection of main traces with a permit.
 #[allow(clippy::type_complexity)]
-pub struct ShardData<GC: IopCtx, C: ShardProverComponents<GC>> {
+pub struct ShardData<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>> {
     /// The proving key.
-    pub pk: Arc<ProvingKey<GC, C::Config, C::Air, ShardProver<GC, C>>>,
+    pub pk: Arc<ProvingKey<GC, SC, ShardProver<GC, SC, C>>>,
     /// Main trace data
-    pub main_trace_data: MainTraceData<GC::F, C::Air, CpuBackend>,
+    pub main_trace_data: MainTraceData<GC::F, SC::Air, CpuBackend>,
 }
 
 /// The main traces for a program, with a permit.
@@ -196,34 +168,35 @@ impl<T> PreprocessedData<T> {
 }
 
 /// A prover for the hypercube STARK, given a configuration.
-pub struct ShardProver<GC: IopCtx, C: ShardProverComponents<GC>> {
+pub struct ShardProver<
+    GC: IopCtx,
+    SC: ShardContext<GC>,
+    C: MultilinearPcsProver<GC, PcsProof<GC, SC>>,
+> {
     /// The trace generator.
-    pub trace_generator: DefaultTraceGenerator<GC::F, C::Air, CpuBackend>,
+    pub trace_generator: DefaultTraceGenerator<GC::F, SC::Air, CpuBackend>,
     /// The logup GKR prover.
-    pub logup_gkr_prover: GkrProverImpl<GC, (C::Config, C::Air)>,
+    pub logup_gkr_prover: GkrProverImpl<GC, SC>,
     /// A prover for the PCS.
-    pub pcs_prover: JaggedProver<GC, C::PcsProverComponents>,
+    pub pcs_prover: JaggedProver<GC, PcsProof<GC, SC>, C>,
 }
 
-impl<GC: IopCtx, C: ShardProverComponents<GC>> AirProver<GC, C::Config, C::Air>
-    for ShardProver<GC, C>
+impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>> AirProver<GC, SC>
+    for ShardProver<GC, SC, C>
 {
-    type PreprocessedData = ShardProverData<GC, C>;
+    type PreprocessedData = ShardProverData<GC, SC, C>;
 
-    fn machine(&self) -> &Machine<GC::F, C::Air> {
+    fn machine(&self) -> &Machine<GC::F, SC::Air> {
         self.trace_generator.machine()
     }
 
     /// Setup a shard, using a verifying key if provided.
     async fn setup_from_vk(
         &self,
-        program: Arc<C::Program>,
-        vk: Option<MachineVerifyingKey<GC, C::Config>>,
+        program: Arc<Program<GC, SC>>,
+        vk: Option<MachineVerifyingKey<GC>>,
         prover_permits: ProverSemaphore,
-    ) -> (
-        PreprocessedData<ProvingKey<GC, C::Config, C::Air, Self>>,
-        MachineVerifyingKey<GC, C::Config>,
-    ) {
+    ) -> (PreprocessedData<ProvingKey<GC, SC, Self>>, MachineVerifyingKey<GC>) {
         if let Some(vk) = vk {
             let initial_global_cumulative_sum = vk.initial_global_cumulative_sum;
             self.setup_with_initial_global_cumulative_sum(
@@ -250,12 +223,12 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> AirProver<GC, C::Config, C::Air>
     /// Setup and prove a shard.
     async fn setup_and_prove_shard(
         &self,
-        program: Arc<C::Program>,
-        record: C::Record,
-        vk: Option<MachineVerifyingKey<GC, C::Config>>,
+        program: Arc<Program<GC, SC>>,
+        record: Record<GC, SC>,
+        vk: Option<MachineVerifyingKey<GC>>,
         prover_permits: ProverSemaphore,
         challenger: &mut GC::Challenger,
-    ) -> (MachineVerifyingKey<GC, C::Config>, ShardProof<GC, C::Config>, ProverPermit) {
+    ) -> (MachineVerifyingKey<GC>, ShardProof<GC, PcsProof<GC, SC>>, ProverPermit) {
         // Get the initial global cumulative sum and pc start.
         let pc_start = program.pc_start();
         let enable_untrusted_programs = program.enable_untrusted_programs();
@@ -308,11 +281,11 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> AirProver<GC, C::Config, C::Air>
     /// Prove a shard with a given proving key.
     async fn prove_shard_with_pk(
         &self,
-        pk: Arc<ProvingKey<GC, C::Config, C::Air, Self>>,
-        record: C::Record,
+        pk: Arc<ProvingKey<GC, SC, Self>>,
+        record: Record<GC, SC>,
         prover_permits: ProverSemaphore,
         challenger: &mut GC::Challenger,
-    ) -> (ShardProof<GC, C::Config>, ProverPermit) {
+    ) -> (ShardProof<GC, PcsProof<GC, SC>>, ProverPermit) {
         // Generate the traces.
         let main_trace_data = self
             .trace_generator
@@ -326,16 +299,31 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> AirProver<GC, C::Config, C::Air>
             .instrument(tracing::debug_span!("prove shard with data"))
             .await
     }
+
+    async fn preprocessed_table_heights(
+        pk: Arc<super::ProvingKey<GC, SC, Self>>,
+    ) -> BTreeMap<String, usize> {
+        std::future::ready(
+            pk.preprocessed_data
+                .preprocessed_traces
+                .iter()
+                .map(|(name, trace)| (name.to_owned(), trace.num_real_entries()))
+                .collect(),
+        )
+        .await
+    }
 }
 
-impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
+impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>>
+    ShardProver<GC, SC, C>
+{
     /// Get all the chips in the machine.
-    pub fn all_chips(&self) -> &[Chip<GC::F, C::Air>] {
+    pub fn all_chips(&self) -> &[Chip<GC::F, SC::Air>] {
         self.trace_generator.machine().chips()
     }
 
     /// Get the machine.
-    pub fn machine(&self) -> &Machine<GC::F, C::Air> {
+    pub fn machine(&self) -> &Machine<GC::F, SC::Air> {
         self.trace_generator.machine()
     }
 
@@ -357,7 +345,7 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
         initial_global_cumulative_sum: SepticDigest<GC::F>,
         preprocessed_traces: Traces<GC::F, CpuBackend>,
         enable_untrusted_programs: GC::F,
-    ) -> (ShardProverData<GC, C>, MachineVerifyingKey<GC, C::Config>) {
+    ) -> (ShardProverData<GC, SC, C>, MachineVerifyingKey<GC>) {
         // Commit to the preprocessed traces, if there are any.
         assert!(!preprocessed_traces.is_empty(), "preprocessed trace cannot be empty");
         let message = preprocessed_traces.values().cloned().collect::<Vec<_>>();
@@ -369,7 +357,6 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
             initial_global_cumulative_sum,
             preprocessed_commit,
             enable_untrusted_programs,
-            marker: std::marker::PhantomData,
         };
 
         let pk = ShardProverData { preprocessed_traces, preprocessed_data };
@@ -380,13 +367,10 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
     /// Setup from a program with a specific initial global cumulative sum.
     pub async fn setup_with_initial_global_cumulative_sum(
         &self,
-        program: Arc<C::Program>,
+        program: Arc<Program<GC, SC>>,
         initial_global_cumulative_sum: SepticDigest<GC::F>,
         setup_permits: ProverSemaphore,
-    ) -> (
-        PreprocessedData<ProvingKey<GC, C::Config, C::Air, Self>>,
-        MachineVerifyingKey<GC, C::Config>,
-    ) {
+    ) -> (PreprocessedData<ProvingKey<GC, SC, Self>>, MachineVerifyingKey<GC>) {
         let pc_start = program.pc_start();
         let enable_untrusted_programs = program.enable_untrusted_programs();
         let preprocessed_data = self
@@ -415,7 +399,7 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
     async fn commit_traces(
         &self,
         traces: &Traces<GC::F, CpuBackend>,
-    ) -> (GC::Digest, ShardProverComponentsJaggedProverData<GC, C>) {
+    ) -> (GC::Digest, JaggedProverData<GC, C::ProverData>) {
         let message = traces.values().cloned().collect::<Vec<_>>();
         self.pcs_prover.commit_multilinears(message).await.unwrap()
     }
@@ -424,7 +408,7 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
     #[allow(clippy::too_many_lines)]
     async fn zerocheck(
         &self,
-        chips: &BTreeSet<Chip<GC::F, C::Air>>,
+        chips: &BTreeSet<Chip<GC::F, SC::Air>>,
         preprocessed_traces: Traces<GC::F, CpuBackend>,
         traces: Traces<GC::F, CpuBackend>,
         batching_challenge: GC::EF,
@@ -601,9 +585,9 @@ impl<GC: IopCtx, C: ShardProverComponents<GC>> ShardProver<GC, C> {
     #[allow(clippy::type_complexity)]
     pub async fn prove_shard_with_data(
         &self,
-        data: ShardData<GC, C>,
+        data: ShardData<GC, SC, C>,
         challenger: &mut GC::Challenger,
-    ) -> (ShardProof<GC, C::Config>, ProverPermit) {
+    ) -> (ShardProof<GC, PcsProof<GC, SC>>, ProverPermit) {
         let ShardData { pk, main_trace_data } = data;
         let MainTraceData { traces, public_values, shard_chips, permit } = main_trace_data;
 
@@ -805,15 +789,18 @@ where
 /// A proving key for a STARK.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(
-    serialize = "Tensor<GC::F, CpuBackend>: Serialize, ShardProverComponentsJaggedProverData<GC, C>: Serialize, GC::F: Serialize,"
+    serialize = "Tensor<GC::F, CpuBackend>: Serialize, JaggedProverData<GC, C::ProverData>: Serialize, GC::F: Serialize,"
 ))]
 #[serde(bound(
-    deserialize = "Tensor<GC::F, CpuBackend>: Deserialize<'de>, ShardProverComponentsJaggedProverData<GC, C>: Deserialize<'de>, GC::F: Deserialize<'de>, "
+    deserialize = "Tensor<GC::F, CpuBackend>: Deserialize<'de>, JaggedProverData<GC, C::ProverData>: Deserialize<'de>, GC::F: Deserialize<'de>, "
 ))]
-pub struct ShardProverData<GC: IopCtx, C: ShardProverComponents<GC>> {
+pub struct ShardProverData<
+    GC: IopCtx,
+    SC: ShardContext<GC>,
+    C: MultilinearPcsProver<GC, PcsProof<GC, SC>>,
+> {
     /// The preprocessed traces.
     pub preprocessed_traces: Traces<GC::F, CpuBackend>,
     /// The pcs data for the preprocessed traces.
-    pub preprocessed_data:
-        JaggedProverData<GC, <C::PcsProverComponents as MultilinearPcsProver<GC>>::ProverData>,
+    pub preprocessed_data: JaggedProverData<GC, C::ProverData>,
 }

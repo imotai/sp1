@@ -173,7 +173,7 @@ where
 //     use sp1_curves::params::FieldParameters;
 //     use sp1_hypercube::{
 //         air::{MachineAir, SP1AirBuilder, SP1_PROOF_NUM_PV_ELTS},
-//         koala_bear_poseidon2::SP1CoreJaggedConfig,
+//         koala_bear_poseidon2::SP1InnerPcs,
 //         Chip, StarkMachine,
 //     };
 
@@ -314,7 +314,7 @@ where
 //         // row[0] = SP1Field::from_canonical_u8(0);
 
 //         // Run setup.
-//         let config = SP1CoreJaggedConfig::new();
+//         let config = SP1InnerPcs::new();
 //         let chip: Chip<SP1Field, FieldDenChip<Ed25519BaseField>> = Chip::new(air);
 //         let (pk, vk) = setup_test_machine(StarkMachine::new(
 //             config.clone(),
@@ -327,7 +327,7 @@ where
 //         let air: FieldDenChip<Ed25519BaseField> = FieldDenChip::new(true);
 //         let chip: Chip<SP1Field, FieldDenChip<Ed25519BaseField>> = Chip::new(air);
 //         let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
-//         run_test_machine::<SP1CoreJaggedConfig, FieldDenChip<Ed25519BaseField>>(
+//         run_test_machine::<SP1InnerPcs, FieldDenChip<Ed25519BaseField>>(
 //             vec![shard],
 //             machine,
 //             pk,

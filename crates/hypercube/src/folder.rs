@@ -13,14 +13,8 @@ use slop_challenger::IopCtx;
 use slop_matrix::dense::RowMajorMatrixView;
 
 /// A folder for verifier constraints.
-pub type VerifierConstraintFolder<'a, GC> = GenericVerifierConstraintFolder<
-    'a,
-    <GC as IopCtx>::F,
-    <GC as IopCtx>::EF,
-    <GC as IopCtx>::F,
-    <GC as IopCtx>::EF,
-    <GC as IopCtx>::EF,
->;
+pub type VerifierConstraintFolder<'a, F, EF> =
+    GenericVerifierConstraintFolder<'a, F, EF, F, EF, EF>;
 
 /// A folder for verifier constraints.
 pub struct GenericVerifierConstraintFolder<'a, F, EF, PubVar, Var, Expr> {

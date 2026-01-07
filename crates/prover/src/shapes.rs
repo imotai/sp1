@@ -23,7 +23,7 @@ use sp1_hypercube::{
     air::MachineAir,
     log2_ceil_usize,
     prover::{CoreProofShape, DefaultTraceGenerator, ProverSemaphore, TraceGenerator},
-    Chip, Machine, MachineShape,
+    Chip, Machine, MachineShape, SP1PcsProofInner,
 };
 use sp1_primitives::{
     fri_params::{core_fri_config, CORE_LOG_BLOWUP},
@@ -66,7 +66,7 @@ use crate::{
     },
     types::HashableKey,
     worker::{AirProverWorker, RecursionVkWorker},
-    CompressAir, CoreSC, InnerSC, SP1VerifyingKey, CORE_MAX_LOG_ROW_COUNT,
+    CompressAir, SP1VerifyingKey, CORE_MAX_LOG_ROW_COUNT,
 };
 
 pub const DEFAULT_ARITY: usize = 4;
@@ -105,7 +105,7 @@ impl SP1NormalizeInputShape {
     pub fn dummy_input(
         &self,
         vk: SP1VerifyingKey,
-    ) -> SP1NormalizeWitnessValues<SP1GlobalContext, CoreSC> {
+    ) -> SP1NormalizeWitnessValues<SP1GlobalContext, SP1PcsProofInner> {
         let shard_proofs = self
             .proof_shapes
             .iter()
@@ -239,7 +239,7 @@ impl SP1RecursionProofShape {
         max_log_row_count: usize,
         fri_config: FriConfig<SP1Field>,
         log_stacking_height: usize,
-    ) -> SP1CompressWithVKeyWitnessValues<InnerSC> {
+    ) -> SP1CompressWithVKeyWitnessValues<SP1PcsProofInner> {
         let dummy_vk = dummy_vk();
 
         let preprocessed_multiple = chips
@@ -988,7 +988,7 @@ mod tests {
 
         let verifier = CpuSP1ProverComponents::compress_verifier();
         let dummy_input =
-            |current_shape: &SP1RecursionProofShape| -> SP1CompressWithVKeyWitnessValues<InnerSC> {
+            |current_shape: &SP1RecursionProofShape| -> SP1CompressWithVKeyWitnessValues<SP1PcsProofInner> {
                 dummy_compose_input(&verifier, current_shape, DEFAULT_ARITY, allowed_vk_height)
             };
         let core_verifier = CpuSP1ProverComponents::core_verifier();
@@ -998,7 +998,7 @@ mod tests {
         let recursive_compress_verifier =
             recursive_verifier::<SP1GlobalContext, _, InnerConfig>(verifier.shard_verifier());
         let compose_program =
-            |input: &SP1CompressWithVKeyWitnessValues<InnerSC>| -> Arc<RecursionProgram<SP1Field>> {
+            |input: &SP1CompressWithVKeyWitnessValues<SP1PcsProofInner>| -> Arc<RecursionProgram<SP1Field>> {
                 Arc::new(compose_program_from_input(
                     &recursive_compress_verifier,
                     vk_verification,

@@ -2,18 +2,8 @@ use serde::{Deserialize, Serialize};
 use slop_algebra::AbstractField;
 use slop_challenger::VariableLengthChallenger;
 use slop_challenger::{CanObserve, IopCtx};
-use slop_multilinear::MultilinearPcsVerifier;
 
 use crate::septic_digest::SepticDigest;
-
-#[allow(clippy::disallowed_types)]
-use slop_jagged::KoalaBearPoseidon2;
-
-#[allow(clippy::disallowed_types)]
-/// The jagged config for SP1 core, compress, and shrink proofs.
-pub type SP1CoreJaggedConfig = KoalaBearPoseidon2;
-
-pub use slop_jagged::SP1OuterConfig;
 
 #[allow(clippy::disallowed_types)]
 use slop_basefold::Poseidon2KoalaBear16BasefoldConfig;
@@ -41,7 +31,7 @@ pub struct ChipDimensions<T> {
 
 /// A verifying key.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MachineVerifyingKey<C: IopCtx, SC: MultilinearPcsVerifier<C>> {
+pub struct MachineVerifyingKey<C: IopCtx> {
     /// The start pc of the program.
     pub pc_start: [C::F; 3],
     /// The starting global digest of the program, after incorporating the initial memory.
@@ -50,11 +40,9 @@ pub struct MachineVerifyingKey<C: IopCtx, SC: MultilinearPcsVerifier<C>> {
     pub preprocessed_commit: C::Digest,
     /// Flag indicating if untrusted programs are allowed.
     pub enable_untrusted_programs: C::F,
-    /// Phantom data.
-    pub marker: std::marker::PhantomData<SC>,
 }
 
-impl<C: IopCtx, SC: MultilinearPcsVerifier<C>> PartialEq for MachineVerifyingKey<C, SC> {
+impl<C: IopCtx> PartialEq for MachineVerifyingKey<C> {
     fn eq(&self, other: &Self) -> bool {
         self.pc_start == other.pc_start
             && self.initial_global_cumulative_sum == other.initial_global_cumulative_sum
@@ -63,9 +51,9 @@ impl<C: IopCtx, SC: MultilinearPcsVerifier<C>> PartialEq for MachineVerifyingKey
     }
 }
 
-impl<C: IopCtx, SC: MultilinearPcsVerifier<C>> Eq for MachineVerifyingKey<C, SC> {}
+impl<C: IopCtx> Eq for MachineVerifyingKey<C> {}
 
-impl<C: IopCtx, SC: MultilinearPcsVerifier<C>> MachineVerifyingKey<C, SC> {
+impl<C: IopCtx> MachineVerifyingKey<C> {
     /// Observes the values of the proving key into the challenger.
     pub fn observe_into(&self, challenger: &mut C::Challenger) {
         challenger.observe(self.preprocessed_commit);

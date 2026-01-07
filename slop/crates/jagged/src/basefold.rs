@@ -1,78 +1,21 @@
-use serde::{Deserialize, Serialize};
-use slop_algebra::{extension::BinomialExtensionField, TwoAdicField};
+use slop_algebra::TwoAdicField;
 use slop_alloc::CpuBackend;
-use slop_baby_bear::{baby_bear_poseidon2::BabyBearDegree4Duplex, BabyBear};
+use slop_baby_bear::baby_bear_poseidon2::BabyBearDegree4Duplex;
 use slop_basefold::{BasefoldVerifier, FriConfig};
 use slop_basefold_prover::BasefoldProver;
 use slop_bn254::BNGC;
 use slop_challenger::IopCtx;
-use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
-use slop_merkle_tree::{
-    BnProver, ComputeTcsOpenings, Poseidon2BabyBear16Prover, Poseidon2KoalaBear16Prover,
-};
-use slop_multilinear::MultilinearPcsProver;
-use slop_stacked::{StackedPcsProver, StackedPcsVerifier};
-use std::marker::PhantomData;
+use slop_koala_bear::KoalaBearDegree4Duplex;
+use slop_merkle_tree::ComputeTcsOpenings;
+use slop_stacked::{StackedBasefoldProof, StackedPcsProver, StackedPcsVerifier};
 
-use crate::{
-    DefaultJaggedProver, JaggedAssistProver, JaggedAssistSumAsPolyCPUImpl,
-    JaggedEvalSumcheckProver, JaggedPcsVerifier, JaggedProver,
-};
+use crate::{DefaultJaggedProver, JaggedAssistProver, JaggedPcsVerifier, JaggedProver};
 
-pub type BabyBearPoseidon2 = StackedPcsVerifier<BabyBearDegree4Duplex>;
+pub type BabyBearStackedBasefoldVerifier = StackedPcsVerifier<BabyBearDegree4Duplex>;
 
-pub type KoalaBearPoseidon2 = StackedPcsVerifier<KoalaBearDegree4Duplex>;
+pub type KoalaBearStackedBasefoldVerifier = StackedPcsVerifier<KoalaBearDegree4Duplex>;
 
-pub type Bn254JaggedConfig<F, EF> = StackedPcsVerifier<BNGC<F, EF>>;
-pub type SP1OuterConfig = Bn254JaggedConfig<KoalaBear, BinomialExtensionField<KoalaBear, 4>>;
-
-pub type Poseidon2BabyBearJaggedCpuProverComponents = JaggedBasefoldProverComponents<
-    Poseidon2BabyBear16Prover,
-    JaggedEvalSumcheckProver<
-        BabyBear,
-        JaggedAssistSumAsPolyCPUImpl<
-            BabyBear,
-            BinomialExtensionField<BabyBear, 4>,
-            <BabyBearDegree4Duplex as IopCtx>::Challenger,
-        >,
-        CpuBackend,
-        <BabyBearDegree4Duplex as IopCtx>::Challenger,
-    >,
-    BabyBearDegree4Duplex,
->;
-
-pub type Poseidon2KoalaBearJaggedCpuProverComponents = JaggedBasefoldProverComponents<
-    Poseidon2KoalaBear16Prover,
-    JaggedEvalSumcheckProver<
-        KoalaBear,
-        JaggedAssistSumAsPolyCPUImpl<
-            KoalaBear,
-            BinomialExtensionField<KoalaBear, 4>,
-            <KoalaBearDegree4Duplex as IopCtx>::Challenger,
-        >,
-        CpuBackend,
-        <KoalaBearDegree4Duplex as IopCtx>::Challenger,
-    >,
-    KoalaBearDegree4Duplex,
->;
-
-pub type Poseidon2Bn254JaggedCpuProverComponents<F, EF> = JaggedBasefoldProverComponents<
-    BnProver<F, EF>,
-    JaggedEvalSumcheckProver<
-        F,
-        JaggedAssistSumAsPolyCPUImpl<
-            F,
-            BinomialExtensionField<F, 4>,
-            <BNGC<F, EF> as IopCtx>::Challenger,
-        >,
-        CpuBackend,
-        <BNGC<F, EF> as IopCtx>::Challenger,
-    >,
-    BNGC<F, EF>,
->;
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Clone)]
-pub struct JaggedBasefoldProverComponents<B, E, GC>(B, E, PhantomData<GC>);
+pub type Bn254StackedBasefoldVerifier<F, EF> = StackedPcsVerifier<BNGC<F, EF>>;
 
 impl<GC> JaggedPcsVerifier<GC, StackedPcsVerifier<GC>>
 where
@@ -90,9 +33,10 @@ where
     }
 }
 
-impl<GC, Bpc> JaggedProver<GC, StackedPcsProver<Bpc, GC>>
+impl<GC, MerkleProver>
+    JaggedProver<GC, StackedBasefoldProof<GC>, StackedPcsProver<MerkleProver, GC>>
 where
-    Bpc: ComputeTcsOpenings<GC, CpuBackend>,
+    MerkleProver: ComputeTcsOpenings<GC, CpuBackend>,
     GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>,
 {
     pub fn from_basefold_components(
@@ -116,14 +60,15 @@ where
 
 const DEFAULT_INTERLEAVE_BATCH_SIZE: usize = 32;
 
-impl<Bpc, GC> DefaultJaggedProver<GC> for StackedPcsProver<Bpc, GC>
+impl<MerkleProver, GC> DefaultJaggedProver<GC, StackedPcsVerifier<GC>>
+    for StackedPcsProver<MerkleProver, GC>
 where
     GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>,
-    Bpc: ComputeTcsOpenings<GC, CpuBackend>,
+    MerkleProver: ComputeTcsOpenings<GC, CpuBackend>,
 {
     fn prover_from_verifier(
-        verifier: &JaggedPcsVerifier<GC, <Self as MultilinearPcsProver<GC>>::Verifier>,
-    ) -> JaggedProver<GC, Self> {
+        verifier: &JaggedPcsVerifier<GC, StackedPcsVerifier<GC>>,
+    ) -> JaggedProver<GC, StackedBasefoldProof<GC>, Self> {
         JaggedProver::from_basefold_components(verifier, DEFAULT_INTERLEAVE_BATCH_SIZE)
     }
 }
@@ -133,10 +78,13 @@ mod tests {
     use std::sync::Arc;
 
     use rand::{thread_rng, Rng};
+    use slop_algebra::extension::BinomialExtensionField;
+    use slop_baby_bear::BabyBear;
     use slop_challenger::CanObserve;
     use slop_commit::Rounds;
-    use slop_multilinear::{Evaluations, Mle, MleEval, PaddedMle, Point};
-    use slop_stacked::ToMle;
+    use slop_koala_bear::KoalaBear;
+    use slop_merkle_tree::{BnProver, Poseidon2BabyBear16Prover, Poseidon2KoalaBear16Prover};
+    use slop_multilinear::{Evaluations, Mle, MleEval, MultilinearPcsProver, PaddedMle, Point};
 
     use super::*;
 
@@ -179,12 +127,12 @@ mod tests {
     // #[tokio::test]
     async fn test_jagged_basefold<
         GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>,
-        PcsProver: MultilinearPcsProver<GC, Verifier = StackedPcsVerifier<GC>> + DefaultJaggedProver<GC>,
+        PcsProver: MultilinearPcsProver<GC, StackedBasefoldProof<GC>>
+            + DefaultJaggedProver<GC, StackedPcsVerifier<GC>>,
     >()
     where
         rand::distributions::Standard: rand::distributions::Distribution<GC::F>,
         rand::distributions::Standard: rand::distributions::Distribution<GC::EF>,
-        PcsProver::ProverData: ToMle<GC::F, CpuBackend>,
     {
         let row_counts_rounds = vec![vec![1 << 10, 0, 1 << 10], vec![1 << 8]];
         let column_counts_rounds = vec![vec![128, 45, 32], vec![512]];
@@ -227,7 +175,7 @@ mod tests {
                 num_rounds,
             );
 
-        let jagged_prover = JaggedProver::<GC, PcsProver>::from_verifier(&jagged_verifier);
+        let jagged_prover = JaggedProver::<GC, _, PcsProver>::from_verifier(&jagged_verifier);
 
         let eval_point = (0..max_log_row_count).map(|_| rng.gen::<GC::EF>()).collect::<Point<_>>();
 

@@ -9,8 +9,8 @@ use slop_basefold::BasefoldProof;
 use slop_challenger::{GrindingChallenger, IopCtx};
 use slop_merkle_tree::{MerkleTreeOpeningAndProof, MerkleTreeTcsProof};
 use slop_multilinear::{Evaluations, Mle, MleEval};
-use slop_stacked::StackedBasefoldProof;
 use slop_tensor::Tensor;
+use sp1_hypercube::SP1PcsProof;
 use sp1_primitives::{SP1ExtensionField, SP1Field};
 use sp1_recursion_compiler::ir::{Builder, Felt};
 
@@ -166,7 +166,7 @@ where
 }
 
 impl<GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>, C, RecursivePcsProof> Witnessable<C>
-    for StackedBasefoldProof<GC>
+    for SP1PcsProof<GC>
 where
     C: CircuitConfig,
     BasefoldProof<GC>: Witnessable<C, WitnessVariable = RecursivePcsProof>,

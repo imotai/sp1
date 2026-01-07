@@ -23,7 +23,7 @@ impl<F> BaseAir<F> for JalrChip {
 //     use slop_matrix::dense::RowMajorMatrix;
 //     use sp1_core_executor::{ExecutionRecord, Instruction, Opcode, Program};
 //     use sp1_hypercube::{
-//         air::MachineAir, koala_bear_poseidon2::SP1CoreJaggedConfig, chip_name, CpuProver,
+//         air::MachineAir, koala_bear_poseidon2::SP1InnerPcs, chip_name, CpuProver,
 //         MachineProver, Val,
 //     };
 
@@ -54,12 +54,12 @@ impl<F> BaseAir<F> for JalrChip {
 //     //         let program = Program::new(instructions.to_vec(), 0, 0);
 //     //         let stdin = SP1Stdin::new();
 
-//     //         type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
+//     //         type P = CpuProver<SP1InnerPcs, RiscvAir<SP1Field>>;
 
 //     //         let malicious_trace_pv_generator =
 //     //             |prover: &P,
 //     //              record: &mut ExecutionRecord|
-//     //              -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
+//     //              -> Vec<(String, RowMajorMatrix<Val<SP1InnerPcs>>)> {
 //     //                 let mut traces = prover.generate_traces(record);
 //     //                 let jump_chip_name = chip_name!(JumpChip, SP1Field);
 //     //                 for (chip_name, trace) in traces.iter_mut() {
@@ -90,12 +90,12 @@ impl<F> BaseAir<F> for JalrChip {
 //         let program = Program::new(instructions, 0, 0);
 //         let stdin = SP1Stdin::new();
 
-//         type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
+//         type P = CpuProver<SP1InnerPcs, RiscvAir<SP1Field>>;
 
 //         let malicious_trace_pv_generator =
 //             |prover: &P,
 //              record: &mut ExecutionRecord|
-//              -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
+//              -> Vec<(String, RowMajorMatrix<Val<SP1InnerPcs>>)> {
 //                 // Modify the branch chip to have a row that has multiple opcode flags set.
 //                 let mut traces = prover.generate_traces(record);
 //                 let jump_chip_name = chip_name!(JumpChip, SP1Field);

@@ -2,8 +2,9 @@ use derive_where::derive_where;
 use slop_basefold::FriConfig;
 use slop_merkle_tree::MerkleTreeTcs;
 #[allow(clippy::disallowed_types)]
-use slop_stacked::StackedPcsVerifier;
+use slop_stacked::{StackedBasefoldProof, StackedPcsVerifier};
 use slop_whir::{Verifier, WhirProofShape};
+use sp1_primitives::{SP1GlobalContext, SP1OuterGlobalContext};
 use std::{
     cmp::max,
     collections::{BTreeMap, BTreeSet},
@@ -24,9 +25,11 @@ use slop_sumcheck::{partially_verify_sumcheck_proof, SumcheckError};
 use thiserror::Error;
 
 use crate::{
-    air::MachineAir, prover::CoreProofShape, Chip, ChipOpenedValues, LogUpEvaluations,
-    LogUpGkrVerifier, LogupGkrVerificationError, Machine, VerifierConstraintFolder,
-    VerifierPublicValuesConstraintFolder, MAX_CONSTRAINT_DEGREE, PROOF_MAX_NUM_PVS,
+    air::MachineAir,
+    prover::{CoreProofShape, PcsProof, Record, ZerocheckAir},
+    Chip, ChipOpenedValues, LogUpEvaluations, LogUpGkrVerifier, LogupGkrVerificationError, Machine,
+    ShardContext, ShardContextImpl, VerifierConstraintFolder, VerifierPublicValuesConstraintFolder,
+    MAX_CONSTRAINT_DEGREE, PROOF_MAX_NUM_PVS, SP1SC,
 };
 
 use super::{MachineVerifyingKey, ShardOpenedValues, ShardProof};
@@ -37,16 +40,32 @@ use crate::record::MachineRecord;
 pub const NUM_SP1_COMMITMENTS: usize = 2;
 
 #[allow(clippy::disallowed_types)]
-/// The Multilinear PCS used in SP1 shard proofs.
+/// The Multilinear PCS used in SP1 shard proofs, generic in the `IopCtx`.
 pub type SP1Pcs<GC> = StackedPcsVerifier<GC>;
+
+/// The PCS used for all stages of SP1 proving except for wrap.
+pub type SP1InnerPcs = SP1Pcs<SP1GlobalContext>;
+
+/// The PCS used for wrap proving.
+pub type SP1OuterPcs = SP1Pcs<SP1OuterGlobalContext>;
+
+/// The PCS proof type used in SP1 shard proofs.
+#[allow(clippy::disallowed_types)]
+pub type SP1PcsProof<GC> = StackedBasefoldProof<GC>;
+
+/// The proof type for all stages of SP1 proving except for wrap.
+pub type SP1PcsProofInner = SP1PcsProof<SP1GlobalContext>;
+
+/// The proof type for wrap proving.
+pub type SP1PcsProofOuter = SP1PcsProof<SP1OuterGlobalContext>;
 
 /// A verifier for shard proofs.
 #[derive_where(Clone)]
-pub struct ShardVerifier<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> {
+pub struct ShardVerifier<GC: IopCtx, SC: ShardContext<GC>> {
     /// The jagged pcs verifier.
-    pub jagged_pcs_verifier: JaggedPcsVerifier<GC, C>,
+    pub jagged_pcs_verifier: JaggedPcsVerifier<GC, SC::Config>,
     /// The machine.
-    pub machine: Machine<GC::F, A>,
+    pub machine: Machine<GC::F, SC::Air>,
 }
 
 /// An error that occurs during the verification of a shard proof.
@@ -112,9 +131,12 @@ pub enum OpeningShapeError {
     MainWidthMismatch(usize, usize),
 }
 
-impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C, A> {
+impl<GC: IopCtx, SC: ShardContext<GC>> ShardVerifier<GC, SC> {
     /// Get a shard verifier from a jagged pcs verifier.
-    pub fn new(pcs_verifier: JaggedPcsVerifier<GC, C>, machine: Machine<GC::F, A>) -> Self {
+    pub fn new(
+        pcs_verifier: JaggedPcsVerifier<GC, SC::Config>,
+        machine: Machine<GC::F, SC::Air>,
+    ) -> Self {
         Self { jagged_pcs_verifier: pcs_verifier, machine }
     }
 
@@ -128,7 +150,7 @@ impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> ShardVerif
     /// Get the machine.
     #[must_use]
     #[inline]
-    pub fn machine(&self) -> &Machine<GC::F, A> {
+    pub fn machine(&self) -> &Machine<GC::F, SC::Air> {
         &self.machine
     }
 
@@ -136,7 +158,7 @@ impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> ShardVerif
     #[must_use]
     #[inline]
     pub fn log_stacking_height(&self) -> u32 {
-        C::log_stacking_height(&self.jagged_pcs_verifier.pcs_verifier)
+        <SC::Config>::log_stacking_height(&self.jagged_pcs_verifier.pcs_verifier)
     }
 
     /// Get a new challenger.
@@ -147,7 +169,10 @@ impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> ShardVerif
     }
 
     /// Get the shape of a shard proof.
-    pub fn shape_from_proof(&self, proof: &ShardProof<GC, C>) -> CoreProofShape<GC::F, A> {
+    pub fn shape_from_proof(
+        &self,
+        proof: &ShardProof<GC, PcsProof<GC, SC>>,
+    ) -> CoreProofShape<GC::F, SC::Air> {
         let shard_chips = self
             .machine()
             .chips()
@@ -157,7 +182,7 @@ impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> ShardVerif
             .collect::<BTreeSet<_>>();
         debug_assert_eq!(shard_chips.len(), proof.opened_values.chips.len());
 
-        let multiples = C::round_multiples(&proof.evaluation_proof.pcs_proof);
+        let multiples = <SC::Config>::round_multiples(&proof.evaluation_proof.pcs_proof);
         let preprocessed_multiple = multiples[0];
         let main_multiple = multiples[1];
 
@@ -179,17 +204,15 @@ impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> ShardVerif
 
     /// Compute the padded row adjustment for a chip.
     pub fn compute_padded_row_adjustment(
-        chip: &Chip<GC::F, A>,
+        chip: &Chip<GC::F, SC::Air>,
         alpha: GC::EF,
         public_values: &[GC::F],
     ) -> GC::EF
-    where
-        A: for<'a> Air<VerifierConstraintFolder<'a, GC>>,
-    {
+where {
         let dummy_preprocessed_trace = vec![GC::EF::zero(); chip.preprocessed_width()];
         let dummy_main_trace = vec![GC::EF::zero(); chip.width()];
 
-        let mut folder = VerifierConstraintFolder::<GC> {
+        let mut folder = VerifierConstraintFolder::<GC::F, GC::EF> {
             preprocessed: RowMajorMatrixView::new_row(&dummy_preprocessed_trace),
             main: RowMajorMatrixView::new_row(&dummy_main_trace),
             alpha,
@@ -205,15 +228,13 @@ impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> ShardVerif
 
     /// Evaluates the constraints for a chip and opening.
     pub fn eval_constraints(
-        chip: &Chip<GC::F, A>,
+        chip: &Chip<GC::F, SC::Air>,
         opening: &ChipOpenedValues<GC::F, GC::EF>,
         alpha: GC::EF,
         public_values: &[GC::F],
     ) -> GC::EF
-    where
-        A: for<'a> Air<VerifierConstraintFolder<'a, GC>>,
-    {
-        let mut folder = VerifierConstraintFolder::<GC> {
+where {
+        let mut folder = VerifierConstraintFolder::<GC::F, GC::EF> {
             preprocessed: RowMajorMatrixView::new_row(&opening.preprocessed.local),
             main: RowMajorMatrixView::new_row(&opening.main.local),
             alpha,
@@ -228,7 +249,7 @@ impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> ShardVerif
     }
 
     fn verify_opening_shape(
-        chip: &Chip<GC::F, A>,
+        chip: &Chip<GC::F, SC::Air>,
         opening: &ChipOpenedValues<GC::F, GC::EF>,
     ) -> Result<(), OpeningShapeError> {
         // Verify that the preprocessed width matches the expected value for the chip.
@@ -251,7 +272,7 @@ impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> ShardVerif
     }
 }
 
-impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> ShardVerifier<GC, C, A>
+impl<GC: IopCtx, SC: ShardContext<GC>> ShardVerifier<GC, SC>
 where
     GC::F: PrimeField32,
 {
@@ -260,16 +281,17 @@ where
     #[allow(clippy::type_complexity)]
     pub fn verify_zerocheck(
         &self,
-        shard_chips: &BTreeSet<Chip<GC::F, A>>,
+        shard_chips: &BTreeSet<Chip<GC::F, SC::Air>>,
         opened_values: &ShardOpenedValues<GC::F, GC::EF>,
         gkr_evaluations: &LogUpEvaluations<GC::EF>,
-        proof: &ShardProof<GC, C>,
+        proof: &ShardProof<GC, PcsProof<GC, SC>>,
         public_values: &[GC::F],
         challenger: &mut GC::Challenger,
-    ) -> Result<(), ShardVerifierError<GC::EF, <C as MultilinearPcsVerifier<GC>>::VerifierError>>
-    where
-        A: for<'a> Air<VerifierConstraintFolder<'a, GC>>,
-    {
+    ) -> Result<
+        (),
+        ShardVerifierError<GC::EF, <SC::Config as MultilinearPcsVerifier<GC>>::VerifierError>,
+    >
+where {
         let max_log_row_count = self.jagged_pcs_verifier.max_log_row_count;
 
         // Get the random challenge to merge the constraints.
@@ -338,7 +360,7 @@ where
         if proof.zerocheck_proof.point_and_eval.1 != rlc_eval {
             return Err(ShardVerifierError::<
                 _,
-                <C as MultilinearPcsVerifier<GC>>::VerifierError,
+                <SC::Config as MultilinearPcsVerifier<GC>>::VerifierError,
             >::ConstraintsCheckFailed(SumcheckError::InconsistencyWithEval));
         }
 
@@ -373,7 +395,7 @@ where
         if proof.zerocheck_proof.claimed_sum != zerocheck_sum_modification {
             return Err(ShardVerifierError::<
                 _,
-                <C as MultilinearPcsVerifier<GC>>::VerifierError,
+                <SC::Config as MultilinearPcsVerifier<GC>>::VerifierError,
             >::ConstraintsCheckFailed(
                 SumcheckError::InconsistencyWithClaimedSum
             ));
@@ -389,7 +411,7 @@ where
         .map_err(|e| {
             ShardVerifierError::<
                 _,
-                <C as MultilinearPcsVerifier<GC>>::VerifierError,
+                <SC::Config as MultilinearPcsVerifier<GC>>::VerifierError,
             >::ConstraintsCheckFailed(e)
         })?;
 
@@ -411,7 +433,7 @@ where
         alpha: &GC::EF,
         beta_seed: &Point<GC::EF>,
         public_values: &[GC::F],
-    ) -> Result<GC::EF, ShardVerifierConfigError<GC, C>> {
+    ) -> Result<GC::EF, ShardVerifierConfigError<GC, SC::Config>> {
         let betas = slop_multilinear::partial_lagrange_blocking(beta_seed).into_buffer().into_vec();
         let mut folder = VerifierPublicValuesConstraintFolder::<GC> {
             perm_challenges: (alpha, &betas),
@@ -421,13 +443,13 @@ where
             public_values,
             _marker: PhantomData,
         };
-        A::Record::eval_public_values(&mut folder);
+        Record::<_, SC>::eval_public_values(&mut folder);
         if folder.accumulator == GC::EF::zero() {
             Ok(folder.local_interaction_digest)
         } else {
             Err(ShardVerifierError::<
                 _,
-                <C as MultilinearPcsVerifier<GC>>::VerifierError,
+                <SC::Config as MultilinearPcsVerifier<GC>>::VerifierError,
             >::InvalidPublicValues)
         }
     }
@@ -436,13 +458,11 @@ where
     #[allow(clippy::too_many_lines)]
     pub fn verify_shard(
         &self,
-        vk: &MachineVerifyingKey<GC, C>,
-        proof: &ShardProof<GC, C>,
+        vk: &MachineVerifyingKey<GC>,
+        proof: &ShardProof<GC, PcsProof<GC, SC>>,
         challenger: &mut GC::Challenger,
-    ) -> Result<(), ShardVerifierConfigError<GC, C>>
-    where
-        A: for<'a> Air<VerifierConstraintFolder<'a, GC>>,
-    {
+    ) -> Result<(), ShardVerifierConfigError<GC, SC::Config>>
+where {
         let ShardProof {
             main_commitment,
             opened_values,
@@ -547,7 +567,7 @@ where
             .max()
             .unwrap();
 
-        let max_interaction_kinds_values = A::Record::interactions_in_public_values()
+        let max_interaction_kinds_values = Record::<_, SC>::interactions_in_public_values()
             .iter()
             .map(|kind| kind.num_values() + 1)
             .max()
@@ -611,7 +631,7 @@ where
         }
 
         // Verify the logup GKR proof.
-        LogUpGkrVerifier::<_, _, A>::verify_logup_gkr(
+        LogUpGkrVerifier::<_, _, SC::Air>::verify_logup_gkr(
             &shard_chips,
             &degrees,
             alpha,
@@ -772,9 +792,9 @@ where
     }
 }
 
-impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, A> ShardVerifier<GC, SP1Pcs<GC>, A>
+impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, A> ShardVerifier<GC, SP1SC<GC, A>>
 where
-    A: MachineAir<GC::F>,
+    A: ZerocheckAir<GC::F, GC::EF>,
     GC::F: PrimeField32,
 {
     /// Create a shard verifier from basefold parameters.
@@ -785,7 +805,7 @@ where
         max_log_row_count: usize,
         machine: Machine<GC::F, A>,
     ) -> Self {
-        let pcs_verifier = JaggedPcsVerifier::new_from_basefold_params(
+        let pcs_verifier = JaggedPcsVerifier::<GC, SP1Pcs<GC>>::new_from_basefold_params(
             fri_config,
             log_stacking_height,
             max_log_row_count,
@@ -795,9 +815,10 @@ where
     }
 }
 
-impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, A> ShardVerifier<GC, Verifier<GC>, A>
+impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, A>
+    ShardVerifier<GC, ShardContextImpl<GC, Verifier<GC>, A>>
 where
-    A: MachineAir<GC::F>,
+    A: ZerocheckAir<GC::F, GC::EF>,
     GC::F: PrimeField32,
 {
     /// Create a shard verifier from basefold parameters.

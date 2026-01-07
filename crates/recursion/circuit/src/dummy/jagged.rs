@@ -5,9 +5,8 @@ use slop_commit::Rounds;
 use slop_jagged::{JaggedPcsProof, JaggedSumcheckEvalProof};
 use slop_merkle_tree::{MerkleTreeOpeningAndProof, MerkleTreeTcsProof};
 use slop_multilinear::MleEval;
-use slop_stacked::StackedBasefoldProof;
 use slop_tensor::Tensor;
-use sp1_hypercube::{log2_ceil_usize, SP1CoreJaggedConfig, NUM_SP1_COMMITMENTS};
+use sp1_hypercube::{log2_ceil_usize, SP1PcsProof, SP1PcsProofInner, NUM_SP1_COMMITMENTS};
 use sp1_primitives::{SP1Field, SP1GlobalContext};
 use sp1_recursion_executor::DIGEST_SIZE;
 
@@ -56,7 +55,7 @@ pub fn dummy_pcs_proof(
     log_stacking_height: usize,
     log_blowup: usize,
     column_counts_and_added_cols: Rounds<(Vec<usize>, usize)>,
-) -> JaggedPcsProof<SP1GlobalContext, SP1CoreJaggedConfig> {
+) -> JaggedPcsProof<SP1GlobalContext, SP1PcsProofInner> {
     let (column_counts, added_cols): (Rounds<Vec<usize>>, Vec<usize>) =
         column_counts_and_added_cols.into_iter().unzip();
     let max_pcs_log_height = log_stacking_height;
@@ -95,7 +94,7 @@ pub fn dummy_pcs_proof(
             .collect(),
     };
 
-    let stacked_proof = StackedBasefoldProof { basefold_proof, batch_evaluations };
+    let stacked_proof = SP1PcsProof { basefold_proof, batch_evaluations };
 
     let total_trace = log2_ceil_usize(
         log_stacking_height_multiples.iter().sum::<usize>() * (1 << log_stacking_height),
@@ -145,7 +144,7 @@ mod tests {
     use slop_jagged::{JaggedPcsVerifier, JaggedProver};
     use slop_multilinear::{Evaluations, Mle, PaddedMle, Point};
 
-    use sp1_hypercube::{prover::SP1CpuJaggedProverComponents, SP1CoreJaggedConfig};
+    use sp1_hypercube::{prover::SP1InnerPcsProver, SP1InnerPcs, SP1PcsProofInner};
 
     use crate::dummy::jagged::dummy_pcs_proof;
 
@@ -158,8 +157,8 @@ mod tests {
         let log_stacking_height = 10;
         let max_log_row_count = 9;
 
-        type JC = SP1CoreJaggedConfig;
-        type Prover = JaggedProver<SP1GlobalContext, SP1CpuJaggedProverComponents>;
+        type JC = SP1InnerPcs;
+        type Prover = JaggedProver<SP1GlobalContext, SP1PcsProofInner, SP1InnerPcsProver>;
         type F = SP1Field;
         type EF = SP1ExtensionField;
 

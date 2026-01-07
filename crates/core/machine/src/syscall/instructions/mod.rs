@@ -23,7 +23,7 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //     use slop_matrix::dense::RowMajorMatrix;
 //     use sp1_core_executor::{ExecutionRecord, Instruction, Opcode, Program};
 //     use sp1_hypercube::{
-//         air::MachineAir, koala_bear_poseidon2::SP1CoreJaggedConfig, chip_name, CpuProver,
+//         air::MachineAir, koala_bear_poseidon2::SP1InnerPcs, chip_name, CpuProver,
 //         MachineProver, Val,
 //     };
 //     use sp1_zkvm::syscalls::{COMMIT, COMMIT_DEFERRED_PROOFS, HALT, SHA_EXTEND};
@@ -67,12 +67,12 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //             let program = Program::new(test_case.program, 0, 0);
 //             let stdin = SP1Stdin::new();
 
-//             type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
+//             type P = CpuProver<SP1InnerPcs, RiscvAir<SP1Field>>;
 
 //             let malicious_trace_pv_generator =
 //                 move |prover: &P,
 //                       record: &mut ExecutionRecord|
-//                       -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
+//                       -> Vec<(String, RowMajorMatrix<Val<SP1InnerPcs>>)> {
 //                     // Create a malicious record where the next pc is set to the incorrect value.
 //                     let mut malicious_record = record.clone();
 
@@ -102,12 +102,12 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //         let program = Program::new(instructions, 0, 0);
 //         let stdin = SP1Stdin::new();
 
-//         type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
+//         type P = CpuProver<SP1InnerPcs, RiscvAir<SP1Field>>;
 
 //         let malicious_trace_pv_generator =
 //             |prover: &P,
 //              record: &mut ExecutionRecord|
-//              -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
+//              -> Vec<(String, RowMajorMatrix<Val<SP1InnerPcs>>)> {
 //                 let mut traces = prover.generate_traces(record);
 
 //                 let cpu_chip_name = chip_name!(CpuChip, SP1Field);
@@ -154,12 +154,12 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //         let program = Program::new(instructions, 0, 0);
 //         let stdin = SP1Stdin::new();
 
-//         type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
+//         type P = CpuProver<SP1InnerPcs, RiscvAir<SP1Field>>;
 
 //         let malicious_trace_pv_generator =
 //             |prover: &P,
 //              record: &mut ExecutionRecord|
-//              -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
+//              -> Vec<(String, RowMajorMatrix<Val<SP1InnerPcs>>)> {
 //                 record.public_values.committed_value_digest[0] = 10; // The correct value is 40.
 //                 prover.generate_traces(record)
 //             };
@@ -180,12 +180,12 @@ impl<F> BaseAir<F> for SyscallInstrsChip {
 //         let program = Program::new(instructions, 0, 0);
 //         let stdin = SP1Stdin::new();
 
-//         type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
+//         type P = CpuProver<SP1InnerPcs, RiscvAir<SP1Field>>;
 
 //         let malicious_trace_pv_generator =
 //             |prover: &P,
 //              record: &mut ExecutionRecord|
-//              -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
+//              -> Vec<(String, RowMajorMatrix<Val<SP1InnerPcs>>)> {
 //                 record.public_values.deferred_proofs_digest[0] = 10; // The correct value is 40.
 //                 prover.generate_traces(record)
 //             };

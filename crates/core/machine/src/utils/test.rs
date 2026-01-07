@@ -3,13 +3,11 @@ use std::sync::Arc;
 use slop_basefold::FriConfig;
 use sp1_core_executor::{Executor, Program, SP1Context, SP1CoreOpts, Trace};
 use sp1_hypercube::{
-    prover::{
-        AirProver, CpuMachineProverComponents, CpuShardProver, ProverSemaphore,
-        SP1CpuJaggedProverComponents,
-    },
-    MachineProof, MachineVerifier, MachineVerifierConfigError, SP1CoreJaggedConfig, ShardVerifier,
+    prover::{AirProver, CpuShardProver, ProverSemaphore, SP1InnerPcsProver},
+    InnerSC, MachineProof, MachineVerifier, MachineVerifierConfigError, SP1InnerPcs,
+    SP1PcsProofInner, ShardVerifier,
 };
-use sp1_primitives::{io::SP1PublicValues, SP1Field, SP1GlobalContext};
+use sp1_primitives::{io::SP1PublicValues, SP1GlobalContext};
 use tracing::Instrument;
 
 use crate::{io::SP1Stdin, riscv::RiscvAir};
@@ -25,7 +23,7 @@ use super::prove_core;
 pub async fn run_test(
     program: Arc<Program>,
     inputs: SP1Stdin,
-) -> Result<SP1PublicValues, MachineVerifierConfigError<SP1GlobalContext, SP1CoreJaggedConfig>> {
+) -> Result<SP1PublicValues, MachineVerifierConfigError<SP1GlobalContext, SP1InnerPcs>> {
     let mut runtime = Executor::new(program, SP1CoreOpts::default());
     runtime.write_vecs(&inputs.buffer);
     runtime.run::<Trace>().unwrap();
@@ -39,7 +37,7 @@ pub async fn run_test(
 pub async fn run_test_small_trace(
     program: Arc<Program>,
     inputs: SP1Stdin,
-) -> Result<SP1PublicValues, MachineVerifierConfigError<SP1GlobalContext, SP1CoreJaggedConfig>> {
+) -> Result<SP1PublicValues, MachineVerifierConfigError<SP1GlobalContext, SP1InnerPcs>> {
     let mut runtime = Executor::new(program, SP1CoreOpts::default());
     runtime.write_vecs(&inputs.buffer);
     runtime.run::<Trace>().unwrap();
@@ -49,11 +47,11 @@ pub async fn run_test_small_trace(
     Ok(public_values)
 }
 
-// pub fn run_malicious_test<P: MachineProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>>(
+// pub fn run_malicious_test<P: MachineProver<SP1InnerPcs, RiscvAir<SP1Field>>>(
 //     mut program: Program,
 //     inputs: SP1Stdin,
 //     malicious_trace_pv_generator: MaliciousTracePVGeneratorType<SP1Field, P>,
-// ) -> Result<SP1PublicValues, MachineVerificationError<SP1CoreJaggedConfig>> {
+// ) -> Result<SP1PublicValues, MachineVerificationError<SP1InnerPcs>> {
 //     let shape_config = CoreShapeConfig::<SP1Field>::default();
 //     shape_config.fix_preprocessed_shape(&mut program).unwrap();
 
@@ -91,8 +89,8 @@ pub async fn run_test_core(
     log_stacking_height: u32,
     max_log_row_count: usize,
 ) -> Result<
-    MachineProof<SP1GlobalContext, SP1CoreJaggedConfig>,
-    MachineVerifierConfigError<SP1GlobalContext, SP1CoreJaggedConfig>,
+    MachineProof<SP1GlobalContext, SP1PcsProofInner>,
+    MachineVerifierConfigError<SP1GlobalContext, SP1InnerPcs>,
 > {
     let machine = RiscvAir::machine();
 
@@ -102,8 +100,9 @@ pub async fn run_test_core(
         max_log_row_count,
         machine,
     );
-    let prover =
-        CpuShardProver::<SP1GlobalContext, SP1CpuJaggedProverComponents, _>::new(verifier.clone());
+    let prover = CpuShardProver::<SP1GlobalContext, SP1InnerPcs, SP1InnerPcsProver, _>::new(
+        verifier.clone(),
+    );
     let setup_permit = ProverSemaphore::new(1);
     let (pk, vk) = prover
         .setup(runtime.program.clone(), setup_permit.clone())
@@ -113,11 +112,8 @@ pub async fn run_test_core(
     let challenger = verifier.jagged_pcs_verifier.challenger();
     let (proof, _) = prove_core::<
         SP1GlobalContext,
-        CpuMachineProverComponents<
-            SP1GlobalContext,
-            SP1CpuJaggedProverComponents,
-            RiscvAir<SP1Field>,
-        >,
+        InnerSC<_>,
+        CpuShardProver<SP1GlobalContext, SP1InnerPcs, SP1InnerPcsProver, _>,
     >(
         verifier.clone(),
         Arc::new(prover),

@@ -13,7 +13,6 @@ use slop_algebra::{AbstractField, PrimeField32};
 use slop_challenger::IopCtx;
 
 use serde::{Deserialize, Serialize};
-use slop_multilinear::MultilinearPcsVerifier;
 use sp1_core_machine::riscv::MAX_LOG_NUMBER_OF_SHARDS;
 use sp1_recursion_compiler::ir::{Builder, Felt, IrIter};
 
@@ -58,16 +57,18 @@ pub struct SP1ShapedWitnessVariable<C: CircuitConfig, GC: SP1FieldConfigVariable
     pub is_complete: Felt<SP1Field>,
 }
 
+pub type VkAndProof<GC, Proof> = (MachineVerifyingKey<GC>, ShardProof<GC, Proof>);
+
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "ShardProof<GC,SC>: Serialize"))]
-#[serde(bound(deserialize = "ShardProof<GC,SC>: Deserialize<'de>"))]
+#[serde(bound(serialize = "ShardProof<GC,Proof>: Serialize"))]
+#[serde(bound(deserialize = "ShardProof<GC,Proof>: Deserialize<'de>"))]
 /// An input layout for the shard proofs that have been normalized to a standard shape.
-pub struct SP1ShapedWitnessValues<GC: IopCtx, SC: MultilinearPcsVerifier<GC>> {
-    pub vks_and_proofs: Vec<(MachineVerifyingKey<GC, SC>, ShardProof<GC, SC>)>,
+pub struct SP1ShapedWitnessValues<GC: IopCtx, Proof> {
+    pub vks_and_proofs: Vec<VkAndProof<GC, Proof>>,
     pub is_complete: bool,
 }
 
-impl<GC: IopCtx, SC: MultilinearPcsVerifier<GC>> SP1ShapedWitnessValues<GC, SC> {
+impl<GC: IopCtx, Proof> SP1ShapedWitnessValues<GC, Proof> {
     pub fn range(&self) -> ShardRange
     where
         GC::F: PrimeField32,

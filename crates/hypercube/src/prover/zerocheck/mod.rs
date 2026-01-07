@@ -16,7 +16,9 @@ use slop_sumcheck::{
 use slop_uni_stark::SymbolicAirBuilder;
 pub use sum_as_poly::*;
 
-use crate::{air::MachineAir, ConstraintSumcheckFolder, DebugConstraintBuilder};
+use crate::{
+    air::MachineAir, ConstraintSumcheckFolder, DebugConstraintBuilder, VerifierConstraintFolder,
+};
 
 /// Zerocheck sumcheck polynomial.
 #[derive(Clone)]
@@ -185,6 +187,7 @@ pub trait ZerocheckAir<F: Field, EF: ExtensionField<F>>:
     + for<'b> Air<ConstraintSumcheckFolder<'b, F, F, EF>>
     + for<'b> Air<ConstraintSumcheckFolder<'b, F, EF, EF>>
     + for<'b> Air<DebugConstraintBuilder<'b, F, EF>>
+    + for<'a> Air<VerifierConstraintFolder<'a, F, EF>>
 {
 }
 
@@ -195,5 +198,6 @@ impl<F: Field, EF: ExtensionField<F>, A> ZerocheckAir<F, EF> for A where
         + for<'b> Air<ConstraintSumcheckFolder<'b, F, F, EF>>
         + for<'b> Air<ConstraintSumcheckFolder<'b, F, EF, EF>>
         + for<'b> Air<DebugConstraintBuilder<'b, F, EF>>
+        + for<'a> Air<VerifierConstraintFolder<'a, F, EF>>
 {
 }

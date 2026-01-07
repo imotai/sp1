@@ -248,7 +248,7 @@ impl<F: PrimeField32> MachineAir<F> for UTypeChip {
 //         ExecutionError, ExecutionRecord, Executor, Instruction, Opcode, Program, Simple,
 //     };
 //     use sp1_hypercube::{
-//         air::MachineAir, koala_bear_poseidon2::SP1CoreJaggedConfig, chip_name, CpuProver,
+//         air::MachineAir, koala_bear_poseidon2::SP1InnerPcs, chip_name, CpuProver,
 //         MachineProver, SP1CoreOpts, Val,
 //     };
 
@@ -269,12 +269,12 @@ impl<F: PrimeField32> MachineAir<F> for UTypeChip {
 //     //     let program = Program::new(instructions, 0, 0);
 //     //     let stdin = SP1Stdin::new();
 
-//     //     type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
+//     //     type P = CpuProver<SP1InnerPcs, RiscvAir<SP1Field>>;
 
 //     //     let malicious_trace_pv_generator =
 //     //         |prover: &P,
 //     //          record: &mut ExecutionRecord|
-//     //          -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
+//     //          -> Vec<(String, RowMajorMatrix<Val<SP1InnerPcs>>)> {
 //     //             // Create a malicious record where the AUIPC instruction result is incorrect.
 //     //             let mut malicious_record = record.clone();
 //     //             malicious_record.auipc_events[0].a = 8;
@@ -295,12 +295,12 @@ impl<F: PrimeField32> MachineAir<F> for UTypeChip {
 //         let program = Program::new(instructions, 0, 0);
 //         let stdin = SP1Stdin::new();
 
-//         type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
+//         type P = CpuProver<SP1InnerPcs, RiscvAir<SP1Field>>;
 
 //         let malicious_trace_pv_generator =
 //             |prover: &P,
 //              record: &mut ExecutionRecord|
-//              -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
+//              -> Vec<(String, RowMajorMatrix<Val<SP1InnerPcs>>)> {
 //                 // Modify the branch chip to have a row that has multiple opcode flags set.
 //                 let mut traces = prover.generate_traces(record);
 //                 let auipc_chip_name = chip_name!(AuipcChip, SP1Field);

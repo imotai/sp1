@@ -5,7 +5,9 @@ use core::borrow::Borrow;
 
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_symmetric::CryptographicHasher;
-use sp1_hypercube::{MachineVerifier, MachineVerifierError, SP1RecursionProof, ShardVerifier};
+use sp1_hypercube::{
+    InnerSC, MachineVerifier, MachineVerifierError, SP1RecursionProof, ShardVerifier,
+};
 use sp1_primitives::{fri_params::recursion_fri_config, poseidon2_hasher, SP1Field};
 use sp1_recursion_executor::{RecursionPublicValues, NUM_PV_ELMS_TO_HASH};
 
@@ -15,7 +17,7 @@ use crate::{blake3_hash, hash_public_inputs, hash_public_inputs_with_fn};
 /// The finite field used for compress proofs.
 type GC = sp1_primitives::SP1GlobalContext;
 /// The stark configuration used for compress proofs.
-type C = sp1_hypercube::SP1CoreJaggedConfig;
+type C = sp1_hypercube::SP1PcsProofInner;
 
 /// Degree of Poseidon2 etc. in the compress machine.
 pub const COMPRESS_DEGREE: usize = 3;
@@ -30,7 +32,7 @@ pub const RECURSION_MAX_LOG_ROW_COUNT: usize = 21;
 
 /// A verifier for SP1 "compressed" proofs.
 pub struct SP1CompressedVerifier {
-    verifier: MachineVerifier<GC, C, CompressAir<SP1Field>>,
+    verifier: MachineVerifier<GC, InnerSC<CompressAir<SP1Field>>>,
 }
 
 impl Default for SP1CompressedVerifier {

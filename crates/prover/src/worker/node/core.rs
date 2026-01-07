@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use sp1_core_executor::{ExecutionReport, Program, SP1Context, SP1CoreOpts};
 use sp1_core_machine::io::SP1Stdin;
+
 use sp1_primitives::io::SP1PublicValues;
 use sp1_verifier::SP1Proof;
 use tracing::instrument;
@@ -86,8 +87,7 @@ impl SP1NodeCore {
     #[cfg(test)]
     pub(crate) fn wrap_vk(
         &self,
-    ) -> &sp1_hypercube::MachineVerifyingKey<sp1_primitives::SP1OuterGlobalContext, crate::OuterSC>
-    {
+    ) -> &sp1_hypercube::MachineVerifyingKey<sp1_primitives::SP1OuterGlobalContext> {
         &self.inner.verifier.wrap_vk
     }
 }

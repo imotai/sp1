@@ -7,7 +7,7 @@ use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{MultilinearPcsVerifier, Point};
 use slop_sumcheck::PartialSumcheckProof;
 
-use crate::{LogupGkrProof, MachineVerifyingKey};
+use crate::{LogupGkrProof, MachineVerifyingKey, ShardContext};
 
 /// The maximum number of elements that can be stored in the public values vec.  Both SP1 and
 /// recursive proofs need to pad their public values vec to this length.  This is required since the
@@ -31,10 +31,10 @@ pub struct TestingData<GC: IopCtx> {
 /// A proof for a shard.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(
-    serialize = "C: MultilinearPcsVerifier<GC>, GC::Challenger: Serialize",
-    deserialize = "C: MultilinearPcsVerifier<GC>, GC::Challenger: Deserialize<'de>"
+    serialize = "GC: IopCtx, GC::Challenger: Serialize, Proof: Serialize",
+    deserialize = "GC: IopCtx, GC::Challenger: Deserialize<'de>, Proof: Deserialize<'de>"
 ))]
-pub struct ShardProof<GC: IopCtx, C: MultilinearPcsVerifier<GC>> {
+pub struct ShardProof<GC: IopCtx, Proof> {
     /// The public values
     pub public_values: Vec<GC::F>,
     /// The commitments to main traces.
@@ -46,8 +46,12 @@ pub struct ShardProof<GC: IopCtx, C: MultilinearPcsVerifier<GC>> {
     /// The values of the traces at the final random point.
     pub opened_values: ShardOpenedValues<GC::F, GC::EF>,
     /// The evaluation proof.
-    pub evaluation_proof: JaggedPcsProof<GC, C>,
+    pub evaluation_proof: JaggedPcsProof<GC, Proof>,
 }
+
+/// The `ShardProof` type generic in `GC` and `SC`.
+pub type ShardContextProof<GC, SC> =
+    ShardProof<GC, <<SC as ShardContext<GC>>::Config as MultilinearPcsVerifier<GC>>::Proof>;
 
 /// The values of the chips in the shard at a random point.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,17 +97,17 @@ impl<T> AirOpenedValues<T> {
 /// An intermediate proof which proves the execution of a Hypercube verifier.
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound(
-    serialize = "GC: IopCtx, GC::Challenger: Serialize",
-    deserialize = "GC: IopCtx, GC::Challenger: Deserialize<'de>"
+    serialize = "GC: IopCtx, GC::Challenger: Serialize, Proof: Serialize",
+    deserialize = "GC: IopCtx, GC::Challenger: Deserialize<'de>, Proof: Deserialize<'de>"
 ))]
-pub struct SP1RecursionProof<GC: IopCtx, C: MultilinearPcsVerifier<GC>> {
+pub struct SP1RecursionProof<GC: IopCtx, Proof> {
     /// The verifying key associated with the proof.
-    pub vk: MachineVerifyingKey<GC, C>,
+    pub vk: MachineVerifyingKey<GC>,
     /// The shard proof representing the shard proof.
-    pub proof: ShardProof<GC, C>,
+    pub proof: ShardProof<GC, Proof>,
 }
 
-impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>> std::fmt::Debug for SP1RecursionProof<GC, C> {
+impl<GC: IopCtx, Proof> std::fmt::Debug for SP1RecursionProof<GC, Proof> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut debug_struct = f.debug_struct("SP1ReduceProof");
         // TODO: comment back after debug enabled.

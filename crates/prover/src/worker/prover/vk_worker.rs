@@ -2,7 +2,6 @@ use sp1_hypercube::{log2_ceil_usize, prover::ProverSemaphore};
 use sp1_prover_types::ArtifactClient;
 
 use crate::{
-    components::RecursionProver,
     shapes::build_vk_map,
     worker::{RawTaskRequest, ShrinkProver, TaskError, VkeyMapChunkInput, VkeyMapChunkOutput},
     SP1ProverComponents,
@@ -10,7 +9,7 @@ use crate::{
 use std::sync::Arc;
 
 pub struct RecursionVkWorker<C: SP1ProverComponents> {
-    pub recursion_prover: Arc<RecursionProver<C>>,
+    pub recursion_prover: Arc<C::RecursionProver>,
     pub recursion_permits: ProverSemaphore,
     pub shrink_prover: Arc<ShrinkProver<C>>,
 }

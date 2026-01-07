@@ -4,7 +4,7 @@ use slop_algebra::extension::BinomialExtensionField;
 use slop_basefold::FriConfig;
 use sp1_hypercube::{
     inner_perm, prover::CpuProverBuilder, Machine, MachineProof, MachineVerifier,
-    MachineVerifierConfigError, SP1CoreJaggedConfig, ShardVerifier,
+    MachineVerifierConfigError, SP1InnerPcs, SP1PcsProofInner, ShardVerifier,
 };
 use sp1_primitives::{
     fri_params::{unique_decoding_queries, SP1_PROOF_OF_WORK_BITS},
@@ -48,8 +48,8 @@ pub async fn run_test_recursion<const DEGREE: usize, const VAR_EVENTS_PER_ROW: u
     machine: Machine<SP1Field, RecursionAir<SP1Field, DEGREE, VAR_EVENTS_PER_ROW>>,
     program: RecursionProgram<SP1Field>,
 ) -> Result<
-    MachineProof<SP1GlobalContext, SP1CoreJaggedConfig>,
-    MachineVerifierConfigError<SP1GlobalContext, SP1CoreJaggedConfig>,
+    MachineProof<SP1GlobalContext, SP1PcsProofInner>,
+    MachineVerifierConfigError<SP1GlobalContext, SP1InnerPcs>,
 > {
     let log_blowup = 1;
     let num_queries = unique_decoding_queries(log_blowup);

@@ -7,7 +7,6 @@ use sp1_primitives::io::SP1PublicValues;
 use sp1_verifier::SP1Proof;
 
 use crate::{
-    components::CoreProver,
     recursion::RecursionVks,
     verify::SP1Verifier,
     worker::{node::SP1NodeCore, AirProverWorker},
@@ -18,7 +17,7 @@ struct SP1LightNodeInner {
     /// The core node is used to execute the program and verify the proof
     core: SP1NodeCore,
     /// The core air prover is used to do the setup step
-    core_air_prover: Arc<CoreProver<CpuSP1ProverComponents>>,
+    core_air_prover: Arc<<CpuSP1ProverComponents as SP1ProverComponents>::CoreProver>,
     /// The permits are used to limit the number of concurrent provers
     permits: ProverSemaphore,
 }

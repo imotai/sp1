@@ -1,6 +1,6 @@
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sp1_core_executor::SP1RecursionProof;
-use sp1_hypercube::{MachineVerifyingKey, SP1CoreJaggedConfig};
+use sp1_hypercube::{MachineVerifyingKey, SP1PcsProofInner};
 use sp1_primitives::SP1GlobalContext;
 
 /// Standard input for the prover.
@@ -11,8 +11,8 @@ pub struct SP1Stdin {
     pub buffer: Vec<Vec<u8>>,
     pub ptr: usize,
     pub proofs: Vec<(
-        SP1RecursionProof<SP1GlobalContext, SP1CoreJaggedConfig>,
-        MachineVerifyingKey<SP1GlobalContext, SP1CoreJaggedConfig>,
+        SP1RecursionProof<SP1GlobalContext, SP1PcsProofInner>,
+        MachineVerifyingKey<SP1GlobalContext>,
     )>,
 }
 
@@ -59,8 +59,8 @@ impl SP1Stdin {
 
     pub fn write_proof(
         &mut self,
-        proof: SP1RecursionProof<SP1GlobalContext, SP1CoreJaggedConfig>,
-        vk: MachineVerifyingKey<SP1GlobalContext, SP1CoreJaggedConfig>,
+        proof: SP1RecursionProof<SP1GlobalContext, SP1PcsProofInner>,
+        vk: MachineVerifyingKey<SP1GlobalContext>,
     ) {
         self.proofs.push((proof, vk));
     }

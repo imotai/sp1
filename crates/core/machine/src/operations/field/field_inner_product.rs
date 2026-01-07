@@ -182,7 +182,7 @@ where
 //     use rand::thread_rng;
 //     use sp1_curves::edwards::ed25519::Ed25519BaseField;
 //     use sp1_derive::AlignedBorrow;
-//     use sp1_hypercube::koala_bear_poseidon2::SP1CoreJaggedConfig;
+//     use sp1_hypercube::koala_bear_poseidon2::SP1InnerPcs;
 
 //     #[derive(AlignedBorrow, Debug, Clone)]
 //     pub struct TestCols<T, P: FieldParameters> {
@@ -300,7 +300,7 @@ where
 //         );
 
 //         // Run setup.
-//         let config = SP1CoreJaggedConfig::new();
+//         let config = SP1InnerPcs::new();
 //         let chip: Chip<SP1Field, FieldIpChip<Ed25519BaseField>> = Chip::new(air);
 //         let (pk, vk) = setup_test_machine(StarkMachine::new(
 //             config.clone(),
@@ -313,7 +313,7 @@ where
 //         let air: FieldIpChip<Ed25519BaseField> = FieldIpChip::new();
 //         let chip: Chip<SP1Field, FieldIpChip<Ed25519BaseField>> = Chip::new(air);
 //         let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
-//         run_test_machine::<SP1CoreJaggedConfig, FieldIpChip<Ed25519BaseField>>(
+//         run_test_machine::<SP1InnerPcs, FieldIpChip<Ed25519BaseField>>(
 //             vec![shard],
 //             machine,
 //             pk,

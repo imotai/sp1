@@ -12,7 +12,7 @@ pub mod store;
 //         events::MemoryRecordEnum, ExecutionRecord, Instruction, Opcode, Program,
 //     };
 //     use sp1_hypercube::{
-//         air::MachineAir, koala_bear_poseidon2::SP1CoreJaggedConfig, chip_name, CpuProver,
+//         air::MachineAir, koala_bear_poseidon2::SP1InnerPcs, chip_name, CpuProver,
 //         MachineProver, Val,
 //     };
 
@@ -64,12 +64,12 @@ pub mod store;
 //             let program = Program::new(instructions, 0, 0);
 //             let stdin = SP1Stdin::new();
 
-//             type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
+//             type P = CpuProver<SP1InnerPcs, RiscvAir<SP1Field>>;
 
 //             let malicious_trace_pv_generator =
 //                 move |prover: &P,
 //                       record: &mut ExecutionRecord|
-//                       -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
+//                       -> Vec<(String, RowMajorMatrix<Val<SP1InnerPcs>>)> {
 //                     // Create a malicious record where the incorrect value is saved to memory.
 //                     let mut malicious_record = record.clone();
 //                     if let MemoryRecordEnum::Write(mem_write_record) =
@@ -138,12 +138,12 @@ pub mod store;
 //             let program = Program::new(instructions, 0, 0);
 //             let stdin = SP1Stdin::new();
 
-//             type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
+//             type P = CpuProver<SP1InnerPcs, RiscvAir<SP1Field>>;
 
 //             let malicious_trace_pv_generator =
 //                 move |prover: &P,
 //                       record: &mut ExecutionRecord|
-//                       -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
+//                       -> Vec<(String, RowMajorMatrix<Val<SP1InnerPcs>>)> {
 //                     // Create a malicious record where the incorrect value is loaded from memory.
 //                     let mut malicious_record = record.clone();
 //                     malicious_record.cpu_events[3].a = test_case.incorrect_value;
@@ -177,12 +177,12 @@ pub mod store;
 //         let program = Program::new(instructions, 0, 0);
 //         let stdin = SP1Stdin::new();
 
-//         type P = CpuProver<SP1CoreJaggedConfig, RiscvAir<SP1Field>>;
+//         type P = CpuProver<SP1InnerPcs, RiscvAir<SP1Field>>;
 
 //         let malicious_trace_pv_generator =
 //             |prover: &P,
 //              record: &mut ExecutionRecord|
-//              -> Vec<(String, RowMajorMatrix<Val<SP1CoreJaggedConfig>>)> {
+//              -> Vec<(String, RowMajorMatrix<Val<SP1InnerPcs>>)> {
 //                 // Modify the branch chip to have a row that has multiple opcode flags set.
 //                 let mut traces = prover.generate_traces(record);
 //                 let memory_instr_chip_name = chip_name!(MemoryInstructionsChip, SP1Field);

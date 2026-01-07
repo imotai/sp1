@@ -5,7 +5,7 @@ use slop_basefold::{BasefoldVerifier, FriConfig};
 use slop_multilinear::Point;
 use sp1_hypercube::{
     air::MachineAir, septic_digest::SepticDigest, AirOpenedValues, Chip, ChipOpenedValues,
-    MachineVerifyingKey, SP1CoreJaggedConfig, ShardOpenedValues, ShardProof, NUM_SP1_COMMITMENTS,
+    MachineVerifyingKey, SP1PcsProofInner, ShardOpenedValues, ShardProof, NUM_SP1_COMMITMENTS,
     PROOF_MAX_NUM_PVS,
 };
 use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
@@ -16,12 +16,11 @@ use crate::dummy::{
 
 type EF = SP1ExtensionField;
 
-pub fn dummy_vk() -> MachineVerifyingKey<SP1GlobalContext, SP1CoreJaggedConfig> {
+pub fn dummy_vk() -> MachineVerifyingKey<SP1GlobalContext> {
     MachineVerifyingKey {
         pc_start: [SP1Field::zero(); 3],
         initial_global_cumulative_sum: SepticDigest::zero(),
         preprocessed_commit: [SP1Field::zero(); 8],
-        marker: std::marker::PhantomData,
         enable_untrusted_programs: SP1Field::zero(),
     }
 }
@@ -33,7 +32,7 @@ pub fn dummy_shard_proof<A: MachineAir<SP1Field>>(
     log_stacking_height: usize,
     log_stacking_height_multiples: &[usize],
     added_cols: &[usize],
-) -> ShardProof<SP1GlobalContext, SP1CoreJaggedConfig> {
+) -> ShardProof<SP1GlobalContext, SP1PcsProofInner> {
     let default_verifier =
         BasefoldVerifier::<SP1GlobalContext>::new(fri_config, NUM_SP1_COMMITMENTS);
 

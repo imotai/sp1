@@ -8,11 +8,11 @@ use slop_algebra::{AbstractField, PrimeField32};
 use slop_challenger::IopCtx;
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_hypercube::{
-    air::{MachineAir, POSEIDON_NUM_WORDS, PROOF_NONCE_NUM_WORDS},
-    prover::MachineProverComponents,
-    MachineVerifier, MachineVerifyingKey, SP1Pcs, ShardVerifier,
+    air::{POSEIDON_NUM_WORDS, PROOF_NONCE_NUM_WORDS},
+    prover::ZerocheckAir,
+    MachineVerifier, MachineVerifyingKey, SP1InnerPcs, SP1PcsProofInner, ShardVerifier, SP1SC,
 };
-use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext, SP1OuterGlobalContext};
+use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
 use sp1_recursion_circuit::{
     basefold::{
         merkle_tree::{MerkleProof, MerkleTree},
@@ -38,21 +38,10 @@ use sp1_recursion_compiler::{
 use sp1_recursion_executor::{RecursionProgram, DIGEST_SIZE};
 
 use crate::{
-    components::SP1ProverComponents,
     shapes::{create_all_input_shapes, SP1RecursionProofShape},
     worker::{TaskError, DEFAULT_MAX_COMPOSE_ARITY},
-    CompressAir, CoreSC, HashableKey, InnerSC,
+    CompressAir, HashableKey, RecursionSC,
 };
-
-pub(crate) type RecursionConfig<C> =
-    <<C as SP1ProverComponents>::RecursionComponents as MachineProverComponents<
-        SP1GlobalContext,
-    >>::Config;
-
-pub(crate) type WrapConfig<C> =
-    <<C as SP1ProverComponents>::WrapComponents as MachineProverComponents<
-        SP1OuterGlobalContext,
-    >>::Config;
 
 #[derive(Clone)]
 pub struct RecursionVks {
@@ -129,7 +118,7 @@ impl RecursionVks {
         self.root
     }
 
-    pub fn contains(&self, vk: &MachineVerifyingKey<SP1GlobalContext, InnerSC>) -> bool {
+    pub fn contains(&self, vk: &MachineVerifyingKey<SP1GlobalContext>) -> bool {
         self.map.contains_key(&vk.hash_koalabear())
     }
 
@@ -144,7 +133,7 @@ impl RecursionVks {
 
     pub fn open(
         &self,
-        vk: &MachineVerifyingKey<SP1GlobalContext, InnerSC>,
+        vk: &MachineVerifyingKey<SP1GlobalContext>,
     ) -> Result<([SP1Field; DIGEST_SIZE], MerkleProof<SP1GlobalContext>), TaskError> {
         let index = if self.vk_verification {
             let digest = vk.hash_koalabear();
@@ -176,7 +165,7 @@ impl RecursionVks {
 /// (RISC-V) machine.
 pub fn normalize_program_from_input(
     recursive_verifier: &RecursiveShardVerifier<SP1GlobalContext, RiscvAir<SP1Field>, InnerConfig>,
-    input: &SP1NormalizeWitnessValues<SP1GlobalContext, CoreSC>,
+    input: &SP1NormalizeWitnessValues<SP1GlobalContext, SP1PcsProofInner>,
 ) -> RecursionProgram<SP1Field> {
     // Get the operations.
     let builder_span = tracing::debug_span!("build recursion program").entered();
@@ -205,7 +194,7 @@ pub(crate) fn deferred_program_from_input(
         InnerConfig,
     >,
     vk_verification: bool,
-    input: &SP1DeferredWitnessValues<SP1GlobalContext, InnerSC>,
+    input: &SP1DeferredWitnessValues<SP1GlobalContext, SP1PcsProofInner>,
 ) -> RecursionProgram<SP1Field> {
     // Get the operations.
     let operations_span = tracing::debug_span!("get operations for the deferred program").entered();
@@ -239,7 +228,7 @@ pub(crate) fn compose_program_from_input(
         InnerConfig,
     >,
     vk_verification: bool,
-    input: &SP1CompressWithVKeyWitnessValues<InnerSC>,
+    input: &SP1CompressWithVKeyWitnessValues<SP1PcsProofInner>,
 ) -> RecursionProgram<SP1Field> {
     let builder_span = tracing::debug_span!("build compress program").entered();
     let mut builder = Builder::<InnerConfig>::default();
@@ -247,7 +236,7 @@ pub(crate) fn compose_program_from_input(
     let input = input.read(&mut builder);
 
     // Verify the proof.
-    SP1CompressWithVKeyVerifier::<InnerConfig, InnerSC, _>::verify(
+    SP1CompressWithVKeyVerifier::<InnerConfig, SP1InnerPcs, _>::verify(
         &mut builder,
         recursive_verifier,
         input,
@@ -276,7 +265,7 @@ pub(crate) fn shrink_program_from_input(
         InnerConfig,
     >,
     vk_verification: bool,
-    input: &SP1CompressWithVKeyWitnessValues<InnerSC>,
+    input: &SP1CompressWithVKeyWitnessValues<SP1PcsProofInner>,
 ) -> RecursionProgram<SP1Field> {
     let builder_span = tracing::debug_span!("build shrink program").entered();
     let mut builder = Builder::<InnerConfig>::default();
@@ -315,7 +304,7 @@ pub(crate) fn wrap_program_from_input(
         CircuitWrapConfig,
     >,
     vk_verification: bool,
-    input: &SP1CompressWithVKeyWitnessValues<InnerSC>,
+    input: &SP1CompressWithVKeyWitnessValues<SP1PcsProofInner>,
 ) -> RecursionProgram<SP1Field> {
     let builder_span = tracing::debug_span!("build wrap program").entered();
     let mut builder = Builder::<CircuitWrapConfig>::default();
@@ -347,11 +336,11 @@ pub(crate) fn wrap_program_from_input(
 }
 
 pub(crate) fn dummy_compose_input(
-    verifier: &MachineVerifier<SP1GlobalContext, InnerSC, CompressAir<SP1Field>>,
+    verifier: &MachineVerifier<SP1GlobalContext, RecursionSC>,
     shape: &SP1RecursionProofShape,
     arity: usize,
     height: usize,
-) -> SP1CompressWithVKeyWitnessValues<InnerSC> {
+) -> SP1CompressWithVKeyWitnessValues<SP1PcsProofInner> {
     let chips =
         verifier.shard_verifier().machine().chips().iter().cloned().collect::<BTreeSet<_>>();
 
@@ -369,10 +358,10 @@ pub(crate) fn dummy_compose_input(
 }
 
 pub(crate) fn dummy_deferred_input(
-    verifier: &MachineVerifier<SP1GlobalContext, InnerSC, CompressAir<InnerVal>>,
+    verifier: &MachineVerifier<SP1GlobalContext, RecursionSC>,
     shape: &SP1RecursionProofShape,
     height: usize,
-) -> SP1DeferredWitnessValues<SP1GlobalContext, InnerSC> {
+) -> SP1DeferredWitnessValues<SP1GlobalContext, SP1PcsProofInner> {
     let chips =
         verifier.shard_verifier().machine().chips().iter().cloned().collect::<BTreeSet<_>>();
 
@@ -400,11 +389,11 @@ pub(crate) fn dummy_deferred_input(
 }
 
 pub(crate) fn recursive_verifier<GC, A, C>(
-    shard_verifier: &ShardVerifier<GC, SP1Pcs<GC>, A>,
+    shard_verifier: &ShardVerifier<GC, SP1SC<GC, A>>,
 ) -> RecursiveShardVerifier<GC, A, C>
 where
     GC: IopCtx<F = SP1Field, EF = SP1ExtensionField> + SP1FieldConfigVariable<C>,
-    A: MachineAir<GC::F>,
+    A: ZerocheckAir<SP1Field, SP1ExtensionField>,
     C: CircuitConfig,
 {
     let log_stacking_height = shard_verifier.log_stacking_height();

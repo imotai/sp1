@@ -482,7 +482,7 @@ where
 //     use sp1_core_executor::{Executor, Trace};
 //     use sp1_hypercube::InteractionKind;
 //     use sp1_hypercube::{
-//         koala_bear_poseidon2::SP1CoreJaggedConfig, debug_interactions_with_all_chips,
+//         koala_bear_poseidon2::SP1InnerPcs, debug_interactions_with_all_chips,
 // SP1CoreOpts,         StarkMachine,
 //     };
 
@@ -516,8 +516,8 @@ where
 //         let program_clone = program.clone();
 //         let mut runtime = Executor::new(program, SP1CoreOpts::default());
 //         runtime.run::<Trace>().unwrap();
-//         let machine: StarkMachine<SP1CoreJaggedConfig, RiscvAir<SP1Field>> =
-//             RiscvAir::machine(SP1CoreJaggedConfig::new());
+//         let machine: StarkMachine<SP1InnerPcs, RiscvAir<SP1Field>> =
+//             RiscvAir::machine(SP1InnerPcs::new());
 //         let (pkey, _) = machine.setup(&program_clone);
 //         let opts = SP1CoreOpts::default();
 //         machine.generate_dependencies(
@@ -528,7 +528,7 @@ where
 
 //         let shards = runtime.records;
 //         for shard in shards.clone() {
-//             debug_interactions_with_all_chips::<SP1CoreJaggedConfig, RiscvAir<SP1Field>>(
+//             debug_interactions_with_all_chips::<SP1InnerPcs, RiscvAir<SP1Field>>(
 //                 &machine,
 //                 &pkey,
 //                 &[*shard],
@@ -536,7 +536,7 @@ where
 //                 InteractionScope::Local,
 //             );
 //         }
-//         debug_interactions_with_all_chips::<SP1CoreJaggedConfig, RiscvAir<SP1Field>>(
+//         debug_interactions_with_all_chips::<SP1InnerPcs, RiscvAir<SP1Field>>(
 //             &machine,
 //             &pkey,
 //             &shards.into_iter().map(|r| *r).collect::<Vec<_>>(),
@@ -552,7 +552,7 @@ where
 //         let program_clone = program.clone();
 //         let mut runtime = Executor::new(program, SP1CoreOpts::default());
 //         runtime.run::<Trace>().unwrap();
-//         let machine = RiscvAir::machine(SP1CoreJaggedConfig::new());
+//         let machine = RiscvAir::machine(SP1InnerPcs::new());
 //         let (pkey, _) = machine.setup(&program_clone);
 //         let opts = SP1CoreOpts::default();
 //         machine.generate_dependencies(
@@ -562,7 +562,7 @@ where
 //         );
 
 //         let shards = runtime.records;
-//         debug_interactions_with_all_chips::<SP1CoreJaggedConfig, RiscvAir<SP1Field>>(
+//         debug_interactions_with_all_chips::<SP1InnerPcs, RiscvAir<SP1Field>>(
 //             &machine,
 //             &pkey,
 //             &shards.into_iter().map(|r| *r).collect::<Vec<_>>(),

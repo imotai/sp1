@@ -980,7 +980,7 @@ pub mod tests {
     //     use sp1_primitives::SP1Field;
     //     use sp1_core_executor::{Instruction, Opcode, Program, SP1Context};
     //     use sp1_hypercube::{
-    //         koala_bear_poseidon2::SP1CoreJaggedConfig, CpuProver, MachineProver, SP1CoreOpts,
+    //         koala_bear_poseidon2::SP1InnerPcs, CpuProver, MachineProver, SP1CoreOpts,
     //         StarkProvingKey, StarkVerifyingKey,
     //     };
 
@@ -1464,12 +1464,12 @@ pub mod tests {
     // #[test]
     // fn test_key_serde() {
     //     let program = ssz_withdrawals_program();
-    //     let config = SP1CoreJaggedConfig::new();
+    //     let config = SP1InnerPcs::new();
     //     let machine = RiscvAir::machine(config);
     //     let (pk, vk) = machine.setup(&program);
 
     //     let serialized_pk = bincode::serialize(&pk).unwrap();
-    //     let deserialized_pk: StarkProvingKey<SP1CoreJaggedConfig> =
+    //     let deserialized_pk: StarkProvingKey<SP1InnerPcs> =
     //         bincode::deserialize(&serialized_pk).unwrap();
     //     assert_eq!(pk.preprocessed_commit, deserialized_pk.preprocessed_commit);
     //     assert_eq!(pk.pc_start_rel, deserialized_pk.pc_start_rel);
@@ -1478,7 +1478,7 @@ pub mod tests {
     //     assert_eq!(pk.chip_ordering, deserialized_pk.chip_ordering);
 
     //     let serialized_vk = bincode::serialize(&vk).unwrap();
-    //     let deserialized_vk: StarkVerifyingKey<SP1CoreJaggedConfig> =
+    //     let deserialized_vk: StarkVerifyingKey<SP1InnerPcs> =
     //         bincode::deserialize(&serialized_vk).unwrap();
     //     assert_eq!(vk.pc_start_rel, deserialized_vk.pc_start_rel);
     //     assert_eq!(vk.chip_information.len(), deserialized_vk.chip_information.len());

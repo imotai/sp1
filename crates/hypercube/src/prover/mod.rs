@@ -23,8 +23,8 @@ pub use slop_merkle_tree::Poseidon2KoalaBear16Prover as SP1MerkleTreeProver;
 
 #[allow(clippy::disallowed_types)]
 /// The CPU prover components for a jagged PCS prover in SP1.
-pub type SP1CpuJaggedProverComponents = StackedPcsProver<SP1MerkleTreeProver, SP1GlobalContext>;
+pub type SP1InnerPcsProver = StackedPcsProver<SP1MerkleTreeProver, SP1GlobalContext>;
 
 /// The Jagged CPU prover components for the wrap step of recursion in SP1.
-pub type SP1OuterCpuJaggedProverComponents =
+pub type SP1OuterPcsProver =
     StackedPcsProver<BnProver<SP1Field, SP1ExtensionField>, SP1OuterGlobalContext>;

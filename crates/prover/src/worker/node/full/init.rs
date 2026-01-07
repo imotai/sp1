@@ -9,7 +9,6 @@ use tokio::{sync::mpsc, task::JoinSet};
 use tracing::Instrument;
 
 use crate::{
-    components::{CoreProver, RecursionProver, WrapProver},
     worker::{
         node::SP1NodeCore, run_vk_generation, LocalWorkerClient, LocalWorkerClientChannels,
         ProofId, RawTaskRequest, SP1LocalNode, SP1NodeInner, SP1WorkerBuilder, TaskError, TaskId,
@@ -50,7 +49,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
     /// Sets the core air prover to the worker client builder.
     pub fn with_core_air_prover(
         mut self,
-        core_air_prover: Arc<CoreProver<C>>,
+        core_air_prover: Arc<C::CoreProver>,
         permit: ProverSemaphore,
     ) -> Self {
         self.worker_builder = self.worker_builder.with_core_air_prover(core_air_prover, permit);
@@ -60,7 +59,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
     /// Sets the compress air prover to the worker client builder.
     pub fn with_compress_air_prover(
         mut self,
-        compress_air_prover: Arc<RecursionProver<C>>,
+        compress_air_prover: Arc<C::RecursionProver>,
         permit: ProverSemaphore,
     ) -> Self {
         self.worker_builder =
@@ -71,7 +70,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
     /// Sets the shrink air prover to the worker client builder.
     pub fn with_shrink_air_prover(
         mut self,
-        shrink_air_prover: Arc<RecursionProver<C>>,
+        shrink_air_prover: Arc<C::RecursionProver>,
         permit: ProverSemaphore,
     ) -> Self {
         self.worker_builder = self.worker_builder.with_shrink_air_prover(shrink_air_prover, permit);
@@ -81,7 +80,7 @@ impl<C: SP1ProverComponents> SP1LocalNodeBuilder<C> {
     /// Sets the wrap air prover to the worker client builder.
     pub fn with_wrap_air_prover(
         mut self,
-        wrap_air_prover: Arc<WrapProver<C>>,
+        wrap_air_prover: Arc<C::WrapProver>,
         permit: ProverSemaphore,
     ) -> Self {
         self.worker_builder = self.worker_builder.with_wrap_air_prover(wrap_air_prover, permit);

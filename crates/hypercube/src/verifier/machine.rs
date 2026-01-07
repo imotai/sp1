@@ -4,50 +4,68 @@ use slop_basefold::FriConfig;
 use slop_challenger::IopCtx;
 
 use serde::{Deserialize, Serialize};
-use slop_air::Air;
 use slop_multilinear::MultilinearPcsVerifier;
+use sp1_primitives::{SP1GlobalContext, SP1OuterGlobalContext};
 use thiserror::Error;
 
 use crate::{
-    air::MachineAir,
-    prover::{CoreProofShape, ZerocheckAir},
-    Machine, SP1Pcs, ShardVerifierConfigError, VerifierConstraintFolder,
+    prover::{CoreProofShape, PcsProof, ZerocheckAir},
+    Machine, SP1Pcs, ShardVerifierConfigError,
 };
 
 use super::{MachineVerifyingKey, ShardProof, ShardVerifier, ShardVerifierError};
 /// A complete proof of program execution.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(
-    serialize = "C: MultilinearPcsVerifier<GC>, GC::Challenger: Serialize",
-    deserialize = "C: MultilinearPcsVerifier<GC>, GC::Challenger: Deserialize<'de>"
+    serialize = "PcsProof: Serialize, GC::Challenger: Serialize",
+    deserialize = "PcsProof: Deserialize<'de>, GC::Challenger: Deserialize<'de>"
 ))]
-pub struct MachineProof<GC: IopCtx, C: MultilinearPcsVerifier<GC>> {
+pub struct MachineProof<GC: IopCtx, PcsProof> {
     /// The shard proofs.
-    pub shard_proofs: Vec<ShardProof<GC, C>>,
+    pub shard_proofs: Vec<ShardProof<GC, PcsProof>>,
 }
 
-impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>> From<Vec<ShardProof<GC, C>>>
-    for MachineProof<GC, C>
-{
+impl<GC: IopCtx, C> From<Vec<ShardProof<GC, C>>> for MachineProof<GC, C> {
     fn from(shard_proofs: Vec<ShardProof<GC, C>>) -> Self {
         Self { shard_proofs }
     }
 }
 
-/// A shortcute trait to package a multilinear PCS verifier and a zerocheck AIR.
-pub trait ShardContext<GC: IopCtx> {
+/// A shortcut trait to package a multilinear PCS verifier and a zerocheck AIR. Reduces number of
+/// generic parameters in the `MachineVerifier` type and `AirProver` trait.
+pub trait ShardContext<GC: IopCtx>: 'static + Send + Sync {
     /// The multilinear PCS verifier.
     type Config: MultilinearPcsVerifier<GC>;
     /// The AIR for which we'll be proving zerocheck.
     type Air: ZerocheckAir<GC::F, GC::EF>;
 }
 
-impl<GC: IopCtx, C, A> ShardContext<GC> for (C, A)
+/// The canonical type implementing `ShardContext`.
+pub struct ShardContextImpl<GC: IopCtx, Verifier, A>
 where
-    C: MultilinearPcsVerifier<GC>,
+    Verifier: MultilinearPcsVerifier<GC>,
     A: ZerocheckAir<GC::F, GC::EF>,
 {
-    type Config = C;
+    _marker: std::marker::PhantomData<(GC, Verifier, A)>,
+}
+/// A type alias assuming `SP1Pcs` (stacked Basefold) as the PCS verifier, generic in the `IopCtx`
+/// and the AIR.
+pub type SP1SC<GC, A> = ShardContextImpl<GC, SP1Pcs<GC>, A>;
+
+/// A type alias for the shard contexts used in all stages of SP1 proving except wrap. Generic only
+/// in the AIR (allowing this SC to be used for the Risc-V and the recursion AIRs).
+pub type InnerSC<A> = SP1SC<SP1GlobalContext, A>;
+
+/// A type alias for the shard contexts used in the outer (wrap) stage of SP1 proving. Generic only
+/// in the AIR.
+pub type OuterSC<A> = SP1SC<SP1OuterGlobalContext, A>;
+
+impl<GC: IopCtx, Verifier, A> ShardContext<GC> for ShardContextImpl<GC, Verifier, A>
+where
+    Verifier: MultilinearPcsVerifier<GC>,
+    A: ZerocheckAir<GC::F, GC::EF>,
+{
+    type Config = Verifier;
     type Air = A;
 }
 
@@ -80,14 +98,14 @@ pub type MachineVerifierConfigError<GC, C> =
 
 /// A verifier for a machine proof.
 #[derive_where(Clone)]
-pub struct MachineVerifier<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> {
+pub struct MachineVerifier<GC: IopCtx, SC: ShardContext<GC>> {
     /// Shard proof verifier.
-    shard_verifier: ShardVerifier<GC, C, A>,
+    shard_verifier: ShardVerifier<GC, SC>,
 }
 
-impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> MachineVerifier<GC, C, A> {
+impl<GC: IopCtx, SC: ShardContext<GC>> MachineVerifier<GC, SC> {
     /// Create a new machine verifier.
-    pub fn new(shard_verifier: ShardVerifier<GC, C, A>) -> Self {
+    pub fn new(shard_verifier: ShardVerifier<GC, SC>) -> Self {
         Self { shard_verifier }
     }
 
@@ -97,7 +115,7 @@ impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> MachineVer
     }
 
     /// Get the machine.
-    pub fn machine(&self) -> &Machine<GC::F, A> {
+    pub fn machine(&self) -> &Machine<GC::F, SC::Air> {
         &self.shard_verifier.machine
     }
 
@@ -114,31 +132,32 @@ impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> MachineVer
     }
 
     /// Get the shape of a shard proof.
-    pub fn shape_from_proof(&self, proof: &ShardProof<GC, C>) -> CoreProofShape<GC::F, A> {
+    pub fn shape_from_proof(
+        &self,
+        proof: &ShardProof<GC, PcsProof<GC, SC>>,
+    ) -> CoreProofShape<GC::F, SC::Air> {
         self.shard_verifier.shape_from_proof(proof)
     }
 
     /// Get the shard verifier.
     #[must_use]
     #[inline]
-    pub fn shard_verifier(&self) -> &ShardVerifier<GC, C, A> {
+    pub fn shard_verifier(&self) -> &ShardVerifier<GC, SC> {
         &self.shard_verifier
     }
 }
 
-impl<GC: IopCtx, C: MultilinearPcsVerifier<GC>, A: MachineAir<GC::F>> MachineVerifier<GC, C, A>
+impl<GC: IopCtx, SC: ShardContext<GC>> MachineVerifier<GC, SC>
 where
     GC::F: PrimeField32,
 {
     /// Verify the machine proof.
     pub fn verify(
         &self,
-        vk: &MachineVerifyingKey<GC, C>,
-        proof: &MachineProof<GC, C>,
-    ) -> Result<(), MachineVerifierConfigError<GC, C>>
-    where
-        A: for<'a> Air<VerifierConstraintFolder<'a, GC>>,
-    {
+        vk: &MachineVerifyingKey<GC>,
+        proof: &MachineProof<GC, PcsProof<GC, SC>>,
+    ) -> Result<(), MachineVerifierConfigError<GC, SC::Config>>
+where {
         let mut challenger = self.challenger();
         // Observe the verifying key.
         vk.observe_into(&mut challenger);
@@ -158,18 +177,16 @@ where
     /// Verify a shard proof.
     pub fn verify_shard(
         &self,
-        vk: &MachineVerifyingKey<GC, C>,
-        proof: &ShardProof<GC, C>,
+        vk: &MachineVerifyingKey<GC>,
+        proof: &ShardProof<GC, PcsProof<GC, SC>>,
         challenger: &mut GC::Challenger,
-    ) -> Result<(), ShardVerifierConfigError<GC, C>>
-    where
-        A: for<'a> Air<VerifierConstraintFolder<'a, GC>>,
-    {
+    ) -> Result<(), ShardVerifierConfigError<GC, SC::Config>>
+where {
         self.shard_verifier.verify_shard(vk, proof, challenger)
     }
 }
 
-impl<GC: IopCtx, A: MachineAir<GC::F>> MachineVerifier<GC, SP1Pcs<GC>, A>
+impl<GC: IopCtx, SC: ShardContext<GC, Config = SP1Pcs<GC>>> MachineVerifier<GC, SC>
 where
     GC::F: TwoAdicField,
     GC::EF: TwoAdicField,

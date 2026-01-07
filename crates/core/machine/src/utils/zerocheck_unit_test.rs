@@ -129,8 +129,8 @@ mod tests {
         air::MachineAir,
         debug_constraints,
         prover::{ZeroCheckPoly, ZerocheckCpuProverData},
-        AirOpenedValues, Chip, ChipOpenedValues, ConstraintSumcheckFolder, SP1CoreJaggedConfig,
-        ShardVerifier, PROOF_MAX_NUM_PVS,
+        AirOpenedValues, Chip, ChipOpenedValues, ConstraintSumcheckFolder, InnerSC, ShardVerifier,
+        PROOF_MAX_NUM_PVS,
     };
     use sp1_primitives::{SP1Field, SP1GlobalContext};
 
@@ -265,7 +265,7 @@ mod tests {
         let mut challenger = SP1GlobalContext::default_challenger();
 
         let padded_row_adjustment =
-            ShardVerifier::<SP1GlobalContext,SP1CoreJaggedConfig, _>::compute_padded_row_adjustment(
+            ShardVerifier::<SP1GlobalContext, InnerSC<_>>::compute_padded_row_adjustment(
                 &Chip::new(MinimalAddChip::default()),
                 alpha,
                 &public_values,
@@ -276,7 +276,7 @@ mod tests {
 
         let geq_val = full_geq(&opening.degree, &point_extended);
 
-        let eval = ShardVerifier::<SP1GlobalContext, SP1CoreJaggedConfig, _>::eval_constraints(
+        let eval = ShardVerifier::<SP1GlobalContext, InnerSC<_>>::eval_constraints(
             &Chip::new(MinimalAddChip::default()),
             &opening,
             alpha,
