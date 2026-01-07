@@ -1,105 +1,186 @@
-
 # CUSLOP Repository Guide
 
 ## Repository Overview
-CUSLOP is a high-performance cryptographic proving system with CUDA GPU acceleration. This repository contains:
 
-- **Rust crates** for high-level proving logic and APIs
-- **CUDA kernels** for GPU-accelerated cryptographic operations
-- **sppark integration** for optimized field arithmetic and NTT operations
-- **FFI bindings** via the `csl-sys` crate to bridge Rust and CUDA code
+CUSLOP is a high-performance GPU-accelerated cryptographic proving system for SP1 (Succinct's zkVM). It provides CUDA implementations of core proving operations to achieve significant speedups over CPU-only proving.
 
-## Key Architecture Components
+### What This Repo Does
+- **GPU-accelerated proving**: Implements CUDA kernels for computationally intensive operations (NTT, Poseidon2 hashing, Merkle trees, sumcheck, etc.)
+- **SP1 integration**: Works with the SP1 zkVM prover stack via the `slop-*` and `sp1-*` crate dependencies
+- **FFI bridge**: Exposes CUDA functionality to Rust through the `csl-sys` crate
 
-### CUDA Build System
-The project uses a **CMake + Makefile** build system for CUDA compilation:
-- **Main Makefile** (`/Makefile`) - handles all CUDA source compilation with incremental builds
-- **CMakeLists.txt** (`/crates/sys/CMakeLists.txt`) - bridges cmake crate and Makefile
-- **build.rs** (`/crates/sys/build.rs`) - uses cmake crate instead of cc::Build for better incremental compilation
+### Key Dependencies
+- **slop-*** crates: Core proving primitives from `sp1-wip` (multilinear_v6 branch)
+- **sp1-*** crates: SP1 zkVM machine definitions and executors
+- **sppark**: External CUDA library for NTT kernels and field arithmetic (Koala Bear field)
 
-### Directory Structure
-- `cuda/` - All CUDA source files (.cu, .cuh) organized by module:
-  - `algebra/`, `basefold/`, `challenger/`, `jagged/`, `logup_gkr/`, etc.
-  - 38 total CUDA source files across different cryptographic operations
-- `sppark/` - External CUDA library for NTT kernels and field arithmetic
-- `crates/sys/` - Main FFI crate that compiles all CUDA code into static library
-- `target/cuda-build/` - Build artifacts directory for CUDA compilation
+## Directory Structure
 
-### Key Crates
-- **csl-sys** - FFI bindings and CUDA compilation (the core integration point)
-- **csl-cuda** - High-level Rust wrappers for CUDA operations
-- **csl-shard-prover** - Main shard prover implementation.
-- **csl-perf** - Performance benchmarking and testing tools
-- **cuslop-server** - Server API for the proving system
+```
+cuslop/
+├── include/           # CUDA headers (.cuh) organized by module
+│   ├── algebra/       # Field arithmetic operations
+│   ├── basefold/      # Basefold polynomial commitment
+│   ├── challenger/    # Fiat-Shamir challenger
+│   ├── fields/        # Field type definitions (kb31_t, bn254_t, etc.)
+│   ├── merkle_tree/   # Merkle tree hashing
+│   ├── ntt/           # Number Theoretic Transform
+│   ├── poseidon2/     # Poseidon2 hash function
+│   ├── tracegen/      # Trace generation for jagged/stacked traces
+│   └── ...            # Other modules
+├── lib/               # CUDA sources (.cu) organized by module
+│   └── <module>/      # Each has CMakeLists.txt + source files
+├── sppark/            # External: NTT kernels and field arithmetic (DO NOT MODIFY)
+├── crates/            # Rust crates
+│   ├── sys/           # FFI bindings, CUDA build orchestration
+│   ├── cuda/          # High-level Rust wrappers for CUDA ops
+│   ├── shard_prover/  # Main shard prover implementation
+│   ├── merkle_tree/   # Merkle tree prover (CUDA-accelerated)
+│   ├── jagged_tracegen/ # GPU trace generation
+│   ├── perf/          # Performance benchmarks and testing
+│   └── ...            # Other crates
+├── CMakeLists.txt     # Root CMake configuration for CUDA build
+└── target/            # Build artifacts
+    └── cuda-build/    # CUDA compilation output (libsys-cuda.a)
+```
 
-## CUDA Development Notes
+## Build System
 
-### Compilation Requirements
-- **CUDA 12.0+** required (checked at build time)
-- **Relocatable device code** (`-rdc=true`) enabled for cross-file device function calls
-- **Architecture targeting** supports sm_80, sm_86, sm_89, sm_90, sm_100, sm_120
-- **Device linking** step required after compilation for proper CUDA object linking
+### How It Works
+1. **Cargo** triggers build via `crates/sys/build.rs`
+2. **build.rs** generates cbindgen headers, then invokes CMake
+3. **CMake** compiles all CUDA modules into object libraries
+4. **Device linking** combines objects into `libsys-cuda.a`
+5. **Cargo** links the static library into Rust binaries
 
-### Important Build Details
-1. **cbindgen headers** must be generated before CUDA compilation starts
-2. **Library linking order**: sys-cuda → cudart → cudadevrt → stdc++ → gomp → dl
-3. **CUDA path detection** tries multiple common installation locations automatically
-4. **Environment variables**:
-   - `CUDA_ARCHS` - override default GPU architectures
-   - `PROFILE_DEBUG_DATA=true` - enable CUDA debug symbols
-
-### Common Build Issues
-- **Device function linking errors**: Ensure `-rdc=true` flag is set
-- **Missing CUDA libraries**: Check CUDA installation and library paths
-- **cbindgen header not found**: Headers must be generated before compilation
-- **C++ symbol errors**: Ensure stdc++ is linked for CUDA C++ code
-
-## Development Workflow
+### Key Files
+| File | Purpose |
+|------|---------|
+| `CMakeLists.txt` | Root CUDA build configuration |
+| `lib/<module>/CMakeLists.txt` | Per-module CUDA source lists |
+| `crates/sys/CMakeLists.txt` | Entry point from Cargo (calls root CMake) |
+| `crates/sys/build.rs` | Orchestrates cbindgen + CMake + linking |
 
 ### Build Commands
 ```bash
-cargo build                    # Debug build
-cargo build --release         # Optimized build
-cargo build --profile lto     # LTO optimized build
+cargo build --release         # Standard release build
+cargo build --profile lto     # With link-time optimization
+cargo build                   # Debug build (still uses -O3 for CUDA)
 ```
 
-### Module-Specific Builds (via Make)
+### Environment Variables
+| Variable | Purpose |
+|----------|---------|
+| `CUDA_ARCHS` | Override GPU architectures (e.g., "89" for RTX 4090 only) |
+| `PROFILE_DEBUG_DATA=true` | Enable CUDA debug symbols (-G flag) |
+
+## Crate Overview
+
+### Core Crates
+| Crate | Purpose |
+|-------|---------|
+| **csl-sys** | FFI bindings, CUDA compilation, kernel function exports |
+| **csl-cuda** | High-level Rust API for GPU operations (TaskScope, memory management) |
+| **csl-shard-prover** | Main shard proving logic |
+| **csl-merkle-tree** | GPU-accelerated Merkle tree commitment |
+| **csl-jagged-tracegen** | GPU trace generation for jagged/stacked traces |
+| **csl-perf** | Benchmarks and performance testing |
+| **csl-challenger** | Fiat-Shamir challenger implementation |
+| **csl-basefold** | Basefold polynomial commitment |
+| **csl-zerocheck** | Zerocheck protocol |
+| **csl-logup-gkr** | LogUp-GKR protocol |
+
+## CUDA Modules
+
+The CUDA code is organized into modules under `include/` (headers) and `lib/` (sources):
+
+| Module | Purpose |
+|--------|---------|
+| `algebra` | Field arithmetic operations |
+| `basefold` | Basefold commitment kernels |
+| `challenger` | Challenger state management |
+| `fields` | Field type definitions (Koala Bear, BN254) |
+| `jagged_assist` | Helper kernels for jagged traces |
+| `jagged_sumcheck` | Sumcheck over jagged polynomials |
+| `logup_gkr` | LogUp-GKR protocol kernels |
+| `merkle_tree` | Merkle tree leaf hashing and compression |
+| `mle` | Multilinear extension operations |
+| `ntt` | Number Theoretic Transform (via sppark) |
+| `poseidon2` | Poseidon2 hash (Koala Bear 16-width, BN254 3-width) |
+| `runtime` | CUDA runtime utilities, error handling |
+| `scan` | Parallel prefix scan |
+| `sum_and_reduce` | Reduction kernels |
+| `tracegen` | GPU trace generation |
+| `transpose` | Matrix transpose operations |
+| `zerocheck` | Zerocheck protocol kernels |
+
+## Running Benchmarks
+
+### Node Benchmark (Full Proving)
 ```bash
-make ntt                       # Build only NTT module
-make basefold                  # Build only basefold module  
-make clean                     # Clean all build artifacts
+# Core mode (fastest, no recursion)
+RUST_LOG="info" cargo run --release -p csl-perf --bin node -- \
+    --program v6/fibonacci-200m --mode core
+
+# Compressed mode (with recursion)
+RUST_LOG="info" cargo run --release -p csl-perf --bin node -- \
+    --program v6/fibonacci-200m --mode compressed
 ```
 
-### Benchmarking
-```bash
-# Run end-to-end benchmarks
-cargo run --release -p csl-perf --bin e2e -- --program fibonacci-20m --stage compress
+### Available Programs
+Programs are in the `v6/` directory convention. Common ones:
+- `fibonacci-20m`, `fibonacci-200m` - Fibonacci sequence computation
+- Check `csl-perf` for available benchmark programs
 
-# Run look-ahead benchmarks
-cargo run --release -p csl-experimental --bin look_ahead_bench
-```
+## Development Notes
 
-## Performance Considerations
-- **Incremental compilation** - Only changed CUDA files are recompiled
-- **Parallel Make builds** - Multiple CUDA files compile simultaneously  
-- **GPU architecture targeting** - Optimized for modern GPUs (Ampere, Hopper, etc.)
-- **Memory pool management** - Custom CUDA memory allocators for efficiency
+### Adding a New CUDA Module
+1. Create `include/<module>/` with header files
+2. Create `lib/<module>/` with source files
+3. Add `lib/<module>/CMakeLists.txt`:
+   ```cmake
+   add_library(<module>_objs OBJECT
+       file1.cu
+       file2.cu
+   )
+   ```
+4. Add `add_subdirectory(lib/<module>)` to root `CMakeLists.txt`
+5. Add `$<TARGET_OBJECTS:<module>_objs>` to `ALL_CUDA_OBJECTS`
 
-## Debugging Tips
-- Use `PROFILE_DEBUG_DATA=true` to enable CUDA debug symbols
-- Check `target/cuda-build/` for compilation artifacts and logs
-- CUDA compilation warnings are preserved and displayed during build
-- Use `make info` to see current build configuration
+### Common Issues
+| Issue | Solution |
+|-------|----------|
+| "nvcc not found" | Install CUDA toolkit, ensure `nvcc` is in PATH |
+| Rebuild every time | Check `build.rs` rerun-if-changed paths are valid |
+| Device linking errors | Ensure `-rdc=true` flag and `CUDA_RESOLVE_DEVICE_SYMBOLS ON` |
+| Missing symbols | Check library link order in `build.rs` |
 
-## Final touches
-Make sure formatting and clippy checks are passing by running:
+### Code Quality
+Before committing, run:
 ```bash
 cargo +stable fmt --all -- --check
-```
-
-and 
-```bash
 cargo +stable clippy -- -D warnings -A incomplete-features
 ```
 
-Read the error messages and fix the issues following the suggestions.
+## Architecture Requirements
+
+- **CUDA 12.0+** required
+- Supported GPU architectures:
+  - sm_80: Ampere (A100, RTX 30xx)
+  - sm_86: Ampere consumer
+  - sm_89: Ada Lovelace (RTX 40xx)
+  - sm_90: Hopper (H100)
+  - sm_100+: Blackwell and newer (CUDA 12.8+)
+
+## Profiling
+
+Use NVIDIA tools for GPU profiling:
+```bash
+# Nsight Systems (timeline)
+nsys profile cargo run --release -p csl-perf --bin node -- --program v6/fibonacci-20m --mode core
+
+# Nsight Compute (kernel analysis)
+ncu --set full cargo run --release -p csl-perf --bin node -- --program v6/fibonacci-20m --mode core
+```
+
+The `-lineinfo` CUDA flag is always enabled for profiler source correlation.

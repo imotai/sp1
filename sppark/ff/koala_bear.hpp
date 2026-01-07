@@ -3,6 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // #ifdef __NVCC__
-#include "../cuda/fields/kb31_t.cuh"
+#include "fields/kb31_t.cuh"
 
 typedef kb31_t fr_t;

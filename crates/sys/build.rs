@@ -27,22 +27,11 @@ fn cbindgen_builder() -> cbindgen::Builder {
             "sp1-hypercube",
             "p3-koala-bear",
             "slop-koala-bear",
-            // TODO(tqn) I think this pulls in all the extern fns from this crate, which is undesirable.
             "sp1-recursion-executor",
             "sp1-recursion-machine",
             "sp1-core-machine",
         ])
         .rename_item("KoalaBear", "KoalaBearP3")
-        // .include_item("MemoryRecord") // Just for convenience. Not exposed, so we need to manually do this.
-        // .include_item("SyscallCode") // Required for populating the CPU columns for ECALL.
-        // .include_item("SepticExtension")
-        // .include_item("SepticCurve")
-        // .include_item("MemoryLocalCols")
-        // .include_item("MEMORY_LOCAL_INITIAL_DIGEST_POS")
-        // .include_item("Ghost")
-        // .include_item("MemoryInitCols")
-        // .include_item("MemoryInitializeFinalizeEvent")
-        // .include_item("GlobalInteractionOperation")
         .include_item("GlobalInteractionEvent")
         .include_item("GlobalCols")
         .include_item("MemoryAccessColsChips")
@@ -78,8 +67,6 @@ fn cbindgen_builder() -> cbindgen::Builder {
         .include_item("PERMUTATION_WIDTH")
         .include_item("PrefixSumChecksEvent")
         .include_item("PrefixSumChecksCols")
-        // .include_item("Poseidon2StateCols")
-        // .include_item("INTERACTION_KIND_GLOBAL")
         .with_namespace("csl_sys")
         .with_crate(env::var("CARGO_MANIFEST_DIR").unwrap())
 }
@@ -104,14 +91,17 @@ where
 
 fn main() {
     // Directives for tracking changes in folders
-    println!("cargo:rerun-if-changed=../../cuda/");
+    println!("cargo:rerun-if-changed=../../include/");
+    println!("cargo:rerun-if-changed=../../lib/");
     println!("cargo:rerun-if-changed=../../sppark/");
-    println!("cargo:rerun-if-changed=../../Makefile");
+    println!("cargo:rerun-if-changed=../../CMakeLists.txt");
     println!("cargo:rerun-if-changed=CMakeLists.txt");
     // Directives for tracking changes in compilation profiles
     println!("cargo:rerun-if-env-changed=PROFILE");
     println!("cargo:rerun-if-env-changed=OPT_LEVEL");
     println!("cargo:rerun-if-env-changed=DEBUG");
+    println!("cargo:rerun-if-env-changed=CUDA_ARCHS");
+    println!("cargo:rerun-if-env-changed=PROFILE_DEBUG_DATA");
 
     // Check for nvcc
     let nvcc = which::which("nvcc").expect("nvcc not found");
@@ -147,27 +137,17 @@ fn main() {
 
     match cbindgen_builder().generate() {
         Ok(bindings) => {
-            // Write the bindings to the target include directory.
             fs::create_dir_all(&out_include_dir).unwrap();
             if bindings.write_to_file(&header_path) {
-                // TODO(tqn) disable when not developing
-                // The target directory that the cargo invocation is using.
-                // Headers are symlinked into `target/include` purely for IDE purposes.
-                {
-                    let mut dir = out_dir.clone();
-                    loop {
-                        if dir.ends_with("target") {
-                            // Symlink the header to the fixed include directory.
-                            rel_symlink_file(
-                                &header_path,
-                                dir.join(INCLUDE_DIRNAME).join(cbindgen_hpp),
-                            );
-                            break;
-                        }
-                        if !dir.pop() {
-                            break;
-                        }
+                // Symlink header into `target/include` for IDE purposes
+                let mut dir = out_dir.clone();
+                while !dir.ends_with("target") {
+                    if !dir.pop() {
+                        break;
                     }
+                }
+                if dir.ends_with("target") {
+                    rel_symlink_file(&header_path, dir.join(INCLUDE_DIRNAME).join(cbindgen_hpp));
                 }
             }
         }
@@ -179,26 +159,20 @@ fn main() {
         Err(e) => panic!("{e:?}"),
     }
 
-    // Determine architectures
-    let cuda_archs = env::var("CUDA_ARCHS").unwrap_or_else(|_| {
-        if v < 12.8 {
-            "80,86,89".to_string()
-        } else {
-            "80,86,89,90,100,120".to_string()
-        }
-    });
-
-    // Set up sppark environment
-    env::set_var("DEP_SPPARK_ROOT", "../../sppark/");
-
     // Build using CMake
     let mut cmake_config = cmake::Config::new(".");
 
-    // Pass CUDA configuration to CMake
-    cmake_config
-        .define("CUDA_ARCHS", &cuda_archs)
-        .define("CUDA_VERSION", format!("{v}"))
-        .define("CBINDGEN_INCLUDE_DIR", out_include_dir.display().to_string());
+    // Export compile commands for clangd IDE support
+    cmake_config.define("CMAKE_EXPORT_COMPILE_COMMANDS", "ON");
+
+    // Pass CUDA architectures to CMake only if explicitly set
+    // Otherwise, CMake will use its own version-based defaults
+    if let Ok(cuda_archs) = env::var("CUDA_ARCHS") {
+        cmake_config.define("CUDA_ARCHS", &cuda_archs);
+    }
+
+    // Pass cbindgen include directory
+    cmake_config.define("CBINDGEN_INCLUDE_DIR", out_include_dir.display().to_string());
 
     // Pass profile debug flag if set
     if let Some(profile_debug_data) = env::var_os("PROFILE_DEBUG_DATA") {
@@ -216,7 +190,14 @@ fn main() {
     }
 
     // Build via CMake
-    let _dst = cmake_config.build();
+    let dst = cmake_config.build();
+
+    // Symlink compile_commands.json to project root for clangd
+    let compile_commands_src = dst.join("build").join("compile_commands.json");
+    if compile_commands_src.exists() {
+        let project_root = crate_dir.join("../..").canonicalize().unwrap();
+        rel_symlink_file(&compile_commands_src, project_root.join("compile_commands.json"));
+    }
 
     // Link the library
     println!("cargo:rustc-link-search=native={}/../../target/cuda-build/lib", crate_dir.display());
