@@ -16,8 +16,8 @@ use csl_cuda::{
 };
 use slop_algebra::extension::BinomialExtensionField;
 use slop_algebra::{AbstractField, Field};
+use slop_alloc::CpuBackend;
 use slop_alloc::{mem::CopyError, Buffer, HasBackend, IntoHost};
-use slop_alloc::{CpuBackend, ToHost};
 use slop_bn254::{bn254_poseidon2_rc3, Bn254Fr, BNGC};
 use slop_challenger::IopCtx;
 use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
@@ -142,10 +142,14 @@ where
 
         let (hasher, compressor) = GC::default_hasher_and_compressor();
 
-        let root = *tree.digests.to_host().await?[0];
+        // TODO: add a safe method in `slop for this`
+        let root = unsafe {
+            let digests = tree.digests.owned_unchecked();
+            let scope = scope.clone();
+            tokio::task::spawn_blocking(move || digests[0].copy_into_host(&scope)).await.unwrap()
+        };
 
         let total_width = tensor.sizes()[0];
-
         let hash = hasher.hash_iter([
             GC::F::from_canonical_usize(height),
             GC::F::from_canonical_usize(total_width),
