@@ -87,18 +87,19 @@ impl<GC: IopCtx, SC: ShardContext<GC>> GkrProverImpl<GC, SC> {
             use crate::{
                 air::InteractionScope, debug_interactions_with_all_chips, InteractionKind,
             };
+            use slop_alloc::CanCopyIntoRef;
 
             let mut host_preprocessed_traces = BTreeMap::new();
 
             for (name, preprocessed_trace) in preprocessed_traces.iter() {
                 let host_preprocessed_trace =
-                    Self::B::copy_to_dst(&CpuBackend, preprocessed_trace).await.unwrap();
+                    CpuBackend::copy_to_dst(&CpuBackend, preprocessed_trace).await.unwrap();
                 host_preprocessed_traces.insert(name.clone(), host_preprocessed_trace);
             }
 
             let mut host_traces = BTreeMap::new();
             for (name, trace) in traces.iter() {
-                let host_trace = Self::B::copy_to_dst(&CpuBackend, trace).await.unwrap();
+                let host_trace = CpuBackend::copy_to_dst(&CpuBackend, trace).await.unwrap();
                 host_traces.insert(name.clone(), host_trace);
             }
 
@@ -106,7 +107,7 @@ impl<GC: IopCtx, SC: ShardContext<GC>> GkrProverImpl<GC, SC> {
 
             let host_preprocessed_traces = Traces { named_traces: host_preprocessed_traces };
 
-            debug_interactions_with_all_chips::<GC::F, Self::A>(
+            debug_interactions_with_all_chips::<GC::F, SC::Air>(
                 &chips.iter().cloned().collect::<Vec<_>>(),
                 &host_preprocessed_traces,
                 &host_traces,
