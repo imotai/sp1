@@ -189,6 +189,7 @@ jobs:
     runs-on: [runs-on, runner=16cpu-linux-x64, disk=large, "run-id=${{ github.run_id }}"]
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      RUSTFLAGS: "--cfg sp1_debug_constraints"
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
