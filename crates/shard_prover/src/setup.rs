@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use sp1_hypercube::ShardContextImpl;
 use tokio::sync::Mutex;
 
 use csl_challenger::DeviceGrindingChallenger;
@@ -41,8 +42,10 @@ where
         program: Arc<<PC::Air as MachineAir<GC::F>>::Program>,
         initial_global_cumulative_sum: SepticDigest<GC::F>,
         setup_permits: ProverSemaphore,
-    ) -> (PreprocessedData<ProvingKey<GC, PC::C, PC::Air, Self>>, MachineVerifyingKey<GC, PC::C>)
-    {
+    ) -> (
+        PreprocessedData<ProvingKey<GC, ShardContextImpl<GC, PC::C, PC::Air>, Self>>,
+        MachineVerifyingKey<GC>,
+    ) {
         let pc_start = program.pc_start();
         let enable_untrusted_programs = program.enable_untrusted_programs();
 
@@ -85,7 +88,7 @@ where
         initial_global_cumulative_sum: SepticDigest<GC::F>,
         preprocessed_traces: JaggedTraceMle<Felt, TaskScope>,
         enable_untrusted_programs: GC::F,
-    ) -> (CudaShardProverData<GC, PC::Air>, MachineVerifyingKey<GC, PC::C>) {
+    ) -> (CudaShardProverData<GC, PC::Air>, MachineVerifyingKey<GC>) {
         // Commit to the preprocessed traces, if there are any.
         let (preprocessed_commit, preprocessed_data) = csl_commit::commit_multilinears(
             &preprocessed_traces,
@@ -101,7 +104,6 @@ where
             initial_global_cumulative_sum,
             preprocessed_commit,
             enable_untrusted_programs,
-            marker: std::marker::PhantomData,
         };
 
         let pk = CudaShardProverData::new(preprocessed_traces, preprocessed_data);

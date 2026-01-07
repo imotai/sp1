@@ -733,7 +733,7 @@ pub mod tests {
         CanObserve, CanSample, FieldChallenger, IopCtx, VariableLengthChallenger,
     };
     use slop_futures::queue::WorkerQueue;
-    use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
+    use slop_koala_bear::KoalaBear;
     use slop_matrix::{dense::RowMajorMatrix, dense::RowMajorMatrixView, Matrix};
     use slop_multilinear::{full_geq, Mle, MleEval, Point};
     use slop_sumcheck::{partially_verify_sumcheck_proof, PartialSumcheckProof};
@@ -1290,12 +1290,12 @@ pub mod tests {
         public_values: &[Felt],
     ) -> Ext
     where
-        A: MachineAir<Felt> + for<'a> Air<VerifierConstraintFolder<'a, KoalaBearDegree4Duplex>>,
+        A: MachineAir<Felt> + for<'a> Air<VerifierConstraintFolder<'a, Felt, Ext>>,
     {
         let dummy_preprocessed_trace = vec![Ext::zero(); chip.preprocessed_width()];
         let dummy_main_trace = vec![Ext::zero(); chip.width()];
 
-        let mut folder = VerifierConstraintFolder::<KoalaBearDegree4Duplex> {
+        let mut folder = VerifierConstraintFolder::<Felt, Ext> {
             preprocessed: RowMajorMatrixView::new_row(&dummy_preprocessed_trace),
             main: RowMajorMatrixView::new_row(&dummy_main_trace),
             alpha,
@@ -1317,9 +1317,9 @@ pub mod tests {
         public_values: &[Felt],
     ) -> Ext
     where
-        A: MachineAir<Felt> + for<'a> Air<VerifierConstraintFolder<'a, KoalaBearDegree4Duplex>>,
+        A: MachineAir<Felt> + for<'a> Air<VerifierConstraintFolder<'a, Felt, Ext>>,
     {
-        let mut folder = VerifierConstraintFolder::<KoalaBearDegree4Duplex> {
+        let mut folder = VerifierConstraintFolder::<Felt, Ext> {
             preprocessed: RowMajorMatrixView::new_row(&opening.preprocessed.local),
             main: RowMajorMatrixView::new_row(&opening.main.local),
             alpha,
@@ -1357,10 +1357,7 @@ pub mod tests {
         challenger: &mut C,
         max_log_row_count: usize,
     ) where
-        A: MachineAir<Felt>
-            + ZerocheckAir<Felt, Ext>
-            + for<'a> BlockAir<SymbolicProverFolder<'a>>
-            + for<'a> Air<VerifierConstraintFolder<'a, KoalaBearDegree4Duplex>>,
+        A: MachineAir<Felt> + ZerocheckAir<Felt, Ext> + for<'a> BlockAir<SymbolicProverFolder<'a>>,
         C: FieldChallenger<Felt>,
     {
         // Get the random challenge to merge the constraints.
@@ -1890,7 +1887,7 @@ pub mod tests {
                         gkr_powers[idx] * individual_column_evals[main_ptr + idx];
                 }
 
-                let mut folder = VerifierConstraintFolder::<KoalaBearDegree4Duplex> {
+                let mut folder = VerifierConstraintFolder::<Felt, Ext> {
                     preprocessed: RowMajorMatrixView::new_row(
                         &individual_column_evals
                             [preprocessed_ptr..preprocessed_ptr + preprocessed_width],

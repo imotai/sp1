@@ -3,16 +3,15 @@ use csl_cuda::{PinnedBuffer, TaskScope, ToDevice};
 
 use csl_basefold::FriCudaProver;
 use csl_merkle_tree::{CudaTcsProver, Poseidon2Bn254CudaProver, Poseidon2KoalaBear16CudaProver};
-use csl_shard_prover::{CudaMachineProverComponents, CudaShardProver, CudaShardProverComponents};
+use csl_shard_prover::{CudaShardProver, CudaShardProverComponents};
 use csl_tracegen::CudaTracegenAir;
 use slop_algebra::extension::BinomialExtensionField;
 use slop_basefold::BasefoldVerifier;
 use slop_challenger::IopCtx;
 use slop_futures::queue::WorkerQueue;
-use slop_jagged::SP1OuterConfig;
 use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 use sp1_core_machine::riscv::RiscvAir;
-use sp1_hypercube::{air::MachineAir, prover::ZerocheckAir, SP1CoreJaggedConfig, SP1Pcs};
+use sp1_hypercube::{air::MachineAir, prover::ZerocheckAir, SP1InnerPcs, SP1OuterPcs, SP1SC};
 use sp1_primitives::{SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_prover::{CompressAir, SP1ProverComponents, WrapAir};
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
@@ -20,12 +19,9 @@ use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
 pub struct SP1CudaProverComponents;
 
 impl SP1ProverComponents for SP1CudaProverComponents {
-    type CoreComponents =
-        CudaMachineProverComponents<KoalaBearDegree4Duplex, CudaProverCoreComponents>;
-    type RecursionComponents =
-        CudaMachineProverComponents<KoalaBearDegree4Duplex, CudaProverRecursionComponents>;
-    type WrapComponents =
-        CudaMachineProverComponents<SP1OuterGlobalContext, CudaProverWrapComponents>;
+    type CoreProver = CudaShardProver<KoalaBearDegree4Duplex, CudaProverCoreComponents>;
+    type RecursionProver = CudaShardProver<KoalaBearDegree4Duplex, CudaProverRecursionComponents>;
+    type WrapProver = CudaShardProver<SP1OuterGlobalContext, CudaProverWrapComponents>;
 }
 
 /// Core prover components for the CUDA prover.
@@ -34,7 +30,7 @@ pub struct CudaProverCoreComponents;
 impl CudaShardProverComponents<KoalaBearDegree4Duplex> for CudaProverCoreComponents {
     type P = Poseidon2KoalaBear16CudaProver;
     type Air = RiscvAir<KoalaBear>;
-    type C = SP1CoreJaggedConfig;
+    type C = SP1InnerPcs;
 }
 
 /// Recursion prover components for the CUDA prover.
@@ -43,7 +39,7 @@ pub struct CudaProverRecursionComponents;
 impl CudaShardProverComponents<KoalaBearDegree4Duplex> for CudaProverRecursionComponents {
     type P = Poseidon2KoalaBear16CudaProver;
     type Air = CompressAir<<SP1GlobalContext as IopCtx>::F>;
-    type C = SP1CoreJaggedConfig;
+    type C = SP1InnerPcs;
 }
 
 /// Wrap prover components for the CUDA prover.
@@ -52,11 +48,11 @@ pub struct CudaProverWrapComponents;
 impl CudaShardProverComponents<SP1OuterGlobalContext> for CudaProverWrapComponents {
     type P = Poseidon2Bn254CudaProver;
     type Air = WrapAir<<SP1OuterGlobalContext as IopCtx>::F>;
-    type C = SP1OuterConfig;
+    type C = SP1OuterPcs;
 }
 
 pub async fn new_cuda_prover<GC, PC>(
-    verifier: sp1_hypercube::MachineVerifier<GC, SP1Pcs<GC>, PC::Air>,
+    verifier: sp1_hypercube::MachineVerifier<GC, SP1SC<GC, PC::Air>>,
     max_trace_size: usize,
     num_workers: usize,
     scope: TaskScope,

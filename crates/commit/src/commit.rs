@@ -100,10 +100,11 @@ mod tests {
     use slop_alloc::{CpuBackend, ToHost};
     use slop_challenger::IopCtx;
     use slop_futures::queue::WorkerQueue;
-    use slop_jagged::{JaggedPcsVerifier, JaggedProver, KoalaBearPoseidon2};
+    use slop_jagged::{JaggedPcsVerifier, JaggedProver};
     use slop_merkle_tree::Poseidon2KoalaBear16Prover;
     use slop_stacked::StackedPcsProver;
     use sp1_hypercube::prover::{DefaultTraceGenerator, ProverSemaphore, TraceGenerator};
+    use sp1_hypercube::{SP1InnerPcs, SP1PcsProofInner};
     use sp1_primitives::fri_params::core_fri_config;
 
     use crate::commit::commit_multilinears;
@@ -112,8 +113,12 @@ mod tests {
     async fn test_commit_matches() {
         let (machine, record, program) = tracegen_setup::setup().await;
 
-        type JC = KoalaBearPoseidon2;
-        type Prover = JaggedProver<TestGC, StackedPcsProver<Poseidon2KoalaBear16Prover, TestGC>>;
+        type JC = SP1InnerPcs;
+        type Prover = JaggedProver<
+            TestGC,
+            SP1PcsProofInner,
+            StackedPcsProver<Poseidon2KoalaBear16Prover, TestGC>,
+        >;
 
         run_in_place(|scope| async move {
             let semaphore = ProverSemaphore::new(1);

@@ -76,7 +76,6 @@ async fn execute_node(args: Args, elf: Vec<u8>, stdin: SP1Stdin) {
         pc_start: [SP1Field::zero(); 3],
         initial_global_cumulative_sum: SepticDigest::zero(),
         preprocessed_commit: [SP1Field::zero(); 8],
-        marker: std::marker::PhantomData,
         enable_untrusted_programs: SP1Field::zero(),
     };
     let dummy_vk = SP1VerifyingKey { vk: dummy_vk };

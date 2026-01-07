@@ -581,13 +581,12 @@ mod tests {
             let beta_seed = challenger.sample_point(beta_seed_dim);
             let pv_challenge: Ext = challenger.sample_ext_element();
 
-            let shard_verifier: ShardVerifier<TestGC, _, _> =
-                ShardVerifier::from_basefold_parameters(
-                    core_fri_config(),
-                    LOG_STACKING_HEIGHT,
-                    CORE_MAX_LOG_ROW_COUNT as usize,
-                    machine.clone(),
-                );
+            let shard_verifier: ShardVerifier<TestGC, _> = ShardVerifier::from_basefold_parameters(
+                core_fri_config(),
+                LOG_STACKING_HEIGHT,
+                CORE_MAX_LOG_ROW_COUNT as usize,
+                machine.clone(),
+            );
 
             let cumulative_sum: Ext = shard_verifier
                 .verify_public_values(pv_challenge, &alpha, &beta_seed, &public_values)

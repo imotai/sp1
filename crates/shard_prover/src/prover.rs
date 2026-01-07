@@ -27,6 +27,7 @@ use slop_jagged::{
 use slop_multilinear::{Evaluations, Mle, MleEval, MultilinearPcsVerifier, Point};
 use slop_stacked::StackedBasefoldProof;
 use sp1_hypercube::prover::ZerocheckAir;
+use sp1_hypercube::ShardContextImpl;
 use sp1_hypercube::{
     air::{MachineAir, MachineProgram},
     prover::{AirProver, PreprocessedData, ProverPermit, ProverSemaphore, ProvingKey},
@@ -67,7 +68,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
 }
 
 impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
-    AirProver<GC, PC::C, PC::Air> for CudaShardProver<GC, PC>
+    AirProver<GC, ShardContextImpl<GC, PC::C, PC::Air>> for CudaShardProver<GC, PC>
 where
     GC::Challenger: DeviceGrindingChallenger<Witness = GC::F>,
     GC::Challenger: csl_basefold::DeviceGrindingChallenger<Witness = GC::F>,
@@ -93,10 +94,12 @@ where
     async fn setup_from_vk(
         &self,
         program: Arc<<PC::Air as MachineAir<GC::F>>::Program>,
-        vk: Option<MachineVerifyingKey<GC, PC::C>>,
+        vk: Option<MachineVerifyingKey<GC>>,
         prover_permits: ProverSemaphore,
-    ) -> (PreprocessedData<ProvingKey<GC, PC::C, PC::Air, Self>>, MachineVerifyingKey<GC, PC::C>)
-    {
+    ) -> (
+        PreprocessedData<ProvingKey<GC, ShardContextImpl<GC, PC::C, PC::Air>, Self>>,
+        MachineVerifyingKey<GC>,
+    ) {
         if let Some(vk) = vk {
             let initial_global_cumulative_sum = vk.initial_global_cumulative_sum;
             self.setup_with_initial_global_cumulative_sum(
@@ -125,10 +128,14 @@ where
         &self,
         program: Arc<<PC::Air as MachineAir<GC::F>>::Program>,
         record: <PC::Air as MachineAir<GC::F>>::Record,
-        vk: Option<MachineVerifyingKey<GC, PC::C>>,
+        vk: Option<MachineVerifyingKey<GC>>,
         prover_permits: ProverSemaphore,
         challenger: &mut GC::Challenger,
-    ) -> (MachineVerifyingKey<GC, PC::C>, ShardProof<GC, PC::C>, ProverPermit) {
+    ) -> (
+        MachineVerifyingKey<GC>,
+        ShardProof<GC, <PC::C as MultilinearPcsVerifier<GC>>::Proof>,
+        ProverPermit,
+    ) {
         // Get the initial global cumulative sum and pc start.
         let pc_start = program.pc_start();
         let enable_untrusted_programs = program.enable_untrusted_programs();
@@ -198,11 +205,11 @@ where
     /// Prove a shard with a given proving key.
     async fn prove_shard_with_pk(
         &self,
-        pk: Arc<ProvingKey<GC, PC::C, PC::Air, Self>>,
+        pk: Arc<ProvingKey<GC, ShardContextImpl<GC, PC::C, PC::Air>, Self>>,
         record: <PC::Air as MachineAir<GC::F>>::Record,
         prover_permits: ProverSemaphore,
         challenger: &mut GC::Challenger,
-    ) -> (ShardProof<GC, PC::C>, ProverPermit) {
+    ) -> (ShardProof<GC, <PC::C as MultilinearPcsVerifier<GC>>::Proof>, ProverPermit) {
         // Generate the traces.
         let record = Arc::new(record);
 
@@ -238,6 +245,20 @@ where
         drop(buffer);
 
         (shard_proof, permit)
+    }
+
+    async fn preprocessed_table_heights(
+        pk: Arc<ProvingKey<GC, ShardContextImpl<GC, PC::C, PC::Air>, Self>>,
+    ) -> BTreeMap<String, usize> {
+        // Access through pk.preprocessed_data which is of type CudaShardProverData
+        let preprocessed_data = pk.preprocessed_data.lock().await;
+        preprocessed_data
+            .preprocessed_traces
+            .dense()
+            .preprocessed_table_index
+            .iter()
+            .map(|(name, offset)| (name.clone(), offset.poly_size))
+            .collect()
     }
 }
 
@@ -321,7 +342,10 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
         all_mles: &JaggedTraceMle<Felt, TaskScope>,
         prover_data: Rounds<&JaggedProverData<GC, CudaStackedPcsProverData<GC>>>,
         challenger: &mut GC::Challenger,
-    ) -> Result<JaggedPcsProof<GC, PC::C>, JaggedProverError<CudaShardProverError>>
+    ) -> Result<
+        JaggedPcsProof<GC, <PC::C as MultilinearPcsVerifier<GC>>::Proof>,
+        JaggedProverError<CudaShardProverError>,
+    >
     where
         GC::Challenger: DeviceGrindingChallenger<Witness = GC::F>,
         GC::Challenger: csl_basefold::DeviceGrindingChallenger<Witness = GC::F>,
@@ -543,7 +567,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
         &self,
         data: ShardData<GC, PC>,
         challenger: &mut GC::Challenger,
-    ) -> (ShardProof<GC, PC::C>, ProverPermit)
+    ) -> (ShardProof<GC, <PC::C as MultilinearPcsVerifier<GC>>::Proof>, ProverPermit)
     where
         GC::Challenger: DeviceGrindingChallenger<Witness = GC::F>,
         GC::Challenger: csl_basefold::DeviceGrindingChallenger<Witness = GC::F>,
@@ -712,7 +736,7 @@ mod tests {
     use slop_multilinear::MultilinearPcsChallenger;
     use slop_tensor::Tensor;
     use sp1_core_machine::riscv::RiscvAir;
-    use sp1_hypercube::SP1CoreJaggedConfig;
+    use sp1_hypercube::SP1InnerPcs;
     use sp1_primitives::fri_params::core_fri_config;
 
     pub struct TestProverComponentsImpl {}
@@ -720,7 +744,7 @@ mod tests {
     impl CudaShardProverComponents<TestGC> for TestProverComponentsImpl {
         type P = Poseidon2KoalaBear16CudaProver;
         type Air = RiscvAir<Felt>;
-        type C = SP1CoreJaggedConfig;
+        type C = SP1InnerPcs;
     }
 
     #[tokio::test]
@@ -830,13 +854,12 @@ mod tests {
                 .await
                 .unwrap();
 
-            let jagged_verifier =
-                JaggedPcsVerifier::<_, SP1CoreJaggedConfig>::new_from_basefold_params(
-                    core_fri_config(),
-                    LOG_STACKING_HEIGHT,
-                    CORE_MAX_LOG_ROW_COUNT as usize,
-                    2,
-                );
+            let jagged_verifier = JaggedPcsVerifier::<_, SP1InnerPcs>::new_from_basefold_params(
+                core_fri_config(),
+                LOG_STACKING_HEIGHT,
+                CORE_MAX_LOG_ROW_COUNT as usize,
+                2,
+            );
 
             let mut all_evaluations = Vec::new();
             for round_evals in evaluation_claims.iter() {

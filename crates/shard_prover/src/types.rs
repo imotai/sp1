@@ -2,11 +2,9 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use csl_utils::{Ext, Felt};
 use slop_challenger::IopCtx;
-use slop_multilinear::MultilinearPcsVerifier;
 use sp1_hypercube::{
-    air::MachineAir,
     prover::{AirProver, ProverPermit, ProvingKey},
-    Chip,
+    Chip, ShardContext, ShardContextImpl,
 };
 
 use crate::CudaShardProverComponents;
@@ -15,24 +13,24 @@ use crate::CudaShardProverComponents;
 #[allow(clippy::type_complexity)]
 pub struct ShardData<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
 where
-    crate::CudaShardProver<GC, PC>: AirProver<GC, PC::C, PC::Air>,
+    crate::CudaShardProver<GC, PC>: AirProver<GC, ShardContextImpl<GC, PC::C, PC::Air>>,
 {
     /// Main trace data
-    pub main_trace_data: MainTraceData<GC, PC::Air, PC::C, crate::CudaShardProver<GC, PC>>,
+    pub main_trace_data:
+        MainTraceData<GC, ShardContextImpl<GC, PC::C, PC::Air>, crate::CudaShardProver<GC, PC>>,
 }
 
 pub struct MainTraceData<
     GC: IopCtx<F = Felt, EF = Ext>,
-    Air: MachineAir<GC::F>,
-    C: MultilinearPcsVerifier<GC>,
-    Prover: AirProver<GC, C, Air>,
+    SC: ShardContext<GC>,
+    Prover: AirProver<GC, SC>,
 > {
     /// The traces.
-    pub traces: Arc<ProvingKey<GC, C, Air, Prover>>,
+    pub traces: Arc<ProvingKey<GC, SC, Prover>>,
     /// The public values.
     pub public_values: Vec<GC::F>,
     /// The shape cluster corresponding to the traces.
-    pub shard_chips: BTreeSet<Chip<GC::F, Air>>,
+    pub shard_chips: BTreeSet<Chip<GC::F, SC::Air>>,
     /// A permit for a prover resource.
     pub permit: ProverPermit,
 }
