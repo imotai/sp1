@@ -16,9 +16,10 @@ pub async fn commit_multilinears<GC: IopCtx<F = Felt, EF = Ext>, P: CudaTcsProve
     jagged_trace_mle: &JaggedTraceMle<Felt, TaskScope>,
     max_log_row_count: u32,
     use_preprocessed: bool,
+    drop_main_traces: bool,
     basefold_prover: &FriCudaProver<GC, P, Felt>,
 ) -> Result<
-    (GC::Digest, JaggedProverData<GC, CudaStackedPcsProverData<GC>>),
+    (GC::Digest, JaggedProverData<GC, Option<CudaStackedPcsProverData<GC>>>),
     SingleLayerMerkleTreeProverError,
 > {
     let (index, padding, dst) = if use_preprocessed {
@@ -53,8 +54,11 @@ pub async fn commit_multilinears<GC: IopCtx<F = Felt, EF = Ext>, P: CudaTcsProve
         index.values().map(|x| x.num_polys).collect::<Vec<_>>(),
     );
 
-    let (commitment, data) =
-        basefold_prover.encode_and_commit(use_preprocessed, jagged_trace_mle, dst).await?;
+    let drop_traces = drop_main_traces && !use_preprocessed;
+
+    let (commitment, data) = basefold_prover
+        .encode_and_commit(use_preprocessed, drop_traces, jagged_trace_mle, dst)
+        .await?;
 
     let num_added_cols = padding.div_ceil(1 << max_log_row_count).max(1);
 
@@ -200,6 +204,7 @@ mod tests {
                 &jagged_trace_data,
                 CORE_MAX_LOG_ROW_COUNT,
                 true,
+                false,
                 &basefold_prover,
             )
             .await
@@ -208,6 +213,7 @@ mod tests {
             let (new_main_commitment, new_main_data) = commit_multilinears(
                 &jagged_trace_data,
                 CORE_MAX_LOG_ROW_COUNT,
+                false,
                 false,
                 &basefold_prover,
             )

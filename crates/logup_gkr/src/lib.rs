@@ -31,6 +31,7 @@ mod tracegen;
 mod utils;
 
 pub use interactions::Interactions;
+pub use tracegen::CudaLogUpGkrOptions;
 pub use utils::*;
 
 pub use sumcheck::{
@@ -135,13 +136,14 @@ pub async fn prove_gkr_circuit<'a, C: FieldChallenger<Felt>>(
     eval_point: Point<Ext>,
     mut circuit: LogUpCudaCircuit<'a, TaskScope>,
     challenger: &mut C,
+    recompute_first_layer: bool,
 ) -> (Point<Ext>, Vec<LogupGkrRoundProof<Ext>>) {
     let mut round_proofs = Vec::new();
     // Follow the GKR protocol layer by layer.
     let mut numerator_eval = numerator_value;
     let mut denominator_eval = denominator_value;
     let mut eval_point = eval_point;
-    while let Some(layer) = circuit.next().await {
+    while let Some(layer) = circuit.next(recompute_first_layer).await {
         // Generate the round proof.
         let round_proof =
             prove_round(layer, &eval_point, numerator_eval, denominator_eval, challenger).await;
@@ -180,11 +182,12 @@ pub async fn prove_logup_gkr<
     chips: &BTreeSet<Chip<Felt, A>>,
     all_interactions: BTreeMap<String, Arc<Interactions<Felt, TaskScope>>>,
     jagged_trace_data: &JaggedTraceMle<Felt, TaskScope>,
-    num_row_variables: u32,
     alpha: Ext,
     beta_seed: Point<Ext>,
+    options: CudaLogUpGkrOptions,
     challenger: &mut C,
 ) -> LogupGkrProof<Ext> {
+    let CudaLogUpGkrOptions { recompute_first_layer, num_row_variables } = options;
     let backend = jagged_trace_data.backend().clone();
     let num_interactions =
         chips.iter().map(|chip| chip.sends().len() + chip.receives().len()).sum::<usize>();
@@ -195,9 +198,9 @@ pub async fn prove_logup_gkr<
         chips,
         all_interactions,
         jagged_trace_data,
-        num_row_variables,
         alpha,
         beta_seed,
+        options,
         backend,
     )
     .await;
@@ -233,6 +236,7 @@ pub async fn prove_logup_gkr<
         first_eval_point,
         circuit,
         challenger,
+        recompute_first_layer,
     )
     .await;
 
@@ -606,9 +610,12 @@ mod tests {
                 shard_chips,
                 all_interactions,
                 &jagged_trace_data,
-                CORE_MAX_LOG_ROW_COUNT,
                 alpha,
                 beta_seed.clone(),
+                CudaLogUpGkrOptions {
+                    recompute_first_layer: true,
+                    num_row_variables: CORE_MAX_LOG_ROW_COUNT,
+                },
                 &mut prover_challenger,
             )
             .await;

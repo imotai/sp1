@@ -55,6 +55,7 @@ pub async fn new_cuda_prover<GC, PC>(
     verifier: sp1_hypercube::MachineVerifier<GC, SP1SC<GC, PC::Air>>,
     max_trace_size: usize,
     num_workers: usize,
+    recompute_first_layer: bool,
     scope: TaskScope,
 ) -> CudaShardProver<GC, PC>
 where
@@ -112,6 +113,8 @@ where
         max_trace_size,
         machine,
         backend: scope,
+        recompute_first_layer,
+        drop_ldes: recompute_first_layer,
         _marker: PhantomData,
     }
 }

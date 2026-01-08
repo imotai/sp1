@@ -6,7 +6,7 @@ use std::{
 
 use csl_cuda::{args, sys::v2_kernels::logup_gkr_populate_last_circuit_layer, TaskScope, ToDevice};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use slop_alloc::Buffer;
+use slop_alloc::{Buffer, HasBackend};
 use slop_multilinear::{Mle, Point};
 use slop_tensor::Tensor;
 use sp1_hypercube::{air::MachineAir, Chip, LogUpGkrOutput};
@@ -20,6 +20,11 @@ use crate::{
 };
 use csl_utils::{traces::JaggedTraceMle, JaggedMle};
 use csl_utils::{Ext, Felt};
+
+pub struct CudaLogUpGkrOptions {
+    pub recompute_first_layer: bool,
+    pub num_row_variables: u32,
+}
 
 /// Generates the first layer of the GKR circuit.
 ///
@@ -156,8 +161,23 @@ pub async fn generate_first_layer<'a>(
 }
 
 impl<'a> LogUpCudaCircuit<'a, TaskScope> {
-    pub async fn next(&'_ mut self) -> Option<GkrCircuitLayer<'_>> {
-        self.materialized_layers.pop()
+    pub async fn next(&'_ mut self, recompute_first_layer: bool) -> Option<GkrCircuitLayer<'_>> {
+        if recompute_first_layer {
+            if let Some(layer) = self.materialized_layers.pop() {
+                Some(layer)
+            } else {
+                if self.num_virtual_layers == 0 {
+                    return None;
+                }
+                assert!(self.num_virtual_layers == 1);
+                // We need to generate the virtual layers and store them in the circuit.
+                let layer = generate_first_layer(&self.input_data, self.backend()).await;
+                self.num_virtual_layers = 0;
+                Some(GkrCircuitLayer::FirstLayer(layer))
+            }
+        } else {
+            self.materialized_layers.pop()
+        }
     }
 }
 
@@ -167,11 +187,12 @@ pub async fn generate_gkr_circuit<'a, A: MachineAir<Felt>>(
     chips: &BTreeSet<Chip<Felt, A>>,
     all_interactions: BTreeMap<String, Arc<Interactions<Felt, TaskScope>>>,
     jagged_trace_data: &'a JaggedTraceMle<Felt, TaskScope>,
-    num_row_variables: u32,
     alpha: Ext,
     beta_seed: Point<Ext>,
+    options: CudaLogUpGkrOptions,
     backend: TaskScope,
 ) -> (LogUpGkrOutput<Ext, TaskScope>, LogUpCudaCircuit<'a, TaskScope>) {
+    let CudaLogUpGkrOptions { recompute_first_layer, num_row_variables } = options;
     let input_data = GkrInputData {
         chip_set: chips.iter().map(|chip| chip.name().to_string()).collect(),
         all_interactions,
@@ -192,8 +213,13 @@ pub async fn generate_gkr_circuit<'a, A: MachineAir<Felt>>(
     let first_layer = GkrCircuitLayer::FirstLayer(first_layer);
     let layer = gkr_transition(&first_layer).await;
 
+    if recompute_first_layer {
+        drop(first_layer);
+    } else {
+        materialized_layers.push(first_layer);
+    }
+
     // Transition from the previous layer to generate the next one.
-    materialized_layers.push(first_layer);
     materialized_layers.push(layer);
     for i in 0..num_row_variables - 2 {
         let layer = gkr_transition(materialized_layers.last().unwrap())

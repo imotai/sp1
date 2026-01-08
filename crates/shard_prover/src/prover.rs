@@ -8,7 +8,7 @@ use csl_cuda::{partial_lagrange, TaskScope, ToDevice};
 use csl_jagged_assist::JaggedAssistSumAsPolyGPUImpl;
 use csl_jagged_sumcheck::{generate_jagged_sumcheck_poly, jagged_sumcheck};
 use csl_jagged_tracegen::{full_tracegen_permit, main_tracegen_permit, CudaShardProverData};
-use csl_logup_gkr::{prove_logup_gkr, Interactions};
+use csl_logup_gkr::{prove_logup_gkr, CudaLogUpGkrOptions, Interactions};
 use csl_merkle_tree::{CudaTcsProver, SingleLayerMerkleTreeProverError};
 use csl_tracegen::CudaTracegenAir;
 use csl_utils::{Ext, Felt, JaggedTraceMle};
@@ -58,6 +58,8 @@ pub struct CudaShardProver<GC: IopCtx, PC: CudaShardProverComponents<GC>> {
     pub backend: TaskScope,
     pub all_interactions: BTreeMap<String, Arc<Interactions<GC::F, TaskScope>>>,
     pub all_zerocheck_programs: BTreeMap<String, CudaEvalResult>,
+    pub recompute_first_layer: bool,
+    pub drop_ldes: bool,
     pub _marker: PhantomData<GC>,
 }
 
@@ -277,13 +279,14 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
         multilinears: &JaggedTraceMle<Felt, TaskScope>,
         use_preprocessed_data: bool,
     ) -> Result<
-        (GC::Digest, JaggedProverData<GC, CudaStackedPcsProverData<GC>>),
+        (GC::Digest, JaggedProverData<GC, Option<CudaStackedPcsProverData<GC>>>),
         JaggedProverError<SingleLayerMerkleTreeProverError>,
     > {
         csl_commit::commit_multilinears::<GC, PC::P>(
             multilinears,
             self.max_log_row_count,
             use_preprocessed_data,
+            self.drop_ldes,
             &self.basefold_prover,
         )
         .await
@@ -340,7 +343,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
         eval_point: Point<Ext>,
         evaluation_claims: Rounds<Evaluations<Ext, TaskScope>>,
         all_mles: &JaggedTraceMle<Felt, TaskScope>,
-        prover_data: Rounds<&JaggedProverData<GC, CudaStackedPcsProverData<GC>>>,
+        prover_data: Rounds<&JaggedProverData<GC, Option<CudaStackedPcsProverData<GC>>>>,
         challenger: &mut GC::Challenger,
     ) -> Result<
         JaggedPcsProof<GC, <PC::C as MultilinearPcsVerifier<GC>>::Proof>,
@@ -474,8 +477,10 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
         let original_commitments: Rounds<_> =
             prover_data.iter().map(|data| data.original_commitment).collect();
 
-        let stacked_prover_data =
-            prover_data.into_iter().map(|data| &data.pcs_prover_data).collect::<Rounds<_>>();
+        let stacked_prover_data = prover_data
+            .into_iter()
+            .map(|data| data.pcs_prover_data.as_ref())
+            .collect::<Rounds<_>>();
 
         let final_eval_point = sumcheck_proof.point_and_eval.0.clone();
 
@@ -554,7 +559,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
         &self,
         traces: &JaggedTraceMle<GC::F, TaskScope>,
         use_preprocessed: bool,
-    ) -> (GC::Digest, JaggedProverData<GC, CudaStackedPcsProverData<GC>>) {
+    ) -> (GC::Digest, JaggedProverData<GC, Option<CudaStackedPcsProverData<GC>>>) {
         self.commit_multilinears(traces, use_preprocessed).await.unwrap()
     }
 
@@ -633,9 +638,12 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
             shard_chips,
             self.all_interactions.clone(),
             traces,
-            self.max_log_row_count,
             alpha,
             beta_seed,
+            CudaLogUpGkrOptions {
+                recompute_first_layer: self.recompute_first_layer,
+                num_row_variables: self.max_log_row_count,
+            },
             challenger,
         )
         .instrument(tracing::debug_span!("logup gkr proof"))
@@ -811,6 +819,8 @@ mod tests {
                 basefold_prover,
                 max_trace_size: CORE_MAX_TRACE_SIZE as usize,
                 machine,
+                recompute_first_layer: false,
+                drop_ldes: false,
                 backend: scope.clone(),
                 _marker: PhantomData,
             };

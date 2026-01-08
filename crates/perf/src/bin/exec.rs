@@ -102,7 +102,7 @@ async fn execute_node(args: Args, elf: Vec<u8>, stdin: SP1Stdin) {
 
     let stdin = Arc::new(stdin);
 
-    let mut opts = local_gpu_opts();
+    let (mut opts, _) = local_gpu_opts();
     if let Some(chunk_size) = args.chunk_size {
         opts.minimal_trace_chunk_threshold = chunk_size;
     }

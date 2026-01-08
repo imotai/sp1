@@ -94,6 +94,7 @@ where
             &preprocessed_traces,
             self.max_log_row_count,
             true,
+            self.drop_ldes,
             &self.basefold_prover,
         )
         .await

@@ -80,14 +80,14 @@ pub struct CudaShardProverData<GC: IopCtx, Air: MachineAir<GC::F>> {
     /// The preprocessed traces.
     pub preprocessed_traces: JaggedTraceMle<Felt, TaskScope>,
     /// The pcs data for the preprocessed traces.
-    pub preprocessed_data: JaggedProverData<GC, CudaStackedPcsProverData<GC>>,
+    pub preprocessed_data: JaggedProverData<GC, Option<CudaStackedPcsProverData<GC>>>,
     phantom: PhantomData<Air>,
 }
 
 impl<GC: IopCtx, Air: MachineAir<GC::F>> CudaShardProverData<GC, Air> {
     pub fn new(
         preprocessed_traces: JaggedTraceMle<Felt, TaskScope>,
-        preprocessed_data: JaggedProverData<GC, CudaStackedPcsProverData<GC>>,
+        preprocessed_data: JaggedProverData<GC, Option<CudaStackedPcsProverData<GC>>>,
     ) -> Self {
         Self { preprocessed_traces, preprocessed_data, phantom: PhantomData }
     }

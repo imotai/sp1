@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use std::{marker::PhantomData, sync::Arc};
+use std::{borrow::Cow, marker::PhantomData, sync::Arc};
 
 use slop_algebra::{
     extension::BinomialExtensionField, AbstractExtensionField, AbstractField, ExtensionField,
@@ -84,10 +84,11 @@ where
     pub async fn encode_and_commit(
         &self,
         use_preprocessed: bool,
+        drop_traces: bool,
         jagged_trace_mle: &JaggedTraceMle<Felt, TaskScope>,
         mut dst: Tensor<Felt, TaskScope>,
     ) -> Result<
-        (<GC as IopCtx>::Digest, CudaStackedPcsProverData<GC>),
+        (<GC as IopCtx>::Digest, Option<CudaStackedPcsProverData<GC>>),
         SingleLayerMerkleTreeProverError,
     > {
         let encoder = SpparkDftKoalaBear::default();
@@ -108,13 +109,16 @@ where
 
         let (commitment, tcs_data) = self.tcs_prover.commit_tensors(&dst).await?;
 
-        Ok((
-            commitment,
-            CudaStackedPcsProverData {
+        let prover_data = if drop_traces {
+            None
+        } else {
+            Some(CudaStackedPcsProverData {
                 merkle_tree_tcs_data: tcs_data,
                 codeword_mle: Arc::new(dst),
-            },
-        ))
+            })
+        };
+
+        Ok((commitment, prover_data))
     }
     pub async fn batch(
         &self,
@@ -318,16 +322,34 @@ where
         mut eval_point: Point<GC::EF>,
         evaluation_claims: Rounds<Evaluations<GC::EF, TaskScope>>,
         mles: &JaggedTraceMle<GC::F, TaskScope>,
-        prover_data: Rounds<&CudaStackedPcsProverData<GC>>,
+        prover_data: Rounds<Option<&CudaStackedPcsProverData<GC>>>,
         challenger: &mut GC::Challenger,
     ) -> Result<BasefoldProof<GC>, BasefoldProverError<SingleLayerMerkleTreeProverError>>
     where
         GC::Challenger: DeviceGrindingChallenger<Witness = GC::F>,
     {
-        let encoded_messages = prover_data
-            .iter()
-            .map(|data| data.codeword_mle.clone())
-            .collect::<Message<Tensor<_, _>>>();
+        let mut new_prover_data = Vec::new();
+        for data in prover_data {
+            if let Some(data) = data {
+                new_prover_data.push(Cow::Borrowed(data));
+            } else {
+                let dst = Tensor::<Felt, TaskScope>::with_sizes_in(
+                    [
+                        mles.dense().main_size() >> self.log_height,
+                        1 << (self.log_height as usize + self.config.log_blowup()),
+                    ],
+                    mles.dense().dense.backend().clone(),
+                );
+
+                let result =
+                    self.encode_and_commit(false, false, mles, dst).await.unwrap().1.unwrap();
+
+                new_prover_data.push(Cow::Owned(result));
+            }
+        }
+
+        let encoded_messages: Message<Tensor<Felt, TaskScope>> =
+            new_prover_data.iter().map(|data| data.codeword_mle.clone()).collect();
 
         let evaluation_claims = evaluation_claims.into_iter().flatten().collect::<Vec<_>>();
 
@@ -396,12 +418,11 @@ where
 
         // Open the original polynomials at the query indices.
         let mut component_polynomials_query_openings_and_proofs = vec![];
-        for prover_data in prover_data {
-            let CudaStackedPcsProverData { merkle_tree_tcs_data, codeword_mle, .. } = prover_data;
-            let values = self
-                .tcs_prover
-                .compute_openings_at_indices(codeword_mle.as_ref(), &query_indices)
-                .await;
+        for prover_data in new_prover_data {
+            let CudaStackedPcsProverData { merkle_tree_tcs_data, codeword_mle } =
+                prover_data.as_ref();
+            let values =
+                self.tcs_prover.compute_openings_at_indices(codeword_mle, &query_indices).await;
             let proof = self
                 .tcs_prover
                 .prove_openings_at_indices(merkle_tree_tcs_data, &query_indices)
@@ -577,7 +598,7 @@ mod tests {
             );
 
             let (new_preprocessed_commit, new_preprocessed_prover_data) =
-                new_cuda_prover.encode_and_commit(true, &new_traces, dst).await.unwrap();
+                new_cuda_prover.encode_and_commit(true, false, &new_traces, dst).await.unwrap();
 
             assert_eq!(new_preprocessed_commit, old_preprocessed_commitment);
 
@@ -590,7 +611,7 @@ mod tests {
             );
 
             let (new_main_commit, new_main_prover_data) =
-                new_cuda_prover.encode_and_commit(false, &new_traces, dst).await.unwrap();
+                new_cuda_prover.encode_and_commit(false, false, &new_traces, dst).await.unwrap();
             let message = old_traces
                 .main_trace_data
                 .traces
@@ -702,7 +723,9 @@ mod tests {
                     eval_point_host.clone(),
                     [evaluation_claims_1_device, evaluation_claims_2].into_iter().collect(),
                     &new_traces,
-                    [&new_preprocessed_prover_data, &new_main_prover_data].into_iter().collect(),
+                    [new_preprocessed_prover_data.as_ref(), new_main_prover_data.as_ref()]
+                        .into_iter()
+                        .collect(),
                     &mut challenger,
                 )
                 .await
