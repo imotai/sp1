@@ -43,6 +43,7 @@ impl LocalWorkerClientInner {
             TaskType::MarkerDeferredRecord,
             TaskType::PlonkWrap,
             TaskType::Groth16Wrap,
+            TaskType::ExecuteOnly,
             TaskType::UtilVkeyMapChunk,
             TaskType::UtilVkeyMapController,
         ] {
@@ -208,6 +209,7 @@ pub mod test_utils {
             TaskType::ShrinkWrap,
             TaskType::PlonkWrap,
             TaskType::Groth16Wrap,
+            TaskType::ExecuteOnly,
         ] {
             let mut rx = channels.task_receivers.remove(&task_type).unwrap();
             let interval = random_interval.remove(&task_type).unwrap();

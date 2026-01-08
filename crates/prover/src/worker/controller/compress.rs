@@ -543,6 +543,7 @@ mod test_utils {
             (TaskType::ShrinkWrap, Duration::from_millis(20)..Duration::from_millis(100)),
             (TaskType::PlonkWrap, Duration::from_millis(20)..Duration::from_millis(100)),
             (TaskType::Groth16Wrap, Duration::from_millis(20)..Duration::from_millis(100)),
+            (TaskType::ExecuteOnly, Duration::from_millis(20)..Duration::from_millis(100)),
         ]);
 
         for _ in 0..num_iterations {
