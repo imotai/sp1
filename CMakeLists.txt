@@ -132,11 +132,14 @@ set_target_properties(sys-cuda PROPERTIES
     CUDA_RESOLVE_DEVICE_SYMBOLS ON
 )
 
-# Link CUDA runtime
-target_link_libraries(sys-cuda PRIVATE
-    CUDA::cudart
-    CUDA::nvToolsExt
-)
+if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+    # nothing needed
+else()
+    target_link_libraries(sys-cuda PRIVATE
+        CUDA::cudart
+        CUDA::nvToolsExt
+    )
+endif()
 
 # Install rule
 install(TARGETS sys-cuda

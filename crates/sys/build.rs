@@ -103,24 +103,6 @@ fn main() {
     println!("cargo:rerun-if-env-changed=CUDA_ARCHS");
     println!("cargo:rerun-if-env-changed=PROFILE_DEBUG_DATA");
 
-    // Check for nvcc
-    let nvcc = which::which("nvcc").expect("nvcc not found");
-
-    // Get CUDA version
-    let cuda_version =
-        std::process::Command::new(nvcc).arg("--version").output().expect("failed to get version");
-    if !cuda_version.status.success() {
-        panic!("{cuda_version:?}");
-    }
-    let cuda_version = String::from_utf8(cuda_version.stdout).unwrap();
-    let x =
-        cuda_version.find("release ").expect("can't find \"release X.Y,\" in --version output") + 8;
-    let y = cuda_version[x..].find(',').expect("can't parse \"release X.Y,\" in --version output");
-    let v = cuda_version[x..x + y].parse::<f32>().unwrap();
-    if v < 12.0 {
-        panic!("Unsupported CUDA version {v} < 12.0");
-    }
-
     // The crate directory.
     let crate_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
@@ -208,17 +190,6 @@ fn main() {
         println!("cargo:rustc-link-search=native={cuda_path}/lib64");
         println!("cargo:rustc-link-search=native={cuda_path}/lib");
     } else {
-        // Try common CUDA installation paths
-        for cuda_version in
-            &["12.9", "12.8", "12.7", "12.6", "12.5", "12.4", "12.3", "12.2", "12.1", "12.0"]
-        {
-            let cuda_lib = format!("/usr/local/cuda-{cuda_version}/targets/x86_64-linux/lib");
-            if std::path::Path::new(&cuda_lib).exists() {
-                println!("cargo:rustc-link-search=native={cuda_lib}");
-                break;
-            }
-        }
-        // Also try the generic path
         println!("cargo:rustc-link-search=native=/usr/local/cuda/lib64");
     }
 
