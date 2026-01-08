@@ -1,4 +1,5 @@
 use crate::{
+    build::{get_groth16_artifacts_build_dir, get_plonk_artifacts_build_dir},
     recursion::RecursionVks,
     utils::{is_recursion_public_values_valid, is_root_public_values_valid},
     CoreSC, CpuSP1ProverComponents, HashableKey, RecursionSC, SP1ProverComponents, ShrinkSC,
@@ -25,7 +26,6 @@ use sp1_recursion_gnark_ffi::{
 };
 use std::{borrow::Borrow, path::PathBuf, str::FromStr};
 use thiserror::Error;
-use tokio::sync::oneshot;
 
 use crate::{SP1CoreProofData, SP1VerifyingKey};
 
@@ -647,16 +647,7 @@ impl SP1Verifier {
     }
 
     pub fn plonk_build_dir(&self) -> PathBuf {
-        if crate::build::use_development_mode() {
-            crate::build::plonk_bn254_artifacts_dev_dir(&self.wrap_vk)
-        } else {
-            let (tx, rx) = oneshot::channel();
-            tokio::spawn(async move {
-                let build_dir = crate::build::try_install_circuit_artifacts("plonk").await;
-                tx.send(build_dir).unwrap();
-            });
-            rx.blocking_recv().unwrap()
-        }
+        get_plonk_artifacts_build_dir(&self.wrap_vk).expect("plonk artifacts not found")
     }
 
     /// Verifies a PLONK proof using the circuit artifacts in the build directory.
@@ -694,16 +685,7 @@ impl SP1Verifier {
     }
 
     pub fn groth16_build_dir(&self) -> PathBuf {
-        if crate::build::use_development_mode() {
-            crate::build::groth16_bn254_artifacts_dev_dir(&self.wrap_vk)
-        } else {
-            let (tx, rx) = oneshot::channel();
-            tokio::spawn(async move {
-                let build_dir = crate::build::try_install_circuit_artifacts("groth16").await;
-                tx.send(build_dir).unwrap();
-            });
-            rx.blocking_recv().unwrap()
-        }
+        get_groth16_artifacts_build_dir(&self.wrap_vk).expect("groth16 artifacts not found")
     }
 
     /// Verifies a Groth16 proof using the circuit artifacts in the build directory.

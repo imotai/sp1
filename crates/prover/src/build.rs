@@ -18,6 +18,7 @@ use sp1_recursion_compiler::{
 use sp1_recursion_executor::RecursionPublicValues;
 use sp1_recursion_gnark_ffi::{Groth16Bn254Prover, PlonkBn254Prover};
 use std::{borrow::Borrow, path::PathBuf};
+use tokio::sync::oneshot;
 
 pub use sp1_recursion_circuit::witness::{OuterWitness, Witnessable};
 
@@ -36,8 +37,64 @@ use crate::{
     SP1_CIRCUIT_VERSION,
 };
 
+pub(crate) fn get_plonk_artifacts_build_dir(
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
+) -> Option<PathBuf> {
+    if crate::build::use_development_mode() {
+        let build_dir = crate::build::plonk_bn254_artifacts_dev_dir(template_vk);
+        build_dir.exists().then_some(build_dir)
+    } else {
+        let (tx, rx) = oneshot::channel();
+        tokio::spawn(async move {
+            let build_dir = crate::build::try_install_circuit_artifacts("plonk").await;
+            tx.send(build_dir).unwrap();
+        });
+        let build_dir = rx.blocking_recv().unwrap();
+        Some(build_dir)
+    }
+}
+
+pub(crate) fn get_groth16_artifacts_build_dir(
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
+) -> Option<PathBuf> {
+    if crate::build::use_development_mode() {
+        let build_dir = crate::build::groth16_bn254_artifacts_dev_dir(template_vk);
+        build_dir.exists().then_some(build_dir)
+    } else {
+        let (tx, rx) = oneshot::channel();
+        tokio::spawn(async move {
+            let build_dir = crate::build::try_install_circuit_artifacts("groth16").await;
+            tx.send(build_dir).unwrap();
+        });
+        let build_dir = rx.blocking_recv().unwrap();
+        Some(build_dir)
+    }
+}
+
+pub(crate) fn get_or_create_plonk_artifacts_build_dir(
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
+    template_proof: &ShardProof<SP1OuterGlobalContext, SP1PcsProofOuter>,
+) -> PathBuf {
+    if let Some(build_dir) = get_plonk_artifacts_build_dir(template_vk) {
+        build_dir
+    } else {
+        crate::build::try_build_plonk_bn254_artifacts_dev(template_vk, template_proof)
+    }
+}
+
+pub(crate) fn get_or_create_groth16_artifacts_build_dir(
+    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
+    template_proof: &ShardProof<SP1OuterGlobalContext, SP1PcsProofOuter>,
+) -> PathBuf {
+    if let Some(build_dir) = get_groth16_artifacts_build_dir(template_vk) {
+        build_dir
+    } else {
+        crate::build::try_build_groth16_bn254_artifacts_dev(template_vk, template_proof)
+    }
+}
+
 /// Tries to build the PLONK artifacts inside the development directory.
-pub fn try_build_plonk_bn254_artifacts_dev(
+fn try_build_plonk_bn254_artifacts_dev(
     template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
     template_proof: &ShardProof<SP1OuterGlobalContext, SP1PcsProofOuter>,
 ) -> PathBuf {
@@ -55,7 +112,7 @@ pub fn try_build_plonk_bn254_artifacts_dev(
 }
 
 /// Tries to build the groth16 bn254 artifacts in the current environment.
-pub fn try_build_groth16_bn254_artifacts_dev(
+fn try_build_groth16_bn254_artifacts_dev(
     template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
     template_proof: &ShardProof<SP1OuterGlobalContext, SP1PcsProofOuter>,
 ) -> PathBuf {
@@ -73,7 +130,7 @@ pub fn try_build_groth16_bn254_artifacts_dev(
 }
 
 /// Gets the directory where the PLONK artifacts are installed in development mode.
-pub fn plonk_bn254_artifacts_dev_dir(
+pub(crate) fn plonk_bn254_artifacts_dev_dir(
     template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
 ) -> PathBuf {
     let serialized_vk = bincode::serialize(template_vk).unwrap();
@@ -86,7 +143,7 @@ pub fn plonk_bn254_artifacts_dev_dir(
 }
 
 /// Gets the directory where the groth16 artifacts are installed in development mode.
-pub fn groth16_bn254_artifacts_dev_dir(
+fn groth16_bn254_artifacts_dev_dir(
     template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
 ) -> PathBuf {
     let serialized_vk = bincode::serialize(template_vk).unwrap();
@@ -205,12 +262,12 @@ fn build_outer_circuit(
 }
 
 /// The base URL for the S3 bucket containing the circuit artifacts.
-pub const CIRCUIT_ARTIFACTS_URL_BASE: &str = "https://sp1-circuits.s3-us-east-2.amazonaws.com";
+const CIRCUIT_ARTIFACTS_URL_BASE: &str = "https://sp1-circuits.s3-us-east-2.amazonaws.com";
 
 /// Whether use the development mode for the circuit artifacts.
-pub(crate) fn use_development_mode() -> bool {
+fn use_development_mode() -> bool {
     // TODO: Change this after v6.0.0 binary release
-    std::env::var("SP1_DEV").unwrap_or("true".to_string()) == "true"
+    std::env::var("SP1_CIRCUIT_MODE").unwrap_or("dev".to_string()) == "dev"
 }
 
 /// The directory where the groth16 circuit artifacts will be stored.

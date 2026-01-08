@@ -1,5 +1,5 @@
 use crate::{
-    build::{try_build_groth16_bn254_artifacts_dev, try_build_plonk_bn254_artifacts_dev},
+    build::{get_or_create_groth16_artifacts_build_dir, get_or_create_plonk_artifacts_build_dir},
     recursion::{
         compose_program_from_input, deferred_program_from_input, dummy_deferred_input,
         recursive_verifier, shrink_program_from_input, wrap_program_from_input, RecursionVks,
@@ -665,7 +665,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
         let groth16_proof = tokio::task::spawn_blocking(|| {
             // TODO: Change this after v6.0.0 binary release
             let build_dir =
-                try_build_groth16_bn254_artifacts_dev(&wrap_proof.vk, &wrap_proof.proof);
+                get_or_create_groth16_artifacts_build_dir(&wrap_proof.vk, &wrap_proof.proof);
             let SP1RecursionProof { vk, proof } = wrap_proof;
             let input = SP1ShapedWitnessValues {
                 vks_and_proofs: vec![(vk, proof.clone())],
@@ -727,7 +727,8 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
 
         let plonk_proof = tokio::task::spawn_blocking(|| {
             // TODO: Change this after v6.0.0 binary release
-            let build_dir = try_build_plonk_bn254_artifacts_dev(&wrap_proof.vk, &wrap_proof.proof);
+            let build_dir =
+                get_or_create_plonk_artifacts_build_dir(&wrap_proof.vk, &wrap_proof.proof);
             let SP1RecursionProof { vk: wrap_vk, proof: wrap_proof } = wrap_proof;
             let input = SP1ShapedWitnessValues {
                 vks_and_proofs: vec![(wrap_vk.clone(), wrap_proof.clone())],
