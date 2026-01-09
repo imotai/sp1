@@ -47,6 +47,7 @@ message ProofRequest {
   string metadata = 13;
   uint64 created_at = 14;
   uint64 updated_at = 15;
+  optional string extra_data = 16;
 }
 
 message ProofRequestListRequest {
@@ -118,4 +119,5 @@ message ProofRequestUpdateRequest {
   optional uint64 deadline = 4;
   optional bool handled = 5;
   optional string metadata = 6;
+  optional string extra_data = 7;
 }

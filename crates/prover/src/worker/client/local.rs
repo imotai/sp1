@@ -134,6 +134,7 @@ impl WorkerClient for LocalWorkerClient {
         proof_id: ProofId,
         _task_id: Option<TaskId>,
         _status: ProofRequestStatus,
+        _extra_data: impl Into<String> + Send,
     ) -> anyhow::Result<()> {
         // Remove the proof from the proof index.
         let tasks = self

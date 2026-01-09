@@ -45,6 +45,7 @@ pub trait WorkerClient: Send + Sync + Clone + 'static {
         proof_id: ProofId,
         task_id: Option<TaskId>,
         status: ProofRequestStatus,
+        extra_data: impl Into<String> + Send,
     ) -> impl Future<Output = anyhow::Result<()>> + Send;
 
     fn subscriber(
@@ -375,6 +376,7 @@ impl WorkerClient for TrivialWorkerClient {
         _proof_id: ProofId,
         _task_id: Option<TaskId>,
         _status: ProofRequestStatus,
+        _extra_data: impl Into<String> + Send,
     ) -> anyhow::Result<()> {
         Ok(())
     }
@@ -528,6 +530,7 @@ mod tests {
             _proof_id: ProofId,
             _task_id: Option<TaskId>,
             _status: ProofRequestStatus,
+            _extra_data: impl Into<String> + Send,
         ) -> anyhow::Result<()> {
             unimplemented!()
         }

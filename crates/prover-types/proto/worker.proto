@@ -186,6 +186,7 @@ message TaskIDList { repeated string ids = 1; }
 message CompleteProofRequest {
     string worker_id = 1;
     string proof_id = 2;
+    string extra_data = 3;
 }
 
 message FailProofRequest {

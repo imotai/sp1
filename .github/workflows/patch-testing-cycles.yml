@@ -7,7 +7,7 @@ on:
 
 jobs:
   patch-testing-cycles:
-    runs-on: [runs-on, runner=16cpu-linux-x64, disk=large, "run-id=${{ github.run_id }}"]
+    runs-on: [runs-on, runner=16cpu-linux-x64, spot=false, disk=large, "run-id=${{ github.run_id }}"]
     permissions:
       contents: read
       packages: read
