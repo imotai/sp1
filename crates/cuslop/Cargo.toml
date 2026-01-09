@@ -17,6 +17,7 @@ sp1-prover = { workspace = true, features = ["native-gnark"] }
 sp1-primitives = { workspace = true }
 csl-prover = { workspace = true }
 csl-cuda = { workspace = true }
+sp1-recursion-gnark-ffi = { workspace = true }
 sha2 = "0.10.9"
 bincode = "1.3.3"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
@@ -29,3 +30,6 @@ tikv-jemallocator = { version = "0.6", features = ["profiling", "stats"] }
 
 [lints]
 workspace = true
+
+[features]
+groth16-cuda = ["sp1-recursion-gnark-ffi/groth16-cuda"]
