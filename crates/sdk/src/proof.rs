@@ -404,6 +404,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(feature = "slow-tests")]
     async fn test_round_trip_proof_save_load() {
         use crate::{ProveRequest, Prover};
 

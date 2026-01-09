@@ -78,7 +78,7 @@ pub mod prelude {
 // Re-export the utilities.
 pub use utils::setup_logger;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "slow-tests"))]
 mod tests {
     use sp1_primitives::io::SP1PublicValues;
 
