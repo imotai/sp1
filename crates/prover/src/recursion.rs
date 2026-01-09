@@ -10,14 +10,13 @@ use sp1_core_machine::riscv::RiscvAir;
 use sp1_hypercube::{
     air::{POSEIDON_NUM_WORDS, PROOF_NONCE_NUM_WORDS},
     prover::ZerocheckAir,
-    MachineVerifier, MachineVerifyingKey, SP1InnerPcs, SP1PcsProofInner, ShardVerifier, SP1SC,
+    verify_merkle_proof, HashableKey, MachineVerifier, MachineVerifyingKey, MerkleProof,
+    SP1InnerPcs, SP1PcsProofInner, ShardVerifier, SP1SC,
 };
 use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
 use sp1_recursion_circuit::{
     basefold::{
-        merkle_tree::{MerkleProof, MerkleTree},
-        stacked::RecursiveStackedPcsVerifier,
-        tcs::RecursiveMerkleTreeTcs,
+        merkle_tree::MerkleTree, stacked::RecursiveStackedPcsVerifier, tcs::RecursiveMerkleTreeTcs,
         RecursiveBasefoldVerifier,
     },
     jagged::{RecursiveJaggedEvalSumcheckConfig, RecursiveJaggedPcsVerifier},
@@ -40,7 +39,7 @@ use sp1_recursion_executor::{RecursionProgram, DIGEST_SIZE};
 use crate::{
     shapes::{create_all_input_shapes, SP1RecursionProofShape},
     worker::{TaskError, DEFAULT_MAX_COMPOSE_ARITY},
-    CompressAir, HashableKey, RecursionSC,
+    CompressAir, RecursionSC,
 };
 
 #[derive(Clone)]
@@ -151,9 +150,19 @@ impl RecursionVks {
 
         let (value, proof) = MerkleTree::open(&self.tree, index);
         // Verify the proof.
-        MerkleTree::verify(proof.clone(), value, self.root)
+        verify_merkle_proof(&proof, value, self.root)
             .map_err(|e| TaskError::Fatal(anyhow::anyhow!("invalid merkle proof: {:?}", e)))?;
         Ok((value, proof))
+    }
+
+    pub fn verify(
+        &self,
+        proof: &MerkleProof<SP1GlobalContext>,
+        vk: &MachineVerifyingKey<SP1GlobalContext>,
+    ) -> Result<(), TaskError> {
+        let digest = vk.hash_koalabear();
+        verify_merkle_proof(proof, digest, self.root)
+            .map_err(|e| TaskError::Fatal(anyhow::anyhow!("invalid merkle proof: {:?}", e)))
     }
 
     pub fn height(&self) -> usize {

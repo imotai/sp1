@@ -6,15 +6,13 @@ use std::marker::PhantomData;
 
 use super::{PublicValuesOutputDigest, SP1CompressVerifier, SP1ShapedWitnessVariable};
 use crate::{
-    basefold::merkle_tree::{verify, MerkleProof},
-    hash::FieldHasher,
-    zerocheck::RecursiveVerifierConstraintFolder,
+    basefold::merkle_tree::verify, hash::FieldHasher, zerocheck::RecursiveVerifierConstraintFolder,
     CircuitConfig, FieldHasherVariable, SP1FieldConfigVariable,
 };
 use serde::{Deserialize, Serialize};
 use slop_air::Air;
 use slop_algebra::AbstractField;
-use sp1_hypercube::air::MachineAir;
+use sp1_hypercube::{air::MachineAir, MerkleProof};
 use sp1_primitives::{SP1Field, SP1GlobalContext};
 use sp1_recursion_compiler::ir::{Builder, Felt};
 use sp1_recursion_executor::DIGEST_SIZE;

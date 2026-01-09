@@ -5,19 +5,6 @@ use sp1_primitives::SP1Field;
 use sp1_recursion_compiler::ir::{Builder, Config, Felt, Var};
 use sp1_recursion_executor::DIGEST_SIZE;
 
-/// Convert 8 SP1Field words into a Bn254Fr field element by shifting by 31 bits each time. The last
-/// word becomes the least significant bits.
-pub fn koalabears_to_bn254(digest: &[SP1Field; 8]) -> Bn254Fr {
-    let mut result = Bn254Fr::zero();
-    for word in digest.iter() {
-        // Since SP1Field prime is less than 2^31, we can shift by 31 bits each time and still be
-        // within the Bn254Fr field, so we don't have to truncate the top 3 bits.
-        result *= Bn254Fr::from_canonical_u64(1 << 31);
-        result += Bn254Fr::from_canonical_u32(word.as_canonical_u32());
-    }
-    result
-}
-
 pub fn koalabears_proof_nonce_to_bn254(nonce: &[SP1Field; 4]) -> Bn254Fr {
     let mut result = Bn254Fr::zero();
     for word in nonce.iter() {

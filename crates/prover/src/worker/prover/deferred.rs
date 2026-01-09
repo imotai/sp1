@@ -3,6 +3,7 @@ use std::sync::Arc;
 use slop_algebra::AbstractField;
 use slop_futures::pipeline::{AsyncEngine, AsyncWorker, Pipeline, SubmitHandle};
 
+use sp1_hypercube::HashableKey;
 use sp1_primitives::SP1Field;
 use sp1_prover_types::{Artifact, ArtifactClient};
 use sp1_recursion_circuit::machine::SP1DeferredWitnessValues;
@@ -12,7 +13,7 @@ use crate::{
         CommonProverInput, ProverMetrics, RawTaskRequest, SP1DeferredData, SP1RecursionProver,
         TaskContext, TaskError, TaskMetadata,
     },
-    HashableKey, SP1CircuitWitness, SP1ProverComponents,
+    SP1CircuitWitness, SP1ProverComponents,
 };
 
 #[derive(Clone)]
@@ -117,10 +118,17 @@ impl<A: ArtifactClient, C: SP1ProverComponents>
             self.artifact_client.download::<SP1DeferredData>(&deferred_data),
         )?;
 
-        let SP1DeferredData { input, start_reconstruct_deferred_digest, deferred_proof_index } =
-            deferred_data;
+        let SP1DeferredData {
+            input,
+            start_reconstruct_deferred_digest,
+            deferred_proof_index,
+            vk_merkle_proofs,
+        } = deferred_data;
 
-        let input = self.recursion_prover.prover_data.make_merkle_proofs(input)?;
+        let input = self
+            .recursion_prover
+            .prover_data
+            .append_merkle_proofs_to_witness(input, vk_merkle_proofs)?;
 
         let nonce = common_input.nonce.map(SP1Field::from_canonical_u32);
 

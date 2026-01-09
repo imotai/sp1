@@ -1,25 +1,27 @@
 use crate::{
     build::{get_groth16_artifacts_build_dir, get_plonk_artifacts_build_dir},
-    recursion::RecursionVks,
     utils::{is_recursion_public_values_valid, is_root_public_values_valid},
-    CoreSC, CpuSP1ProverComponents, HashableKey, RecursionSC, SP1ProverComponents, ShrinkSC,
-    WrapSC,
+    CoreSC, CpuSP1ProverComponents, RecursionSC, SP1ProverComponents, ShrinkSC, WrapSC,
 };
 use anyhow::{anyhow, Result};
 use num_bigint::BigUint;
+use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, PrimeField};
+use slop_challenger::IopCtx;
 use sp1_core_executor::SP1RecursionProof;
 use sp1_core_machine::riscv::MAX_LOG_NUMBER_OF_SHARDS;
 use sp1_hypercube::{
     air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
-    MachineVerifier, MachineVerifierConfigError, MachineVerifierError, MachineVerifyingKey,
-    SP1InnerPcs, SP1OuterPcs, SP1PcsProofInner, SP1PcsProofOuter, PROOF_MAX_NUM_PVS,
+    koalabears_to_bn254, verify_merkle_proof, HashableKey, MachineVerifier,
+    MachineVerifierConfigError, MachineVerifierError, MachineVerifyingKey, MerkleProof,
+    SP1InnerPcs, SP1OuterPcs, SP1PcsProofInner, SP1PcsProofOuter, SP1VerifyingKey, SP1WrapProof,
+    PROOF_MAX_NUM_PVS,
 };
 use sp1_primitives::{
     io::{blake3_hash, SP1PublicValues},
     SP1Field, SP1GlobalContext, SP1OuterGlobalContext,
 };
-use sp1_recursion_circuit::{machine::RootPublicValues, utils::koalabears_to_bn254};
+use sp1_recursion_circuit::machine::RootPublicValues;
 use sp1_recursion_executor::RecursionPublicValues;
 use sp1_recursion_gnark_ffi::{
     Groth16Bn254Proof, Groth16Bn254Prover, PlonkBn254Proof, PlonkBn254Prover,
@@ -27,7 +29,7 @@ use sp1_recursion_gnark_ffi::{
 use std::{borrow::Borrow, path::PathBuf, str::FromStr};
 use thiserror::Error;
 
-use crate::{SP1CoreProofData, SP1VerifyingKey};
+use crate::SP1CoreProofData;
 
 #[derive(Error, Debug)]
 pub enum PlonkVerificationError {
@@ -59,19 +61,59 @@ bn254 proof"
 /// The verifying key for the program wrapping an SP1 proof into a SNARK friendly format.
 pub const WRAP_VK_BYTES: &[u8] = include_bytes!("../wrap_vk.bin");
 
+/// The recursion verifying keys used by the SP1 verifier.
+pub const VERIFIER_VK_DATA_BYTES: &[u8] = include_bytes!("../verifier_vks.bin");
+
+#[derive(Clone, Serialize, Debug, PartialEq, Eq, Deserialize)]
+pub struct VerifierRecursionVks {
+    pub root: <SP1GlobalContext as IopCtx>::Digest,
+    pub vk_verification: bool,
+    pub num_keys: usize,
+}
+
+impl Default for VerifierRecursionVks {
+    fn default() -> Self {
+        bincode::deserialize(VERIFIER_VK_DATA_BYTES).unwrap()
+    }
+}
+
+impl VerifierRecursionVks {
+    pub fn vk_verification(&self) -> bool {
+        self.vk_verification
+    }
+    pub fn root(&self) -> <SP1GlobalContext as IopCtx>::Digest {
+        self.root
+    }
+
+    pub fn num_keys(&self) -> usize {
+        self.num_keys
+    }
+
+    pub fn verify(
+        &self,
+        proof: &MerkleProof<SP1GlobalContext>,
+        vk: &MachineVerifyingKey<SP1GlobalContext>,
+    ) -> bool {
+        if !self.vk_verification {
+            return true;
+        }
+        verify_merkle_proof(proof, vk.hash_koalabear(), self.root).is_ok()
+    }
+}
+
 #[derive(Clone)]
 pub struct SP1Verifier {
     pub core: MachineVerifier<SP1GlobalContext, CoreSC>,
     pub compress: MachineVerifier<SP1GlobalContext, RecursionSC>,
     pub shrink: MachineVerifier<SP1GlobalContext, ShrinkSC>,
     pub wrap: MachineVerifier<SP1OuterGlobalContext, WrapSC>,
-    pub recursion_vks: RecursionVks,
+    pub recursion_vks: VerifierRecursionVks,
     pub shrink_vk: Option<MachineVerifyingKey<SP1GlobalContext>>,
     pub wrap_vk: MachineVerifyingKey<SP1OuterGlobalContext>,
 }
 
 impl SP1Verifier {
-    pub fn new(recursion_vks: RecursionVks) -> Self {
+    pub fn new(recursion_vks: VerifierRecursionVks) -> Self {
         // Get the verifiers from the components.
         let core = CpuSP1ProverComponents::core_verifier();
         let compress = CpuSP1ProverComponents::compress_verifier();
@@ -487,7 +529,7 @@ impl SP1Verifier {
         proof: &SP1RecursionProof<SP1GlobalContext, SP1PcsProofInner>,
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, SP1InnerPcs>> {
-        let SP1RecursionProof { vk: compress_vk, proof } = proof;
+        let SP1RecursionProof { vk: compress_vk, proof, vk_merkle_proof } = proof;
         let mut challenger = self.compress.challenger();
         compress_vk.observe_into(&mut challenger);
 
@@ -518,7 +560,7 @@ impl SP1Verifier {
 
         // If `vk_verification` is on, check the `vk` is within the expected list of `vk`'s.
         // This `vk_verification` must be only turned off for testing purposes.
-        if self.vk_verification() && !self.recursion_vks.contains(compress_vk) {
+        if self.vk_verification() && !self.recursion_vks.verify(vk_merkle_proof, compress_vk) {
             return Err(MachineVerifierError::InvalidVerificationKey);
         }
 
@@ -550,7 +592,7 @@ impl SP1Verifier {
             return Err(MachineVerifierError::InvalidVerificationKey);
         }
 
-        let SP1RecursionProof { vk: _, proof } = proof;
+        let SP1RecursionProof { vk: _, proof, vk_merkle_proof } = proof;
         let mut challenger = self.shrink.challenger();
         shrink_vk.observe_into(&mut challenger);
 
@@ -581,7 +623,7 @@ impl SP1Verifier {
 
         // If `vk_verification` is on, check the `vk` is within the expected list of `vk`'s.
         // This `vk_verification` must be only turned off for testing purposes.
-        if self.vk_verification() && !self.recursion_vks.contains(shrink_vk) {
+        if self.vk_verification() && !self.recursion_vks.verify(vk_merkle_proof, shrink_vk) {
             return Err(MachineVerifierError::InvalidVerificationKey);
         }
 
@@ -602,7 +644,7 @@ impl SP1Verifier {
     /// Verify a wrap bn254 proof.
     pub fn verify_wrap_bn254(
         &self,
-        proof: &SP1RecursionProof<SP1OuterGlobalContext, SP1PcsProofOuter>,
+        proof: &SP1WrapProof<SP1OuterGlobalContext, SP1PcsProofOuter>,
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerifierConfigError<SP1OuterGlobalContext, SP1OuterPcs>> {
         let wrap_vk = &self.wrap_vk;
@@ -610,7 +652,8 @@ impl SP1Verifier {
             return Err(MachineVerifierError::InvalidVerificationKey);
         }
 
-        let SP1RecursionProof { vk: _, proof } = proof;
+        let SP1WrapProof { vk: _, proof } = proof;
+
         let mut challenger = self.wrap.challenger();
         wrap_vk.observe_into(&mut challenger);
 

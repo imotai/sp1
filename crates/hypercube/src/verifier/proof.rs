@@ -6,6 +6,8 @@ use slop_jagged::JaggedPcsProof;
 use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{MultilinearPcsVerifier, Point};
 use slop_sumcheck::PartialSumcheckProof;
+use slop_symmetric::PseudoCompressionFunction;
+use sp1_primitives::{utils::reverse_bits_len, SP1GlobalContext};
 
 use crate::{LogupGkrProof, MachineVerifyingKey, ShardContext};
 
@@ -94,6 +96,45 @@ impl<T> AirOpenedValues<T> {
     }
 }
 
+/// A Merkle tree proof for proving membership in the recursion verifying key set.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MerkleProof<GC: IopCtx> {
+    /// The index of the leaf being proven.
+    pub index: usize,
+    /// The Merkle path.
+    pub path: Vec<GC::Digest>,
+}
+
+#[derive(Debug)]
+/// The error type for Merkle proof verification.
+pub struct VcsError;
+
+/// Verify a Merkle proof.
+pub fn verify_merkle_proof<GC: IopCtx>(
+    proof: &MerkleProof<GC>,
+    value: GC::Digest,
+    commitment: GC::Digest,
+) -> Result<(), VcsError> {
+    let MerkleProof { index, path } = proof;
+
+    let mut value = value;
+
+    let mut index = reverse_bits_len(*index, path.len());
+
+    for sibling in path {
+        // If the index is odd, swap the order of [value, sibling].
+        let new_pair = if index.is_multiple_of(2) { [value, *sibling] } else { [*sibling, value] };
+        let (_, compressor) = GC::default_hasher_and_compressor();
+        value = compressor.compress(new_pair);
+        index >>= 1;
+    }
+    if value != commitment {
+        Err(VcsError)
+    } else {
+        Ok(())
+    }
+}
+
 /// An intermediate proof which proves the execution of a Hypercube verifier.
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound(
@@ -105,6 +146,8 @@ pub struct SP1RecursionProof<GC: IopCtx, Proof> {
     pub vk: MachineVerifyingKey<GC>,
     /// The shard proof representing the shard proof.
     pub proof: ShardProof<GC, Proof>,
+    /// The Merkle proof for the recursion verifying key.
+    pub vk_merkle_proof: MerkleProof<SP1GlobalContext>,
 }
 
 impl<GC: IopCtx, Proof> std::fmt::Debug for SP1RecursionProof<GC, Proof> {
@@ -115,4 +158,17 @@ impl<GC: IopCtx, Proof> std::fmt::Debug for SP1RecursionProof<GC, Proof> {
         // debug_struct.field("proof", &self.proof);
         debug_struct.finish()
     }
+}
+
+/// An intermediate proof which proves the execution of a Hypercube verifier.
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(bound(
+    serialize = "GC: IopCtx, GC::Challenger: Serialize, Proof: Serialize",
+    deserialize = "GC: IopCtx, GC::Challenger: Deserialize<'de>, Proof: Deserialize<'de>"
+))]
+pub struct SP1WrapProof<GC: IopCtx, Proof> {
+    /// The verifying key associated with the proof.
+    pub vk: MachineVerifyingKey<GC>,
+    /// The shard proof within the wrap proof.
+    pub proof: ShardProof<GC, Proof>,
 }

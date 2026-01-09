@@ -5,7 +5,7 @@ use sp1_hypercube::prover::{CpuShardProver, ProverSemaphore};
 use sp1_prover_types::{ArtifactClient, InMemoryArtifactClient};
 
 use crate::{
-    verify::SP1Verifier,
+    verify::{SP1Verifier, VerifierRecursionVks},
     worker::{
         LocalWorkerClient, SP1Controller, SP1ProverEngine, SP1Worker, SP1WorkerConfig, WorkerClient,
     },
@@ -219,7 +219,13 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
         let recursion_vks = prover_engine.recursion_prover.prover_data.recursion_vks().clone();
         let shrink_vk = prover_engine.recursion_prover.shrink_prover.verifying_key.clone();
 
-        let mut verifier = SP1Verifier::new(recursion_vks);
+        let verifier_vks = VerifierRecursionVks {
+            root: recursion_vks.root(),
+            vk_verification: recursion_vks.vk_verification(),
+            num_keys: recursion_vks.num_keys(),
+        };
+
+        let mut verifier = SP1Verifier::new(verifier_vks);
         verifier.set_shrink_vk(shrink_vk);
 
         // Check consitency of wrap vk

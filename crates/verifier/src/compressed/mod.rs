@@ -3,7 +3,7 @@
 
 use alloc::boxed::Box;
 
-use sp1_hypercube::{MachineVerifierConfigError, SP1InnerPcs};
+use sp1_hypercube::{MachineVerifierConfigError, SP1InnerPcs, VcsError};
 use sp1_primitives::{SP1Field, SP1GlobalContext};
 use strum::IntoDiscriminant;
 use thiserror::Error;
@@ -33,6 +33,8 @@ pub enum CompressedError {
     ProofRejected(#[from] MachineVerifierConfigError<SP1GlobalContext, SP1InnerPcs>),
     #[error("given public values do not match the commitment in the proof")]
     PublicValuesMismatch,
+    #[error("incorrect vkey")]
+    InvalidVkey(VcsError),
 }
 
 /// A verifier for SP1 "compressed" proofs given as raw bytes.

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sp1_prover::{worker::ProofFromNetwork, SP1VerifyingKey};
+
 use sp1_prover_types::network_base_types::ProofMode;
 
 use crate::CudaClientError;

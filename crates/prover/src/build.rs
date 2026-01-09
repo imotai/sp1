@@ -3,12 +3,12 @@
 use itertools::Itertools;
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_bn254::Bn254Fr;
-use sp1_hypercube::{MachineVerifyingKey, SP1PcsProofOuter, ShardProof};
+use sp1_hypercube::{koalabears_to_bn254, MachineVerifyingKey, SP1PcsProofOuter, ShardProof};
 use sp1_primitives::{io::sha256_hash, SP1Field, SP1OuterGlobalContext};
 use sp1_recursion_circuit::{
     hash::FieldHasherVariable,
     machine::{SP1ShapedWitnessValues, SP1WrapVerifier},
-    utils::{koalabear_bytes_to_bn254, koalabears_proof_nonce_to_bn254, koalabears_to_bn254},
+    utils::{koalabear_bytes_to_bn254, koalabears_proof_nonce_to_bn254},
 };
 use sp1_recursion_compiler::{
     config::OuterConfig,

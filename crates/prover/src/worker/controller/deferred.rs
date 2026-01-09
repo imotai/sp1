@@ -5,7 +5,7 @@ use slop_algebra::{AbstractField, PrimeField32};
 
 use sp1_hypercube::{
     air::{ShardRange, POSEIDON_NUM_WORDS},
-    SP1PcsProofInner, SP1RecursionProof,
+    MerkleProof, SP1PcsProofInner, SP1RecursionProof,
 };
 use sp1_primitives::{hash_deferred_proof, SP1Field, SP1GlobalContext};
 use sp1_prover_types::{Artifact, ArtifactClient, TaskType};
@@ -21,6 +21,7 @@ use crate::{
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SP1DeferredData {
     pub input: SP1ShapedWitnessValues<SP1GlobalContext, SP1PcsProofInner>,
+    pub vk_merkle_proofs: Vec<MerkleProof<SP1GlobalContext>>,
     pub start_reconstruct_deferred_digest: [SP1Field; POSEIDON_NUM_WORDS],
     pub deferred_proof_index: SP1Field,
 }
@@ -41,12 +42,14 @@ impl DeferredInputs {
 
         for (index, proof) in deferred_proofs.into_iter().enumerate() {
             let vks_and_proofs = vec![(proof.vk.clone(), proof.proof.clone())];
+            let merkle_proofs = vec![proof.vk_merkle_proof.clone()];
 
             let input = SP1ShapedWitnessValues { vks_and_proofs, is_complete: true };
 
             deferred_inputs.push(SP1DeferredData {
                 input,
                 start_reconstruct_deferred_digest: deferred_digest,
+                vk_merkle_proofs: merkle_proofs,
                 deferred_proof_index: SP1Field::from_canonical_usize(index),
             });
 

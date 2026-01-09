@@ -11,7 +11,7 @@ use sp1_core_executor::{
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
 use sp1_hypercube::{
     air::{ShardRange, PROOF_NONCE_NUM_WORDS, PV_DIGEST_NUM_WORDS},
-    DIGEST_SIZE,
+    SP1VerifyingKey, DIGEST_SIZE,
 };
 use sp1_jit::MinimalTrace;
 use sp1_prover_types::{network_base_types::ProofMode, Artifact, ArtifactClient, TaskType};
@@ -21,13 +21,10 @@ use tokio::{
 };
 use tracing::Instrument;
 
-use crate::{
-    worker::{
-        global_memory, precompile_channel, DeferredMessage, MinimalExecutorCache,
-        PrecompileArtifactSlice, ProveShardTaskRequest, RawTaskRequest, SplicingEngine,
-        SplicingTask, TaskContext, TaskError, TaskId, WorkerClient,
-    },
-    SP1VerifyingKey,
+use crate::worker::{
+    global_memory, precompile_channel, DeferredMessage, MinimalExecutorCache,
+    PrecompileArtifactSlice, ProveShardTaskRequest, RawTaskRequest, SplicingEngine, SplicingTask,
+    TaskContext, TaskError, TaskId, WorkerClient,
 };
 
 #[derive(Debug)]

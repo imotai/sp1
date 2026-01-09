@@ -5,7 +5,9 @@ use rayon::{
 };
 use serde::{Deserialize, Serialize};
 use slop_challenger::IopCtx;
-use sp1_core_machine::utils::{log2_strict_usize, reverse_bits_len, reverse_slice_index_bits};
+use sp1_core_machine::utils::{log2_strict_usize, reverse_slice_index_bits};
+use sp1_hypercube::MerkleProof;
+use sp1_primitives::utils::reverse_bits_len;
 use sp1_recursion_compiler::ir::Builder;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,14 +19,6 @@ pub struct MerkleTree<GC: IopCtx> {
     /// All the layers but the root. If there are `n` leaves where `n` is a power of 2, there are
     /// `2n - 2` elements in this vector. The leaves are at the beginning of the vector.
     pub digest_layers: Vec<GC::Digest>,
-}
-#[derive(Debug)]
-pub struct VcsError;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MerkleProof<GC: IopCtx> {
-    pub index: usize,
-    pub path: Vec<GC::Digest>,
 }
 
 impl<GC: FieldHasher<Digest: Default>> MerkleTree<GC> {
@@ -91,31 +85,6 @@ impl<GC: FieldHasher<Digest: Default>> MerkleTree<GC> {
         }
         assert_eq!(path.len(), self.height);
         (value, MerkleProof { index, path })
-    }
-
-    pub fn verify(
-        proof: MerkleProof<GC>,
-        value: GC::Digest,
-        commitment: GC::Digest,
-    ) -> Result<(), VcsError> {
-        let MerkleProof { index, path } = proof;
-
-        let mut value = value;
-
-        let mut index = reverse_bits_len(index, path.len());
-
-        for sibling in path {
-            // If the index is odd, swap the order of [value, sibling].
-            let new_pair =
-                if index.is_multiple_of(2) { [value, sibling] } else { [sibling, value] };
-            value = GC::constant_compress(new_pair);
-            index >>= 1;
-        }
-        if value != commitment {
-            Err(VcsError)
-        } else {
-            Ok(())
-        }
     }
 }
 

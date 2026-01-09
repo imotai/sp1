@@ -88,16 +88,6 @@ pub fn words_to_bytes<T: Copy>(words: &[[T; 4]; 8]) -> Vec<T> {
     words.iter().flat_map(|word| word.iter()).copied().collect()
 }
 
-/// Utility method for converting u32 words to bytes in big endian.
-pub fn words_to_bytes_be(words: &[u32; 8]) -> [u8; 32] {
-    let mut bytes = [0u8; 32];
-    for i in 0..8 {
-        let word_bytes = words[i].to_be_bytes();
-        bytes[i * 4..(i + 1) * 4].copy_from_slice(&word_bytes);
-    }
-    bytes
-}
-
 /// Utility method for converting 32 big-endian bytes back into eight u32 words.
 pub fn bytes_to_words_be(bytes: &[u8; 32]) -> [u32; 8] {
     let mut words = [0u32; 8];

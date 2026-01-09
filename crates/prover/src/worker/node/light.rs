@@ -2,15 +2,17 @@ use std::sync::Arc;
 
 use sp1_core_executor::{ExecutionReport, Program, SP1Context, SP1CoreOpts};
 use sp1_core_machine::io::SP1Stdin;
-use sp1_hypercube::prover::{CpuShardProver, ProverSemaphore};
+use sp1_hypercube::{
+    prover::{CpuShardProver, ProverSemaphore},
+    SP1VerifyingKey,
+};
 use sp1_primitives::io::SP1PublicValues;
 use sp1_verifier::SP1Proof;
 
 use crate::{
-    recursion::RecursionVks,
-    verify::SP1Verifier,
+    verify::{SP1Verifier, VerifierRecursionVks},
     worker::{node::SP1NodeCore, AirProverWorker},
-    CpuSP1ProverComponents, SP1ProverComponents, SP1VerifyingKey,
+    CpuSP1ProverComponents, SP1ProverComponents,
 };
 
 struct SP1LightNodeInner {
@@ -48,7 +50,7 @@ impl SP1LightNode {
             let permits = ProverSemaphore::new(1);
 
             // Get a new verifier for the light(( node.
-            let verifier = SP1Verifier::new(RecursionVks::default());
+            let verifier = SP1Verifier::new(VerifierRecursionVks::default());
             // Create a new core node for the light node
             let core = SP1NodeCore::new(verifier, opts);
 
@@ -91,12 +93,10 @@ impl SP1LightNode {
 #[cfg(test)]
 mod tests {
     use sp1_core_machine::utils::setup_logger;
+    use sp1_hypercube::HashableKey;
     use tracing::Instrument;
 
-    use crate::{
-        worker::{cpu_worker_builder, SP1LocalNodeBuilder},
-        HashableKey,
-    };
+    use crate::worker::{cpu_worker_builder, SP1LocalNodeBuilder};
 
     use super::*;
 
@@ -132,5 +132,9 @@ mod tests {
         let proof = node.prove(&elf, stdin, context).await.unwrap();
         // verify the proof with the light node
         light_node.verify(&light_node_vk, &proof.proof).unwrap();
+
+        let node_vks = node.core().recursion_vks();
+        let light_node_vks = light_node.inner().recursion_vks();
+        assert_eq!(node_vks, light_node_vks, "If this assertion fails, run test `sp1_prover::worker::node::full::tests::make_verifier_vks`");
     }
 }

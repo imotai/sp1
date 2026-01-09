@@ -8,7 +8,7 @@ use either::Either;
 use mti::prelude::{MagicTypeIdExt, V7};
 use sp1_core_executor::{ExecutionReport, SP1Context};
 use sp1_core_machine::io::SP1Stdin;
-use sp1_hypercube::{SP1PcsProofOuter, SP1RecursionProof};
+use sp1_hypercube::{SP1PcsProofOuter, SP1RecursionProof, SP1VerifyingKey};
 use sp1_primitives::{io::SP1PublicValues, SP1OuterGlobalContext};
 use sp1_prover_types::{
     network_base_types::ProofMode, Artifact, ArtifactClient, ArtifactType, InMemoryArtifactClient,
@@ -24,7 +24,6 @@ use crate::{
         LocalWorkerClient, ProofId, RawTaskRequest, RequesterId, SP1NodeCore, TaskContext,
         VkeyMapControllerInput, VkeyMapControllerOutput, WorkerClient,
     },
-    SP1VerifyingKey,
 };
 
 pub(crate) struct SP1NodeInner {
@@ -311,11 +310,9 @@ mod tests {
     use sp1_core_machine::utils::setup_logger;
 
     use slop_algebra::PrimeField32;
+    use sp1_hypercube::HashableKey;
 
-    use crate::{
-        worker::{cpu_worker_builder, SP1LocalNodeBuilder},
-        HashableKey,
-    };
+    use crate::worker::{cpu_worker_builder, SP1LocalNodeBuilder};
 
     use super::*;
 
@@ -366,6 +363,25 @@ mod tests {
             .await
             .unwrap();
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    #[ignore = "only run to write the vk root and num keys to a file"]
+    async fn make_verifier_vks() -> anyhow::Result<()> {
+        setup_logger();
+
+        let client = SP1LocalNodeBuilder::from_worker_client_builder(cpu_worker_builder())
+            .build()
+            .await
+            .unwrap();
+
+        let recursion_vks = client.core().recursion_vks();
+
+        let mut file = std::fs::File::create("verifier_vks.bin")?;
+
+        bincode::serialize_into(&mut file, &recursion_vks)?;
         Ok(())
     }
 

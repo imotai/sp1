@@ -16,8 +16,11 @@ use tokio::{sync::mpsc, task::JoinSet};
 use tracing::Instrument;
 
 use crate::{
-    worker::{ProofData, ReduceTaskRequest, TaskContext, TaskError, TaskId, WorkerClient},
-    SP1CircuitWitness, SP1CompressWitness,
+    worker::{
+        ProofData, RecursionProverData, ReduceTaskRequest, TaskContext, TaskError, TaskId,
+        WorkerClient,
+    },
+    SP1CircuitWitness, SP1CompressWitness, SP1ProverComponents,
 };
 
 pub struct CompressTask {
@@ -137,10 +140,11 @@ impl RangeProofs {
         self.shard_range
     }
 
-    pub async fn download_witness(
+    pub async fn download_witness<C: SP1ProverComponents>(
         &self,
         is_complete: bool,
         artifact_client: &impl ArtifactClient,
+        recursion_data: &RecursionProverData<C>,
     ) -> Result<SP1CircuitWitness, TaskError> {
         // Download the proofs
         let proofs = try_join_all(self.proofs.iter().map(|proof| async {
@@ -152,9 +156,17 @@ impl RangeProofs {
         }))
         .await?;
 
-        let vks_and_proofs =
-            proofs.into_iter().map(|proof| (proof.vk, proof.proof)).collect::<Vec<_>>();
+        // TODO: This is because of a mismatch between `SP1CompressWithVKeyWitnessValues` and `SP1RecursionProof`
+        // structs. Should refactor the former struct at some point to resemble the latter.
+        let (vks_and_proofs, merkle_proofs): (Vec<_>, Vec<_>) = proofs
+            .into_iter()
+            .map(|proof| ((proof.vk, proof.proof), proof.vk_merkle_proof))
+            .unzip();
+
         let witness = SP1ShapedWitnessValues { vks_and_proofs, is_complete };
+
+        let witness = recursion_data.append_merkle_proofs_to_witness(witness, merkle_proofs)?;
+
         let witness = SP1CircuitWitness::Compress(witness);
         Ok(witness)
     }

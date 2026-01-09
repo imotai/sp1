@@ -1,5 +1,4 @@
 use crate::{
-    basefold::merkle_tree::MerkleProof,
     hash::FieldHasher,
     machine::{
         MerkleProofVariable, SP1CompressWithVKeyWitnessValues, SP1CompressWithVKeyWitnessVariable,
@@ -25,7 +24,7 @@ use crate::{
     witness::{WitnessWriter, Witnessable},
     CircuitConfig, SP1FieldConfigVariable,
 };
-use sp1_hypercube::{MachineVerifyingKey, SP1PcsProofInner, ShardProof, Word};
+use sp1_hypercube::{MachineVerifyingKey, MerkleProof, SP1PcsProofInner, ShardProof, Word};
 use sp1_recursion_compiler::{
     config::InnerConfig,
     ir::{Builder, Felt},

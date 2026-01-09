@@ -6,7 +6,8 @@ use core::borrow::Borrow;
 use slop_algebra::{AbstractField, PrimeField32};
 use slop_symmetric::CryptographicHasher;
 use sp1_hypercube::{
-    InnerSC, MachineVerifier, MachineVerifierError, SP1RecursionProof, ShardVerifier,
+    verify_merkle_proof, HashableKey, InnerSC, MachineVerifier, MachineVerifierError,
+    SP1RecursionProof, ShardVerifier, DIGEST_SIZE,
 };
 use sp1_primitives::{fri_params::recursion_fri_config, poseidon2_hasher, SP1Field};
 use sp1_recursion_executor::{RecursionPublicValues, NUM_PV_ELMS_TO_HASH};
@@ -33,6 +34,7 @@ pub const RECURSION_MAX_LOG_ROW_COUNT: usize = 21;
 /// A verifier for SP1 "compressed" proofs.
 pub struct SP1CompressedVerifier {
     verifier: MachineVerifier<GC, InnerSC<CompressAir<SP1Field>>>,
+    vk_merkle_root: [SP1Field; DIGEST_SIZE],
 }
 
 impl Default for SP1CompressedVerifier {
@@ -49,7 +51,8 @@ impl Default for SP1CompressedVerifier {
         );
 
         let verifier = MachineVerifier::new(recursion_shard_verifier);
-        Self { verifier }
+        let vk_merkle_root = [SP1Field::zero(); DIGEST_SIZE]; // Placeholder for vk merkle root.
+        Self { verifier, vk_merkle_root }
     }
 }
 
@@ -82,7 +85,7 @@ impl SP1CompressedVerifier {
         proof: &SP1RecursionProof<GC, C>,
         vkey_hash: &[SP1Field; 8],
     ) -> Result<(), CompressedError> {
-        let SP1RecursionProof { vk: compress_vk, proof } = proof;
+        let SP1RecursionProof { vk: compress_vk, proof, vk_merkle_proof } = proof;
 
         let mut challenger = self.verifier.challenger();
         compress_vk.observe_into(&mut challenger);
@@ -102,8 +105,9 @@ impl SP1CompressedVerifier {
             )
             .into());
         }
-
         // TODO: add compress vkey verification when circuits are released.
+        verify_merkle_proof(vk_merkle_proof, compress_vk.hash_koalabear(), self.vk_merkle_root)
+            .map_err(CompressedError::InvalidVkey)?;
 
         // `is_complete` should be 1. This ensures that the proof is fully reduced.
         if public_values.is_complete != SP1Field::one() {

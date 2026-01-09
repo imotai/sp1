@@ -6550,6 +6550,7 @@ dependencies = [
  "slop-alloc",
  "slop-basefold",
  "slop-basefold-prover",
+ "slop-bn254",
  "slop-challenger",
  "slop-commit",
  "slop-futures",

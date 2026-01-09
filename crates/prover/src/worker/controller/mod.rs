@@ -22,7 +22,7 @@ use sp1_core_executor::{MinimalExecutor, SP1CoreOpts};
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
 use sp1_hypercube::{
     air::{PublicValues, PROOF_NONCE_NUM_WORDS},
-    SP1PcsProofInner, ShardProof, DIGEST_SIZE,
+    SP1PcsProofInner, SP1VerifyingKey, ShardProof, DIGEST_SIZE,
 };
 use sp1_primitives::{io::SP1PublicValues, SP1Field, SP1GlobalContext};
 use sp1_prover_types::{
@@ -39,7 +39,7 @@ use tracing::Instrument;
 use crate::{
     verify::SP1Verifier,
     worker::{RawTaskRequest, TaskContext, TaskError, WorkerClient},
-    SP1VerifyingKey, SP1_CIRCUIT_VERSION,
+    SP1_CIRCUIT_VERSION,
 };
 
 #[derive(Clone)]

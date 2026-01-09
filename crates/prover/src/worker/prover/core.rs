@@ -13,7 +13,7 @@ use sp1_core_machine::{executor::trace_chunk, riscv::RiscvAir};
 use sp1_hypercube::{
     air::MachineAir,
     prover::{CoreProofShape, ProverSemaphore, ProvingKey},
-    Machine, MachineProof, MachineVerifier,
+    Machine, MachineProof, MachineVerifier, SP1VerifyingKey,
 };
 use sp1_jit::TraceChunk;
 use sp1_primitives::{SP1Field, SP1GlobalContext};
@@ -34,7 +34,7 @@ use crate::{
         PrecompileArtifactSlice, ProofId, ProverMetrics, RawTaskRequest, SP1RecursionProver,
         TaskContext, TaskError, TaskId, TaskMetadata, TraceData, WorkerClient,
     },
-    CoreSC, SP1CircuitWitness, SP1ProverComponents, SP1VerifyingKey,
+    CoreSC, SP1CircuitWitness, SP1ProverComponents,
 };
 
 pub struct SetupTask {

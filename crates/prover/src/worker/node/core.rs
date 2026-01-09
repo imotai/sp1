@@ -3,14 +3,15 @@ use std::sync::Arc;
 use sp1_core_executor::{ExecutionReport, Program, SP1Context, SP1CoreOpts};
 use sp1_core_machine::io::SP1Stdin;
 
+use sp1_hypercube::SP1VerifyingKey;
 use sp1_primitives::io::SP1PublicValues;
 use sp1_verifier::SP1Proof;
 use tracing::instrument;
 
 use crate::{
-    verify::SP1Verifier,
+    verify::{SP1Verifier, VerifierRecursionVks},
     worker::{execute_with_options, SP1ExecutorConfig},
-    SP1CoreProofData, SP1VerifyingKey,
+    SP1CoreProofData,
 };
 
 struct SP1NodeCoreInner {
@@ -73,6 +74,10 @@ impl SP1NodeCore {
         }
 
         Ok(())
+    }
+
+    pub fn recursion_vks(&self) -> VerifierRecursionVks {
+        self.inner.verifier.recursion_vks.clone()
     }
 
     pub fn vk_verification(&self) -> bool {

@@ -23,7 +23,7 @@ use sp1_hypercube::{
     air::MachineAir,
     log2_ceil_usize,
     prover::{CoreProofShape, DefaultTraceGenerator, ProverSemaphore, TraceGenerator},
-    Chip, Machine, MachineShape, SP1PcsProofInner,
+    Chip, HashableKey, Machine, MachineShape, SP1PcsProofInner, SP1VerifyingKey,
 };
 use sp1_primitives::{
     fri_params::{core_fri_config, CORE_LOG_BLOWUP},
@@ -64,9 +64,8 @@ use crate::{
         dummy_deferred_input, normalize_program_from_input, recursive_verifier,
         shrink_program_from_input,
     },
-    types::HashableKey,
     worker::{AirProverWorker, RecursionVkWorker},
-    CompressAir, SP1VerifyingKey, CORE_MAX_LOG_ROW_COUNT,
+    CompressAir, CORE_MAX_LOG_ROW_COUNT,
 };
 
 pub const DEFAULT_ARITY: usize = 4;
