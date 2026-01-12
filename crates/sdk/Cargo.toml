@@ -75,6 +75,7 @@ alloy-primitives = { workspace = true, features = [
   "serde",
 ], optional = true }
 backoff = { workspace = true, features = ["tokio"], optional = true }
+zstd = { workspace = true, optional = true }
 num-bigint = { workspace = true }
 
 # TEE Dependencies
@@ -106,6 +107,7 @@ network = [
   "dep:reqwest-middleware",
   "dep:tonic",
   "dep:backoff",
+  "dep:zstd",
 ]
 native-cuda = ["sp1-cuda/native"]
 tee-2fa = []

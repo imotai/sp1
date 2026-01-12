@@ -765,15 +765,17 @@ impl NetworkClient {
         let presigned_url = response.artifact_presigned_url;
         let uri = response.artifact_uri;
 
-        // Upload the content.
+        // Serialize and compress the content once before retrying uploads.
+        // Using compression level 3 for a good balance of speed and compression ratio.
+        let serialized = bincode::serialize::<T>(item)?;
+        let compressed = zstd::encode_all(&serialized[..], 3)
+            .map_err(|e| anyhow::anyhow!("Failed to compress artifact: {e}"))?;
+
+        // Upload the compressed content.
         self.with_retry(
             || async {
-                let response = self
-                    .http
-                    .put(&presigned_url)
-                    .body(bincode::serialize::<T>(item)?)
-                    .send()
-                    .await?;
+                let response =
+                    self.http.put(&presigned_url).body(compressed.clone()).send().await?;
 
                 if !response.status().is_success() {
                     return Err(anyhow::anyhow!(
