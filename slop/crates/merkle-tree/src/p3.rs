@@ -1,13 +1,13 @@
 use std::{
-    borrow::Borrow, cmp::Reverse, convert::Infallible, error::Error, fmt::Debug, future::Future,
-    marker::PhantomData, mem::ManuallyDrop, ops::Deref, sync::Arc,
+    borrow::Borrow, cmp::Reverse, convert::Infallible, fmt::Debug, marker::PhantomData,
+    mem::ManuallyDrop, ops::Deref, sync::Arc,
 };
 
 use itertools::Itertools;
 use p3_merkle_tree::{compress_and_inject, first_digest_layer};
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, Field, PackedField, PackedValue};
-use slop_alloc::{Backend, CpuBackend};
+use slop_alloc::CpuBackend;
 use slop_baby_bear::{baby_bear_poseidon2::BabyBearDegree4Duplex, BabyBear};
 use slop_bn254::{Bn254Fr, BNGC, OUTER_DIGEST_SIZE};
 use slop_challenger::IopCtx;
@@ -18,40 +18,7 @@ use slop_matrix::{dense::RowMajorMatrix, Matrix};
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 use slop_tensor::Tensor;
 
-use crate::{MerkleTreeTcs, MerkleTreeTcsProof};
-
-pub trait TensorCsProver<GC: IopCtx, A: Backend>: 'static + Send + Sync {
-    type ProverData: 'static + Send + Sync + Debug + Clone;
-    type ProverError: Error;
-
-    /// Commit to a batch of tensors of the same shape.
-    ///
-    /// The prover is free to choose which dimension index is supported.
-    #[allow(clippy::type_complexity)]
-    fn commit_tensors<T>(
-        &self,
-        tensors: Message<T>,
-    ) -> impl Future<Output = Result<(GC::Digest, Self::ProverData), Self::ProverError>> + Send
-    where
-        T: OwnedBorrow<Tensor<GC::F, A>>;
-
-    /// Prove openings at a list of indices.
-    fn prove_openings_at_indices(
-        &self,
-        data: Self::ProverData,
-        indices: &[usize],
-    ) -> impl Future<Output = Result<MerkleTreeTcsProof<GC::Digest>, Self::ProverError>> + Send;
-}
-
-pub trait ComputeTcsOpenings<GC: IopCtx, A: Backend>: TensorCsProver<GC, A> + Default {
-    fn compute_openings_at_indices<T>(
-        &self,
-        tensors: Message<T>,
-        indices: &[usize],
-    ) -> impl Future<Output = Tensor<GC::F>> + Send
-    where
-        T: OwnedBorrow<Tensor<GC::F, A>>;
-}
+use crate::{ComputeTcsOpenings, MerkleTreeTcs, MerkleTreeTcsProof, TensorCsProver};
 
 #[derive(Clone)]
 pub struct FieldMerkleTreeProver<P, PW, GC: IopCtx, const DIGEST_ELEMS: usize> {
@@ -387,3 +354,6 @@ mod tests {
         tcs.verify_tensor_openings(&commitment, &indices, &openings, &proof).unwrap();
     }
 }
+
+#[path = "p3sync.rs"]
+mod p3sync;

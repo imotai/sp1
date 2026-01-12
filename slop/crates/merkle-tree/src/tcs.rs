@@ -1,12 +1,90 @@
+use std::error::Error;
 use std::fmt::Debug;
+use std::future::Future;
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, PrimeField32};
+use slop_alloc::Backend;
 use slop_challenger::IopCtx;
+use slop_commit::Message;
+use slop_futures::OwnedBorrow;
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 use slop_tensor::Tensor;
-use thiserror::Error;
+
+pub trait TensorCsProver<GC: IopCtx, A: Backend>: 'static + Send + Sync {
+    type ProverData: 'static + Send + Sync + Debug + Clone;
+    type ProverError: Error;
+
+    /// Commit to a batch of tensors of the same shape.
+    ///
+    /// The prover is free to choose which dimension index is supported.
+    #[allow(clippy::type_complexity)]
+    fn commit_tensors<T>(
+        &self,
+        tensors: Message<T>,
+    ) -> impl Future<Output = Result<(GC::Digest, Self::ProverData), Self::ProverError>> + Send
+    where
+        T: OwnedBorrow<Tensor<GC::F, A>>;
+
+    /// Prove openings at a list of indices.
+    fn prove_openings_at_indices(
+        &self,
+        data: Self::ProverData,
+        indices: &[usize],
+    ) -> impl Future<Output = Result<MerkleTreeTcsProof<GC::Digest>, Self::ProverError>> + Send;
+}
+
+pub trait ComputeTcsOpenings<GC: IopCtx, A: Backend>: TensorCsProver<GC, A> + Default {
+    fn compute_openings_at_indices<T>(
+        &self,
+        tensors: Message<T>,
+        indices: &[usize],
+    ) -> impl Future<Output = Tensor<GC::F>> + Send
+    where
+        T: OwnedBorrow<Tensor<GC::F, A>>;
+}
+
+/// Sync version of the TensorCsProver trait.
+///
+/// This is basically copy-pasted from the async version
+/// and intended as a stopgap for use in contexts where async is not available or desired.
+pub trait TensorCsProverSync<GC: IopCtx, A: Backend>: 'static + Send + Sync {
+    type ProverDataSync: 'static + Send + Sync + Debug + Clone;
+    type ProverErrorSync: Error;
+
+    /// Commit to a batch of tensors of the same shape (sync version).
+    ///
+    /// The prover is free to choose which dimension index is supported.
+    #[allow(clippy::type_complexity)]
+    fn commit_tensors_sync<T>(
+        &self,
+        tensors: Message<T>,
+    ) -> Result<(GC::Digest, Self::ProverDataSync), Self::ProverErrorSync>
+    where
+        T: OwnedBorrow<Tensor<GC::F, A>>;
+
+    /// Prove openings at a list of indices (sync version).
+    fn prove_openings_at_indices_sync(
+        &self,
+        data: Self::ProverDataSync,
+        indices: &[usize],
+    ) -> Result<MerkleTreeTcsProof<GC::Digest>, Self::ProverErrorSync>;
+}
+
+/// Sync version of the ComputeTcsOpenings trait.
+///
+/// This is bascically copy-pasted from the async version
+/// and intended as a stopgap for use in contexts where async is not available or desired.
+pub trait ComputeTcsOpeningsSync<GC: IopCtx, A: Backend>: TensorCsProverSync<GC, A> {
+    fn compute_openings_at_indices_sync<T>(
+        &self,
+        tensors: Message<T>,
+        indices: &[usize],
+    ) -> Tensor<GC::F>
+    where
+        T: OwnedBorrow<Tensor<GC::F, A>>;
+}
 
 /// An opening of a tensor commitment scheme.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,7 +106,7 @@ pub struct MerkleTreeTcs<GC: IopCtx> {
     pub compressor: GC::Compressor,
 }
 
-#[derive(Debug, Clone, Copy, Error)]
+#[derive(Debug, Clone, Copy, thiserror::Error)]
 pub enum MerkleTreeTcsError {
     #[error("root mismatch")]
     RootMismatch,
