@@ -4,16 +4,133 @@
 #![allow(missing_docs)]
 #![allow(clippy::double_parens)] // For some reason we need this to use EnumTryAs
 
-use std::{fmt::Debug, fs::File, path::Path};
+use std::{collections::BTreeMap, fmt::Debug, fs::File, path::Path};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use sp1_primitives::io::SP1PublicValues;
-use sp1_prover::SP1VerifyingKey;
+use slop_algebra::AbstractField;
+use slop_alloc::{CpuBackend, GLOBAL_CPU_BACKEND};
+use slop_basefold::BasefoldProof;
+use slop_commit::Rounds;
+use slop_jagged::{JaggedPcsProof, JaggedSumcheckEvalProof};
+use slop_multilinear::{Mle, MleEval, Point};
+use slop_sumcheck::PartialSumcheckProof;
+use slop_tensor::Tensor;
+use sp1_hypercube::SP1PcsProof;
+use sp1_hypercube::{
+    LogUpEvaluations, LogUpGkrOutput, LogupGkrProof, MerkleProof, SP1PcsProofInner,
+    SP1RecursionProof, ShardOpenedValues, ShardProof, DIGEST_SIZE,
+};
+use sp1_primitives::{io::SP1PublicValues, SP1ExtensionField, SP1Field, SP1GlobalContext};
+use sp1_prover::{Groth16Bn254Proof, HashableKey, PlonkBn254Proof, SP1VerifyingKey};
 
 // Re-export the types from the verifier crate in order to avoid importing the verifier crate
 // for downstream dependencies.
 pub use sp1_verifier::{ProofFromNetwork, SP1Proof, SP1ProofMode};
+
+/// Creates a dummy recursion proof with minimal values for mock proof creation.
+///
+/// This is used internally for creating mock compressed proofs. The proof contains
+/// valid structures but with zero/empty values since the mock verifier doesn't
+/// actually verify the proof contents.
+fn create_dummy_recursion_proof(
+    vk: &SP1VerifyingKey,
+) -> SP1RecursionProof<SP1GlobalContext, SP1PcsProofInner> {
+    // Create minimal dummy values for the proof.
+    // These are the minimum required to satisfy the type system.
+
+    // Create dummy basefold proof.
+    let dummy_query_proof = Vec::new();
+    let basefold_proof = BasefoldProof::<SP1GlobalContext> {
+        univariate_messages: vec![],
+        fri_commitments: vec![],
+        final_poly: SP1ExtensionField::zero(),
+        pow_witness: SP1Field::zero(),
+        component_polynomials_query_openings_and_proofs: vec![],
+        query_phase_openings_and_proofs: dummy_query_proof,
+    };
+
+    let batch_evaluations: Rounds<MleEval<SP1ExtensionField, CpuBackend>> = Rounds::default();
+
+    let stacked_proof = SP1PcsProof { basefold_proof, batch_evaluations };
+
+    let jagged_eval_proof =
+        JaggedSumcheckEvalProof { partial_sumcheck_proof: PartialSumcheckProof::dummy() };
+
+    let evaluation_proof = JaggedPcsProof {
+        pcs_proof: stacked_proof,
+        jagged_eval_proof,
+        sumcheck_proof: PartialSumcheckProof::dummy(),
+        merkle_tree_commitments: Rounds::default(),
+        row_counts_and_column_counts: Rounds::default(),
+        expected_eval: SP1ExtensionField::zero(),
+        max_log_row_count: 1,
+        log_m: 1,
+    };
+
+    // Create dummy LogupGkrProof.
+    // Create empty Mle with minimal size using Tensor::zeros_in.
+    let empty_tensor: Tensor<SP1ExtensionField, CpuBackend> =
+        Tensor::zeros_in([1], GLOBAL_CPU_BACKEND);
+    let logup_gkr_proof = LogupGkrProof {
+        circuit_output: LogUpGkrOutput {
+            numerator: Mle::new(empty_tensor.clone()),
+            denominator: Mle::new(empty_tensor),
+        },
+        round_proofs: vec![],
+        logup_evaluations: LogUpEvaluations {
+            point: Point::from_usize(0, 1),
+            chip_openings: BTreeMap::new(),
+        },
+    };
+
+    // Create dummy ShardProof.
+    let dummy_shard_proof = ShardProof {
+        public_values: Vec::new(),
+        main_commitment: [SP1Field::zero(); DIGEST_SIZE],
+        logup_gkr_proof,
+        zerocheck_proof: PartialSumcheckProof::dummy(),
+        opened_values: ShardOpenedValues { chips: BTreeMap::new() },
+        evaluation_proof,
+    };
+
+    SP1RecursionProof {
+        vk: vk.vk.clone(),
+        proof: dummy_shard_proof,
+        vk_merkle_proof: MerkleProof { index: 0, path: vec![] },
+    }
+}
+
+/// Verify that the mock proof's public inputs match the expected values.
+///
+/// This is used by both the async and blocking mock provers to verify mock Plonk and Groth16 proofs.
+pub(crate) fn verify_mock_public_inputs(
+    vkey: &SP1VerifyingKey,
+    public_values: &SP1PublicValues,
+    public_inputs: &[String; 5],
+) -> Result<()> {
+    // Verify vkey hash matches (public_inputs[0]).
+    let expected_vkey_hash = vkey.hash_bn254().to_string();
+    if public_inputs[0] != expected_vkey_hash {
+        anyhow::bail!(
+            "vkey hash mismatch: expected {}, got {}",
+            expected_vkey_hash,
+            public_inputs[0]
+        );
+    }
+
+    // Verify public values hash matches (public_inputs[1]).
+    let expected_pv_hash = public_values.hash_bn254().to_string();
+    if public_inputs[1] != expected_pv_hash {
+        anyhow::bail!(
+            "public values hash mismatch: expected {}, got {}",
+            expected_pv_hash,
+            public_inputs[1]
+        );
+    }
+
+    Ok(())
+}
 
 /// A proof generated by the SP1 RISC-V zkVM bundled together with the public values and the
 /// version.
@@ -183,7 +300,7 @@ impl SP1ProofWithPublicValues {
     #[must_use]
     #[allow(clippy::needless_pass_by_value)]
     pub fn create_mock_proof(
-        _vk: &SP1VerifyingKey,
+        vk: &SP1VerifyingKey,
         public_values: SP1PublicValues,
         mode: SP1ProofMode,
         sp1_version: &str,
@@ -197,74 +314,69 @@ impl SP1ProofWithPublicValues {
                 tee_proof: None,
             },
             SP1ProofMode::Compressed => {
-                todo!()
-                // let shard_proof = ShardProof {
-                //     commitment: ShardCommitment {
-                //         main_commit: [SP1Field::zero(); 8].into(),
-                //         permutation_commit: [SP1Field::zero(); 8].into(),
-                //         quotient_commit: [SP1Field::zero(); 8].into(),
-                //     },
-                //     opened_values: ShardOpenedValues { chips: vec![] },
-                //     opening_proof: TwoAdicFriPcsProof {
-                //         fri_proof: FriProof {
-                //             commit_phase_commits: vec![],
-                //             query_proofs: vec![],
-                //             final_poly: BinomialExtensionField::default(),
-                //             pow_witness: SP1Field::zero(),
-                //         },
-                //         query_openings: vec![],
-                //     },
-                //     chip_ordering: HashMap::new(),
-                //     public_values: vec![],
-                // };
-
-                // let reduce_vk = MachineVerifyingKey {
-                //     preprocessed_commit: Some([SP1Field::zero(); 8]),
-                //     pc_start: SP1Field::zero(),
-                //     preprocessed_chip_information: BTreeMap::new(),
-                //     initial_global_cumulative_sum: SepticDigest::zero(),
-                // };
-
-                // let proof = SP1Proof::Compressed(Box::new(SP1ReduceProof {
-                //     vk: reduce_vk,
-                //     proof: shard_proof,
-                // }));
-
-                // SP1ProofWithPublicValues { proof, public_values, sp1_version, tee_proof: None }
+                // Create a mock compressed proof with dummy values.
+                let dummy_proof = create_dummy_recursion_proof(vk);
+                SP1ProofWithPublicValues {
+                    proof: SP1Proof::Compressed(Box::new(dummy_proof)),
+                    public_values,
+                    sp1_version,
+                    tee_proof: None,
+                }
             }
-            SP1ProofMode::Plonk => todo!(),
-
-            // SP1ProofWithPublicValues {
-            // proof: SP1Proof::Plonk(PlonkBn254Proof {
-            //     public_inputs: [
-            //         pk.vk.hash_bn254().as_canonical_biguint().to_string(),
-            //         public_values.hash_bn254().to_string(),
-            //     ],
-            //     encoded_proof: String::new(),
-            //     raw_proof: String::new(),
-            //     plonk_vkey_hash: [0; 32],
-            // }),
-            // public_values,
-            // sp1_version,
-
-            // tee_proof: None,
-            // },
-            SP1ProofMode::Groth16 => todo!(),
-            // SP1ProofWithPublicValues {
-            //     proof: SP1Proof::Groth16(Groth16Bn254Proof {
-            //         public_inputs: [
-            //             pk.vk.hash_bn254().as_canonical_biguint().to_string(),
-            //             public_values.hash_bn254().to_string(),
-            //         ],
-            //         encoded_proof: String::new(),
-            //         raw_proof: String::new(),
-            //         groth16_vkey_hash: [0; 32],
-            //     }),
-            //     public_values,
-            //     sp1_version,
-
-            //    tee_proof: None,
-            // },
+            SP1ProofMode::Plonk => {
+                // Create mock Plonk proof with correct public inputs.
+                // public_inputs[0]: vkey_hash
+                // public_inputs[1]: committed_values_digest (public_values hash)
+                // public_inputs[2]: exit_code (0 for success)
+                // public_inputs[3]: vk_root (0 for mock)
+                // public_inputs[4]: proof_nonce (0 for mock)
+                let vkey_hash = vk.hash_bn254().to_string();
+                let committed_values_digest = public_values.hash_bn254().to_string();
+                SP1ProofWithPublicValues {
+                    proof: SP1Proof::Plonk(PlonkBn254Proof {
+                        public_inputs: [
+                            vkey_hash,
+                            committed_values_digest,
+                            "0".to_string(), // exit_code
+                            "0".to_string(), // vk_root (mock)
+                            "0".to_string(), // proof_nonce (mock)
+                        ],
+                        encoded_proof: String::new(),
+                        raw_proof: String::new(),
+                        plonk_vkey_hash: [0; 32],
+                    }),
+                    public_values,
+                    sp1_version,
+                    tee_proof: None,
+                }
+            }
+            SP1ProofMode::Groth16 => {
+                // Create mock Groth16 proof with correct public inputs.
+                // public_inputs[0]: vkey_hash
+                // public_inputs[1]: committed_values_digest (public_values hash)
+                // public_inputs[2]: exit_code (0 for success)
+                // public_inputs[3]: vk_root (0 for mock)
+                // public_inputs[4]: proof_nonce (0 for mock)
+                let vkey_hash = vk.hash_bn254().to_string();
+                let committed_values_digest = public_values.hash_bn254().to_string();
+                SP1ProofWithPublicValues {
+                    proof: SP1Proof::Groth16(Groth16Bn254Proof {
+                        public_inputs: [
+                            vkey_hash,
+                            committed_values_digest,
+                            "0".to_string(), // exit_code
+                            "0".to_string(), // vk_root (mock)
+                            "0".to_string(), // proof_nonce (mock)
+                        ],
+                        encoded_proof: String::new(),
+                        raw_proof: String::new(),
+                        groth16_vkey_hash: [0; 32],
+                    }),
+                    public_values,
+                    sp1_version,
+                    tee_proof: None,
+                }
+            }
         }
     }
 }
