@@ -231,7 +231,7 @@ impl<C: SP1ProverComponents, A, W> SP1WorkerBuilder<C, A, W> {
         // Check consitency of wrap vk
         let wrap_vk = prover_engine.recursion_prover.wrap_prover.verifying_key.clone();
         let expected_wrap_vk = verifier.wrap_vk.clone();
-        if wrap_vk != expected_wrap_vk {
+        if recursion_vks.vk_verification() && wrap_vk != expected_wrap_vk {
             return Err(anyhow::anyhow!(
                 "Wrap vk mismatch, expected: {:?}, got: {:?}",
                 expected_wrap_vk,

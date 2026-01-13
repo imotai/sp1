@@ -844,7 +844,20 @@ impl<C: SP1ProverComponents> RecursionProverData<C> {
         input: SP1ShapedWitnessValues<SP1GlobalContext, SP1PcsProofInner>,
         merkle_proofs: Vec<MerkleProof<SP1GlobalContext>>,
     ) -> Result<SP1CompressWithVKeyWitnessValues<SP1PcsProofInner>, TaskError> {
-        let values = input.vks_and_proofs.iter().map(|(vk, _)| vk.hash_koalabear()).collect();
+        let values = if self.recursion_vks.vk_verification() {
+            input.vks_and_proofs.iter().map(|(vk, _)| vk.hash_koalabear()).collect()
+        } else {
+            let num_vks = self.recursion_vks.num_keys();
+            input
+                .vks_and_proofs
+                .iter()
+                .map(|(vk, _)| {
+                    let vk_digest = vk.hash_koalabear();
+                    let index = (vk_digest[0].as_canonical_u32() as usize) % num_vks;
+                    [SP1Field::from_canonical_u32(index as u32); DIGEST_SIZE]
+                })
+                .collect()
+        };
 
         let merkle_val = SP1MerkleProofWitnessValues {
             root: self.recursion_vks.root(),

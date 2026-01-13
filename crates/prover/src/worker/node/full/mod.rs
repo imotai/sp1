@@ -309,26 +309,23 @@ mod tests {
     use serial_test::serial;
     use sp1_core_machine::utils::setup_logger;
 
+    use crate::CpuSP1ProverComponents;
     use slop_algebra::PrimeField32;
     use sp1_hypercube::HashableKey;
 
-    use crate::worker::{cpu_worker_builder, SP1LocalNodeBuilder};
+    use crate::worker::{cpu_worker_builder, SP1LocalNodeBuilder, SP1WorkerBuilder};
 
     use super::*;
 
-    #[tokio::test]
-    #[serial]
-    async fn test_e2e_node() -> anyhow::Result<()> {
-        setup_logger();
-
+    async fn run_e2e_node_test(
+        builder: SP1WorkerBuilder<CpuSP1ProverComponents>,
+    ) -> anyhow::Result<()> {
         let elf = test_artifacts::FIBONACCI_ELF;
         let stdin = SP1Stdin::default();
         let mode = ProofMode::Compressed;
 
-        let client = SP1LocalNodeBuilder::from_worker_client_builder(cpu_worker_builder())
-            .build()
-            .await
-            .unwrap();
+        let client =
+            SP1LocalNodeBuilder::from_worker_client_builder(builder).build().await.unwrap();
 
         let proof_nonce = [0x6284, 0xC0DE, 0x4242, 0xCAFE];
 
@@ -364,6 +361,21 @@ mod tests {
             .unwrap();
 
         Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_e2e_node() -> anyhow::Result<()> {
+        setup_logger();
+        run_e2e_node_test(cpu_worker_builder()).await
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "experimental")]
+    #[serial]
+    async fn test_e2e_node_experimental() -> anyhow::Result<()> {
+        setup_logger();
+        run_e2e_node_test(cpu_worker_builder().without_vk_verification()).await
     }
 
     #[tokio::test]
