@@ -1004,6 +1004,21 @@ pub mod tests {
     }
 
     #[test]
+    fn core_air_complexity_consistency() {
+        let complexity = sp1_core_executor::get_complexity_mapping();
+        let machine = RiscvAir::<SP1Field>::machine();
+        for chip in machine.chips() {
+            let id = chip.air.id();
+            let expected = complexity[id];
+            assert_eq!(
+                chip.num_constraints as u64, expected,
+                "Complexity mismatch for {:?}: chip has {} constraints, expected {}",
+                id, chip.num_constraints, expected
+            );
+        }
+    }
+
+    #[test]
     fn test_interaction_counts() {
         let interaction_sizes = RiscvAir::<SP1Field>::machine()
             .chips()

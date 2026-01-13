@@ -35,6 +35,7 @@ mod tracing;
 pub use tracing::TracingVM;
 mod vm;
 pub use vm::{
+    gas::get_complexity_mapping,
     memory::CompressedMemory,
     results::CycleResult,
     shapes::{MAXIMUM_CYCLE_AREA, MAXIMUM_PADDING_AREA},

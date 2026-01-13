@@ -271,6 +271,7 @@ impl ReportGenerator {
 
 /// Returns a mapping of `RiscvAirId` to their associated complexity codes.
 /// This provides the complexity cost for each AIR component in the system.
+#[must_use]
 pub fn get_complexity_mapping() -> EnumMap<RiscvAirId, u64> {
     let mut mapping = EnumMap::<RiscvAirId, u64>::default();
 
@@ -281,88 +282,88 @@ pub fn get_complexity_mapping() -> EnumMap<RiscvAirId, u64> {
 
     // SHA components
     mapping[RiscvAirId::ShaExtend] = 80;
-    mapping[RiscvAirId::ShaExtendControl] = 73;
+    mapping[RiscvAirId::ShaExtendControl] = 21;
     mapping[RiscvAirId::ShaCompress] = 300;
-    mapping[RiscvAirId::ShaCompressControl] = 99;
+    mapping[RiscvAirId::ShaCompressControl] = 21;
 
     // Elliptic curve operations
-    mapping[RiscvAirId::EdAddAssign] = 844;
-    mapping[RiscvAirId::EdDecompress] = 807;
+    mapping[RiscvAirId::EdAddAssign] = 792;
+    mapping[RiscvAirId::EdDecompress] = 755;
 
     // Secp256k1 operations
-    mapping[RiscvAirId::Secp256k1Decompress] = 743;
-    mapping[RiscvAirId::Secp256k1AddAssign] = 970;
-    mapping[RiscvAirId::Secp256k1DoubleAssign] = 930;
+    mapping[RiscvAirId::Secp256k1Decompress] = 691;
+    mapping[RiscvAirId::Secp256k1AddAssign] = 918;
+    mapping[RiscvAirId::Secp256k1DoubleAssign] = 904;
 
     // Secp256r1 operations
-    mapping[RiscvAirId::Secp256r1Decompress] = 743;
-    mapping[RiscvAirId::Secp256r1AddAssign] = 970;
-    mapping[RiscvAirId::Secp256r1DoubleAssign] = 930;
+    mapping[RiscvAirId::Secp256r1Decompress] = 691;
+    mapping[RiscvAirId::Secp256r1AddAssign] = 918;
+    mapping[RiscvAirId::Secp256r1DoubleAssign] = 904;
 
     // Keccak operations
     mapping[RiscvAirId::KeccakPermute] = 2859;
-    mapping[RiscvAirId::KeccakPermuteControl] = 383;
+    mapping[RiscvAirId::KeccakPermuteControl] = 331;
 
     // Bn254 operations
-    mapping[RiscvAirId::Bn254AddAssign] = 970;
-    mapping[RiscvAirId::Bn254DoubleAssign] = 930;
+    mapping[RiscvAirId::Bn254AddAssign] = 918;
+    mapping[RiscvAirId::Bn254DoubleAssign] = 904;
 
     // BLS12-381 operations
-    mapping[RiscvAirId::Bls12381AddAssign] = 1426;
-    mapping[RiscvAirId::Bls12381DoubleAssign] = 1382;
-    mapping[RiscvAirId::Bls12381Decompress] = 1289;
+    mapping[RiscvAirId::Bls12381AddAssign] = 1374;
+    mapping[RiscvAirId::Bls12381DoubleAssign] = 1356;
+    mapping[RiscvAirId::Bls12381Decompress] = 1237;
 
     // Uint256 operations
-    mapping[RiscvAirId::Uint256MulMod] = 305;
-    mapping[RiscvAirId::Uint256Ops] = 427;
-    mapping[RiscvAirId::U256XU2048Mul] = 1301;
+    mapping[RiscvAirId::Uint256MulMod] = 253;
+    mapping[RiscvAirId::Uint256Ops] = 297;
+    mapping[RiscvAirId::U256XU2048Mul] = 1197;
 
     // Field operations
-    mapping[RiscvAirId::Bls12381FpOpAssign] = 369;
-    mapping[RiscvAirId::Bls12381Fp2AddSubAssign] = 667;
-    mapping[RiscvAirId::Bls12381Fp2MulAssign] = 1046;
-    mapping[RiscvAirId::Bn254FpOpAssign] = 269;
-    mapping[RiscvAirId::Bn254Fp2AddSubAssign] = 467;
-    mapping[RiscvAirId::Bn254Fp2MulAssign] = 718;
+    mapping[RiscvAirId::Bls12381FpOpAssign] = 317;
+    mapping[RiscvAirId::Bls12381Fp2AddSubAssign] = 615;
+    mapping[RiscvAirId::Bls12381Fp2MulAssign] = 994;
+    mapping[RiscvAirId::Bn254FpOpAssign] = 217;
+    mapping[RiscvAirId::Bn254Fp2AddSubAssign] = 415;
+    mapping[RiscvAirId::Bn254Fp2MulAssign] = 666;
 
     // System operations
     mapping[RiscvAirId::Mprotect] = 11;
-    mapping[RiscvAirId::Poseidon2] = 523;
+    mapping[RiscvAirId::Poseidon2] = 497;
 
     // RISC-V instruction costs
-    mapping[RiscvAirId::DivRem] = 351;
-    mapping[RiscvAirId::Add] = 19;
-    mapping[RiscvAirId::Addi] = 18;
-    mapping[RiscvAirId::Addw] = 24;
-    mapping[RiscvAirId::Sub] = 19;
-    mapping[RiscvAirId::Subw] = 19;
-    mapping[RiscvAirId::Bitwise] = 23;
-    mapping[RiscvAirId::Mul] = 64;
-    mapping[RiscvAirId::ShiftRight] = 81;
-    mapping[RiscvAirId::ShiftLeft] = 72;
-    mapping[RiscvAirId::Lt] = 45;
+    mapping[RiscvAirId::DivRem] = 347;
+    mapping[RiscvAirId::Add] = 15;
+    mapping[RiscvAirId::Addi] = 14;
+    mapping[RiscvAirId::Addw] = 20;
+    mapping[RiscvAirId::Sub] = 15;
+    mapping[RiscvAirId::Subw] = 15;
+    mapping[RiscvAirId::Bitwise] = 19;
+    mapping[RiscvAirId::Mul] = 60;
+    mapping[RiscvAirId::ShiftRight] = 77;
+    mapping[RiscvAirId::ShiftLeft] = 68;
+    mapping[RiscvAirId::Lt] = 41;
 
     // Memory operations
-    mapping[RiscvAirId::LoadByte] = 37;
-    mapping[RiscvAirId::LoadHalf] = 38;
-    mapping[RiscvAirId::LoadWord] = 38;
-    mapping[RiscvAirId::LoadDouble] = 29;
-    mapping[RiscvAirId::LoadX0] = 39;
-    mapping[RiscvAirId::StoreByte] = 37;
-    mapping[RiscvAirId::StoreHalf] = 32;
-    mapping[RiscvAirId::StoreWord] = 32;
-    mapping[RiscvAirId::StoreDouble] = 28;
+    mapping[RiscvAirId::LoadByte] = 32;
+    mapping[RiscvAirId::LoadHalf] = 33;
+    mapping[RiscvAirId::LoadWord] = 33;
+    mapping[RiscvAirId::LoadDouble] = 24;
+    mapping[RiscvAirId::LoadX0] = 34;
+    mapping[RiscvAirId::StoreByte] = 32;
+    mapping[RiscvAirId::StoreHalf] = 27;
+    mapping[RiscvAirId::StoreWord] = 27;
+    mapping[RiscvAirId::StoreDouble] = 23;
 
     // Control flow
-    mapping[RiscvAirId::UType] = 23;
-    mapping[RiscvAirId::Branch] = 53;
-    mapping[RiscvAirId::Jal] = 28;
-    mapping[RiscvAirId::Jalr] = 29;
+    mapping[RiscvAirId::UType] = 19;
+    mapping[RiscvAirId::Branch] = 49;
+    mapping[RiscvAirId::Jal] = 24;
+    mapping[RiscvAirId::Jalr] = 25;
 
     // System components
     mapping[RiscvAirId::InstructionDecode] = 160;
     mapping[RiscvAirId::InstructionFetch] = 11;
-    mapping[RiscvAirId::SyscallInstrs] = 102;
+    mapping[RiscvAirId::SyscallInstrs] = 93;
     mapping[RiscvAirId::MemoryBump] = 5;
     mapping[RiscvAirId::PageProt] = 32;
     mapping[RiscvAirId::PageProtLocal] = 1;
@@ -372,7 +373,7 @@ pub fn get_complexity_mapping() -> EnumMap<RiscvAirId, u64> {
     mapping[RiscvAirId::PageProtGlobalInit] = 26;
     mapping[RiscvAirId::PageProtGlobalFinalize] = 25;
     mapping[RiscvAirId::MemoryLocal] = 4;
-    mapping[RiscvAirId::Global] = 276;
+    mapping[RiscvAirId::Global] = 216;
 
     // Memory types
     mapping[RiscvAirId::Byte] = 0;
