@@ -351,7 +351,10 @@ mod tests {
         let time = tokio::time::Instant::now();
 
         tracing::info!("proving with mode: {mode:?}");
-        let proof = client.prove_with_mode(&elf, stdin, context, mode).await.unwrap();
+        let proof = client
+            .prove_with_mode(&elf, stdin.clone(), context.clone(), mode)
+            .await
+            .expect("proof failed");
         let proof_time = time.elapsed();
         tracing::info!("proof time: {:?}", proof_time);
 

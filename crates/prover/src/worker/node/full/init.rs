@@ -605,6 +605,14 @@ impl TaskOutput {
                     tracing::error!("Failed to submit retry, task: {:?}, error: {:?}", task_id, e);
                 }
             }
+            TaskStatus::FailedFatal => {
+                let res = worker_client
+                    .update_task_status(task_id.clone(), TaskStatus::FailedFatal)
+                    .await;
+                if let Err(e) = res {
+                    tracing::error!("Failed to fail task, task: {:?}, error: {:?}", task_id, e);
+                }
+            }
             _ => {}
         }
     }
