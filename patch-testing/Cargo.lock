@@ -3905,6 +3905,7 @@ dependencies = [
  "bytes",
  "encoding_rs",
  "futures-core",
+ "futures-util",
  "h2",
  "http",
  "http-body",
@@ -3929,12 +3930,14 @@ dependencies = [
  "tokio",
  "tokio-native-tls",
  "tokio-rustls",
+ "tokio-util",
  "tower 0.5.2",
  "tower-http",
  "tower-service",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "wasm-streams",
  "web-sys",
  "webpki-roots",
 ]
@@ -4714,6 +4717,7 @@ dependencies = [
  "slop-commit",
  "slop-futures",
  "slop-koala-bear",
+ "slop-merkle-tree",
  "slop-multilinear",
  "slop-stacked",
  "slop-sumcheck",
@@ -4829,9 +4833,12 @@ dependencies = [
  "serde",
  "slop-algebra",
  "slop-alloc",
+ "slop-basefold",
+ "slop-basefold-prover",
  "slop-challenger",
  "slop-commit",
  "slop-futures",
+ "slop-merkle-tree",
  "slop-multilinear",
  "slop-tensor",
  "thiserror 1.0.69",
@@ -5127,6 +5134,7 @@ dependencies = [
  "slop-alloc",
  "slop-basefold",
  "slop-basefold-prover",
+ "slop-bn254",
  "slop-challenger",
  "slop-commit",
  "slop-futures",
@@ -5136,6 +5144,7 @@ dependencies = [
  "slop-merkle-tree",
  "slop-multilinear",
  "slop-poseidon2",
+ "slop-stacked",
  "slop-sumcheck",
  "slop-symmetric",
  "slop-tensor",
@@ -5242,6 +5251,7 @@ dependencies = [
  "futures",
  "hashbrown 0.14.5",
  "hex",
+ "indicatif",
  "itertools 0.13.0",
  "lru",
  "mti",
@@ -5261,6 +5271,7 @@ dependencies = [
  "slop-challenger",
  "slop-futures",
  "slop-jagged",
+ "slop-multilinear",
  "slop-stacked",
  "slop-symmetric",
  "sp1-core-executor",
@@ -5278,6 +5289,7 @@ dependencies = [
  "sp1-verifier",
  "static_assertions",
  "sysinfo",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tonic",
@@ -5309,6 +5321,7 @@ dependencies = [
 name = "sp1-recursion-circuit"
 version = "6.0.0"
 dependencies = [
+ "bincode",
  "itertools 0.13.0",
  "rand 0.8.5",
  "rayon",
@@ -5445,6 +5458,15 @@ dependencies = [
  "num-bigint 0.4.6",
  "serde",
  "slop-algebra",
+ "slop-alloc",
+ "slop-basefold",
+ "slop-commit",
+ "slop-jagged",
+ "slop-merkle-tree",
+ "slop-multilinear",
+ "slop-stacked",
+ "slop-sumcheck",
+ "slop-tensor",
  "sp1-build",
  "sp1-core-executor",
  "sp1-core-machine",
@@ -6438,6 +6460,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f143854a3b13752c6950862c906306adb27c7e839f7414cec8fea35beab624c1"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "wasm-streams"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15053d8d85c7eccdbefef60f06769760a563c7f0a9d6902a13d35c7800b0ad65"
+dependencies = [
+ "futures-util",
+ "js-sys",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

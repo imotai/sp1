@@ -693,7 +693,7 @@ RecursionVks::new(vk_map_path, config.max_compose_arity, config.vk_verification)
                 witness
             };
             let prover = Groth16Bn254Prover::new();
-            let proof = prover.prove(witness, build_dir.to_path_buf());
+            let proof = prover.prove(witness, &build_dir);
             prover
                 .verify(
                     &proof,
@@ -756,7 +756,7 @@ RecursionVks::new(vk_map_path, config.max_compose_arity, config.vk_verification)
                 witness
             };
             let prover = PlonkBn254Prover::new();
-            let proof = prover.prove(witness, build_dir.to_path_buf());
+            let proof = prover.prove(witness, &build_dir);
             prover
                 .verify(
                     &proof,

@@ -267,7 +267,6 @@ async fn test_verify_invalid_plonk(#[case] elf: Elf) {
 
 #[serial]
 #[tokio::test]
-#[ignore = "reinstantiate once the circuit artifacts are finalized"]
 async fn test_vkeys() {
     let groth16_path = try_install_circuit_artifacts("groth16").await;
     let s3_vkey_path = groth16_path.join("groth16_vk.bin");

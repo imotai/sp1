@@ -72,6 +72,8 @@ tonic = { workspace = true }
 reqwest = { workspace = true, features = ["stream"] }
 indicatif = { workspace = true }
 tempfile = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
 
 [build-dependencies]
 downloader = { workspace = true, features = ["rustls-tls", "verify"] }
@@ -90,6 +92,14 @@ required-features = ["tokio/rt-multi-thread"]
 [[bin]]
 name = "post_trusted_setup"
 path = "scripts/post_trusted_setup.rs"
+
+[[bin]]
+name = "build_groth16_bn254"
+path = "scripts/build_groth16_bn254.rs"
+
+[[bin]]
+name = "build_plonk_bn254"
+path = "scripts/build_plonk_bn254.rs"
 
 [features]
 native-gnark = ["sp1-recursion-gnark-ffi/native"]

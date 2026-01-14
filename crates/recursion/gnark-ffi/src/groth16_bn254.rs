@@ -1,13 +1,9 @@
-use std::{
-    fs::{self, File},
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::{io::Write, path::Path};
 
 use crate::{
-    ffi::{build_groth16_bn254, prove_groth16_bn254, test_groth16_bn254, verify_groth16_bn254},
+    ffi::{prove_groth16_bn254, test_groth16_bn254, verify_groth16_bn254},
     witness::GnarkWitness,
-    Groth16Bn254Proof, SP1_CIRCUIT_VERSION,
+    Groth16Bn254Proof,
 };
 
 use anyhow::Result;
@@ -18,11 +14,10 @@ use sp1_recursion_compiler::{
     ir::{Config, Witness},
 };
 
-/// A prover that can generate proofs with the PLONK protocol using bindings to Gnark.
+/// A prover that can generate proofs with the Groth16 protocol using bindings to Gnark.
 #[derive(Debug, Clone)]
 pub struct Groth16Bn254Prover;
 
-/// A prover that can generate proofs with the Groth16 protocol using bindings to Gnark.
 impl Groth16Bn254Prover {
     /// Creates a new [Groth16Bn254Prover].
     pub fn new() -> Self {
@@ -55,42 +50,8 @@ impl Groth16Bn254Prover {
         )
     }
 
-    pub fn build_contracts(build_dir: PathBuf) {
-        // Write the corresponding asset files to the build dir.
-        let sp1_verifier_path = build_dir.join("SP1VerifierGroth16.sol");
-        let vkey_hash = Self::get_vkey_hash(&build_dir);
-        let sp1_verifier_str = include_str!("../assets/SP1VerifierGroth16.txt")
-            .replace("{SP1_CIRCUIT_VERSION}", SP1_CIRCUIT_VERSION)
-            .replace("{VERIFIER_HASH}", format!("0x{}", hex::encode(vkey_hash)).as_str())
-            .replace("{PROOF_SYSTEM}", "Groth16");
-        fs::write(sp1_verifier_path, sp1_verifier_str).unwrap();
-    }
-
-    /// Builds the Groth16 circuit locally.
-    pub fn build<C: Config>(constraints: Vec<Constraint>, witness: Witness<C>, build_dir: PathBuf) {
-        let serialized = serde_json::to_string(&constraints).unwrap();
-
-        // Write constraints.
-        let constraints_path = build_dir.join("constraints.json");
-        let mut file = File::create(constraints_path).unwrap();
-        file.write_all(serialized.as_bytes()).unwrap();
-
-        // Write witness.
-        let witness_path = build_dir.join("groth16_witness.json");
-        let gnark_witness = GnarkWitness::new(witness);
-        let mut file = File::create(witness_path).unwrap();
-        let serialized = serde_json::to_string(&gnark_witness).unwrap();
-        file.write_all(serialized.as_bytes()).unwrap();
-
-        // Build the circuit.
-        build_groth16_bn254(build_dir.to_str().unwrap());
-
-        // Build the contracts.
-        Self::build_contracts(build_dir);
-    }
-
     /// Generates a Groth16 proof given a witness.
-    pub fn prove<C: Config>(&self, witness: Witness<C>, build_dir: PathBuf) -> Groth16Bn254Proof {
+    pub fn prove<C: Config>(&self, witness: Witness<C>, build_dir: &Path) -> Groth16Bn254Proof {
         // Write witness.
         let mut witness_file = tempfile::NamedTempFile::new().unwrap();
         let gnark_witness = GnarkWitness::new(witness);
@@ -99,11 +60,11 @@ impl Groth16Bn254Prover {
 
         let mut proof =
             prove_groth16_bn254(build_dir.to_str().unwrap(), witness_file.path().to_str().unwrap());
-        proof.groth16_vkey_hash = Self::get_vkey_hash(&build_dir);
+        proof.groth16_vkey_hash = Self::get_vkey_hash(build_dir);
         proof
     }
 
-    /// Verify a Groth16proof and verify that the supplied vkey_hash and committed_values_digest
+    /// Verify a Groth16 proof and verify that the supplied vkey_hash and committed_values_digest
     /// match.
     #[allow(clippy::too_many_arguments)]
     pub fn verify(

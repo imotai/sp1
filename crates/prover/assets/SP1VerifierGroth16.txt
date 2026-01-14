@@ -14,9 +14,16 @@ contract SP1Verifier is Groth16Verifier, ISP1VerifierWithHash {
     /// @param expected The verifier selector from the first 4 bytes of the VERIFIER_HASH().
     error WrongVerifierSelector(bytes4 received, bytes4 expected);
 
+    /// @notice Thrown when the exit code is invalid.
+    error InvalidExitCode();
+
     /// @notice Thrown when the proof is invalid.
     error InvalidProof();
 
+    /// @notice Thrown when the vkRoot is invalid.
+    error InvalidVkRoot();
+
+    /// @notice The version of the circuit.
     function VERSION() external pure returns (string memory) {
         return "{SP1_CIRCUIT_VERSION}";
     }
@@ -24,6 +31,11 @@ contract SP1Verifier is Groth16Verifier, ISP1VerifierWithHash {
     /// @inheritdoc ISP1VerifierWithHash
     function VERIFIER_HASH() public pure returns (bytes32) {
         return {VERIFIER_HASH};
+    }
+
+    /// @notice The recursion vk root.
+    function VK_ROOT() public pure returns (bytes32) {
+        return {VK_ROOT};
     }
 
     /// @notice Hashes the public values to a field elements inside Bn254.
@@ -41,26 +53,31 @@ contract SP1Verifier is Groth16Verifier, ISP1VerifierWithHash {
     function verifyProof(
         bytes32 programVKey,
         bytes calldata publicValues,
-        bytes calldata proofBytes,
+        bytes calldata proofBytes
     ) external view {
         bytes4 receivedSelector = bytes4(proofBytes[:4]);
         bytes4 expectedSelector = bytes4(VERIFIER_HASH());
         if (receivedSelector != expectedSelector) {
             revert WrongVerifierSelector(receivedSelector, expectedSelector);
         }
+        uint256 expectedVkRoot = uint256(VK_ROOT());
 
         bytes32 publicValuesDigest = hashPublicValues(publicValues);
-        (uint256 exitCode, uint256 vkRoot, uint256[8] memory proof) = abi.decode(proofBytes[4:], (uint256, uint256, uint256[8]));
-        
-        uint256[4] memory inputs;
+        (uint256 exitCode, uint256 vkRoot, uint256 nonce, uint256[8] memory proof) = abi.decode(proofBytes[4:], (uint256, uint256, uint256, uint256[8]));
+
+        uint256[5] memory inputs;
         inputs[0] = uint256(programVKey);
         inputs[1] = uint256(publicValuesDigest);
         inputs[2] = exitCode;
         inputs[3] = vkRoot;
+        inputs[4] = nonce;
+
         if (exitCode != 0) {
-            revert InvalidProof();
+            revert InvalidExitCode();
         }
-        // TODO: add the vkRoot check here.
+        if (vkRoot != expectedVkRoot) {
+            revert InvalidVkRoot();
+        }
         this.Verify(proof, inputs);
     }
 }

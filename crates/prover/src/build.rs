@@ -1,7 +1,8 @@
-#![allow(clippy::print_stdout)] // okay to print to stdout: this is a build script
+#![allow(clippy::print_stdout)] // This prints a progress bar
 
 use itertools::Itertools;
-use slop_algebra::{AbstractField, PrimeField32};
+use sha2::{Digest, Sha256};
+use slop_algebra::{AbstractField, PrimeField, PrimeField32};
 use slop_bn254::Bn254Fr;
 use sp1_hypercube::{koalabears_to_bn254, MachineVerifyingKey, SP1PcsProofOuter, ShardProof};
 use sp1_primitives::{io::sha256_hash, SP1Field, SP1OuterGlobalContext};
@@ -16,8 +17,16 @@ use sp1_recursion_compiler::{
     ir::Builder,
 };
 use sp1_recursion_executor::RecursionPublicValues;
-use sp1_recursion_gnark_ffi::{Groth16Bn254Prover, PlonkBn254Prover};
-use std::{borrow::Borrow, path::PathBuf};
+use sp1_recursion_gnark_ffi::{
+    ffi::{build_groth16_bn254, build_plonk_bn254},
+    GnarkWitness,
+};
+use std::{
+    borrow::Borrow,
+    fs::File,
+    io::Write,
+    path::{Path, PathBuf},
+};
 use tokio::sync::oneshot;
 
 pub use sp1_recursion_circuit::witness::{OuterWitness, Witnessable};
@@ -33,7 +42,9 @@ use {
 
 use crate::{
     components::{CpuSP1ProverComponents, SP1ProverComponents},
+    recursion::RecursionVks,
     utils::words_to_bytes,
+    worker::DEFAULT_MAX_COMPOSE_ARITY,
     SP1_CIRCUIT_VERSION,
 };
 
@@ -169,7 +180,25 @@ pub fn build_plonk_bn254_artifacts(
     let build_dir = build_dir.into();
     std::fs::create_dir_all(&build_dir).expect("failed to create build directory");
     let (constraints, witness) = build_constraints_and_witness(template_vk, template_proof);
-    PlonkBn254Prover::build(constraints, witness, build_dir);
+
+    // Serialize and write constraints.
+    let serialized = serde_json::to_string(&constraints).unwrap();
+    let constraints_path = build_dir.join("constraints.json");
+    let mut file = File::create(constraints_path).unwrap();
+    file.write_all(serialized.as_bytes()).unwrap();
+
+    // Serialize and write witness.
+    let witness_path = build_dir.join("plonk_witness.json");
+    let gnark_witness = GnarkWitness::new(witness);
+    let mut file = File::create(witness_path).unwrap();
+    let serialized = serde_json::to_string(&gnark_witness).unwrap();
+    file.write_all(serialized.as_bytes()).unwrap();
+
+    // Build the circuit.
+    build_plonk_bn254(build_dir.to_str().unwrap());
+
+    // Build the contracts.
+    build_plonk_bn254_contracts(&build_dir);
 }
 
 /// Build the groth16 bn254 artifacts to the given directory for the given verification key and
@@ -182,7 +211,72 @@ pub fn build_groth16_bn254_artifacts(
     let build_dir = build_dir.into();
     std::fs::create_dir_all(&build_dir).expect("failed to create build directory");
     let (constraints, witness) = build_constraints_and_witness(template_vk, template_proof);
-    Groth16Bn254Prover::build(constraints, witness, build_dir);
+
+    // Serialize and write constraints.
+    let serialized = serde_json::to_string(&constraints).unwrap();
+    let constraints_path = build_dir.join("constraints.json");
+    let mut file = File::create(constraints_path).unwrap();
+    file.write_all(serialized.as_bytes()).unwrap();
+
+    // Serialize and write witness.
+    let witness_path = build_dir.join("groth16_witness.json");
+    let gnark_witness = GnarkWitness::new(witness);
+    let mut file = File::create(witness_path).unwrap();
+    let serialized = serde_json::to_string(&gnark_witness).unwrap();
+    file.write_all(serialized.as_bytes()).unwrap();
+
+    // Build the circuit.
+    build_groth16_bn254(build_dir.to_str().unwrap());
+
+    // Build the contracts.
+    build_groth16_bn254_contracts(&build_dir);
+}
+
+/// Get the vkey hash for Plonk.
+pub fn get_plonk_vkey_hash(build_dir: &Path) -> [u8; 32] {
+    let vkey_path = build_dir.join("plonk_vk.bin");
+    let vk_bin_bytes = std::fs::read(vkey_path).unwrap();
+    Sha256::digest(vk_bin_bytes).into()
+}
+
+/// Get the vkey hash for Groth16.
+pub fn get_groth16_vkey_hash(build_dir: &Path) -> [u8; 32] {
+    let vkey_path = build_dir.join("groth16_vk.bin");
+    let vk_bin_bytes = std::fs::read(vkey_path).unwrap();
+    Sha256::digest(vk_bin_bytes).into()
+}
+
+/// Get the vk root.
+pub fn get_vk_root() -> String {
+    let root_field = RecursionVks::new(None, DEFAULT_MAX_COMPOSE_ARITY, true).root();
+    let bigint = koalabears_to_bn254(&root_field).as_canonical_biguint();
+    bigint.to_str_radix(16)
+}
+
+/// Build the Plonk contracts.
+pub fn build_plonk_bn254_contracts(build_dir: &Path) {
+    let sp1_verifier_path = build_dir.join("SP1VerifierPlonk.sol");
+    let vkey_hash = get_plonk_vkey_hash(build_dir);
+    let vk_root = get_vk_root();
+    let sp1_verifier_str = include_str!("../assets/SP1VerifierPlonk.txt")
+        .replace("{SP1_CIRCUIT_VERSION}", SP1_CIRCUIT_VERSION)
+        .replace("{VERIFIER_HASH}", format!("0x{}", hex::encode(vkey_hash)).as_str())
+        .replace("{VK_ROOT}", format!("0x00{}", vk_root).as_str()) // Pad with a 0 byte because it's in a bn254.
+        .replace("{PROOF_SYSTEM}", "Plonk");
+    std::fs::write(sp1_verifier_path, sp1_verifier_str).unwrap();
+}
+
+/// Build the Groth16 contracts.
+pub fn build_groth16_bn254_contracts(build_dir: &Path) {
+    let sp1_verifier_path = build_dir.join("SP1VerifierGroth16.sol");
+    let vkey_hash = get_groth16_vkey_hash(build_dir);
+    let vk_root = get_vk_root();
+    let sp1_verifier_str = include_str!("../assets/SP1VerifierGroth16.txt")
+        .replace("{SP1_CIRCUIT_VERSION}", SP1_CIRCUIT_VERSION)
+        .replace("{VERIFIER_HASH}", format!("0x{}", hex::encode(vkey_hash)).as_str())
+        .replace("{VK_ROOT}", format!("0x00{}", vk_root).as_str()) // Pad with a 0 byte because it's in a bn254.
+        .replace("{PROOF_SYSTEM}", "Groth16");
+    std::fs::write(sp1_verifier_path, sp1_verifier_str).unwrap();
 }
 
 /// Build the verifier constraints and template witness for the circuit.
@@ -262,17 +356,17 @@ fn build_outer_circuit(
 }
 
 /// The base URL for the S3 bucket containing the circuit artifacts.
-const CIRCUIT_ARTIFACTS_URL_BASE: &str = "https://sp1-circuits.s3-us-east-2.amazonaws.com";
+pub const CIRCUIT_ARTIFACTS_URL_BASE: &str = "https://sp1-circuits.s3-us-east-2.amazonaws.com";
 
 /// Whether use the development mode for the circuit artifacts.
 fn use_development_mode() -> bool {
     // TODO: Change this after v6.0.0 binary release
-    std::env::var("SP1_CIRCUIT_MODE").unwrap_or("dev".to_string()) == "dev"
+    std::env::var("SP1_CIRCUIT_MODE").unwrap_or("release".to_string()) == "dev"
 }
 
 /// The directory where the groth16 circuit artifacts will be stored.
 #[must_use]
-pub(crate) fn groth16_circuit_artifacts_dir() -> PathBuf {
+pub fn groth16_circuit_artifacts_dir() -> PathBuf {
     std::env::var("SP1_GROTH16_CIRCUIT_PATH")
         .map_or_else(
             |_| dirs::home_dir().unwrap().join(".sp1").join("circuits/groth16"),
@@ -283,7 +377,7 @@ pub(crate) fn groth16_circuit_artifacts_dir() -> PathBuf {
 
 /// The directory where the plonk circuit artifacts will be stored.
 #[must_use]
-pub(crate) fn plonk_circuit_artifacts_dir() -> PathBuf {
+pub fn plonk_circuit_artifacts_dir() -> PathBuf {
     std::env::var("SP1_PLONK_CIRCUIT_PATH")
         .map_or_else(
             |_| dirs::home_dir().unwrap().join(".sp1").join("circuits/plonk"),
@@ -292,9 +386,9 @@ pub(crate) fn plonk_circuit_artifacts_dir() -> PathBuf {
         .join(SP1_CIRCUIT_VERSION)
 }
 
-/// Tries to install the groth16 circuit artifacts if they are not already installed.
+/// Tries to install the circuit artifacts if they are not already installed.
 #[must_use]
-pub(crate) async fn try_install_circuit_artifacts(artifacts_type: &str) -> PathBuf {
+pub async fn try_install_circuit_artifacts(artifacts_type: &str) -> PathBuf {
     let build_dir = if artifacts_type == "groth16" {
         groth16_circuit_artifacts_dir()
     } else if artifacts_type == "plonk" {
@@ -325,9 +419,9 @@ pub(crate) async fn try_install_circuit_artifacts(artifacts_type: &str) -> PathB
 /// Install the latest circuit artifacts.
 ///
 /// This function will download the latest circuit artifacts from the S3 bucket and extract them
-/// to the directory specified by [`groth16_bn254_artifacts_dir()`].
+/// to the directory specified by [`build_dir`].
 #[allow(clippy::needless_pass_by_value)]
-pub(crate) async fn install_circuit_artifacts(build_dir: PathBuf, artifacts_type: &str) {
+pub async fn install_circuit_artifacts(build_dir: PathBuf, artifacts_type: &str) {
     // Create the build directory.
     std::fs::create_dir_all(&build_dir).expect("failed to create build directory");
 
@@ -335,26 +429,26 @@ pub(crate) async fn install_circuit_artifacts(build_dir: PathBuf, artifacts_type
     let download_url =
         format!("{CIRCUIT_ARTIFACTS_URL_BASE}/{SP1_CIRCUIT_VERSION}-{artifacts_type}.tar.gz");
 
-    // Create a tempfile with a name to store the tar in.
-    let artifacts_tar_gz_file = tempfile::NamedTempFile::new().expect("failed to create tempfile");
-
-    // Get the path of the tempfile.
-    let tar_path =
-        artifacts_tar_gz_file.path().to_str().expect("A named file should have a path").to_owned();
+    // Create a file in the build directory to store the tar.
+    let tar_path = build_dir.join("artifacts.tar.gz");
 
     // Create a tokio friendly file to write the tarball to.
-    let mut file = tokio::fs::File::from_std(artifacts_tar_gz_file.into_file());
+    let mut file = tokio::fs::File::create(&tar_path).await.expect("failed to create tar file");
 
     // Download the file.
     let client = Client::builder().build().expect("failed to create reqwest client");
     download_file(&client, &download_url, &mut file).await.expect("failed to download file");
+    file.flush().await.expect("failed to flush file");
 
     // Extract the tarball to the build directory.
     let res = Command::new("tar")
-        .args(["-Pxzf", &tar_path, "-C", build_dir.to_str().unwrap()])
+        .args(["-Pxzf", tar_path.to_str().unwrap(), "-C", build_dir.to_str().unwrap()])
         .output()
         .await
         .expect("failed to extract tarball");
+
+    // Remove the tarball after extraction.
+    tokio::fs::remove_file(&tar_path).await.expect("failed to remove tar file");
 
     if !res.status.success() {
         panic!("[sp1] failed to extract tarball to {:?}", build_dir.to_str().unwrap());
@@ -364,7 +458,7 @@ pub(crate) async fn install_circuit_artifacts(build_dir: PathBuf, artifacts_type
 }
 
 /// Download the file with a progress bar that indicates the progress.
-pub(crate) async fn download_file(
+pub async fn download_file(
     client: &Client,
     url: &str,
     file: &mut (impl tokio::io::AsyncWrite + Unpin),
