@@ -427,15 +427,21 @@ mod tests {
         );
 
         let time = tokio::time::Instant::now();
+        let vk = client.setup(&elf).await.unwrap();
         let setup_time = time.elapsed();
         tracing::info!("setup time: {:?}", setup_time);
 
         let time = tokio::time::Instant::now();
 
         tracing::info!("proving with mode: {mode:?}");
-        let _proof = client.prove_with_mode(&elf, stdin, context, mode).await.unwrap();
+        let proof = client.prove_with_mode(&elf, stdin, context, mode).await.unwrap();
         let proof_time = time.elapsed();
         tracing::info!("proof time: {:?}", proof_time);
+
+        // Verify the proof
+        tokio::task::spawn_blocking(move || client.verify(&vk, &proof.proof).unwrap())
+            .await
+            .unwrap();
 
         Ok(())
     }

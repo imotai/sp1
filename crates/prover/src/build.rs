@@ -53,7 +53,13 @@ pub(crate) fn get_plonk_artifacts_build_dir(
 ) -> Option<PathBuf> {
     if crate::build::use_development_mode() {
         let build_dir = crate::build::plonk_bn254_artifacts_dev_dir(template_vk);
-        build_dir.exists().then_some(build_dir)
+        return build_dir.exists().then_some(build_dir);
+    }
+
+    let build_dir = plonk_circuit_artifacts_dir();
+    // if the build dir exists, return it, else try downloading.
+    if build_dir.exists() {
+        Some(build_dir)
     } else {
         let (tx, rx) = oneshot::channel();
         tokio::spawn(async move {
@@ -70,7 +76,14 @@ pub(crate) fn get_groth16_artifacts_build_dir(
 ) -> Option<PathBuf> {
     if crate::build::use_development_mode() {
         let build_dir = crate::build::groth16_bn254_artifacts_dev_dir(template_vk);
-        build_dir.exists().then_some(build_dir)
+        return build_dir.exists().then_some(build_dir);
+    }
+
+    let build_dir = groth16_circuit_artifacts_dir();
+
+    // if the build dir exists, return it, else try downloading.
+    if build_dir.exists() {
+        Some(build_dir)
     } else {
         let (tx, rx) = oneshot::channel();
         tokio::spawn(async move {
@@ -398,7 +411,7 @@ pub async fn try_install_circuit_artifacts(artifacts_type: &str) -> PathBuf {
     };
 
     if build_dir.exists() {
-        eprintln!(
+        tracing::info!(
             "[sp1] {} circuit artifacts already seem to exist at {}. if you want to re-download them, delete the directory",
             artifacts_type,
             build_dir.display()
