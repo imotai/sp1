@@ -85,13 +85,22 @@ async fn main() {
             let proof = client.prove_with_mode(&elf, stdin, context, mode).await.unwrap();
             let proof_time = time.elapsed();
             tracing::info!("proof time: {:?}", proof_time);
-            // Verify the proof
-            client.verify(&vk, &proof.proof).unwrap();
+
             let num_shards = if let SP1Proof::Core(ref shard_proofs) = &proof.proof {
                 shard_proofs.len()
             } else {
                 0
             };
+
+            // Verify the proof
+            tokio::task::spawn_blocking({
+                let client = client.clone();
+                let vk = vk.clone();
+                move || client.verify(&vk, &proof.proof)
+            })
+            .await
+            .unwrap()
+            .unwrap();
 
             let (core_time, compress_time, shrink_time, wrap_time) = match mode {
                 ProofMode::Core => (Some(proof_time), None, Duration::ZERO, Duration::ZERO),
