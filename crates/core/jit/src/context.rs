@@ -39,6 +39,25 @@ pub trait SyscallContext {
     fn set_exit_code(&mut self, exit_code: u32);
     /// Returns if were in unconstrained mode.
     fn is_unconstrained(&self) -> bool;
+    /// Get the global clock (total cycles executed).
+    fn global_clk(&self) -> u64;
+
+    /// Start tracking cycles for a label (profiling only).
+    /// Records the current `global_clk` as the start time.
+    /// Returns the nesting depth (0 for top-level, 1 for first nested, etc.).
+    #[cfg(feature = "profiling")]
+    fn cycle_tracker_start(&mut self, name: &str) -> u32;
+
+    /// End tracking cycles for a label (profiling only).
+    /// Returns (cycles_elapsed, depth) or None if no matching start.
+    #[cfg(feature = "profiling")]
+    fn cycle_tracker_end(&mut self, name: &str) -> Option<(u64, u32)>;
+
+    /// End tracking cycles for a label and accumulate to report totals (profiling only).
+    /// This is for "report" variants that should be included in ExecutionReport.
+    /// Returns (cycles_elapsed, depth) or None if no matching start.
+    #[cfg(feature = "profiling")]
+    fn cycle_tracker_report_end(&mut self, name: &str) -> Option<(u64, u32)>;
 }
 
 impl SyscallContext for JitContext {
@@ -161,6 +180,31 @@ impl SyscallContext for JitContext {
 
     fn is_unconstrained(&self) -> bool {
         self.is_unconstrained == 1
+    }
+
+    fn global_clk(&self) -> u64 {
+        self.global_clk
+    }
+
+    #[cfg(feature = "profiling")]
+    fn cycle_tracker_start(&mut self, _name: &str) -> u32 {
+        // JitContext is not used when profiling is enabled (portable executor is used instead).
+        // This is a no-op implementation for trait completeness.
+        0
+    }
+
+    #[cfg(feature = "profiling")]
+    fn cycle_tracker_end(&mut self, _name: &str) -> Option<(u64, u32)> {
+        // JitContext is not used when profiling is enabled (portable executor is used instead).
+        // This is a no-op implementation for trait completeness.
+        None
+    }
+
+    #[cfg(feature = "profiling")]
+    fn cycle_tracker_report_end(&mut self, _name: &str) -> Option<(u64, u32)> {
+        // JitContext is not used when profiling is enabled (portable executor is used instead).
+        // This is a no-op implementation for trait completeness.
+        None
     }
 }
 

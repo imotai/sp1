@@ -135,7 +135,13 @@ pub async fn execute_with_options(
     // The return values of the two tasks in the join set.
     enum ExecutorOutput {
         Report(ExecutionReport),
-        PublicValues(SP1PublicValues),
+        PublicValues {
+            public_values: SP1PublicValues,
+            #[cfg(feature = "profiling")]
+            cycle_tracker: hashbrown::HashMap<String, u64>,
+            #[cfg(feature = "profiling")]
+            invocation_tracker: hashbrown::HashMap<String, u64>,
+        },
     }
 
     let mut join_set = tokio::task::JoinSet::new();
@@ -194,20 +200,51 @@ pub async fn execute_with_options(
             handle_sender.send(handle)?;
         }
         tracing::debug!("Minimal executor finished in {} cycles", minimal_executor.global_clk());
+
+        // Extract cycle tracker data before consuming the executor
+        #[cfg(feature = "profiling")]
+        let cycle_tracker = minimal_executor.take_cycle_tracker_totals();
+        #[cfg(feature = "profiling")]
+        let invocation_tracker = minimal_executor.take_invocation_tracker();
+
         let public_value_stream = minimal_executor.into_public_values_stream();
         let public_values = SP1PublicValues::from(&public_value_stream);
 
         tracing::info!("public_value_stream: {:?}", public_value_stream);
-        Ok::<_, anyhow::Error>(ExecutorOutput::PublicValues(public_values))
+        Ok::<_, anyhow::Error>(ExecutorOutput::PublicValues {
+            public_values,
+            #[cfg(feature = "profiling")]
+            cycle_tracker,
+            #[cfg(feature = "profiling")]
+            invocation_tracker,
+        })
     });
 
     // Wait for all gas calculations to complete.
     let mut final_report = ExecutionReport::default();
     let mut public_values = SP1PublicValues::default();
+    #[cfg(feature = "profiling")]
+    let mut cycle_tracker_data: Option<(
+        hashbrown::HashMap<String, u64>,
+        hashbrown::HashMap<String, u64>,
+    )> = None;
+
     while let Some(result) = join_set.join_next().await {
         match result {
             Ok(Ok(output)) => match output {
-                ExecutorOutput::PublicValues(pv) => public_values = pv,
+                ExecutorOutput::PublicValues {
+                    public_values: pv,
+                    #[cfg(feature = "profiling")]
+                    cycle_tracker,
+                    #[cfg(feature = "profiling")]
+                    invocation_tracker,
+                } => {
+                    public_values = pv;
+                    #[cfg(feature = "profiling")]
+                    {
+                        cycle_tracker_data = Some((cycle_tracker, invocation_tracker));
+                    }
+                }
                 ExecutorOutput::Report(report) => final_report = report,
             },
             Ok(Err(e)) => {
@@ -219,6 +256,14 @@ pub async fn execute_with_options(
                 return Err(join_error.into());
             }
         }
+    }
+
+    // Merge cycle tracker data from MinimalExecutor into the final report
+    // This must happen after all tasks complete to avoid race conditions
+    #[cfg(feature = "profiling")]
+    if let Some((cycle_tracker, invocation_tracker)) = cycle_tracker_data {
+        final_report.cycle_tracker = cycle_tracker;
+        final_report.invocation_tracker = invocation_tracker;
     }
 
     // Extract the public value digest from the final VM state.

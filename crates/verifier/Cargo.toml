@@ -20,7 +20,7 @@ lazy_static = { version = "1.5.0", default-features = false }
 blake3 = { workspace = true }
 cfg-if = "1.0.0"
 
-bincode = { workspace = true, default-features = false }
+bincode = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 strum = { workspace = true, features = ["derive"] }
 

@@ -82,7 +82,7 @@ pub use utils::setup_logger;
 mod tests {
     use sp1_primitives::io::SP1PublicValues;
 
-    use crate::{utils, Prover, ProverClient, SP1Stdin};
+    use crate::{utils, MockProver, Prover, ProverClient, SP1Stdin};
 
     #[tokio::test]
     async fn test_execute() {
@@ -118,6 +118,117 @@ mod tests {
         let mut stdin = SP1Stdin::new();
         stdin.write(&10usize);
         client.execute(elf, stdin).cycle_limit(1).await.unwrap();
+    }
+
+    /// Test that cycle tracking via `client.execute()` populates the `ExecutionReport`.
+    ///
+    /// The cycle-tracker test program uses:
+    /// - `cycle-tracker-report-start/end: h` - should populate `cycle_tracker` `HashMap`
+    /// - `cycle-tracker-report-start/end: repeated` (3x) - should accumulate cycles
+    #[tokio::test]
+    async fn test_cycle_tracker_report_variants() {
+        utils::setup_logger();
+        let client = MockProver::new().await;
+        let elf = test_artifacts::CYCLE_TRACKER_ELF;
+        let stdin = SP1Stdin::new();
+
+        let (_pv, report) = client.execute(elf, stdin).await.unwrap();
+
+        // Verify cycle tracking for report variants
+        // "h" should have been tracked once
+        assert!(
+            report.cycle_tracker.contains_key("h"),
+            "Expected cycle_tracker to contain 'h', got: {:?}",
+            report.cycle_tracker
+        );
+        let h_cycles = *report.cycle_tracker.get("h").unwrap();
+        assert!(h_cycles > 0, "Expected 'h' to have positive cycles, got: {h_cycles}");
+
+        // "repeated" should have been tracked 3 times
+        assert!(
+            report.cycle_tracker.contains_key("repeated"),
+            "Expected cycle_tracker to contain 'repeated', got: {:?}",
+            report.cycle_tracker
+        );
+        let repeated_cycles =
+            *report.cycle_tracker.get("repeated").expect("repeated should be populated");
+        assert!(
+            repeated_cycles > 0,
+            "Expected 'repeated' to have positive cycles, got: {repeated_cycles}"
+        );
+
+        // Verify invocation tracker for repeated label
+        assert!(
+            report.invocation_tracker.contains_key("repeated"),
+            "Expected invocation_tracker to contain 'repeated', got: {:?}",
+            report.invocation_tracker
+        );
+        let repeated_invocations =
+            *report.invocation_tracker.get("repeated").expect("repeated should be populated");
+        assert_eq!(
+            repeated_invocations, 3,
+            "Expected 'repeated' to have 3 invocations, got: {repeated_invocations}"
+        );
+
+        // Non-report variants (f, g) should NOT be in the report
+        // (they use cycle-tracker-start/end without "report")
+        assert!(
+            !report.cycle_tracker.contains_key("f"),
+            "Expected cycle_tracker to NOT contain 'f' (non-report variant)"
+        );
+        assert!(
+            !report.cycle_tracker.contains_key("g"),
+            "Expected cycle_tracker to NOT contain 'g' (non-report variant)"
+        );
+
+        tracing::info!("report: {}", report);
+    }
+
+    /// Test that cycle tracking works with the derive macro (non-report variant).
+    /// The macro uses eprintln which goes to stderr (fd=2).
+    /// Non-report variants should be parsed but NOT populate the report.
+    #[tokio::test]
+    async fn test_cycle_tracker_macro_non_report() {
+        utils::setup_logger();
+        let client = MockProver::new().await;
+        let elf = test_artifacts::CYCLE_TRACKER_ELF;
+        let stdin = SP1Stdin::new();
+
+        let (_pv, report) = client.execute(elf, stdin).await.unwrap();
+
+        // The macro uses non-report variant, so "f" should NOT be in cycle_tracker
+        assert!(
+            !report.cycle_tracker.contains_key("f"),
+            "Non-report variant 'f' should not be in cycle_tracker"
+        );
+    }
+
+    /// Test that cycle tracking works correctly across chunk boundaries.
+    #[tokio::test]
+    async fn test_cycle_tracker_across_chunks() {
+        use sp1_core_executor::SP1CoreOpts;
+
+        utils::setup_logger();
+
+        // Use a small chunk threshold to force multiple chunks
+        let mut opts = SP1CoreOpts::default();
+        opts.minimal_trace_chunk_threshold = 1000;
+
+        let client = MockProver::new_with_opts(opts).await;
+        let elf = test_artifacts::CYCLE_TRACKER_ELF;
+        let stdin = SP1Stdin::new();
+
+        // Enable calculate_gas to use the chunk threshold
+        let (_pv, report) = client.execute(elf, stdin).calculate_gas(true).await.unwrap();
+
+        // Verify cycle tracking works correctly across chunks
+        assert!(report.cycle_tracker.contains_key("h"));
+        assert!(*report.cycle_tracker.get("h").unwrap() > 0);
+
+        assert!(report.cycle_tracker.contains_key("repeated"));
+        assert!(*report.cycle_tracker.get("repeated").unwrap() > 0);
+
+        assert_eq!(*report.invocation_tracker.get("repeated").unwrap_or(&0), 3);
     }
 
     #[tokio::test]

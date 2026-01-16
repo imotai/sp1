@@ -20,5 +20,8 @@ memmap2 = { workspace = true }
 [dev-dependencies]
 bincode = { workspace = true }
 
+[features]
+profiling = []
+
 [lints]
 workspace = true

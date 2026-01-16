@@ -720,6 +720,7 @@ version = "1.1.0"
 dependencies = [
  "sp1-derive",
  "sp1-zkvm",
+ "tiny-keccak 2.0.2 (git+https://github.com/sp1-patches/tiny-keccak?branch=patch-v2.0.2)",
 ]
 
 [[package]]

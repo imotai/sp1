@@ -6,7 +6,6 @@ const ELF: Elf = include_elf!("keccak-program");
 #[tokio::main]
 async fn main() {
     // Generate proof.
-    // utils::setup_tracer();
     sp1_sdk::utils::setup_logger();
 
     let stdin = SP1Stdin::new();

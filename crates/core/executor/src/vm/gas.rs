@@ -74,7 +74,7 @@ impl ReportGenerator {
         ExecutionReport {
             opcode_counts: Box::new(self.opcode_counts),
             syscall_counts: Box::new(total_syscall_counts),
-            cycle_tracker: HashMap::new(), // TODO: Fill out
+            cycle_tracker: HashMap::new(),
             invocation_tracker: HashMap::new(),
             touched_memory_addresses: 0,
             gas: Some(gas),

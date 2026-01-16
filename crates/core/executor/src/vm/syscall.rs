@@ -229,10 +229,10 @@ pub(crate) fn sp1_ecall_handler<'a, RT: SyscallRuntime<'a>>(
         SyscallCode::POSEIDON2 => poseidon2::poseidon2(rt, code, args1, args2),
         SyscallCode::VERIFY_SP1_PROOF
         | SyscallCode::MPROTECT
-        | SyscallCode::WRITE
         | SyscallCode::ENTER_UNCONSTRAINED
         | SyscallCode::EXIT_UNCONSTRAINED
-        | SyscallCode::HINT_READ => None,
+        | SyscallCode::HINT_READ
+        | SyscallCode::WRITE => None,
         code @ (SyscallCode::SECP256K1_DECOMPRESS
         | SyscallCode::BLS12381_DECOMPRESS
         | SyscallCode::SECP256R1_DECOMPRESS) => {

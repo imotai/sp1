@@ -63,6 +63,7 @@ profiling = [
   "dep:rustc-demangle",
   "dep:gecko_profile",
   "dep:indicatif",
+  "sp1-jit/profiling",
 ]
 
 [lints]

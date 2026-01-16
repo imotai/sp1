@@ -30,7 +30,7 @@ use sp1_curves::{
 };
 use sp1_jit::{RiscRegister, SyscallContext};
 
-#[cfg(all(target_arch = "x86_64", target_endian = "little"))]
+#[cfg(all(target_arch = "x86_64", target_endian = "little", not(feature = "profiling")))]
 pub(super) extern "C" fn sp1_ecall_handler(ctx: *mut sp1_jit::JitContext) -> u64 {
     let ctx = unsafe { &mut *ctx };
     let code = SyscallCode::from_u32(ctx.rr(RiscRegister::X5) as u32);

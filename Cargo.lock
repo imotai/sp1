@@ -6619,9 +6619,13 @@ dependencies = [
  "bincode",
  "clap",
  "rand 0.8.5",
+ "slop-algebra",
  "sp1-core-executor",
+ "sp1-core-machine",
  "sp1-hypercube",
+ "sp1-primitives 6.0.0",
  "sp1-prover",
+ "sp1-prover-types",
  "sp1-sdk",
  "tokio",
 ]

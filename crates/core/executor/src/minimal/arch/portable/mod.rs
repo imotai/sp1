@@ -12,6 +12,9 @@ use std::{
     sync::{mpsc, Arc},
 };
 
+#[cfg(feature = "profiling")]
+use hashbrown::HashMap;
+
 use crate::{
     minimal::ecall::ecall_handler, syscalls::SyscallCode, Instruction, Opcode, Program, Register,
     M64,
@@ -40,6 +43,15 @@ pub struct MinimalExecutor {
     debug_sender: Option<mpsc::SyncSender<Option<debug::State>>>,
     #[cfg(feature = "profiling")]
     profiler: Option<(crate::profiler::Profiler, std::io::BufWriter<std::fs::File>)>,
+    /// Cycle tracker start times and depths, keyed by label name.
+    #[cfg(feature = "profiling")]
+    cycle_tracker_starts: HashMap<String, (u64, u32)>,
+    /// Accumulated cycle counts for report variants, keyed by label name.
+    #[cfg(feature = "profiling")]
+    cycle_tracker_totals: HashMap<String, u64>,
+    /// Invocation counts for report variants, keyed by label name.
+    #[cfg(feature = "profiling")]
+    invocation_tracker: HashMap<String, u64>,
 }
 
 #[derive(Debug)]
@@ -50,7 +62,7 @@ struct UnconstrainedCtx {
 }
 
 // Note: Most syscalls are inaccessible in unconstrained mode,
-// so we dont need to explicity check for unconstrained
+// so we dont need to explicitly check for unconstrained
 // mode here.
 impl SyscallContext for MinimalExecutor {
     fn rr(&self, reg: RiscRegister) -> u64 {
@@ -186,6 +198,35 @@ impl SyscallContext for MinimalExecutor {
     fn is_unconstrained(&self) -> bool {
         self.maybe_unconstrained.is_some()
     }
+
+    fn global_clk(&self) -> u64 {
+        self.global_clk
+    }
+
+    #[cfg(feature = "profiling")]
+    fn cycle_tracker_start(&mut self, name: &str) -> u32 {
+        let depth = self.cycle_tracker_starts.len() as u32;
+        self.cycle_tracker_starts.insert(name.to_string(), (self.global_clk, depth));
+        depth
+    }
+
+    #[cfg(feature = "profiling")]
+    fn cycle_tracker_end(&mut self, name: &str) -> Option<(u64, u32)> {
+        self.cycle_tracker_starts
+            .remove(name)
+            .map(|(start, depth)| (self.global_clk.saturating_sub(start), depth))
+    }
+
+    #[cfg(feature = "profiling")]
+    fn cycle_tracker_report_end(&mut self, name: &str) -> Option<(u64, u32)> {
+        self.cycle_tracker_starts.remove(name).map(|(start, depth)| {
+            let cycles = self.global_clk.saturating_sub(start);
+            // Accumulate to totals for ExecutionReport
+            *self.cycle_tracker_totals.entry(name.to_string()).or_insert(0) += cycles;
+            *self.invocation_tracker.entry(name.to_string()).or_insert(0) += 1;
+            (cycles, depth)
+        })
+    }
 }
 
 impl MinimalExecutor {
@@ -216,6 +257,12 @@ impl MinimalExecutor {
             exit_code: 0,
             #[cfg(feature = "profiling")]
             profiler: None,
+            #[cfg(feature = "profiling")]
+            cycle_tracker_starts: HashMap::new(),
+            #[cfg(feature = "profiling")]
+            cycle_tracker_totals: HashMap::new(),
+            #[cfg(feature = "profiling")]
+            invocation_tracker: HashMap::new(),
         };
         result.maybe_setup_profiler();
         result
@@ -412,6 +459,34 @@ impl MinimalExecutor {
     #[must_use]
     pub fn hint_lens(&self) -> Vec<usize> {
         self.hints.iter().map(|(_, hint)| hint.len()).collect()
+    }
+
+    /// Get the accumulated cycle tracker totals (for report variants).
+    #[cfg(feature = "profiling")]
+    #[must_use]
+    pub fn cycle_tracker_totals(&self) -> &HashMap<String, u64> {
+        &self.cycle_tracker_totals
+    }
+
+    /// Get the invocation tracker (counts for report variants).
+    #[cfg(feature = "profiling")]
+    #[must_use]
+    pub fn invocation_tracker(&self) -> &HashMap<String, u64> {
+        &self.invocation_tracker
+    }
+
+    /// Take the cycle tracker totals, consuming them.
+    #[cfg(feature = "profiling")]
+    #[must_use]
+    pub fn take_cycle_tracker_totals(&mut self) -> HashMap<String, u64> {
+        std::mem::take(&mut self.cycle_tracker_totals)
+    }
+
+    /// Take the invocation tracker, consuming it.
+    #[cfg(feature = "profiling")]
+    #[must_use]
+    pub fn take_invocation_tracker(&mut self) -> HashMap<String, u64> {
+        std::mem::take(&mut self.invocation_tracker)
     }
 
     /// Get a view of the current memory of the executor

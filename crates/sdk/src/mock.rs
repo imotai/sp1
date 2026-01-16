@@ -15,6 +15,7 @@ use crate::{
     prover::{BaseProveRequest, ProveRequest},
     Prover, SP1Proof, SP1ProofWithPublicValues, SP1ProvingKey, SP1VerificationError, StatusCode,
 };
+use sp1_core_executor::SP1CoreOpts;
 use std::future::{Future, IntoFuture};
 
 /// A mock prover that can be used for testing.
@@ -28,6 +29,12 @@ impl MockProver {
     #[must_use]
     pub async fn new() -> Self {
         Self { inner: SP1LightNode::new().await }
+    }
+
+    /// Create a new mock prover with custom options.
+    #[must_use]
+    pub async fn new_with_opts(opts: SP1CoreOpts) -> Self {
+        Self { inner: SP1LightNode::with_opts(opts).await }
     }
 }
 
