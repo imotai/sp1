@@ -775,6 +775,25 @@ impl ShardRange {
             deferred_proof_range: (0, 0),
         }
     }
+
+    /// Returns the shard range for precompile shards.
+    ///
+    /// Precompile shards are ordered after deferred proofs in the compress tree.
+    /// They have `timestamp_range: (1, 1)` and `deferred_proof_range` set to
+    /// `(num_deferred_proofs, num_deferred_proofs)` so they chain correctly
+    /// with deferred proofs.
+    #[must_use]
+    #[inline]
+    pub fn precompile(num_deferred_proofs: usize) -> Self {
+        Self {
+            timestamp_range: (1, 1),
+            initialized_address_range: (0, 0),
+            finalized_address_range: (0, 0),
+            initialized_page_index_range: (0, 0),
+            finalized_page_index_range: (0, 0),
+            deferred_proof_range: (num_deferred_proofs as u64, num_deferred_proofs as u64),
+        }
+    }
 }
 
 impl core::fmt::Display for ShardRange {

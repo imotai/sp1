@@ -187,6 +187,7 @@ pub struct PrecompileHandler {
 }
 
 impl PrecompileHandler {
+    #[allow(clippy::too_many_arguments)]
     pub(super) async fn emit_precompile_shards(
         self,
         elf_artifact: Artifact,
@@ -195,7 +196,9 @@ impl PrecompileHandler {
         artifact_client: impl ArtifactClient,
         worker_client: impl WorkerClient,
         context: TaskContext,
+        num_deferred_proofs: usize,
     ) -> Result<(), TaskError> {
+        let precompile_range = ShardRange::precompile(num_deferred_proofs);
         let mut join_set = JoinSet::new();
         let task_data_map = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
 
@@ -270,7 +273,7 @@ impl PrecompileHandler {
                                     elf_artifact.clone(),
                                     common_input_artifact.clone(),
                                     context.clone(),
-                                    ShardRange::deferred(),
+                                    precompile_range,
                                     shard,
                                     worker_client.clone(),
                                     artifact_client.clone(),
@@ -307,7 +310,7 @@ impl PrecompileHandler {
                             elf_artifact.clone(),
                             common_input_artifact.clone(),
                             context.clone(),
-                            ShardRange::deferred(),
+                            precompile_range,
                             shard,
                             worker_client.clone(),
                             artifact_client.clone(),

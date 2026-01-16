@@ -400,9 +400,9 @@ impl CompressTree {
                             let task_id = worker_client.submit_task(TaskType::RecursionReduce, raw_task_request).await?;
                             // Update the proof map mapping the task id to the proof.
                             proof_map.insert(task_id.clone(), RecursionProof { shard_range, proof: output_artifact });
-                            // Subsctibe to the task.
+                            // Subscribe to the task.
                             subscriber.subscribe(task_id).map_err(|_| TaskError::Fatal(anyhow::anyhow!("Subscriver closed")))?;
-                            // Updare the number of pending tasks.
+                            // Update the number of pending tasks.
                             pending_tasks += 1;
                         } else {
                             self.insert(proofs);

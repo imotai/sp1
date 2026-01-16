@@ -20,7 +20,6 @@ use slop_futures::pipeline::{
     SubmitHandle,
 };
 use sp1_hypercube::{
-    air::SP1CorePublicValues,
     inner_perm, koalabears_to_bn254,
     prover::{AirProver, ProverSemaphore, ProvingKey},
     HashableKey, MachineProof, MachineVerifier, MachineVerifyingKey, MerkleProof, SP1PcsProofInner,
@@ -338,7 +337,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
                             .verify(&vk, &MachineProof::from(vec![proof.clone()]))
                             .map_err(|e| {
                                 TaskError::Retryable(anyhow::anyhow!(
-                                    "compress verify failed: {}",
+                                    "lift/deferred verify failed: {}",
                                     e
                                 ))
                             })
@@ -799,8 +798,14 @@ RecursionVks::new(vk_map_path, config.max_compose_arity, config.vk_verification)
         proof: &ShardProof<SP1GlobalContext, SP1PcsProofInner>,
         is_complete: bool,
     ) -> SP1NormalizeWitnessValues<SP1GlobalContext, SP1PcsProofInner> {
-        let pv: &SP1CorePublicValues<SP1Field> = proof.public_values.as_slice().borrow();
-        let reconstruct_deferred_digest = pv.deferred_proofs_digest;
+        // Use the final deferred digest from common_input for reconstruct_deferred_digest.
+        // This is needed because:
+        // - For core shards: deferred_proofs_digest equals common_input.deferred_digest
+        // - For precompile shards: deferred_proofs_digest is 0 (they don't witness deferred proofs),
+        //   but we need reconstruct_deferred_digest to be the final value to chain correctly
+        //   with deferred proofs in the compress tree.
+        let reconstruct_deferred_digest =
+            common_input.deferred_digest.map(SP1Field::from_canonical_u32);
         SP1NormalizeWitnessValues {
             vk: common_input.vk.vk.clone(),
             shard_proofs: vec![proof.clone()],

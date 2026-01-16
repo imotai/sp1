@@ -6962,6 +6962,7 @@ dependencies = [
  "slop-alloc",
  "slop-basefold",
  "slop-basefold-prover",
+ "slop-bn254",
  "slop-challenger",
  "slop-commit",
  "slop-futures",
@@ -7148,6 +7149,7 @@ dependencies = [
 name = "sp1-recursion-circuit"
 version = "6.0.0"
 dependencies = [
+ "bincode",
  "itertools 0.13.0",
  "rand 0.8.5",
  "rayon",
@@ -7283,7 +7285,17 @@ dependencies = [
  "k256",
  "num-bigint 0.4.6",
  "serde",
+ "sha2 0.10.8",
  "slop-algebra",
+ "slop-alloc",
+ "slop-basefold",
+ "slop-commit",
+ "slop-jagged",
+ "slop-merkle-tree",
+ "slop-multilinear",
+ "slop-stacked",
+ "slop-sumcheck",
+ "slop-tensor",
  "sp1-build",
  "sp1-core-executor",
  "sp1-core-machine",
