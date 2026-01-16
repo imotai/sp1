@@ -6,19 +6,38 @@ GIT_REF=$(git rev-parse --abbrev-ref HEAD)
 # Define the list of CPU workloads.
 CPU_WORKLOADS=(
     "ssz-withdrawals"
-    "fibonacci-1k"
-    "fibonacci-100k"
+    "loop-10k"
+    "fibonacci-20k"
+    "keccak256-300kb"
+    "sha256-300kb"
+    "rsp-20526626"
+    "zk-email"
+    "eddsa-verify"
 )
 
 # Define the list of CUDA workloads.
 CUDA_WORKLOADS=(
     "ssz-withdrawals"
-    "fibonacci-1k"
-    "fibonacci-100k"
+    "loop-10k"
+    "fibonacci-20k"
+    "keccak256-300kb"
+    "sha256-300kb"
+    "rsp-20526626"
+    "zk-email"
+    "eddsa-verify"
 )
 
 # Define the list of network workloads.
-NETWORK_WORKLOADS=()
+NETWORK_WORKLOADS=(
+    "ssz-withdrawals"
+    "loop-100m"
+    "fibonacci-200m"
+    "keccak256-3mb"
+    "sha256-3mb"
+    "rsp-20526626"
+    "zk-email"
+    "eddsa-verify"
+)
 
 # Create a JSON object with the list of workloads.
 WORKLOADS=$(jq -n \

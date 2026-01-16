@@ -251,8 +251,7 @@ mod docker {
                 "-e",
                 &format!("RUST_LOG={}", "debug"),
                 "-e",
-                "CUDA_VISIBLE_DEVICES",
-                &cuda_id.to_string(),
+                &format!("CUDA_VISIBLE_DEVICES={cuda_id}"),
                 // Remove the container on exit.
                 "--rm",
                 // Share the tmp directory with the container.

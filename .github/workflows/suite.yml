@@ -56,8 +56,8 @@ jobs:
       - name: Copy files from S3
         run: |
           mkdir -p workdir
-          aws s3 cp s3://sp1-testing-suite-64bit/${{ matrix.workload }}/program.bin workdir/program.bin
-          aws s3 cp s3://sp1-testing-suite-64bit/${{ matrix.workload }}/stdin.bin workdir/stdin.bin
+          aws s3 cp s3://sp1-testing-suite/v6/${{ matrix.workload }}/program.bin workdir/program.bin
+          aws s3 cp s3://sp1-testing-suite/v6/${{ matrix.workload }}/stdin.bin workdir/stdin.bin
 
       - name: Install SP1 toolchain from repo
         run: |
@@ -69,10 +69,9 @@ jobs:
           sudo apt-get install m4
 
       - name: Run sp1-perf
-        uses: actions-rs/cargo@v1
-        with:
-          command: run
-          args: --release -p sp1-perf -- --program workdir/program.bin --stdin workdir/stdin.bin --mode cpu
+        run: |
+          cargo version
+          cargo +nightly run --release -p sp1-perf -- --program workdir/program.bin --stdin workdir/stdin.bin --mode cpu
         env:
           RUST_LOG: info
           RUSTFLAGS: -Copt-level=3 -Ctarget-cpu=native
@@ -97,6 +96,36 @@ jobs:
         "run-id=${{ github.run_id }}",
       ]
     steps:
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y m4 pkg-config libssl-dev unzip libclang-dev
+
+      - name: Install CUDA (driver + runtime)
+        uses: Jimver/cuda-toolkit@v0.2.30
+        id: cuda-toolkit
+        with:
+          cuda: '12.6.0'                 # Toolkit/driver branch you need
+          method: 'network'              # Required when you list sub-packages
+          # ────────────────────────────────────────────────────────────────
+          # "sub-packages" → the action prepends "cuda-" and appends "-12-6"
+          # The meta-package "drivers" resolves to "cuda-drivers-12-6", which
+          # installs the NVIDIA kernel driver + nvidia-smi.
+          # "cudart" installs the runtime libraries that user code links
+          # against; other entries are optional build-time bits.
+          sub-packages: '["cudart", "cudart-dev", "nvcc", "nvrtc", "nvtx"]'
+          use-github-cache: false
+          use-local-cache:  false
+          log-file-suffix:  '${{ matrix.platform }}-${{ matrix.arch }}.txt'
+
+      - name: Install nvidia-driver and print version info
+        id: cuda-version
+        run: |
+          sudo apt-get install nvidia-driver-565
+          nvidia-smi
+          nvcc --version
+          echo "nvcc_build=$(nvcc --version | grep "Build " | awk '{ print $2 }')" >> $GITHUB_OUTPUT
+
       - name: Checkout sources
         uses: actions/checkout@v4
 
@@ -115,48 +144,40 @@ jobs:
       - name: Copy files from S3
         run: |
           mkdir -p workdir
-          aws s3 cp s3://sp1-testing-suite-64bit/${{ matrix.workload }}/program.bin workdir/program.bin
-          aws s3 cp s3://sp1-testing-suite-64bit/${{ matrix.workload }}/stdin.bin workdir/stdin.bin
+          aws s3 cp s3://sp1-testing-suite/v6/${{ matrix.workload }}/program.bin workdir/program.bin
+          aws s3 cp s3://sp1-testing-suite/v6/${{ matrix.workload }}/stdin.bin workdir/stdin.bin
 
       - name: Install SP1 toolchain from repo
         run: |
           cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
 
-      - name: Install m4
+      - name: Clone cuslop repo
+        id: cuslop-clone
         run: |
-          sudo apt-get install m4
+          cuslop_dir=$(mktemp -d /tmp/cuslop.XXXXXXXXXX)
+          git clone https://${{ secrets.CUSLOP_ACCESS }}@github.com/succinctlabs/cuslop $cuslop_dir --depth 1
+          pushd $cuslop_dir
+          head=$(git rev-parse --short HEAD)
+          popd
+          echo "head=$head" >> $GITHUB_OUTPUT
+          echo "dir=$cuslop_dir" >> $GITHUB_OUTPUT
 
-      - name: Install CUDA (driver + runtime)
-        uses: Jimver/cuda-toolkit@v0.2.26
-        id: cuda-toolkit
+      - name: Restore cuslop-server cache
+        id: cuslop-server-cache
+        uses: actions/cache@v4
         with:
-          cuda: '12.8.1'                 # Toolkit/driver branch you need
-          method: 'network'              # Required when you list sub-packages
-          # ────────────────────────────────────────────────────────────────
-          # "sub-packages" → the action prepends "cuda-" and appends "-12-8"
-          # The meta-package "drivers" resolves to "cuda-drivers-12-8", which
-          # installs the NVIDIA kernel driver + nvidia-smi.
-          # "cudart" installs the runtime libraries that user code links
-          # against; other entries are optional build-time bits.
-          sub-packages: '[
-            "cudart",       
-            "cudart-dev",
-            "nvcc",
-            "nvrtc",
-            "nvtx" 
-          ]'
-          use-github-cache: false
-          use-local-cache:  false
-          log-file-suffix:  '${{ matrix.platform }}-${{ matrix.arch }}.txt'
+          path: ~/.sp1/bin/cuslop-server
+          key: cuslop-server-${{ runner.os }}-${{ runner.arch }}-${{ steps.cuslop-clone.outputs.head }}-${{ steps.cuda-version.outputs.nvcc_build }}
 
-      - name: Run Nvidia-smi
+      # Consider if cuslop-server should be pinned to make this reproducible somehow.
+      - name: Install the latest cuslop-server
+        if: steps.cuslop-server-cache.outputs.cache-hit != 'true'
         run: |
-          # Cursed isntallation of the actual driver itself, not the runtime.
-          # todo: ensure the runner type / os doesnt change is alwaus ubuntu.
-          sudo apt-get install nvidia-driver-565
-          nvidia-smi
-          nvcc --version
+          pushd ${{ steps.cuslop-clone.outputs.dir }}
+          cargo install --locked --root "$HOME/.sp1" --path crates/cuslop
+          popd
+          rm -rf ${{ steps.cuslop-clone.outputs.dir }}
 
       - name: Run sp1-perf
         uses: actions-rs/cargo@v1
@@ -206,9 +227,9 @@ jobs:
       - name: Copy files from S3
         run: |
           mkdir -p workdir
-          aws s3 cp s3://sp1-testing-suite/${{ matrix.workload }}/program.bin workdir/program.bin
-          aws s3 cp s3://sp1-testing-suite/${{ matrix.workload }}/stdin.bin workdir/stdin.bin
-
+          aws s3 cp s3://sp1-testing-suite/v6/${{ matrix.workload }}/program.bin workdir/program.bin
+          aws s3 cp s3://sp1-testing-suite/v6/${{ matrix.workload }}/stdin.bin workdir/stdin.bin
+  
       - name: Install SP1 toolchain from repo
         run: |
           cargo run -p sp1-cli --no-default-features -- prove install-toolchain
@@ -225,4 +246,4 @@ jobs:
           NETWORK_PRIVATE_KEY: ${{ secrets.NETWORK_PRIVATE_KEY }}
           NETWORK_RPC_URL: "https://rpc.production.succinct.xyz" 
         run: |
-          cargo run --release -p sp1-perf --features "native-gnark" -- --program workdir/program.bin --stdin workdir/stdin.bin --mode network
+          cargo +nightly run --release -p sp1-perf -- --program workdir/program.bin --stdin workdir/stdin.bin --mode network
