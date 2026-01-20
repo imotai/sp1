@@ -2,6 +2,7 @@
 
 # Get the current git branch.
 GIT_REF=$(git rev-parse --abbrev-ref HEAD)
+CUSLOP_CHECKOUT="main"
 
 # Define the list of CPU workloads.
 CPU_WORKLOADS=(
@@ -25,6 +26,7 @@ CUDA_WORKLOADS=(
     "rsp-20526626"
     "zk-email"
     "eddsa-verify"
+    "op-succinct-10 < input/145164200-145164220.bin"
 )
 
 # Define the list of network workloads.
@@ -37,14 +39,16 @@ NETWORK_WORKLOADS=(
     "rsp-20526626"
     "zk-email"
     "eddsa-verify"
+    "op-succinct-10 < input/145164200-145164220.bin"
 )
 
-# Create a JSON object with the list of workloads.
-WORKLOADS=$(jq -n \
-    --arg cpu "$(printf '%s\n' "${CPU_WORKLOADS[@]}" | jq -R . | jq -s 'map(select(length > 0))')" \
-    --arg cuda "$(printf '%s\n' "${CUDA_WORKLOADS[@]}" | jq -R . | jq -s 'map(select(length > 0))')" \
-    --arg network "$(printf '%s\n' "${NETWORK_WORKLOADS[@]}" | jq -R . | jq -s 'map(select(length > 0))')" \
-    '{cpu_workloads: $cpu, cuda_workloads: $cuda, network_workloads: $network}')
+function json_array() {
+    printf '%s\n' "$@" | jq -R . | jq -s 'map(select(length > 0))'
+}
 
-# Run the workflow with the list of workloads.
-echo $WORKLOADS | gh workflow run suite.yml --ref $GIT_REF --json
+gh workflow run suite.yml \
+    --ref $GIT_REF \
+    -f cuslop_checkout="$CUSLOP_CHECKOUT" \
+    -f cpu_workloads="$(json_array "${CPU_WORKLOADS[@]}")" \
+    -f cuda_workloads="$(json_array "${CUDA_WORKLOADS[@]}")" \
+    -f network_workloads="$(json_array "${NETWORK_WORKLOADS[@]}")"

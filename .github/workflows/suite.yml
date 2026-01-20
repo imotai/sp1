@@ -4,14 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       cpu_workloads:
-        description: "list of cpu workloads to run"
+        description: "JSON list of cpu workloads to run"
         required: true
       cuda_workloads:
-        description: "list of cuda workloads to run"
+        description: "JSON list of cuda workloads to run"
         required: true
       network_workloads:
-        description: "list of network workloads to run"
+        description: "JSON list of network workloads to run"
         required: true
+      cuslop_checkout:
+        description: "git ref to checkout for cuslop"
+        required: false
   merge_group:
   # pull_request:
   #   branches: [ main ]
@@ -21,13 +24,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  test-cpu:
-    if: ${{ fromJSON(github.event.inputs.cpu_workloads)[0] != null }}
-    strategy:
-      fail-fast: false
-      matrix:
-        workload: ${{  fromJSON(github.event.inputs.cpu_workloads) }}
-    name: ${{ matrix.workload }} (cpu)
+  build-sp1-perf-avx512:
+    name: Build sp1-perf (with AVX512)
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     runs-on:
       [
         "runs-on",
@@ -35,55 +35,51 @@ jobs:
         "spot=false",
         "run-id=${{ github.run_id }}",
       ]
-    env:
-      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    outputs:
+      cache-key: ${{ steps.sp1-perf-cache-key.outputs.key }}
     steps:
+      - name: Get cache key for sp1-perf
+        id: sp1-perf-cache-key
+        run: |
+          echo "key=sp1-perf-avx512-${{ github.ref }}" >> $GITHUB_OUTPUT
+
+      - name: Setup/restore sp1-perf cache
+        id: sp1-perf-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.sp1/bin/sp1-perf
+          key: ${{ steps.sp1-perf-cache-key.outputs.key }}
+
       - name: Checkout sources
+        if: steps.sp1-perf-cache.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
 
       - name: Setup CI
+        if: steps.sp1-perf-cache.outputs.cache-hit != 'true'
         uses: ./.github/actions/setup
         with:
           pull_token: ${{ secrets.PRIVATE_PULL_TOKEN }}
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_S3 }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_S3 }}
-          aws-region: us-west-2
-
-      - name: Copy files from S3
-        run: |
-          mkdir -p workdir
-          aws s3 cp s3://sp1-testing-suite/v6/${{ matrix.workload }}/program.bin workdir/program.bin
-          aws s3 cp s3://sp1-testing-suite/v6/${{ matrix.workload }}/stdin.bin workdir/stdin.bin
-
       - name: Install SP1 toolchain from repo
-        run: |
-          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
-          cd crates/cli
-
-      - name: Install m4
-        run: |
-          sudo apt-get install m4
-
-      - name: Run sp1-perf
-        run: |
-          cargo version
-          cargo +nightly run --release -p sp1-perf -- --program workdir/program.bin --stdin workdir/stdin.bin --mode cpu
+        if: steps.sp1-perf-cache.outputs.cache-hit != 'true'
         env:
           RUST_LOG: info
           RUSTFLAGS: -Copt-level=3 -Ctarget-cpu=native
           RUST_BACKTRACE: 1
+        run: |
+          cargo +nightly run --release -p sp1-cli --no-default-features -- prove install-toolchain
 
-  test-cuda:
-    if: ${{ fromJSON(github.event.inputs.cuda_workloads)[0] != null }}
-    strategy:
-      fail-fast: false
-      matrix:
-        workload: ${{ fromJSON(github.event.inputs.cuda_workloads) }}
-    name: ${{ matrix.workload }} (gpu)
+      - name: Build sp1-perf
+        if: steps.sp1-perf-cache.outputs.cache-hit != 'true'
+        env:
+          RUSTFLAGS: -Copt-level=3 -Ctarget-cpu=native
+        run: |
+          cargo +nightly build --release -p sp1-perf
+          mkdir -p ~/.sp1/bin
+          mv target/release/sp1-perf ~/.sp1/bin/sp1-perf
+
+  build-sp1-perf:
+    name: Build sp1-perf
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     runs-on:
@@ -91,15 +87,78 @@ jobs:
         "runs-on",
         "family=g6.4xlarge",
         "hdd=200",
-        # "ami=ami-090f8a62ba9de38d0",
         "spot=false",
         "run-id=${{ github.run_id }}",
       ]
+    outputs:
+      cache-key: ${{ steps.sp1-perf-cache-key.outputs.key }}
     steps:
-      - name: Install system dependencies
+      - name: Get cache key for sp1-perf
+        id: sp1-perf-cache-key
         run: |
-          sudo apt-get update
-          sudo apt-get install -y m4 pkg-config libssl-dev unzip libclang-dev
+          echo "key=sp1-perf-${{ github.ref }}" >> $GITHUB_OUTPUT
+
+      - name: Setup/restore sp1-perf cache
+        id: sp1-perf-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.sp1/bin/sp1-perf
+          key: ${{ steps.sp1-perf-cache-key.outputs.key }}
+
+      - name: Checkout sources
+        if: steps.sp1-perf-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup CI
+        if: steps.sp1-perf-cache.outputs.cache-hit != 'true'
+        uses: ./.github/actions/setup
+        with:
+          pull_token: ${{ secrets.PRIVATE_PULL_TOKEN }}
+
+      - name: Install SP1 toolchain from repo
+        if: steps.sp1-perf-cache.outputs.cache-hit != 'true'
+        env:
+          RUST_LOG: info
+          RUST_BACKTRACE: 1
+        run: |
+          cargo +nightly run --release -p sp1-cli --no-default-features -- prove install-toolchain
+
+      - name: Build sp1-perf
+        if: steps.sp1-perf-cache.outputs.cache-hit != 'true'
+        run: |
+          cargo +nightly build --release -p sp1-perf
+          mkdir -p ~/.sp1/bin
+          mv target/release/sp1-perf ~/.sp1/bin/sp1-perf
+
+  build-cuslop-server:
+    if: ${{ fromJSON(github.event.inputs.cuda_workloads)[0] != null }}
+    name: Build cuslop
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    runs-on:
+      [
+        "runs-on",
+        "family=g6.4xlarge",
+        "hdd=200",
+        "spot=false",
+        "run-id=${{ github.run_id }}",
+      ]
+    outputs:
+      cache-key: ${{ steps.cuslop-server-cache-key.outputs.key }}
+    steps:
+      - name: Clone cuslop repo
+        id: cuslop-clone
+        run: |
+          cuslop_dir=$(mktemp -d /tmp/cuslop.XXXXXXXXXX)
+          git clone https://${{ secrets.CUSLOP_ACCESS }}@github.com/succinctlabs/cuslop $cuslop_dir
+          pushd $cuslop_dir
+          if [ -n "${{ github.event.inputs.cuslop_checkout }}" ]; then
+            git checkout "${{ github.event.inputs.cuslop_checkout }}"
+          fi
+          head=$(git rev-parse --short HEAD)
+          popd
+          echo "head=$head" >> $GITHUB_OUTPUT
+          echo "dir=$cuslop_dir" >> $GITHUB_OUTPUT
 
       - name: Install CUDA (driver + runtime)
         uses: Jimver/cuda-toolkit@v0.2.30
@@ -118,21 +177,69 @@ jobs:
           use-local-cache:  false
           log-file-suffix:  '${{ matrix.platform }}-${{ matrix.arch }}.txt'
 
-      - name: Install nvidia-driver and print version info
-        id: cuda-version
+      - name: Get cache key for cuslop-server
+        id: cuslop-server-cache-key
         run: |
-          sudo apt-get install nvidia-driver-565
-          nvidia-smi
-          nvcc --version
-          echo "nvcc_build=$(nvcc --version | grep "Build " | awk '{ print $2 }')" >> $GITHUB_OUTPUT
+          nvcc_build=$(nvcc --version | grep "Build " | awk '{ print $2 }')
+          echo "key=cuslop-server-${{ runner.os }}-${{ runner.arch }}-${{ steps.cuslop-clone.outputs.head }}-$nvcc_build" >> $GITHUB_OUTPUT
+
+      - name: Restore cuslop-server cache
+        id: cuslop-server-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.sp1/bin/cuslop-server
+          key: ${{ steps.cuslop-server-cache-key.outputs.key }}
+
+      - name: Install system dependencies
+        if: steps.cuda-toolkit.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y m4 pkg-config libssl-dev unzip libclang-dev
 
       - name: Checkout sources
+        if: steps.cuslop-server-cache.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
 
       - name: Setup CI
+        if: steps.cuslop-server-cache.outputs.cache-hit != 'true'
         uses: ./.github/actions/setup
         with:
           pull_token: ${{ secrets.PRIVATE_PULL_TOKEN }}
+
+      - name: Install the latest cuslop-server
+        if: steps.cuslop-server-cache.outputs.cache-hit != 'true'
+        run: |
+          pushd ${{ steps.cuslop-clone.outputs.dir }}
+          cargo install --locked --root "$HOME/.sp1" --path crates/cuslop
+          popd
+          rm -rf ${{ steps.cuslop-clone.outputs.dir }}
+
+  test-cpu:
+    if: ${{ fromJSON(github.event.inputs.cpu_workloads)[0] != null }}
+    strategy:
+      fail-fast: false
+      matrix:
+        workload: ${{  fromJSON(github.event.inputs.cpu_workloads) }}
+    name: ${{ matrix.workload }} (cpu)
+    runs-on:
+      [
+        "runs-on",
+        "runner=64cpu-linux-x64",
+        "spot=false",
+        "run-id=${{ github.run_id }}",
+      ]
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    needs:
+      - build-sp1-perf-avx512
+    steps:
+      - name: Restore sp1-perf cache
+        id: restore-sp1-perf-cache
+        uses: actions/cache/restore@v4
+        with:
+          fail-on-cache-miss: true
+          path: ~/.sp1/bin/sp1-perf
+          key: ${{ needs.build-sp1-perf-avx512.outputs.cache-key }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -144,53 +251,108 @@ jobs:
       - name: Copy files from S3
         run: |
           mkdir -p workdir
-          aws s3 cp s3://sp1-testing-suite/v6/${{ matrix.workload }}/program.bin workdir/program.bin
-          aws s3 cp s3://sp1-testing-suite/v6/${{ matrix.workload }}/stdin.bin workdir/stdin.bin
-
-      - name: Install SP1 toolchain from repo
-        run: |
-          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
-          cd crates/cli
-
-      - name: Clone cuslop repo
-        id: cuslop-clone
-        run: |
-          cuslop_dir=$(mktemp -d /tmp/cuslop.XXXXXXXXXX)
-          git clone https://${{ secrets.CUSLOP_ACCESS }}@github.com/succinctlabs/cuslop $cuslop_dir --depth 1
-          pushd $cuslop_dir
-          head=$(git rev-parse --short HEAD)
-          popd
-          echo "head=$head" >> $GITHUB_OUTPUT
-          echo "dir=$cuslop_dir" >> $GITHUB_OUTPUT
-
-      - name: Restore cuslop-server cache
-        id: cuslop-server-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.sp1/bin/cuslop-server
-          key: cuslop-server-${{ runner.os }}-${{ runner.arch }}-${{ steps.cuslop-clone.outputs.head }}-${{ steps.cuda-version.outputs.nvcc_build }}
-
-      # Consider if cuslop-server should be pinned to make this reproducible somehow.
-      - name: Install the latest cuslop-server
-        if: steps.cuslop-server-cache.outputs.cache-hit != 'true'
-        run: |
-          pushd ${{ steps.cuslop-clone.outputs.dir }}
-          cargo install --locked --root "$HOME/.sp1" --path crates/cuslop
-          popd
-          rm -rf ${{ steps.cuslop-clone.outputs.dir }}
+          name=$(awk -F'<' '{gsub(/^ +| +$/,"",$1);print $1}' <<< "${{ matrix.workload }}")
+          stdin_path=$(awk -F'<' '{gsub(/^ +| +$/,"",$2);print $2}' <<< "${{ matrix.workload }}")
+          s3_program="s3://sp1-testing-suite/v6/$name/program.bin"
+          s3_stdin="s3://sp1-testing-suite/v6/$name/${stdin_path:-stdin.bin}"
+          echo "program: $s3_program"
+          echo "  stdin: $s3_stdin"
+          aws s3 cp "$s3_program" workdir/program.bin
+          aws s3 cp "$s3_stdin" workdir/stdin.bin
 
       - name: Run sp1-perf
-        uses: actions-rs/cargo@v1
-        with:
-          command: run
-          args: --release -p sp1-perf -- --program workdir/program.bin --stdin workdir/stdin.bin --mode cuda
         env:
-          CUDA_PATH: ${{steps.cuda-toolkit.outputs.CUDA_PATH}}
-          DEV_GITHUB_TOKEN: ${{ secrets.PRIVATE_PULL_TOKEN }}
-          RUST_LOG: debug
-          RUSTFLAGS: -Copt-level=3 -Ctarget-cpu=native
+          RUST_LOG: info
           RUST_BACKTRACE: 1
+        run: ~/.sp1/bin/sp1-perf --program workdir/program.bin --stdin workdir/stdin.bin --mode cpu
+
+  test-cuda:
+    if: ${{ fromJSON(github.event.inputs.cuda_workloads)[0] != null }}
+    strategy:
+      fail-fast: false
+      matrix:
+        workload: ${{ fromJSON(github.event.inputs.cuda_workloads) }}
+    name: ${{ matrix.workload }} (gpu)
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    runs-on:
+      [
+        "runs-on",
+        "family=g6.4xlarge",
+        "hdd=200",
+        "spot=false",
+        "run-id=${{ github.run_id }}",
+      ]
+    needs:
+      - build-sp1-perf
+      - build-cuslop-server
+    steps:
+      - name: Restore sp1-perf cache
+        id: restore-sp1-perf-cache
+        uses: actions/cache/restore@v4
+        with:
+          fail-on-cache-miss: true
+          path: ~/.sp1/bin/sp1-perf
+          key: ${{ needs.build-sp1-perf.outputs.cache-key }}
+
+      - name: Restore cuslop-server cache
+        id: restore-cuslop-server-cache
+        uses: actions/cache/restore@v4
+        with:
+          fail-on-cache-miss: true
+          path: ~/.sp1/bin/cuslop-server
+          key: ${{ needs.build-cuslop-server.outputs.cache-key }}
+
+      - name: Install CUDA (driver + runtime)
+        uses: Jimver/cuda-toolkit@v0.2.30
+        id: cuda-toolkit
+        with:
+          cuda: '12.6.0'                 # Toolkit/driver branch you need
+          method: 'network'              # Required when you list sub-packages
+          # ────────────────────────────────────────────────────────────────
+          # "sub-packages" → the action prepends "cuda-" and appends "-12-6"
+          # The meta-package "drivers" resolves to "cuda-drivers-12-6", which
+          # installs the NVIDIA kernel driver + nvidia-smi.
+          # "cudart" installs the runtime libraries that user code links
+          # against; other entries are optional build-time bits.
+          sub-packages: '["cudart", "cudart-dev", "nvcc", "nvrtc", "nvtx"]'
+          use-github-cache: false
+          use-local-cache:  false
+          log-file-suffix:  '${{ matrix.platform }}-${{ matrix.arch }}.txt'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nvidia-driver-565
+          nvidia-smi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_S3 }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_S3 }}
+          aws-region: us-west-2
+
+      - name: Copy files from S3
+        run: |
+          mkdir -p workdir
+          name=$(awk -F'<' '{gsub(/^ +| +$/,"",$1);print $1}' <<< "${{ matrix.workload }}")
+          stdin_path=$(awk -F'<' '{gsub(/^ +| +$/,"",$2);print $2}' <<< "${{ matrix.workload }}")
+          s3_program="s3://sp1-testing-suite/v6/$name/program.bin"
+          s3_stdin="s3://sp1-testing-suite/v6/$name/${stdin_path:-stdin.bin}"
+          echo "program: $s3_program"
+          echo "  stdin: $s3_stdin"
+          aws s3 cp "$s3_program" workdir/program.bin
+          aws s3 cp "$s3_stdin" workdir/stdin.bin
+
+      - name: Run sp1-perf
+        env:
+          CUDA_PATH: ${{ steps.cuda-toolkit.outputs.CUDA_PATH }}
+          DEV_GITHUB_TOKEN: ${{ secrets.PRIVATE_PULL_TOKEN }}
+          RUST_BACKTRACE: 1
+          RUST_LOG: info
           SP1_PROVER: cuda
+        run: ~/.sp1/bin/sp1-perf --program workdir/program.bin --stdin workdir/stdin.bin --mode cuda
 
   test-network:
     if: ${{ fromJSON(github.event.inputs.network_workloads)[0] != null }}
@@ -206,16 +368,18 @@ jobs:
         "spot=false",
         "run-id=${{ github.run_id }}",
       ]
+    needs:
+      - build-sp1-perf-avx512
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4
-
-      - name: Setup CI
-        uses: ./.github/actions/setup
+      - name: Restore sp1-perf cache
+        id: restore-sp1-perf-cache
+        uses: actions/cache/restore@v4
         with:
-          pull_token: ${{ secrets.PRIVATE_PULL_TOKEN }}
+          fail-on-cache-miss: true
+          path: ~/.sp1/bin/sp1-perf
+          key: ${{ needs.build-sp1-perf-avx512.outputs.cache-key }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -227,23 +391,23 @@ jobs:
       - name: Copy files from S3
         run: |
           mkdir -p workdir
-          aws s3 cp s3://sp1-testing-suite/v6/${{ matrix.workload }}/program.bin workdir/program.bin
-          aws s3 cp s3://sp1-testing-suite/v6/${{ matrix.workload }}/stdin.bin workdir/stdin.bin
-  
-      - name: Install SP1 toolchain from repo
-        run: |
-          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
-          cd crates/cli
+          name=$(awk -F'<' '{gsub(/^ +| +$/,"",$1);print $1}' <<< "${{ matrix.workload }}")
+          stdin_path=$(awk -F'<' '{gsub(/^ +| +$/,"",$2);print $2}' <<< "${{ matrix.workload }}")
+          s3_program="s3://sp1-testing-suite/v6/$name/program.bin"
+          s3_stdin="s3://sp1-testing-suite/v6/$name/${stdin_path:-stdin.bin}"
+          echo "program: $s3_program"
+          echo "  stdin: $s3_stdin"
+          aws s3 cp "$s3_program" workdir/program.bin
+          aws s3 cp "$s3_stdin" workdir/stdin.bin
 
       - name: Run sp1-perf
         env:
           RUST_LOG: info
           VERIFY_VK: false
-          RUSTFLAGS: -Copt-level=3 -Ctarget-cpu=native
           RUST_BACKTRACE: 1
           SP1_PROVER: network
           SP1_PRIVATE_KEY: ${{ secrets.SP1_PRIVATE_KEY }}
           NETWORK_PRIVATE_KEY: ${{ secrets.NETWORK_PRIVATE_KEY }}
           NETWORK_RPC_URL: "https://rpc.production.succinct.xyz" 
         run: |
-          cargo +nightly run --release -p sp1-perf -- --program workdir/program.bin --stdin workdir/stdin.bin --mode network
+          ~/.sp1/bin/sp1-perf --program workdir/program.bin --stdin workdir/stdin.bin --mode network

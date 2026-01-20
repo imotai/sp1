@@ -1,6 +1,7 @@
 # Note: this is only compatible with Linux runners.
 
 name: Test setup
+description: "Setup the test environment"
 inputs:
   pull_token:
     description: "Token to use for private repo access"
