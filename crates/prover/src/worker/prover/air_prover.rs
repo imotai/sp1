@@ -30,7 +30,6 @@ pub trait AirProverWorker<GC: IopCtx, SC: ShardContext<GC>, P: AirProver<GC, SC>
         record: Record<GC, SC>,
         vk: Option<MachineVerifyingKey<GC>>,
         prover_permits: ProverSemaphore,
-        challenger: &mut GC::Challenger,
     ) -> impl Future<Output = (MachineVerifyingKey<GC>, ShardContextProof<GC, SC>, ProverPermit)> + Send;
     /// Setup and prove a shard.
     fn prove_shard_with_pk(
@@ -38,7 +37,6 @@ pub trait AirProverWorker<GC: IopCtx, SC: ShardContext<GC>, P: AirProver<GC, SC>
         pk: Arc<ProvingKey<GC, SC, P>>,
         record: Record<GC, SC>,
         prover_permits: ProverSemaphore,
-        challenger: &mut GC::Challenger,
     ) -> impl Future<Output = (ShardProof<GC, PcsProof<GC, SC>>, ProverPermit)> + Send;
     /// Get all the chips in the machine.
     fn all_chips(&self) -> &[Chip<GC::F, SC::Air>] {
@@ -73,10 +71,8 @@ where
         record: Record<GC, SC>,
         vk: Option<MachineVerifyingKey<GC>>,
         prover_permits: ProverSemaphore,
-        challenger: &mut GC::Challenger,
     ) -> (MachineVerifyingKey<GC>, ShardProof<GC, PcsProof<GC, SC>>, ProverPermit) {
-        AirProver::setup_and_prove_shard(self, program, record, vk, prover_permits, challenger)
-            .await
+        AirProver::setup_and_prove_shard(self, program, record, vk, prover_permits).await
     }
 
     /// Prove a shard from a given pk.
@@ -85,8 +81,7 @@ where
         pk: Arc<ProvingKey<GC, SC, P>>,
         record: Record<GC, SC>,
         prover_permits: ProverSemaphore,
-        challenger: &mut GC::Challenger,
     ) -> (ShardProof<GC, PcsProof<GC, SC>>, ProverPermit) {
-        AirProver::prove_shard_with_pk(self, pk, record, prover_permits, challenger).await
+        AirProver::prove_shard_with_pk(self, pk, record, prover_permits).await
     }
 }

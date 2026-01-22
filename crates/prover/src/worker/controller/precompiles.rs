@@ -40,27 +40,42 @@ impl DeferredEvents {
         client: &A,
         split_opts: SplitOpts,
     ) -> Result<DeferredEvents, TaskError> {
-        let mut deferred: HashMap<SyscallCode, Vec<PrecompileArtifactSlice>> = HashMap::new();
-        let mut futures = Vec::new();
-        for (code, events) in record.precompile_events.events.iter() {
-            let threshold = split_opts.syscall_threshold[*code];
-            futures.extend(
-                events
-                    .chunks(threshold)
-                    .map(|chunk| {
-                        let client = client.clone();
-                        let artifact = client.create_artifact().unwrap();
-                        async move {
-                            client.upload(&artifact, chunk).await.unwrap();
+        // Move all synchronous work (iteration, chunking) into spawn_blocking
+        // to avoid blocking the async runtime.
+        let chunk_data = tokio::task::spawn_blocking(move || {
+            let mut chunk_data = Vec::new();
+            for (code, events) in record.precompile_events.events.iter() {
+                let threshold = split_opts.syscall_threshold[*code];
+                for chunk in events.chunks(threshold) {
+                    chunk_data.push((*code, chunk.to_vec()));
+                }
+            }
+            chunk_data
+        })
+        .await
+        .map_err(|e| TaskError::Fatal(e.into()))?;
 
-                            (*code, artifact.clone(), chunk.len())
-                        }
-                    })
-                    .collect::<Vec<_>>(),
-            );
-        }
+        // Create all artifacts in batch (this is cheap - just generates IDs)
+        let artifacts =
+            client.create_artifacts(chunk_data.len()).map_err(TaskError::Fatal)?.to_vec();
+
+        // Build futures with pre-created artifacts and run uploads in parallel
+        let futures = chunk_data
+            .into_iter()
+            .zip(artifacts.into_iter())
+            .map(|((code, chunk), artifact)| {
+                let client = client.clone();
+                async move {
+                    client.upload(&artifact, &chunk).await.unwrap();
+                    (code, artifact, chunk.len())
+                }
+            })
+            .collect::<Vec<_>>();
+
         let res =
             await_scoped_vec(futures).await.map_err(|e| TaskError::Fatal(anyhow::anyhow!(e)))?;
+
+        let mut deferred: HashMap<SyscallCode, Vec<PrecompileArtifactSlice>> = HashMap::new();
         for (code, artifact, count) in res {
             deferred.entry(code).or_default().push(PrecompileArtifactSlice {
                 artifact,

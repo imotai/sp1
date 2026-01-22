@@ -247,11 +247,8 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: AirProver<GC, SC>> MachineProver<GC, S
         // Copy the worker index.
         let idx = *worker;
 
-        let mut challenger = self.challenger();
-        pk.vk.observe_into(&mut challenger);
-
         let (proof, _) = self.base_workers[idx]
-            .prove_shard_with_pk(pk, record, self.worker_permits[idx].clone(), &mut challenger)
+            .prove_shard_with_pk(pk, record, self.worker_permits[idx].clone())
             .await;
 
         // Return the proof.
@@ -276,16 +273,8 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: AirProver<GC, SC>> MachineProver<GC, S
         // Copy the worker index.
         let idx = *worker;
 
-        let mut challenger = self.challenger();
-
         let (vk, proof, _) = self.base_workers[idx]
-            .setup_and_prove_shard(
-                program,
-                record,
-                vk,
-                self.worker_permits[idx].clone(),
-                &mut challenger,
-            )
+            .setup_and_prove_shard(program, record, vk, self.worker_permits[idx].clone())
             .await;
 
         (vk, proof)

@@ -283,11 +283,9 @@ impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
     ) -> Result<SP1RecursionProof<SP1GlobalContext, SP1PcsProofInner>, TaskError> {
         let proof = match keys {
             RecursionKeys::Exists(pk, vk) => {
-                let mut challenger = SP1GlobalContext::default_challenger();
-                vk.observe_into(&mut challenger);
                 let (proof, permit) = self
                     .recursion_prover
-                    .prove_shard_with_pk(pk.clone(), record, self.permits.clone(), &mut challenger)
+                    .prove_shard_with_pk(pk.clone(), record, self.permits.clone())
                     .await;
                 let duration = permit.release();
                 metrics.increment_permit_time(duration);
@@ -314,16 +312,9 @@ impl<A: ArtifactClient, C: SP1ProverComponents> RecursionProverWorker<A, C> {
                 SP1RecursionProof { vk, proof, vk_merkle_proof }
             }
             RecursionKeys::Program(program) => {
-                let mut challenger = SP1GlobalContext::default_challenger();
                 let (vk, proof, permit) = self
                     .recursion_prover
-                    .setup_and_prove_shard(
-                        program,
-                        record,
-                        None,
-                        self.permits.clone(),
-                        &mut challenger,
-                    )
+                    .setup_and_prove_shard(program, record, None, self.permits.clone())
                     .await;
                 let duration = permit.release();
                 metrics.increment_permit_time(duration);
@@ -999,8 +990,6 @@ impl<C: SP1ProverComponents> ShrinkProver<C> {
             runtime.record
         };
 
-        let mut challenger = SP1GlobalContext::default_challenger();
-
         let (vk, proof, _permit) = self
             .prover
             .setup_and_prove_shard(
@@ -1008,7 +997,6 @@ impl<C: SP1ProverComponents> ShrinkProver<C> {
                 execution_record,
                 Some(self.verifying_key.clone()),
                 self.permits.clone(),
-                &mut challenger,
             )
             .await;
         let vk_merkle_proof = self.prover_data.recursion_vks.open(&vk)?.1;
@@ -1095,8 +1083,6 @@ impl<C: SP1ProverComponents> WrapProver<C> {
             runtime.record
         };
 
-        let mut challenger = SP1OuterGlobalContext::default_challenger();
-
         let (_, proof, _permit) = self
             .prover
             .setup_and_prove_shard(
@@ -1104,7 +1090,6 @@ impl<C: SP1ProverComponents> WrapProver<C> {
                 execution_record,
                 Some(self.verifying_key.clone()),
                 self.permits.clone(),
-                &mut challenger,
             )
             .await;
 

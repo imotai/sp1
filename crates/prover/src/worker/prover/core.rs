@@ -3,7 +3,6 @@ use std::{collections::BTreeSet, sync::Arc};
 use anyhow::anyhow;
 use slop_air::BaseAir;
 use slop_algebra::AbstractField;
-use slop_challenger::IopCtx;
 use slop_futures::pipeline::{AsyncEngine, AsyncWorker, Pipeline, SubmitError, SubmitHandle};
 use sp1_core_executor::{
     events::{PrecompileEvent, SyscallEvent},
@@ -435,7 +434,13 @@ where
             let program = program.clone();
             tokio::spawn(
                 async move {
-                    let split_opts = SplitOpts::new(&opts, program.instructions.len(), false);
+                    // SplitOpts::new() parses JSON and builds lookup tables - run in spawn_blocking
+                    let program_len = program.instructions.len();
+                    let split_opts = tokio::task::spawn_blocking(move || {
+                        SplitOpts::new(&opts, program_len, false)
+                    })
+                    .await
+                    .map_err(|e| TaskError::Fatal(e.into()))?;
                     let deferred_data =
                         DeferredEvents::defer_record(deferred_record, &artifact_client, split_opts)
                             .await?;
@@ -487,8 +492,6 @@ where
         };
 
         // === Phase 2: Core Proving ===
-        let mut challenger = SP1GlobalContext::default_challenger();
-
         let permits = self.permits.clone();
 
         let (proof, permit) = if let Some(pk_cache) = &self.pk {
@@ -506,9 +509,8 @@ where
                 .await;
 
             tracing::debug!("Using fixed PK");
-            pk.vk.observe_into(&mut challenger);
             self.core_prover
-                .prove_shard_with_pk(pk.clone(), record, permits, &mut challenger)
+                .prove_shard_with_pk(pk.clone(), record, permits)
                 .instrument(tracing::debug_span!("core prove with pk"))
                 .await
         } else {
@@ -520,7 +522,6 @@ where
                     record,
                     Some(common_input.vk.vk.clone()),
                     permits,
-                    &mut challenger,
                 )
                 .instrument(tracing::debug_span!("core setup and prove"))
                 .await;
