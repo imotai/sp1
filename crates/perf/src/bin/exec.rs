@@ -121,6 +121,7 @@ async fn execute_node(args: Args, elf: Vec<u8>, stdin: SP1Stdin) {
         artifact_client,
         worker_client,
         None,
+        None,
     );
 
     let counter_handle = tokio::task::spawn(async move {
