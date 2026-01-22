@@ -134,7 +134,8 @@ where
         let elf = inputs[0].clone();
         let stdin_artifact = inputs[1].clone();
         let mode_artifact = inputs[2].clone();
-        let proof_nonce = inputs.get(3);
+        let cycle_limit = inputs.get(3).and_then(|a| a.clone().to_id().parse::<u64>().ok());
+        let proof_nonce = inputs.get(4);
         let [output] = outputs.try_into().unwrap();
         let mode = {
             let parsed =
@@ -238,6 +239,7 @@ where
             self.artifact_client.clone(),
             self.worker_client.clone(),
             self.minimal_executor_cache.clone(),
+            cycle_limit,
         );
         let mut join_set = JoinSet::<Result<(), TaskError>>::new();
 
@@ -407,6 +409,17 @@ where
         let result = executor_result_rx
             .await
             .map_err(|_| TaskError::Fatal(anyhow::anyhow!("Executor panicked")))?;
+
+        // Check if cycle limit was exceeded.
+        if let Some(limit) = cycle_limit {
+            if limit > 0 && result.cycles > limit {
+                return Err(TaskError::Fatal(anyhow::anyhow!(
+                    "cycle limit exceeded: {} > {}",
+                    result.cycles,
+                    limit
+                )));
+            }
+        }
 
         // Pair with public values and version
         let public_values = SP1PublicValues::from(&result.public_value_stream);

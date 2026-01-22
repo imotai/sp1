@@ -6,7 +6,7 @@ use slop_futures::pipeline::Pipeline;
 use sp1_core_executor::{
     events::{MemoryInitializeFinalizeEvent, MemoryRecord},
     syscalls::SyscallCode,
-    CoreVM, ExecutionError, MinimalExecutor, Program, SP1CoreOpts, UnsafeMemory,
+    CoreVM, ExecutionError, MinimalExecutor, Program, SP1CoreOpts, UnsafeMemory, CLK_BUMP,
 };
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
 use sp1_hypercube::{
@@ -88,6 +88,7 @@ pub struct SP1CoreExecutor<A, W> {
     artifact_client: A,
     worker_client: W,
     minimal_executor_cache: Option<MinimalExecutorCache>,
+    cycle_limit: Option<u64>,
 }
 
 impl<A, W> SP1CoreExecutor<A, W> {
@@ -105,6 +106,7 @@ impl<A, W> SP1CoreExecutor<A, W> {
         artifact_client: A,
         worker_client: W,
         minimal_executor_cache: Option<MinimalExecutorCache>,
+        cycle_limit: Option<u64>,
     ) -> Self {
         Self {
             splicing_engine,
@@ -119,6 +121,7 @@ impl<A, W> SP1CoreExecutor<A, W> {
             artifact_client,
             worker_client,
             minimal_executor_cache,
+            cycle_limit,
         }
     }
 }
@@ -205,6 +208,21 @@ where
                         chunk.num_mem_reads() * std::mem::size_of::<sp1_jit::MemValue>() as u64,
                         minimal_executor.is_done()
                     );
+
+                    // Check the `end_clk` for cycle limit
+                    if let Some(cycle_limit) = self.cycle_limit {
+                        let last_clk = chunk.clk_end() / CLK_BUMP;
+                        if last_clk > cycle_limit {
+                            tracing::error!(
+                                "Cycle limit exceeded: last_clk = {}, cycle_limit = {}",
+                                last_clk,
+                                cycle_limit
+                            );
+                            return Err(TaskError::Execution(ExecutionError::ExceededCycleLimit(
+                                cycle_limit,
+                            )));
+                        }
+                    }
 
                     // Create a splicing task
                     let task = SplicingTask {

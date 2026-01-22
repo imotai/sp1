@@ -41,6 +41,8 @@ struct Args {
     pub telemetry: bool,
     #[arg(long, default_value = "gas")]
     pub mode: String,
+    #[arg(long, default_value = None)]
+    pub cycle_limit: Option<u64>,
 }
 
 // Executes a program similarly to the cluster controller.
@@ -116,6 +118,7 @@ async fn execute_node(args: Args, elf: Vec<u8>, stdin: SP1Stdin) {
         artifact_client,
         worker_client,
         None,
+        args.cycle_limit,
     );
 
     let counter_handle = tokio::task::spawn(async move {

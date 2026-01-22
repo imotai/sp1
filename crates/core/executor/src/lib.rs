@@ -39,7 +39,7 @@ pub use vm::{
     memory::CompressedMemory,
     results::CycleResult,
     shapes::{MAXIMUM_CYCLE_AREA, MAXIMUM_PADDING_AREA},
-    CoreVM,
+    CoreVM, CLK_BUMP,
 };
 mod hooks;
 mod splicing;
