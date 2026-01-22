@@ -6,7 +6,7 @@ use slop_futures::pipeline::Pipeline;
 use sp1_core_executor::{
     events::{MemoryInitializeFinalizeEvent, MemoryRecord},
     syscalls::SyscallCode,
-    CoreVM, ExecutionError, MinimalExecutor, Program, SP1CoreOpts, UnsafeMemory, CLK_BUMP,
+    CoreVM, ExecutionError, MinimalExecutor, Program, SP1CoreOpts, UnsafeMemory,
 };
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
 use sp1_hypercube::{
@@ -211,7 +211,7 @@ where
 
                     // Check the `end_clk` for cycle limit
                     if let Some(cycle_limit) = self.cycle_limit {
-                        let last_clk = chunk.clk_end() / CLK_BUMP;
+                        let last_clk = minimal_executor.global_clk();
                         if last_clk > cycle_limit {
                             tracing::error!(
                                 "Cycle limit exceeded: last_clk = {}, cycle_limit = {}",

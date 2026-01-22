@@ -22,7 +22,7 @@ pub(crate) mod shapes;
 pub(crate) mod syscall;
 
 /// The number of cycles that a single instruction takes.
-pub const CLK_BUMP: u64 = 8;
+const CLK_BUMP: u64 = 8;
 /// The number a single instruction increments the program counter by.
 const PC_BUMP: u64 = 4;
 
