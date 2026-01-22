@@ -1,10 +1,8 @@
 use std::time::Duration;
 
 use clap::Parser;
-use csl_perf::{get_program_and_input, telemetry, Measurement};
+use csl_perf::{get_program_and_input, Measurement};
 use csl_prover::cuda_worker_builder;
-use opentelemetry::KeyValue;
-use opentelemetry_sdk::Resource;
 use sp1_core_executor::SP1Context;
 use sp1_prover::worker::{SP1LocalNodeBuilder, SP1Proof};
 use sp1_prover_types::network_base_types::ProofMode;
@@ -43,11 +41,32 @@ async fn main() {
     dotenv::dotenv().ok();
 
     // Initialize the tracer.
+    #[cfg(not(feature = "tokio-blocked"))]
     if args.telemetry {
+        use csl_perf::telemetry;
+        use opentelemetry::KeyValue;
+        use opentelemetry_sdk::Resource;
+
         let resource = Resource::new(vec![KeyValue::new("service.name", "csl-node")]);
         telemetry::init(resource);
     } else {
         csl_tracing::init_tracer();
+    }
+    #[cfg(feature = "tokio-blocked")]
+    {
+        use tokio_blocked::TokioBlockedLayer;
+        use tracing_subscriber::{prelude::*, EnvFilter};
+
+        let fmt = tracing_subscriber::fmt::layer().with_filter(EnvFilter::from_default_env());
+
+        let duration = std::env::var("TOKIO_BLOCKED_WARN_DURATION_MICROS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(1000);
+        let blocked = TokioBlockedLayer::new()
+            .with_warn_busy_single_poll(Some(Duration::from_micros(duration)));
+
+        tracing_subscriber::registry().with(fmt).with(blocked).init();
     }
 
     // Get the program and input.

@@ -29,7 +29,6 @@ members = [
     "crates/jagged_tracegen",
     "crates/logup_gkr",
     "crates/zerocheck",
-    "crates/experimental",
     "crates/basefold",
 ]
 resolver = "2"
@@ -80,7 +79,6 @@ csl-merkle-tree = { path = "crates/merkle_tree" }
 csl-jagged-tracegen = { path = "crates/jagged_tracegen" }
 csl-logup-gkr = { path = "crates/logup_gkr" }
 csl-zerocheck = { path = "crates/zerocheck" }
-csl-experimental = { path = "crates/experimental" }
 csl-basefold = { path = "crates/basefold" }
 
 # slop 
@@ -157,6 +155,7 @@ sp1-prover-types = { git = "https://github.com/succinctlabs/sp1-wip.git", branch
 # sp1-curves = { path = "../sp1-wip/crates/curves" }
 # sp1-cuda = { path = "../sp1-wip/crates/cuda" }
 # sp1-derive = { path = "../sp1-wip/crates/derive" }
+# sp1-recursion-gnark-ffi = { path = "../sp1-wip/crates/recursion/gnark-ffi" }
 # sp1-sdk = { path = "../sp1-wip/crates/sdk", features = [
 #     "experimental",
 #     "native-gnark",

@@ -1,4 +1,4 @@
-use csl_cuda::{args, TaskScope};
+use csl_cuda::{args, DeviceMle, TaskScope};
 use csl_cuda::{TracegenPreprocessedRecursionSelectKernel, TracegenRecursionSelectKernel};
 use slop_air::BaseAir;
 use slop_alloc::mem::CopyError;
@@ -20,7 +20,7 @@ impl CudaTracegenAir<F> for SelectChip {
         &self,
         program: &Self::Program,
         scope: &TaskScope,
-    ) -> Result<Option<Mle<F, TaskScope>>, CopyError> {
+    ) -> Result<Option<DeviceMle<F>>, CopyError> {
         let instrs = program
             .inner
             .iter() // Faster than using `rayon` for some reason. Maybe vectorization?
@@ -64,7 +64,7 @@ impl CudaTracegenAir<F> for SelectChip {
                 .unwrap();
         }
 
-        Ok(Some(Mle::new(trace)))
+        Ok(Some(DeviceMle::new(Mle::new(trace))))
     }
 
     fn supports_device_main_tracegen(&self) -> bool {
@@ -76,7 +76,7 @@ impl CudaTracegenAir<F> for SelectChip {
         input: &Self::Record,
         _: &mut Self::Record,
         scope: &TaskScope,
-    ) -> Result<Mle<F, TaskScope>, CopyError> {
+    ) -> Result<DeviceMle<F>, CopyError> {
         let events = &input.select_events;
 
         let events_device = {
@@ -112,7 +112,7 @@ impl CudaTracegenAir<F> for SelectChip {
                 .unwrap();
         }
 
-        Ok(Mle::new(trace))
+        Ok(DeviceMle::new(Mle::new(trace)))
     }
 }
 

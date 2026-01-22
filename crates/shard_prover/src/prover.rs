@@ -1,11 +1,11 @@
 use crate::{MainTraceData, ShardData};
 use csl_air::air_block::BlockAir;
 use csl_air::SymbolicProverFolder;
-use csl_basefold::{CudaStackedPcsProverData, FriCudaProver};
-use csl_challenger::DeviceGrindingChallenger;
+use csl_basefold::{CudaStackedPcsProverData, DeviceGrindingChallenger, FriCudaProver};
+use csl_challenger::FromHostChallengerSync;
 use csl_cuda::PinnedBuffer;
-use csl_cuda::{partial_lagrange, TaskScope, ToDevice};
-use csl_jagged_assist::JaggedAssistSumAsPolyGPUImpl;
+use csl_cuda::{DeviceMle, DevicePoint, TaskScope};
+use csl_jagged_assist::prove_jagged_evaluation_sync;
 use csl_jagged_sumcheck::{generate_jagged_sumcheck_poly, jagged_sumcheck};
 use csl_jagged_tracegen::{full_tracegen_permit, main_tracegen_permit, CudaShardProverData};
 use csl_logup_gkr::{prove_logup_gkr, CudaLogUpGkrOptions, Interactions};
@@ -15,14 +15,13 @@ use csl_utils::{Ext, Felt, JaggedTraceMle};
 use csl_zerocheck::zerocheck;
 use csl_zerocheck::CudaEvalResult;
 use slop_algebra::AbstractField;
-use slop_alloc::{Buffer, CanCopyFromRef, HasBackend, ToHost};
+use slop_alloc::{Buffer, HasBackend};
 use slop_challenger::{CanObserve, FieldChallenger, FromChallenger, IopCtx};
 use slop_commit::Rounds;
 use slop_futures::queue::{Worker, WorkerQueue};
 use slop_jagged::{
-    unzip_and_prefix_sums, JaggedEvalProver, JaggedEvalSumcheckProver,
-    JaggedLittlePolynomialProverParams, JaggedPcsProof, JaggedProverData, JaggedProverError,
-    PrefixSumsMaxLogRowCount,
+    unzip_and_prefix_sums, JaggedLittlePolynomialProverParams, JaggedPcsProof, JaggedProverData,
+    JaggedProverError, PrefixSumsMaxLogRowCount,
 };
 use slop_multilinear::{Evaluations, Mle, MleEval, MultilinearPcsVerifier, Point};
 use slop_stacked::StackedBasefoldProof;
@@ -46,9 +45,59 @@ pub trait CudaShardProverComponents<GC: IopCtx>: Send + Sync + 'static {
         + ZerocheckAir<Felt, Ext>
         + for<'a> BlockAir<SymbolicProverFolder<'a>>;
     type C: MultilinearPcsVerifier<GC> + Send + Sync;
+    /// The device challenger type used for GPU-based challenger operations.
+    type DeviceChallenger: csl_jagged_assist::AsMutRawChallenger
+        + FromChallenger<GC::Challenger, TaskScope>
+        + FromHostChallengerSync<GC::Challenger>
+        + Clone
+        + Send
+        + Sync;
 }
-/// A prover for the hypercube STARK, given a configuration.
+
 pub struct CudaShardProver<GC: IopCtx, PC: CudaShardProverComponents<GC>> {
+    inner: Arc<CudaShardProverInner<GC, PC>>,
+}
+
+impl<GC: IopCtx, PC: CudaShardProverComponents<GC>> Clone for CudaShardProver<GC, PC> {
+    fn clone(&self) -> Self {
+        Self { inner: self.inner.clone() }
+    }
+}
+
+impl<GC: IopCtx, PC: CudaShardProverComponents<GC>> CudaShardProver<GC, PC> {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        trace_buffers: Arc<WorkerQueue<PinnedBuffer<GC::F>>>,
+        max_log_row_count: u32,
+        basefold_prover: FriCudaProver<GC, PC::P, GC::F>,
+        machine: Machine<GC::F, PC::Air>,
+        max_trace_size: usize,
+        backend: TaskScope,
+        all_interactions: BTreeMap<String, Arc<Interactions<GC::F, TaskScope>>>,
+        all_zerocheck_programs: BTreeMap<String, CudaEvalResult>,
+        recompute_first_layer: bool,
+        drop_ldes: bool,
+    ) -> Self {
+        Self {
+            inner: Arc::new(CudaShardProverInner {
+                trace_buffers,
+                max_log_row_count,
+                basefold_prover,
+                machine,
+                max_trace_size,
+                backend,
+                all_interactions,
+                all_zerocheck_programs,
+                recompute_first_layer,
+                drop_ldes,
+                _marker: PhantomData,
+            }),
+        }
+    }
+}
+
+/// A prover for the hypercube STARK, given a configuration.
+pub(crate) struct CudaShardProverInner<GC: IopCtx, PC: CudaShardProverComponents<GC>> {
     #[allow(clippy::type_complexity)]
     pub trace_buffers: Arc<WorkerQueue<PinnedBuffer<GC::F>>>,
     pub max_log_row_count: u32,
@@ -63,9 +112,15 @@ pub struct CudaShardProver<GC: IopCtx, PC: CudaShardProverComponents<GC>> {
     pub _marker: PhantomData<GC>,
 }
 
-impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShardProver<GC, PC> {
+impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
+    CudaShardProverInner<GC, PC>
+{
     pub async fn get_buffer(&self) -> Worker<PinnedBuffer<GC::F>> {
         self.trace_buffers.clone().pop().await.expect("buffer pool exhausted")
+    }
+
+    fn machine(&self) -> &Machine<GC::F, PC::Air> {
+        &self.machine
     }
 }
 
@@ -73,23 +128,16 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
     AirProver<GC, ShardContextImpl<GC, PC::C, PC::Air>> for CudaShardProver<GC, PC>
 where
     GC::Challenger: DeviceGrindingChallenger<Witness = GC::F>,
-    GC::Challenger: csl_basefold::DeviceGrindingChallenger<Witness = GC::F>,
     GC::Challenger: slop_challenger::FieldChallenger<
         <GC::Challenger as slop_challenger::GrindingChallenger>::Witness,
     >,
     StackedBasefoldProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
-    TaskScope: csl_jagged_assist::BranchingProgramKernel<
-        GC::F,
-        GC::EF,
-        <GC::Challenger as DeviceGrindingChallenger>::OnDeviceChallenger,
-    >,
-    <GC::Challenger as DeviceGrindingChallenger>::OnDeviceChallenger:
-        FromChallenger<GC::Challenger, TaskScope> + Clone,
+    TaskScope: csl_jagged_assist::BranchingProgramKernel<GC::F, GC::EF, PC::DeviceChallenger>,
 {
     type PreprocessedData = Mutex<CudaShardProverData<GC, PC::Air>>;
 
     fn machine(&self) -> &Machine<GC::F, PC::Air> {
-        &self.machine
+        &self.inner.machine
     }
 
     /// Setup a shard, using a verifying key if provided.
@@ -102,26 +150,29 @@ where
         PreprocessedData<ProvingKey<GC, ShardContextImpl<GC, PC::C, PC::Air>, Self>>,
         MachineVerifyingKey<GC>,
     ) {
+        let inner = self.inner.clone();
         if let Some(vk) = vk {
             let initial_global_cumulative_sum = vk.initial_global_cumulative_sum;
-            self.setup_with_initial_global_cumulative_sum(
-                program,
-                initial_global_cumulative_sum,
-                prover_permits,
-            )
-            .await
+            inner
+                .setup_with_initial_global_cumulative_sum(
+                    program,
+                    initial_global_cumulative_sum,
+                    prover_permits,
+                )
+                .await
         } else {
             let program_sent = program.clone();
             let initial_global_cumulative_sum =
                 tokio::task::spawn_blocking(move || program_sent.initial_global_cumulative_sum())
                     .await
                     .unwrap();
-            self.setup_with_initial_global_cumulative_sum(
-                program,
-                initial_global_cumulative_sum,
-                prover_permits,
-            )
-            .await
+            inner
+                .setup_with_initial_global_cumulative_sum(
+                    program,
+                    initial_global_cumulative_sum,
+                    prover_permits,
+                )
+                .await
         }
     }
 
@@ -132,7 +183,6 @@ where
         record: <PC::Air as MachineAir<GC::F>>::Record,
         vk: Option<MachineVerifyingKey<GC>>,
         prover_permits: ProverSemaphore,
-        challenger: &mut GC::Challenger,
     ) -> (
         MachineVerifyingKey<GC>,
         ShardProof<GC, <PC::C as MultilinearPcsVerifier<GC>>::Proof>,
@@ -151,35 +201,41 @@ where
                 .unwrap()
         };
 
-        let buffer = self.get_buffer().await;
+        let buffer = self.inner.get_buffer().await;
 
         let record = Arc::new(record);
 
         // Generate trace.
         let (public_values, trace_data, chip_set, permit) = full_tracegen_permit(
-            &self.machine,
+            self.machine(),
             program,
             record,
             &buffer,
-            self.max_trace_size,
-            self.basefold_prover.log_height,
-            self.max_log_row_count,
-            &self.backend,
+            self.inner.max_trace_size,
+            self.inner.basefold_prover.log_height,
+            self.inner.max_log_row_count,
+            &self.inner.backend,
             prover_permits,
             true,
         )
         .instrument(tracing::debug_span!("generate all traces"))
         .await;
 
-        let (pk, vk) = self
-            .setup_from_preprocessed_data_and_traces(
-                pc_start,
-                initial_global_cumulative_sum,
-                trace_data,
-                enable_untrusted_programs,
-            )
-            .instrument(tracing::debug_span!("setup_from_preprocessed_data_and_traces"))
-            .await;
+        let inner = self.inner.clone();
+        let (pk, vk) = tokio::task::spawn_blocking({
+            let span = tracing::debug_span!("setup_from_preprocessed_data_and_traces");
+            move || {
+                let _guard = span.enter();
+                inner.setup_from_preprocessed_data_and_traces(
+                    pc_start,
+                    initial_global_cumulative_sum,
+                    trace_data,
+                    enable_untrusted_programs,
+                )
+            }
+        })
+        .await
+        .unwrap();
 
         let trace_data = Mutex::new(pk);
 
@@ -190,15 +246,26 @@ where
         let main_trace_data =
             MainTraceData { traces: pk, public_values, shard_chips: chip_set, permit };
 
+        // Create a chanllenger
+        let mut challenger = GC::default_challenger();
         // Observe the preprocessed information.
-        vk.observe_into(challenger);
+        vk.observe_into(&mut challenger);
 
         let shard_data = ShardData { main_trace_data };
 
-        let (shard_proof, permit) = self
-            .prove_shard_with_data(shard_data, challenger)
-            .instrument(tracing::debug_span!("prove shard with data"))
-            .await;
+        let inner = self.inner.clone();
+        let (shard_proof, permit) = tokio::task::spawn_blocking({
+            let span = tracing::debug_span!("prove_shard_with_data");
+            move || {
+                let _guard = span.enter();
+                inner.prove_shard_with_data(shard_data, challenger)
+            }
+        })
+        .await
+        .unwrap();
+
+        // tracing::debug_span!("prove shard with data")
+        //     .in_scope(|| self.prove_shard_with_data(shard_data, challenger));
         drop(buffer);
 
         (vk, shard_proof, permit)
@@ -210,21 +277,20 @@ where
         pk: Arc<ProvingKey<GC, ShardContextImpl<GC, PC::C, PC::Air>, Self>>,
         record: <PC::Air as MachineAir<GC::F>>::Record,
         prover_permits: ProverSemaphore,
-        challenger: &mut GC::Challenger,
     ) -> (ShardProof<GC, <PC::C as MultilinearPcsVerifier<GC>>::Proof>, ProverPermit) {
         // Generate the traces.
         let record = Arc::new(record);
 
-        let buffer = self.get_buffer().await;
+        let buffer = self.inner.get_buffer().await;
 
         let (public_values, chip_set, permit) = main_tracegen_permit(
-            &self.machine,
+            &self.inner.machine,
             record,
             &pk.preprocessed_data,
             &buffer,
-            self.basefold_prover.log_height,
-            self.max_log_row_count,
-            &self.backend,
+            self.inner.basefold_prover.log_height,
+            self.inner.max_log_row_count,
+            &self.inner.backend,
             prover_permits,
             true,
         )
@@ -240,10 +306,20 @@ where
             },
         };
 
-        let (shard_proof, permit) = self
-            .prove_shard_with_data(shard_data, challenger)
-            .instrument(tracing::debug_span!("prove shard with data"))
-            .await;
+        let mut challenger = GC::default_challenger();
+        pk.vk.observe_into(&mut challenger);
+
+        let inner = self.inner.clone();
+        let (shard_proof, permit) = tokio::task::spawn_blocking({
+            let span = tracing::debug_span!("prove_shard_with_data");
+            move || {
+                let _guard = span.enter();
+                inner.prove_shard_with_data(shard_data, challenger)
+            }
+        })
+        .await
+        .unwrap();
+
         drop(buffer);
 
         (shard_proof, permit)
@@ -268,13 +344,16 @@ where
 #[derive(Debug, Error)]
 pub enum CudaShardProverError {}
 
-impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShardProver<GC, PC> {
+impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
+    CudaShardProverInner<GC, PC>
+{
     /// Commit to a batch of padded multilinears.
     ///
     /// The jagged polynomial commitments scheme is able to commit to sparse polynomials having
     /// very few or no real rows.
     /// **Note** the padding values will be ignored and treated as though they are zero.
-    pub async fn commit_multilinears(
+    #[allow(clippy::type_complexity)]
+    pub fn commit_multilinears(
         &self,
         multilinears: &JaggedTraceMle<Felt, TaskScope>,
         use_preprocessed_data: bool,
@@ -289,11 +368,10 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
             self.drop_ldes,
             &self.basefold_prover,
         )
-        .await
         .map_err(JaggedProverError::BatchPcsProverError)
     }
 
-    pub async fn round_stacked_evaluations(
+    pub fn round_stacked_evaluations(
         &self,
         stacked_point: &Point<Ext>,
         jagged_trace_mle: &JaggedTraceMle<Felt, TaskScope>,
@@ -305,11 +383,11 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
             jagged_trace_mle.dense().preprocessed_offset / stacking_height;
         let total_preprocessed_size = stacking_height * preprocessed_stacked_size;
 
-        let device_point = stacked_point.to_device_in(backend).await.unwrap();
+        let device_point = DevicePoint::from_host(stacked_point, backend).unwrap();
 
         // todo: remove this assert, it's kinda useless
         assert!(total_preprocessed_size == jagged_trace_mle.dense().preprocessed_offset);
-        let lagrange = Mle::new(partial_lagrange(Arc::new(device_point)).await);
+        let lagrange = Mle::new(device_point.partial_lagrange().into_inner());
 
         let main_virtual_tensor =
             jagged_trace_mle.dense().main_virtual_tensor(log_stacking_height as u32);
@@ -337,8 +415,9 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
         Rounds::from_iter([preprocessed_evaluations, main_evaluations])
     }
 
-    /// Prove trusted evaluations.
-    pub async fn prove_trusted_evaluations(
+    /// Prove trusted evaluations (sync version).
+    #[allow(clippy::type_complexity)]
+    pub fn prove_trusted_evaluations(
         &self,
         eval_point: Point<Ext>,
         evaluation_claims: Rounds<Evaluations<Ext, TaskScope>>,
@@ -351,18 +430,11 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
     >
     where
         GC::Challenger: DeviceGrindingChallenger<Witness = GC::F>,
-        GC::Challenger: csl_basefold::DeviceGrindingChallenger<Witness = GC::F>,
         GC::Challenger: slop_challenger::FieldChallenger<
             <GC::Challenger as slop_challenger::GrindingChallenger>::Witness,
         >,
         StackedBasefoldProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
-        TaskScope: csl_jagged_assist::BranchingProgramKernel<
-            GC::F,
-            GC::EF,
-            <GC::Challenger as DeviceGrindingChallenger>::OnDeviceChallenger,
-        >,
-        <GC::Challenger as DeviceGrindingChallenger>::OnDeviceChallenger:
-            FromChallenger<GC::Challenger, TaskScope> + Clone,
+        TaskScope: csl_jagged_assist::BranchingProgramKernel<GC::F, GC::EF, PC::DeviceChallenger>,
     {
         let num_col_variables = prover_data
             .iter()
@@ -425,47 +497,41 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
         );
 
         // Generate the jagged sumcheck proof.
-        let z_row_backend = z_row.copy_into(&backend);
-        let z_col_backend = z_col.copy_into(&backend);
-
-        let eq_z_row = Mle::partial_lagrange(&z_row_backend).await;
-        let eq_z_col = Mle::partial_lagrange(&z_col_backend).await;
+        let z_row_device = DevicePoint::from_host(&z_row, &backend).unwrap();
+        let z_col_device = DevicePoint::from_host(&z_col, &backend).unwrap();
 
         // The overall evaluation claim of the sparse polynomial is inferred from the individual
         // table claims.
         let column_claims: Mle<Ext, TaskScope> = Mle::from_buffer(column_claims);
 
-        let sumcheck_claims = column_claims.eval_at(&z_col_backend).await;
-        let sumcheck_claims_host = sumcheck_claims.to_host().await.unwrap();
+        // Use the sync GPU evaluation
+        let device_column_claims = DeviceMle::new(column_claims.clone());
+        let sumcheck_claims = device_column_claims.eval_at_point(&z_col_device);
+        let sumcheck_claims_host = sumcheck_claims.to_host_vec().unwrap();
         let sumcheck_claim = sumcheck_claims_host[0];
+
+        // Compute eq polynomials for the jagged sumcheck
+        let eq_z_row = Mle::new(z_row_device.partial_lagrange().into_inner());
+        let eq_z_col = Mle::new(z_col_device.partial_lagrange().into_inner());
 
         let sumcheck_poly = generate_jagged_sumcheck_poly(all_mles, eq_z_col, eq_z_row);
 
-        let (sumcheck_proof, component_poly_evals) =
-            jagged_sumcheck(sumcheck_poly, challenger, sumcheck_claim)
-                .instrument(tracing::debug_span!("jagged sumcheck"))
-                .await;
+        let (sumcheck_proof, component_poly_evals) = tracing::debug_span!("jagged sumcheck")
+            .in_scope(|| jagged_sumcheck(sumcheck_poly, challenger, sumcheck_claim));
 
         let final_eval_point = sumcheck_proof.point_and_eval.0.clone();
 
-        let jagged_eval_prover: JaggedEvalSumcheckProver<
-            Felt,
-            JaggedAssistSumAsPolyGPUImpl<Felt, Ext, GC::Challenger>,
-            _,
-            _,
-        > = JaggedEvalSumcheckProver::default();
-
-        let jagged_eval_proof = jagged_eval_prover
-            .prove_jagged_evaluation(
+        // Use sync GPU jagged evaluation proof
+        let jagged_eval_proof = tracing::debug_span!("jagged evaluation proof").in_scope(|| {
+            prove_jagged_evaluation_sync::<Felt, Ext, GC::Challenger, PC::DeviceChallenger>(
                 &params,
                 &z_row,
                 &z_col,
                 &final_eval_point,
                 challenger,
-                backend.clone(),
+                &backend,
             )
-            .instrument(tracing::debug_span!("jagged evaluation proof"))
-            .await;
+        });
 
         let (row_counts, column_counts): (Rounds<_>, Rounds<_>) = prover_data
             .iter()
@@ -487,7 +553,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
         let (_, stack_point) = final_eval_point
             .split_at(final_eval_point.dimension() - self.basefold_prover.log_height as usize);
 
-        let batch_evaluations = self.round_stacked_evaluations(&stack_point, all_mles).await;
+        let batch_evaluations = self.round_stacked_evaluations(&stack_point, all_mles);
 
         challenger.observe_ext_element(component_poly_evals[0]);
 
@@ -495,8 +561,8 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
         for round_evals in batch_evaluations.iter() {
             let mut host_round_evals = vec![];
             for eval in round_evals.iter() {
-                let host_eval = eval.to_host().await.unwrap();
-                host_round_evals.extend(host_eval);
+                let host_eval = csl_cuda::DeviceTensor::copy_to_host(eval.evaluations()).unwrap();
+                host_round_evals.extend(host_eval.into_buffer().into_vec());
             }
             let host_round_evals = Evaluations::new(vec![host_round_evals.into()]);
             host_batch_evaluations.push(host_round_evals);
@@ -504,30 +570,29 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
 
         for round in batch_evaluations.iter() {
             for claim in round.iter() {
-                let host_claim = claim.to_host().await.unwrap();
-                for evaluation in host_claim.iter() {
-                    challenger.observe_ext_element(*evaluation);
+                let host_claim = csl_cuda::DeviceTensor::copy_to_host(claim.evaluations()).unwrap();
+                for evaluation in host_claim.into_buffer().into_vec() {
+                    challenger.observe_ext_element(evaluation);
                 }
             }
         }
 
-        let pcs_proof = self
-            .basefold_prover
-            .prove_trusted_evaluations_basefold(
-                stack_point,
-                batch_evaluations,
-                all_mles,
-                stacked_prover_data,
-                challenger,
-            )
-            .instrument(tracing::debug_span!("prove trusted evaluations basefold"))
-            .await
+        let pcs_proof = tracing::debug_span!("prove trusted evaluations basefold")
+            .in_scope(|| {
+                self.basefold_prover.prove_trusted_evaluations_basefold(
+                    stack_point,
+                    batch_evaluations,
+                    all_mles,
+                    stacked_prover_data,
+                    challenger,
+                )
+            })
             .unwrap();
 
         let row_counts_and_column_counts: Rounds<Vec<(usize, usize)>> = row_counts
             .into_iter()
-            .zip(column_counts.into_iter())
-            .map(|(r, c)| r.into_iter().zip(c.into_iter()).collect())
+            .zip(column_counts)
+            .map(|(r, c)| r.into_iter().zip(c).collect())
             .collect();
 
         let host_batch_evaluations = host_batch_evaluations
@@ -555,38 +620,29 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
         })
     }
 
-    async fn commit_traces(
+    fn commit_traces(
         &self,
         traces: &JaggedTraceMle<GC::F, TaskScope>,
         use_preprocessed: bool,
     ) -> (GC::Digest, JaggedProverData<GC, Option<CudaStackedPcsProverData<GC>>>) {
-        self.commit_multilinears(traces, use_preprocessed).await.unwrap()
+        self.commit_multilinears(traces, use_preprocessed).unwrap()
     }
 
-    pub fn num_pv_elts(&self) -> usize {
-        self.machine.num_pv_elts()
-    }
-
+    /// Prove a shard with the given data (sync version).
+    /// This is the main proving function that runs on the GPU.
     #[allow(clippy::type_complexity)]
-    pub async fn prove_shard_with_data(
+    pub fn prove_shard_with_data(
         &self,
         data: ShardData<GC, PC>,
-        challenger: &mut GC::Challenger,
+        mut challenger: GC::Challenger,
     ) -> (ShardProof<GC, <PC::C as MultilinearPcsVerifier<GC>>::Proof>, ProverPermit)
     where
         GC::Challenger: DeviceGrindingChallenger<Witness = GC::F>,
-        GC::Challenger: csl_basefold::DeviceGrindingChallenger<Witness = GC::F>,
         GC::Challenger: slop_challenger::FieldChallenger<
             <GC::Challenger as slop_challenger::GrindingChallenger>::Witness,
         >,
         StackedBasefoldProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
-        TaskScope: csl_jagged_assist::BranchingProgramKernel<
-            GC::F,
-            GC::EF,
-            <GC::Challenger as DeviceGrindingChallenger>::OnDeviceChallenger,
-        >,
-        <GC::Challenger as DeviceGrindingChallenger>::OnDeviceChallenger:
-            FromChallenger<GC::Challenger, TaskScope> + Clone,
+        TaskScope: csl_jagged_assist::BranchingProgramKernel<GC::F, GC::EF, PC::DeviceChallenger>,
     {
         let ShardData { main_trace_data } = data;
         let MainTraceData { traces, public_values, shard_chips, permit } = main_trace_data;
@@ -596,17 +652,15 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
         // Observe the public values.
         challenger.observe_slice(&public_values);
 
-        let locked_preprocessed_data = traces.preprocessed_data.lock().await;
+        let locked_preprocessed_data = traces.preprocessed_data.blocking_lock();
         let traces = &locked_preprocessed_data.preprocessed_traces;
         let preprocessed_data = &locked_preprocessed_data.preprocessed_data;
 
         // Commit to the traces.
-        let (main_commit, main_data) = self
-            .commit_traces(traces, false)
-            .instrument(tracing::debug_span!("commit traces"))
-            .await;
+        let (main_commit, main_data) =
+            tracing::debug_span!("commit traces").in_scope(|| self.commit_traces(traces, false));
         // Observe the commitments.
-        <GC::Challenger as CanObserve<GC::Digest>>::observe(challenger, main_commit);
+        <GC::Challenger as CanObserve<GC::Digest>>::observe(&mut challenger, main_commit);
         challenger.observe(GC::F::from_canonical_usize(shard_chips.len()));
 
         for (chip_name, chip_height) in traces.dense().main_table_index.iter() {
@@ -634,39 +688,40 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
             .collect::<Point<_>>();
         let _pv_challenge = challenger.sample_ext_element::<GC::EF>();
 
-        let logup_gkr_proof = prove_logup_gkr::<GC, _, _>(
-            shard_chips,
-            self.all_interactions.clone(),
-            traces,
-            alpha,
-            beta_seed,
-            CudaLogUpGkrOptions {
-                recompute_first_layer: self.recompute_first_layer,
-                num_row_variables: self.max_log_row_count,
-            },
-            challenger,
-        )
-        .instrument(tracing::debug_span!("logup gkr proof"))
-        .await;
+        let logup_gkr_proof = tracing::debug_span!("logup gkr proof").in_scope(|| {
+            prove_logup_gkr::<GC, _, _>(
+                shard_chips,
+                self.all_interactions.clone(),
+                traces,
+                alpha,
+                beta_seed,
+                CudaLogUpGkrOptions {
+                    recompute_first_layer: self.recompute_first_layer,
+                    num_row_variables: self.max_log_row_count,
+                },
+                &mut challenger,
+            )
+        });
         // Get the challenge for batching constraints.
         let batching_challenge = challenger.sample_ext_element::<GC::EF>();
         // Get the challenge for batching the evaluations from the GKR proof.
         let gkr_opening_batch_challenge = challenger.sample_ext_element::<GC::EF>();
 
         // Generate the zerocheck proof.
-        let (shard_open_values, zerocheck_partial_sumcheck_proof) = zerocheck(
-            shard_chips,
-            &self.all_zerocheck_programs,
-            traces,
-            batching_challenge,
-            gkr_opening_batch_challenge,
-            &logup_gkr_proof.logup_evaluations,
-            public_values.clone(),
-            challenger,
-            self.max_log_row_count,
-        )
-        .instrument(tracing::debug_span!("zerocheck"))
-        .await;
+        let (shard_open_values, zerocheck_partial_sumcheck_proof) =
+            tracing::debug_span!("zerocheck").in_scope(|| {
+                zerocheck(
+                    shard_chips,
+                    &self.all_zerocheck_programs,
+                    traces,
+                    batching_challenge,
+                    gkr_opening_batch_challenge,
+                    &logup_gkr_proof.logup_evaluations,
+                    public_values.clone(),
+                    &mut challenger,
+                    self.max_log_row_count,
+                )
+            });
 
         // Get the evaluation point for the trace polynomials.
         let evaluation_point = zerocheck_partial_sumcheck_proof.point_and_eval.0.clone();
@@ -679,8 +734,10 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
             let prep_local = &open_values.preprocessed.local;
             let main_local = &open_values.main.local;
             if !prep_local.is_empty() {
-                let preprocessed_evals =
-                    alloc.copy_to(&MleEval::from(prep_local.clone())).await.unwrap();
+                let host_mle_eval = MleEval::from(prep_local.clone());
+                let device_tensor =
+                    csl_cuda::DeviceTensor::from_host(host_mle_eval.evaluations(), &alloc).unwrap();
+                let preprocessed_evals = MleEval::new(device_tensor.into_inner());
                 if let Some(preprocessed_claims) = preprocessed_evaluation_claims.as_mut() {
                     preprocessed_claims.push(preprocessed_evals);
                 } else {
@@ -688,7 +745,10 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
                     preprocessed_evaluation_claims = Some(evals);
                 }
             }
-            let main_evals = alloc.copy_to(&MleEval::from(main_local.clone())).await.unwrap();
+            let host_mle_eval = MleEval::from(main_local.clone());
+            let device_tensor =
+                csl_cuda::DeviceTensor::from_host(host_mle_eval.evaluations(), &alloc).unwrap();
+            let main_evals = MleEval::new(device_tensor.into_inner());
             main_evaluation_claims.push(main_evals);
         }
 
@@ -700,18 +760,17 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShar
         let round_prover_data =
             once(preprocessed_data).chain(once(&main_data)).collect::<Rounds<_>>();
 
-        // Generate the evaluation proof.
-        let evaluation_proof = self
-            .prove_trusted_evaluations(
+        // Generate the evaluation proof (sync call).
+        let evaluation_proof = tracing::debug_span!("prove evaluation claims").in_scope(|| {
+            self.prove_trusted_evaluations(
                 evaluation_point,
                 round_evaluation_claims,
                 traces,
                 round_prover_data,
-                challenger,
+                &mut challenger,
             )
-            .instrument(tracing::debug_span!("prove evaluation claims"))
-            .await
-            .unwrap();
+            .unwrap()
+        });
 
         let proof = ShardProof {
             main_commitment: main_commit,
@@ -753,6 +812,7 @@ mod tests {
         type P = Poseidon2KoalaBear16CudaProver;
         type Air = RiscvAir<Felt>;
         type C = SP1InnerPcs;
+        type DeviceChallenger = csl_challenger::DuplexChallenger<Felt, TaskScope>;
     }
 
     #[tokio::test]
@@ -784,7 +844,7 @@ mod tests {
             let verifier = BasefoldVerifier::<TestGC>::new(core_fri_config(), 2);
 
             let basefold_prover = FriCudaProver::<TestGC, _, Felt>::new(
-                Poseidon2KoalaBear16CudaProver::new(&scope).await,
+                Poseidon2KoalaBear16CudaProver::new(&scope),
                 verifier.fri_config,
                 LOG_STACKING_HEIGHT,
             );
@@ -793,8 +853,7 @@ mod tests {
 
             for chip in machine.chips().iter() {
                 let host_interactions = Interactions::new(chip.sends(), chip.receives());
-                let device_interactions =
-                    Interactions::to_device_in(&host_interactions, &scope).await.unwrap();
+                let device_interactions = host_interactions.copy_to_device(&scope).unwrap();
                 all_interactions.insert(chip.name().to_string(), Arc::new(device_interactions));
             }
 
@@ -811,42 +870,49 @@ mod tests {
                 trace_buffers.push(buffer);
             }
 
-            let shard_prover: CudaShardProver<TestGC, TestProverComponentsImpl> = CudaShardProver {
-                trace_buffers: Arc::new(WorkerQueue::new(trace_buffers)),
-                all_interactions,
-                all_zerocheck_programs: cache,
-                max_log_row_count: CORE_MAX_LOG_ROW_COUNT,
-                basefold_prover,
-                max_trace_size: CORE_MAX_TRACE_SIZE as usize,
-                machine,
-                recompute_first_layer: false,
-                drop_ldes: false,
-                backend: scope.clone(),
-                _marker: PhantomData,
-            };
+            let shard_prover_inner: CudaShardProverInner<TestGC, TestProverComponentsImpl> =
+                CudaShardProverInner {
+                    trace_buffers: Arc::new(WorkerQueue::new(trace_buffers)),
+                    all_interactions,
+                    all_zerocheck_programs: cache,
+                    max_log_row_count: CORE_MAX_LOG_ROW_COUNT,
+                    basefold_prover,
+                    max_trace_size: CORE_MAX_TRACE_SIZE as usize,
+                    machine,
+                    recompute_first_layer: false,
+                    drop_ldes: false,
+                    backend: scope.clone(),
+                    _marker: PhantomData,
+                };
+            let shard_prover = CudaShardProver { inner: Arc::new(shard_prover_inner) };
 
             let mut challenger = TestGC::default_challenger();
 
             let eval_point = challenger.sample_point(CORE_MAX_LOG_ROW_COUNT);
 
+            // round_batch_evaluations is now sync and returns host evaluations
             let evaluation_claims =
-                round_batch_evaluations(&eval_point, jagged_trace_data.as_ref()).await;
+                round_batch_evaluations(&eval_point, jagged_trace_data.as_ref());
 
             let (preprocessed_digest, preprocessed_prover_data) =
-                shard_prover.commit_multilinears(jagged_trace_data.as_ref(), true).await.unwrap();
+                shard_prover.inner.commit_multilinears(jagged_trace_data.as_ref(), true).unwrap();
 
             let (main_digest, main_prover_data) =
-                shard_prover.commit_multilinears(jagged_trace_data.as_ref(), false).await.unwrap();
+                shard_prover.inner.commit_multilinears(jagged_trace_data.as_ref(), false).unwrap();
 
             let prover_data = Rounds::from_iter([&preprocessed_prover_data, &main_prover_data]);
 
+            // The evaluation_claims are already on host (CpuBackend).
+            // We need to convert them to device evaluations for the prover.
             let mut new_evaluation_claims = Vec::new();
-
             for round_evals in evaluation_claims.iter() {
                 let mut round_claims = Vec::new();
                 for eval in round_evals.iter() {
-                    let host_eval = eval.to_device_in(&scope).await.unwrap();
-                    round_claims.push(host_eval);
+                    // Copy the host MleEval to device
+                    let device_tensor =
+                        csl_cuda::DeviceTensor::from_host(eval.evaluations(), &scope).unwrap();
+                    let device_eval = MleEval::new(device_tensor.into_inner());
+                    round_claims.push(device_eval);
                 }
                 let evals = Evaluations::new(round_claims);
                 new_evaluation_claims.push(evals);
@@ -854,6 +920,7 @@ mod tests {
 
             let mut prover_challenger = challenger.clone();
             let proof = shard_prover
+                .inner
                 .prove_trusted_evaluations(
                     eval_point.clone(),
                     new_evaluation_claims.into_iter().collect(),
@@ -861,7 +928,6 @@ mod tests {
                     prover_data,
                     &mut prover_challenger,
                 )
-                .await
                 .unwrap();
 
             let jagged_verifier = JaggedPcsVerifier::<_, SP1InnerPcs>::new_from_basefold_params(
@@ -871,12 +937,13 @@ mod tests {
                 2,
             );
 
+            // evaluation_claims are already on host, just extract the values
             let mut all_evaluations = Vec::new();
             for round_evals in evaluation_claims.iter() {
                 let mut host_evals = Vec::new();
                 for eval in round_evals.iter() {
-                    let host_eval = eval.to_host().await.unwrap();
-                    host_evals.extend_from_slice(host_eval.evaluations().as_buffer().as_slice());
+                    // eval is already MleEval<Ext, CpuBackend>
+                    host_evals.extend_from_slice(eval.evaluations().as_buffer().as_slice());
                 }
                 let buf = Buffer::from(host_evals);
                 let mle_eval = MleEval::new(Tensor::from(buf));

@@ -15,12 +15,12 @@ slop-algebra = { workspace = true }
 slop-challenger = { workspace = true }
 slop-symmetric = { workspace = true }
 slop-koala-bear = { workspace = true }
+slop-poseidon2 = { workspace = true }
+sp1-primitives = { workspace = true }
 
 [dev-dependencies]
 slop-algebra = { workspace = true }
 tokio = { workspace = true }
-slop-poseidon2 = { workspace = true }
 sp1-hypercube = { workspace = true }
-sp1-primitives = { workspace = true }
 [lints]
 workspace = true

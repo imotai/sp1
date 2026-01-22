@@ -3,9 +3,9 @@ use csl_sys::runtime::cuda_mem_get_info;
 use slop_alloc::{mem::CopyError, CopyIntoBackend, CopyToBackend, CpuBackend};
 use std::future::Future;
 
-pub trait DeviceCopy: Copy + 'static + Sized + Send + Sync {}
+pub trait DeviceCopy: Copy + 'static + Sized {}
 
-impl<T: Copy + 'static + Sized + Send + Sync> DeviceCopy for T {}
+impl<T: Copy + 'static + Sized> DeviceCopy for T {}
 
 /// Returns a pair `(free, total)` of the amount of free and total memory on the device.
 pub fn cuda_memory_info() -> Result<(usize, usize), CudaError> {

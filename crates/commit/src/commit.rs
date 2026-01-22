@@ -12,7 +12,8 @@ use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction as _};
 use slop_tensor::Tensor;
 
 /// TODO: document
-pub async fn commit_multilinears<GC: IopCtx<F = Felt, EF = Ext>, P: CudaTcsProver<GC>>(
+#[allow(clippy::type_complexity)]
+pub fn commit_multilinears<GC: IopCtx<F = Felt, EF = Ext>, P: CudaTcsProver<GC>>(
     jagged_trace_mle: &JaggedTraceMle<Felt, TaskScope>,
     max_log_row_count: u32,
     use_preprocessed: bool,
@@ -56,9 +57,8 @@ pub async fn commit_multilinears<GC: IopCtx<F = Felt, EF = Ext>, P: CudaTcsProve
 
     let drop_traces = drop_main_traces && !use_preprocessed;
 
-    let (commitment, data) = basefold_prover
-        .encode_and_commit(use_preprocessed, drop_traces, jagged_trace_mle, dst)
-        .await?;
+    let (commitment, data) =
+        basefold_prover.encode_and_commit(use_preprocessed, drop_traces, jagged_trace_mle, dst)?;
 
     let num_added_cols = padding.div_ceil(1 << max_log_row_count).max(1);
 
@@ -192,7 +192,7 @@ mod tests {
             )
             .await;
 
-            let tcs_prover = Poseidon2KoalaBear16CudaProver::new(&scope).await;
+            let tcs_prover = Poseidon2KoalaBear16CudaProver::new(&scope);
 
             let basefold_prover = FriCudaProver::<TestGC, _, <TestGC as IopCtx>::F>::new(
                 tcs_prover,
@@ -200,24 +200,23 @@ mod tests {
                 LOG_STACKING_HEIGHT,
             );
 
-            let (new_preprocessed_commitment, new_preprocessed_data) = commit_multilinears(
-                &jagged_trace_data,
-                CORE_MAX_LOG_ROW_COUNT,
-                true,
-                false,
-                &basefold_prover,
-            )
-            .await
-            .unwrap();
+            let (new_preprocessed_commitment, new_preprocessed_data) =
+                commit_multilinears::<TestGC, _>(
+                    &jagged_trace_data,
+                    CORE_MAX_LOG_ROW_COUNT,
+                    true,
+                    false,
+                    &basefold_prover,
+                )
+                .unwrap();
 
-            let (new_main_commitment, new_main_data) = commit_multilinears(
+            let (new_main_commitment, new_main_data) = commit_multilinears::<TestGC, _>(
                 &jagged_trace_data,
                 CORE_MAX_LOG_ROW_COUNT,
                 false,
                 false,
                 &basefold_prover,
             )
-            .await
             .unwrap();
 
             assert_eq!(old_preprocessed_data.row_counts, new_preprocessed_data.row_counts);

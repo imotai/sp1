@@ -5,15 +5,15 @@ use slop_algebra::{
     extension::BinomialExtensionField, AbstractExtensionField, AbstractField, ExtensionField,
     TwoAdicField,
 };
-use slop_alloc::{Buffer, HasBackend, IntoHost};
+use slop_alloc::{Buffer, HasBackend};
 use slop_basefold::{BasefoldProof, FriConfig};
 use slop_basefold_prover::{host_fold_even_odd, BasefoldProverError};
 use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, IopCtx};
 use slop_commit::{Message, Rounds};
 use slop_koala_bear::KoalaBear;
 use slop_merkle_tree::MerkleTreeOpeningAndProof;
-use slop_multilinear::{Evaluations, Mle, MleEval, MleFoldBackend, Point};
-use slop_tensor::{Tensor, TransposeBackend};
+use slop_multilinear::{Evaluations, Mle, MleEval, Point};
+use slop_tensor::Tensor;
 
 use csl_cuda::{
     args,
@@ -25,7 +25,7 @@ use csl_cuda::{
         },
         runtime::KernelPtr,
     },
-    IntoDevice, TaskScope,
+    DeviceBuffer, DeviceTensor, TaskScope,
 };
 use csl_merkle_tree::{CudaTcsProver, MerkleTreeProverData, SingleLayerMerkleTreeProverError};
 use csl_utils::{Ext, Felt, JaggedTraceMle, TraceDenseData};
@@ -72,16 +72,13 @@ where
 
     TaskScope: MleBatchKernel<GC::F, GC::EF>
         + RsCodeWordBatchKernel<GC::F, GC::EF>
-        + MleFoldBackend<GC::EF>
-        + TransposeBackend<GC::F>
-        + TransposeBackend<GC::EF>
         + RsCodeWordTransposeKernel<GC::F, GC::EF>
         + MleFlattenKernel<GC::F, GC::EF>,
 {
     pub fn new(tcs_prover: P, config: FriConfig<GC::F>, log_height: u32) -> Self {
         Self { tcs_prover, config, log_height, _marker: PhantomData }
     }
-    pub async fn encode_and_commit(
+    pub fn encode_and_commit(
         &self,
         use_preprocessed: bool,
         drop_traces: bool,
@@ -107,7 +104,7 @@ where
 
         // Commit to the tensors.
 
-        let (commitment, tcs_data) = self.tcs_prover.commit_tensors(&dst).await?;
+        let (commitment, tcs_data) = self.tcs_prover.commit_tensors(&dst)?;
 
         let prover_data = if drop_traces {
             None
@@ -120,7 +117,9 @@ where
 
         Ok((commitment, prover_data))
     }
-    pub async fn batch(
+
+    #[allow(clippy::type_complexity)]
+    pub fn batch(
         &self,
         batching_challenge: GC::EF,
         mles: &TraceDenseData<GC::F, TaskScope>,
@@ -150,7 +149,9 @@ where
             let grid_dim = (1usize << num_variables).div_ceil(block_dim);
             let batch_size = total_num_polynomials;
             let powers_device =
-                Buffer::from(batch_challenge_powers.clone()).into_device_in(&scope).await.unwrap();
+                DeviceBuffer::from_host(&Buffer::from(batch_challenge_powers.clone()), &scope)
+                    .unwrap()
+                    .into_inner();
             let mle_args = args!(
                 mles.dense.as_ptr(),
                 batch_mle.guts_mut().as_mut_ptr(),
@@ -167,7 +168,9 @@ where
             let batch_size = codeword.sizes()[0];
             let mut powers = batch_challenge_powers;
             batch_challenge_powers = powers.split_off(batch_size);
-            let powers_device = Buffer::from(powers.clone()).into_device_in(&scope).await.unwrap();
+            let powers_device = DeviceBuffer::from_host(&Buffer::from(powers.clone()), &scope)
+                .unwrap()
+                .into_inner();
 
             let block_dim = 256;
             let grid_dim = codeword_size.div_ceil(block_dim);
@@ -195,8 +198,8 @@ where
         let mut batch_eval_claim = GC::EF::zero();
         let mut power = GC::EF::one();
         for batch_claims in evaluation_claims {
-            let claims = batch_claims.into_host().await.unwrap();
-            for value in claims.evaluations().as_slice() {
+            let claims = DeviceTensor::from_raw(batch_claims.into_evaluations()).to_host().unwrap();
+            for value in claims.as_slice() {
                 batch_eval_claim += power * *value;
                 power *= batching_challenge;
             }
@@ -205,7 +208,8 @@ where
         (batch_mle, batch_codeword, batch_eval_claim)
     }
 
-    async fn commit_phase_round(
+    #[allow(clippy::type_complexity)]
+    fn commit_phase_round(
         &self,
         current_mle: Mle<GC::EF, TaskScope>,
         current_codeword: Tensor<GC::F, TaskScope>,
@@ -248,18 +252,24 @@ where
                 .unwrap();
         }
 
-        let (commit, prover_data) = self.tcs_prover.commit_tensors(&leaves).await?;
+        let (commit, prover_data) = self.tcs_prover.commit_tensors(&leaves)?;
         // Observe the commitment.
         challenger.observe(commit);
 
         let beta: GC::EF = challenger.sample_ext_element();
 
         // Fold the mle.
-        let folded_mle = current_mle.fold(beta).await;
+        let folded_mle = {
+            use csl_cuda::DeviceMle;
+            let device_mle = DeviceMle::new(current_mle);
+            device_mle.fold(beta).into_inner()
+        };
         let folded_num_variables = folded_mle.num_variables();
 
         if folded_num_variables < 4 {
-            let current_codeword_vec = current_codeword.transpose().into_host().await.unwrap();
+            let current_codeword_transposed =
+                DeviceTensor::from_raw(current_codeword.clone()).transpose();
+            let current_codeword_vec = current_codeword_transposed.to_host().unwrap();
             let current_codeword_vec =
                 current_codeword_vec.into_buffer().into_extension::<GC::EF>().into_vec();
             let folded_codeword_vec = host_fold_even_odd(current_codeword_vec, beta);
@@ -268,9 +278,11 @@ where
             let mut new_size = current_codeword.sizes().to_vec();
             new_size[1] /= 2;
             let folded_codeword =
-                folded_codeword_storage.into_device_in(folded_mle.backend()).await.unwrap();
-            let folded_codeword =
-                Tensor::from(folded_codeword).reshape([new_size[1], new_size[0]]).transpose();
+                DeviceBuffer::from_host(&folded_codeword_storage, folded_mle.backend())
+                    .unwrap()
+                    .into_inner();
+            let folded_codeword = Tensor::from(folded_codeword).reshape([new_size[1], new_size[0]]);
+            let folded_codeword = DeviceTensor::from_raw(folded_codeword).transpose().into_inner();
             return Ok((beta, folded_mle, folded_codeword, commit, leaves, prover_data));
         }
 
@@ -307,8 +319,8 @@ where
         Ok((beta, folded_mle, folded_codeword, commit, leaves, prover_data))
     }
 
-    async fn final_poly(&self, final_codeword: Tensor<GC::F, TaskScope>) -> GC::EF {
-        let final_codeword_host = final_codeword.into_host().await.unwrap();
+    fn final_poly(&self, final_codeword: Tensor<GC::F, TaskScope>) -> GC::EF {
+        let final_codeword_host = DeviceTensor::from_raw(final_codeword).to_host().unwrap();
         let final_codeword_transposed = final_codeword_host.transpose();
         GC::EF::from_base_slice(
             &final_codeword_transposed.storage.as_slice()
@@ -317,7 +329,7 @@ where
     }
 
     #[inline]
-    pub async fn prove_trusted_evaluations_basefold(
+    pub fn prove_trusted_evaluations_basefold(
         &self,
         mut eval_point: Point<GC::EF>,
         evaluation_claims: Rounds<Evaluations<GC::EF, TaskScope>>,
@@ -328,6 +340,7 @@ where
     where
         GC::Challenger: DeviceGrindingChallenger<Witness = GC::F>,
     {
+        let scope = mles.dense().dense.backend().clone();
         let mut new_prover_data = Vec::new();
         for data in prover_data {
             if let Some(data) = data {
@@ -338,11 +351,10 @@ where
                         mles.dense().main_size() >> self.log_height,
                         1 << (self.log_height as usize + self.config.log_blowup()),
                     ],
-                    mles.dense().dense.backend().clone(),
+                    scope.clone(),
                 );
 
-                let result =
-                    self.encode_and_commit(false, false, mles, dst).await.unwrap().1.unwrap();
+                let result = self.encode_and_commit(false, false, mles, dst).unwrap().1.unwrap();
 
                 new_prover_data.push(Cow::Owned(result));
             }
@@ -357,7 +369,7 @@ where
         let batching_challenge: GC::EF = challenger.sample_ext_element();
         // Batch the mles and codewords.
         let (mle_batch, codeword_batch, batched_eval_claim) =
-            self.batch(batching_challenge, mles.dense(), encoded_messages, evaluation_claims).await;
+            self.batch(batching_challenge, mles.dense(), encoded_messages, evaluation_claims);
         // From this point on, run the BaseFold protocol on the random linear combination codeword,
         // the random linear combination multilinear, and the random linear combination of the
         // evaluation claims.
@@ -381,7 +393,12 @@ where
         for _ in 0..eval_point.dimension() {
             // Compute claims for `g(X_0, X_1, ..., X_{d-1}, 0)` and `g(X_0, X_1, ..., X_{d-1}, 1)`.
             let last_coord = eval_point.remove_last_coordinate();
-            let zero_values = current_mle.fixed_at_zero(&eval_point).await;
+            let zero_values = {
+                use csl_cuda::DeviceMle;
+                let device_mle = DeviceMle::new(current_mle.clone());
+                let evals = device_mle.fixed_at_zero(&eval_point);
+                evals.to_host_vec().unwrap()
+            };
             let zero_val = zero_values[0];
             let one_val = (current_batched_eval_claim - zero_val) / last_coord + zero_val;
             let uni_poly = [zero_val, one_val];
@@ -393,7 +410,6 @@ where
             // codeword, and folding parameter.
             let (beta, folded_mle, folded_codeword, commitment, leaves, prover_data) = self
                 .commit_phase_round(current_mle, current_codeword, challenger)
-                .await
                 .map_err(BasefoldProverError::CommitPhaseError)?;
 
             fri_commitments.push(commitment);
@@ -405,12 +421,12 @@ where
             current_batched_eval_claim = zero_val + beta * one_val;
         }
 
-        let final_poly = self.final_poly(current_codeword).await;
+        let final_poly = self.final_poly(current_codeword);
         challenger.observe_ext_element(final_poly);
 
         let fri_config = self.config;
         let pow_bits = fri_config.proof_of_work_bits;
-        let pow_witness = GrindingPowCudaProver::grind(challenger, pow_bits).await;
+        let pow_witness = GrindingPowCudaProver::grind(challenger, pow_bits, &scope);
         // FRI Query Phase.
         let query_indices: Vec<usize> = (0..fri_config.num_queries)
             .map(|_| challenger.sample_bits(log_len as usize + fri_config.log_blowup()))
@@ -421,12 +437,10 @@ where
         for prover_data in new_prover_data {
             let CudaStackedPcsProverData { merkle_tree_tcs_data, codeword_mle } =
                 prover_data.as_ref();
-            let values =
-                self.tcs_prover.compute_openings_at_indices(codeword_mle, &query_indices).await;
+            let values = self.tcs_prover.compute_openings_at_indices(codeword_mle, &query_indices);
             let proof = self
                 .tcs_prover
                 .prove_openings_at_indices(merkle_tree_tcs_data, &query_indices)
-                .await
                 .map_err(BasefoldProverError::TcsCommitError)?;
             let opening = MerkleTreeOpeningAndProof::<GC> { values, proof };
             component_polynomials_query_openings_and_proofs.push(opening);
@@ -439,12 +453,11 @@ where
             for index in indices.iter_mut() {
                 *index >>= 1;
             }
-            let values = self.tcs_prover.compute_openings_at_indices(&leaves, &indices).await;
+            let values = self.tcs_prover.compute_openings_at_indices(&leaves, &indices);
 
             let proof = self
                 .tcs_prover
                 .prove_openings_at_indices(&data, &indices)
-                .await
                 .map_err(BasefoldProverError::TcsCommitError)?;
             let opening = MerkleTreeOpeningAndProof { values, proof };
             query_phase_openings_and_proofs.push(opening);
@@ -491,10 +504,9 @@ unsafe impl MleFlattenKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> fo
 mod tests {
     use std::sync::Arc;
 
-    use csl_cuda::{run_in_place, PinnedBuffer, ToDevice};
+    use csl_cuda::{run_sync_in_place, DeviceTensor, PinnedBuffer};
     use csl_merkle_tree::{CudaTcsProver, Poseidon2KoalaBear16CudaProver};
     use csl_tracegen::CudaTraceGenerator;
-    use futures::future::join_all;
     use slop_alloc::{CpuBackend, ToHost};
     use slop_basefold::BasefoldVerifier;
     use slop_basefold_prover::BasefoldProver;
@@ -510,17 +522,17 @@ mod tests {
         self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT,
     };
     use csl_jagged_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
-    use csl_utils::{Felt, TestGC};
-    use futures::{stream, StreamExt};
+    use csl_utils::{Ext, Felt, TestGC};
     use sp1_primitives::fri_params::core_fri_config;
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_basefold() {
-        let (machine, record, program) = tracegen_setup::setup().await;
+    #[test]
+    fn test_basefold() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let (machine, record, program) = rt.block_on(tracegen_setup::setup());
 
-        run_in_place(|scope| async move {
+        run_sync_in_place(|scope| {
             let verifier = BasefoldVerifier::<KoalaBearDegree4Duplex>::new(core_fri_config(), 2);
             let old_prover =
                 BasefoldProver::<KoalaBearDegree4Duplex, Poseidon2KoalaBear16Prover>::new(
@@ -528,7 +540,7 @@ mod tests {
                 );
 
             let new_cuda_prover = FriCudaProver::<TestGC, _, Felt> {
-                tcs_prover: Poseidon2KoalaBear16CudaProver::new(&scope).await,
+                tcs_prover: Poseidon2KoalaBear16CudaProver::new(&scope),
                 config: verifier.fri_config,
                 log_height: LOG_STACKING_HEIGHT,
                 _marker: PhantomData::<TestGC>,
@@ -537,14 +549,12 @@ mod tests {
             // Generate traces using the host tracegen.
             let semaphore = ProverSemaphore::new(1);
             let trace_generator = CudaTraceGenerator::new_in(machine.clone(), scope.clone());
-            let old_traces = trace_generator
-                .generate_traces(
-                    program.clone(),
-                    record.clone(),
-                    CORE_MAX_LOG_ROW_COUNT as usize,
-                    semaphore.clone(),
-                )
-                .await;
+            let old_traces = rt.block_on(trace_generator.generate_traces(
+                program.clone(),
+                record.clone(),
+                CORE_MAX_LOG_ROW_COUNT as usize,
+                semaphore.clone(),
+            ));
 
             let preprocessed_traces = old_traces.preprocessed_traces.clone();
 
@@ -554,28 +564,33 @@ mod tests {
                 .map(|x| Clone::clone(x.as_ref()))
                 .collect::<Message<Mle<_, _>>>();
 
-            let host_message =
-                join_all(message.clone().into_iter().map(async |mle| mle.to_host().await.unwrap()))
-                    .await
-                    .into_iter()
-                    .collect::<Message<_>>();
+            let host_message: Message<_> = message
+                .clone()
+                .into_iter()
+                .map(|mle| {
+                    let device_mle = csl_cuda::DeviceMle::new(Arc::unwrap_or_clone(mle));
+                    device_mle.to_host().unwrap()
+                })
+                .collect();
 
-            let interleaved_message =
-                interleave_multilinears_with_fixed_rate(32, host_message, LOG_STACKING_HEIGHT)
-                    .await;
+            let interleaved_message = rt.block_on(interleave_multilinears_with_fixed_rate(
+                32,
+                host_message,
+                LOG_STACKING_HEIGHT,
+            ));
 
             let interleaved_message =
                 interleaved_message.into_iter().map(|x| x.as_ref().clone()).collect::<Message<_>>();
 
             let (old_preprocessed_commitment, old_preprocessed_prover_data) =
-                old_prover.commit_mles(interleaved_message.clone()).await.unwrap();
+                rt.block_on(old_prover.commit_mles(interleaved_message.clone())).unwrap();
 
             let new_semaphore = ProverSemaphore::new(1);
             let capacity = CORE_MAX_TRACE_SIZE as usize;
             let buffer = PinnedBuffer::<Felt>::with_capacity(capacity);
             let queue = Arc::new(WorkerQueue::new(vec![buffer]));
-            let buffer = queue.pop().await.unwrap();
-            let (_, new_traces, _, _) = full_tracegen(
+            let buffer = rt.block_on(queue.pop()).unwrap();
+            let (_, new_traces, _, _) = rt.block_on(full_tracegen(
                 &machine,
                 program,
                 Arc::new(record),
@@ -586,8 +601,7 @@ mod tests {
                 &scope,
                 new_semaphore,
                 false,
-            )
-            .await;
+            ));
 
             let dst = Tensor::<Felt, TaskScope>::with_sizes_in(
                 [
@@ -598,7 +612,7 @@ mod tests {
             );
 
             let (new_preprocessed_commit, new_preprocessed_prover_data) =
-                new_cuda_prover.encode_and_commit(true, false, &new_traces, dst).await.unwrap();
+                new_cuda_prover.encode_and_commit(true, false, &new_traces, dst).unwrap();
 
             assert_eq!(new_preprocessed_commit, old_preprocessed_commitment);
 
@@ -611,7 +625,7 @@ mod tests {
             );
 
             let (new_main_commit, new_main_prover_data) =
-                new_cuda_prover.encode_and_commit(false, false, &new_traces, dst).await.unwrap();
+                new_cuda_prover.encode_and_commit(false, false, &new_traces, dst).unwrap();
             let message = old_traces
                 .main_trace_data
                 .traces
@@ -621,19 +635,22 @@ mod tests {
                 .collect::<Message<Mle<_, _>>>();
 
             let mut host_message = Vec::new();
-            for mle in message.iter() {
-                let mle_host = mle.to_host().await.unwrap();
+            for mle in message.into_iter() {
+                let device_mle = csl_cuda::DeviceMle::new(Arc::unwrap_or_clone(mle));
+                let mle_host = device_mle.to_host().unwrap();
                 host_message.push(mle_host);
             }
 
             let host_message = host_message.into_iter().collect::<Message<Mle<Felt, CpuBackend>>>();
 
-            let interleaved_message_2 =
-                interleave_multilinears_with_fixed_rate(32, host_message, LOG_STACKING_HEIGHT)
-                    .await;
+            let interleaved_message_2 = rt.block_on(interleave_multilinears_with_fixed_rate(
+                32,
+                host_message,
+                LOG_STACKING_HEIGHT,
+            ));
 
             let (old_main_commitment, old_main_prover_data) =
-                old_prover.commit_mles(interleaved_message_2.clone()).await.unwrap();
+                rt.block_on(old_prover.commit_mles(interleaved_message_2.clone())).unwrap();
 
             assert_eq!(new_main_commit, old_main_commitment);
 
@@ -641,34 +658,41 @@ mod tests {
 
             let eval_point_host = Point::<Ext>::rand(&mut rng, LOG_STACKING_HEIGHT);
 
-            let evaluation_claims_1 = stream::iter(interleaved_message.clone())
-                .then(async |mle| mle.eval_at(&eval_point_host).await)
-                .collect::<Vec<_>>()
-                .await;
+            let evaluation_claims_1: Vec<_> = interleaved_message
+                .clone()
+                .into_iter()
+                .map(|mle| rt.block_on(mle.eval_at(&eval_point_host)))
+                .collect();
 
             let evaluation_claims_1 = Evaluations { round_evaluations: evaluation_claims_1 };
 
-            let evaluation_claims_2 = stream::iter(interleaved_message_2.clone())
-                .then(async |mle| mle.eval_at(&eval_point_host).await)
-                .collect::<Vec<_>>()
-                .await;
+            let evaluation_claims_2: Vec<_> = interleaved_message_2
+                .clone()
+                .into_iter()
+                .map(|mle| rt.block_on(mle.eval_at(&eval_point_host)))
+                .collect();
 
-            let host_evaluation_claims_1 = stream::iter(evaluation_claims_1.iter())
-                .then(async |mle| mle.to_host().await.unwrap())
-                .collect::<Vec<_>>()
-                .await;
+            let host_evaluation_claims_1: Vec<MleEval<Ext, CpuBackend>> = evaluation_claims_1
+                .round_evaluations
+                .iter()
+                .map(|mle| rt.block_on(mle.to_host()).unwrap())
+                .collect();
 
-            let host_evaluation_claims_2 = stream::iter(evaluation_claims_2.iter())
-                .then(async |mle| mle.to_host().await.unwrap())
-                .collect::<Vec<_>>()
-                .await;
+            let host_evaluation_claims_2: Vec<MleEval<Ext, CpuBackend>> =
+                evaluation_claims_2.iter().map(|mle| rt.block_on(mle.to_host()).unwrap()).collect();
 
             let flattened_evaluation_claims = vec![
                 MleEval::new(
-                    host_evaluation_claims_1.into_iter().flat_map(|x| x.to_vec()).collect(),
+                    host_evaluation_claims_1
+                        .into_iter()
+                        .flat_map(|x: MleEval<Ext, CpuBackend>| x.evaluations().storage.to_vec())
+                        .collect(),
                 ),
                 MleEval::new(
-                    host_evaluation_claims_2.into_iter().flat_map(|x| x.to_vec()).collect(),
+                    host_evaluation_claims_2
+                        .into_iter()
+                        .flat_map(|x: MleEval<Ext, CpuBackend>| x.evaluations().storage.to_vec())
+                        .collect(),
                 ),
             ];
 
@@ -676,23 +700,26 @@ mod tests {
 
             let mut challenger = KoalaBearDegree4Duplex::default_challenger();
 
-            scope.synchronize().await.unwrap();
+            scope.synchronize_blocking().unwrap();
             let now = std::time::Instant::now();
 
-            let basefold_proof = old_prover
-                .prove_trusted_mle_evaluations(
-                    eval_point_host.clone(),
-                    vec![interleaved_message, interleaved_message_2].into_iter().collect(),
-                    vec![evaluation_claims_1.clone(), evaluation_claims_2.clone()]
-                        .into_iter()
-                        .collect(),
-                    vec![old_preprocessed_prover_data, old_main_prover_data].into_iter().collect(),
-                    &mut challenger,
+            let basefold_proof = rt
+                .block_on(
+                    old_prover.prove_trusted_mle_evaluations(
+                        eval_point_host.clone(),
+                        vec![interleaved_message, interleaved_message_2].into_iter().collect(),
+                        vec![evaluation_claims_1.clone(), evaluation_claims_2.clone()]
+                            .into_iter()
+                            .collect(),
+                        vec![old_preprocessed_prover_data, old_main_prover_data]
+                            .into_iter()
+                            .collect(),
+                        &mut challenger,
+                    ),
                 )
-                .await
                 .unwrap();
 
-            scope.synchronize().await.unwrap();
+            scope.synchronize_blocking().unwrap();
             println!("Old proof time: {:?}", now.elapsed());
 
             let mut challenger = KoalaBearDegree4Duplex::default_challenger();
@@ -700,8 +727,9 @@ mod tests {
             let mut evaluation_claims_1_device = Vec::new();
 
             for evaluation in &evaluation_claims_1.round_evaluations {
-                let eval_device = evaluation.to_device_in(&scope).await.unwrap();
-                evaluation_claims_1_device.push(eval_device);
+                let eval_device =
+                    DeviceTensor::from_host(evaluation.evaluations(), &scope).unwrap().into_inner();
+                evaluation_claims_1_device.push(MleEval::new(eval_device));
             }
 
             let evaluation_claims_1_device =
@@ -709,12 +737,13 @@ mod tests {
 
             let mut evaluation_claims_2_device = Vec::new();
             for evaluation in &evaluation_claims_2.round_evaluations {
-                let eval_device = evaluation.to_device_in(&scope).await.unwrap();
-                evaluation_claims_2_device.push(eval_device);
+                let eval_device =
+                    DeviceTensor::from_host(evaluation.evaluations(), &scope).unwrap().into_inner();
+                evaluation_claims_2_device.push(MleEval::new(eval_device));
             }
             let evaluation_claims_2 = Evaluations { round_evaluations: evaluation_claims_2_device };
 
-            scope.synchronize().await.unwrap();
+            scope.synchronize_blocking().unwrap();
 
             let now = std::time::Instant::now();
 
@@ -728,10 +757,9 @@ mod tests {
                         .collect(),
                     &mut challenger,
                 )
-                .await
                 .unwrap();
 
-            scope.synchronize().await.unwrap();
+            scope.synchronize_blocking().unwrap();
             println!("New proof time: {:?}", now.elapsed());
 
             for (i, (a, b)) in basefold_proof
@@ -771,8 +799,6 @@ mod tests {
                 )
                 .unwrap();
         })
-        .await
-        .await
         .unwrap();
     }
 }

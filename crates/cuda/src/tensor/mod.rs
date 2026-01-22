@@ -1,87 +1,93 @@
-mod dot;
+pub mod dot;
 pub mod reduce;
 mod sum;
 pub mod transpose;
 
 pub use dot::dot_along_dim_view;
-use slop_alloc::{mem::CopyError, Backend, CopyIntoBackend, CopyToBackend, CpuBackend, HasBackend};
+use slop_alloc::{mem::CopyError, CpuBackend, HasBackend};
 use slop_tensor::Tensor;
+pub use transpose::DeviceTransposeKernel;
 
-use crate::{DeviceCopy, SmallBuffer};
+use crate::{DeviceBuffer, DeviceCopy};
 
 use super::TaskScope;
 
-impl<T: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for Tensor<T, TaskScope> {
-    type Output = Tensor<T, CpuBackend>;
-    async fn copy_into_backend(self, backend: &CpuBackend) -> Result<Self::Output, CopyError> {
-        let Tensor { storage, dimensions } = self;
-        let storage = storage.copy_into_backend(backend).await?;
-        Ok(Tensor { storage, dimensions })
+pub struct DeviceTensor<T> {
+    raw: Tensor<T, TaskScope>,
+}
+
+impl<T: DeviceCopy> DeviceTensor<T> {
+    /// Creates a DeviceTensor from a raw Tensor.
+    pub fn from_raw(raw: Tensor<T, TaskScope>) -> Self {
+        Self { raw }
+    }
+
+    /// Copies a device tensor reference to host memory (blocking).
+    pub fn copy_to_host(tensor: &Tensor<T, TaskScope>) -> Result<Tensor<T, CpuBackend>, CopyError> {
+        let host_storage = unsafe { tensor.storage.copy_into_host_buffer() };
+        Ok(Tensor { storage: host_storage, dimensions: tensor.dimensions.clone() })
+    }
+
+    pub fn with_sizes_in(sizes: &[usize], scope: TaskScope) -> Self {
+        let raw = Tensor::with_sizes_in(sizes, scope);
+        Self { raw }
+    }
+
+    /// Consumes self and returns the underlying Tensor.
+    pub fn into_inner(self) -> Tensor<T, TaskScope> {
+        self.raw
+    }
+
+    unsafe fn assume_init(&mut self) {
+        self.raw.assume_init();
+    }
+
+    /// Copies the tensor to host memory (blocking).
+    pub fn to_host(&self) -> Result<Tensor<T, CpuBackend>, CopyError> {
+        let host_storage = unsafe { self.raw.storage.copy_into_host_buffer() };
+        let tensor = Tensor { storage: host_storage, dimensions: self.raw.dimensions.clone() };
+        Ok(tensor)
+    }
+
+    /// Creates a DeviceTensor from a host tensor (blocking).
+    pub fn from_host(host_tensor: &Tensor<T>, scope: &TaskScope) -> Result<Self, CopyError> {
+        let host_storage = &host_tensor.storage;
+        let mut storage = DeviceBuffer::with_capacity_in(host_storage.len(), scope.clone());
+        storage.extend(host_storage)?;
+        let storage = storage.into_inner();
+
+        let tensor = Tensor { storage, dimensions: host_tensor.dimensions.clone() };
+        Ok(Self { raw: tensor })
+    }
+
+    pub fn sizes(&self) -> &[usize] {
+        self.raw.sizes()
+    }
+
+    pub fn total_len(&self) -> usize {
+        self.raw.total_len()
+    }
+
+    pub fn as_ptr(&self) -> *const T {
+        self.raw.as_ptr()
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *mut T {
+        self.raw.as_mut_ptr()
+    }
+
+    pub fn backend(&self) -> &TaskScope {
+        self.raw.backend()
+    }
+
+    pub fn view(&self) -> &Tensor<T, TaskScope> {
+        &self.raw
     }
 }
 
-impl<T: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for Tensor<T, CpuBackend> {
-    type Output = Tensor<T, TaskScope>;
-    async fn copy_into_backend(self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
-        let Tensor { storage, dimensions } = self;
-        let storage = storage.copy_into_backend(backend).await?;
-        Ok(Tensor { storage, dimensions })
-    }
-}
-
-impl<T: DeviceCopy> CopyToBackend<CpuBackend, TaskScope> for Tensor<T, TaskScope> {
-    type Output = Tensor<T, CpuBackend>;
-    async fn copy_to_backend(&self, backend: &CpuBackend) -> Result<Self::Output, CopyError> {
-        let Tensor { storage, dimensions } = self;
-        let storage = storage.copy_to_backend(backend).await?;
-        Ok(Tensor { storage, dimensions: dimensions.clone() })
-    }
-}
-
-impl<T: DeviceCopy> CopyToBackend<TaskScope, CpuBackend> for Tensor<T, CpuBackend> {
-    type Output = Tensor<T, TaskScope>;
-    async fn copy_to_backend(&self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
-        let Tensor { storage, dimensions } = self;
-        let storage = storage.copy_to_backend(backend).await?;
-        Ok(Tensor { storage, dimensions: dimensions.clone() })
-    }
-}
-
-pub struct SmallTensor<'a, T, A: Backend> {
-    tensor: &'a Tensor<T, A>,
-}
-
-impl<'a, T, A: Backend> SmallTensor<'a, T, A> {
-    /// # Safety
-    /// The buffer must be small enough so that copying from it to or from host does not block.
-    pub unsafe fn new(tensor: &'a Tensor<T, A>) -> Self {
-        Self { tensor }
-    }
-}
-
-impl<T, A: Backend> HasBackend for SmallTensor<'_, T, A> {
-    type Backend = A;
-    fn backend(&self) -> &A {
-        self.tensor.backend()
-    }
-}
-
-impl<T: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for SmallTensor<'_, T, TaskScope> {
-    type Output = Tensor<T, CpuBackend>;
-    async fn copy_into_backend(self, backend: &CpuBackend) -> Result<Self::Output, CopyError> {
-        let dimensions = self.tensor.dimensions.clone();
-        let storage = unsafe { SmallBuffer::new(&self.tensor.storage) };
-        let storage = storage.copy_into_backend(backend).await?;
-        Ok(Tensor { storage, dimensions })
-    }
-}
-
-impl<T: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for SmallTensor<'_, T, CpuBackend> {
-    type Output = Tensor<T, TaskScope>;
-    async fn copy_into_backend(self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
-        let dimensions = self.tensor.dimensions.clone();
-        let storage = unsafe { SmallBuffer::new(&self.tensor.storage) };
-        let storage = storage.copy_into_backend(backend).await?;
-        Ok(Tensor { storage, dimensions })
+impl<T: DeviceCopy> HasBackend for DeviceTensor<T> {
+    type Backend = TaskScope;
+    fn backend(&self) -> &TaskScope {
+        self.raw.backend()
     }
 }

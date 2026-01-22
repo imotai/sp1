@@ -1,7 +1,7 @@
-use csl_cuda::TaskScope;
+use csl_cuda::{DeviceBuffer, TaskScope};
 use slop_air::PairCol;
 use slop_algebra::Field;
-use slop_alloc::{mem::CopyError, Backend, Buffer, CopyToBackend, CpuBackend, HasBackend};
+use slop_alloc::{mem::CopyError, Backend, Buffer, CpuBackend, HasBackend};
 use sp1_hypercube::Interaction;
 use std::ops::Mul;
 
@@ -175,30 +175,27 @@ impl<F: Field> Interactions<F, TaskScope> {
     }
 }
 
-impl<F: Field> CopyToBackend<TaskScope, CpuBackend> for Interactions<F, CpuBackend> {
-    type Output = Interactions<F, TaskScope>;
-    async fn copy_to_backend(&self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
-        let (
-            device_values_ptr,
-            device_multiplicities_ptr,
-            device_values_col_weights_ptr,
-            device_values_col_weights,
-            device_values_constants,
-            device_mult_col_weights,
-            device_mult_constants,
-            device_arg_indices,
-            device_is_send,
-        ) = tokio::join!(
-            async { self.values_ptr.copy_to_backend(backend).await.unwrap() },
-            async { self.multiplicities_ptr.copy_to_backend(backend).await.unwrap() },
-            async { self.values_col_weights_ptr.copy_to_backend(backend).await.unwrap() },
-            async { self.values_col_weights.copy_to_backend(backend).await.unwrap() },
-            async { self.values_constants.copy_to_backend(backend).await.unwrap() },
-            async { self.mult_col_weights.copy_to_backend(backend).await.unwrap() },
-            async { self.mult_constants.copy_to_backend(backend).await.unwrap() },
-            async { self.arg_indices.copy_to_backend(backend).await.unwrap() },
-            async { self.is_send.copy_to_backend(backend).await.unwrap() },
-        );
+impl<F: Field> Interactions<F, CpuBackend> {
+    /// Copy interactions from host to device synchronously.
+    pub fn copy_to_device(
+        &self,
+        backend: &TaskScope,
+    ) -> Result<Interactions<F, TaskScope>, CopyError> {
+        let device_values_ptr = DeviceBuffer::from_host(&self.values_ptr, backend)?.into_inner();
+        let device_multiplicities_ptr =
+            DeviceBuffer::from_host(&self.multiplicities_ptr, backend)?.into_inner();
+        let device_values_col_weights_ptr =
+            DeviceBuffer::from_host(&self.values_col_weights_ptr, backend)?.into_inner();
+        let device_values_col_weights =
+            DeviceBuffer::from_host(&self.values_col_weights, backend)?.into_inner();
+        let device_values_constants =
+            DeviceBuffer::from_host(&self.values_constants, backend)?.into_inner();
+        let device_mult_col_weights =
+            DeviceBuffer::from_host(&self.mult_col_weights, backend)?.into_inner();
+        let device_mult_constants =
+            DeviceBuffer::from_host(&self.mult_constants, backend)?.into_inner();
+        let device_arg_indices = DeviceBuffer::from_host(&self.arg_indices, backend)?.into_inner();
+        let device_is_send = DeviceBuffer::from_host(&self.is_send, backend)?.into_inner();
 
         let num_interactions = self.num_interactions;
 

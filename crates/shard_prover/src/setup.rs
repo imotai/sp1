@@ -3,12 +3,12 @@ use std::sync::Arc;
 use sp1_hypercube::ShardContextImpl;
 use tokio::sync::Mutex;
 
-use csl_challenger::DeviceGrindingChallenger;
+use csl_basefold::DeviceGrindingChallenger;
 use csl_cuda::TaskScope;
 use csl_jagged_tracegen::setup_tracegen_permit;
 use csl_jagged_tracegen::CudaShardProverData;
 use csl_utils::{Ext, Felt, JaggedTraceMle};
-use slop_challenger::{FromChallenger, IopCtx};
+use slop_challenger::IopCtx;
 use slop_multilinear::MultilinearPcsVerifier;
 use slop_stacked::StackedBasefoldProof;
 use sp1_hypercube::{
@@ -18,32 +18,27 @@ use sp1_hypercube::{
     MachineVerifyingKey,
 };
 
-use crate::{CudaShardProver, CudaShardProverComponents};
+use crate::{CudaShardProver, CudaShardProverComponents, CudaShardProverInner};
 
-impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShardProver<GC, PC>
+impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>> CudaShardProverInner<GC, PC>
 where
     GC::Challenger: DeviceGrindingChallenger<Witness = GC::F>,
-    GC::Challenger: csl_basefold::DeviceGrindingChallenger<Witness = GC::F>,
     GC::Challenger: slop_challenger::FieldChallenger<
         <GC::Challenger as slop_challenger::GrindingChallenger>::Witness,
     >,
     StackedBasefoldProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
-    TaskScope: csl_jagged_assist::BranchingProgramKernel<
-        GC::F,
-        GC::EF,
-        <GC::Challenger as DeviceGrindingChallenger>::OnDeviceChallenger,
-    >,
-    <GC::Challenger as DeviceGrindingChallenger>::OnDeviceChallenger:
-        FromChallenger<GC::Challenger, TaskScope> + Clone,
+    TaskScope: csl_jagged_assist::BranchingProgramKernel<GC::F, GC::EF, PC::DeviceChallenger>,
 {
     /// Setup from a program with a specific initial global cumulative sum.
     pub async fn setup_with_initial_global_cumulative_sum(
-        &self,
+        self: Arc<Self>,
         program: Arc<<PC::Air as MachineAir<GC::F>>::Program>,
         initial_global_cumulative_sum: SepticDigest<GC::F>,
         setup_permits: ProverSemaphore,
     ) -> (
-        PreprocessedData<ProvingKey<GC, ShardContextImpl<GC, PC::C, PC::Air>, Self>>,
+        PreprocessedData<
+            ProvingKey<GC, ShardContextImpl<GC, PC::C, PC::Air>, CudaShardProver<GC, PC>>,
+        >,
         MachineVerifyingKey<GC>,
     ) {
         let pc_start = program.pc_start();
@@ -63,14 +58,17 @@ where
         )
         .await;
 
-        let (pk, vk) = self
-            .setup_from_preprocessed_data_and_traces(
+        let inner = self.clone();
+        let (pk, vk) = tokio::task::spawn_blocking(move || {
+            inner.setup_from_preprocessed_data_and_traces(
                 pc_start,
                 initial_global_cumulative_sum,
                 preprocessed_data,
                 enable_untrusted_programs,
             )
-            .await;
+        })
+        .await
+        .unwrap();
 
         let pk = Mutex::new(pk);
 
@@ -82,7 +80,7 @@ where
     }
 
     /// Setup from preprocessed data and traces.
-    pub async fn setup_from_preprocessed_data_and_traces(
+    pub fn setup_from_preprocessed_data_and_traces(
         &self,
         pc_start: [GC::F; 3],
         initial_global_cumulative_sum: SepticDigest<GC::F>,
@@ -97,7 +95,6 @@ where
             self.drop_ldes,
             &self.basefold_prover,
         )
-        .await
         .unwrap();
 
         let vk = MachineVerifyingKey {

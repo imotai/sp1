@@ -1,7 +1,7 @@
 use std::fs;
 use std::time::Duration;
 
-use csl_cuda::{TaskScope, ToDevice};
+use csl_cuda::{run_sync_in_place, DeviceMle, DevicePoint, DeviceTensor, TaskScope};
 use csl_logup_gkr::{
     bench_materialized_sumcheck, extract_outputs, gkr_transition, jagged_first_gkr_layer_to_device,
     prove_round,
@@ -10,7 +10,6 @@ use csl_logup_gkr::{random_first_layer, FirstGkrLayer, GkrCircuitLayer};
 use csl_utils::config::{Ext, TestGC};
 use rand::{rngs::StdRng, SeedableRng};
 use serde::Deserialize;
-use slop_alloc::ToHost;
 use slop_challenger::{FieldChallenger, IopCtx};
 use slop_multilinear::{Mle, Point};
 use slop_sumcheck::partially_verify_sumcheck_proof;
@@ -27,7 +26,7 @@ fn load_workloads_from_json() -> Vec<Workload> {
     serde_json::from_str(&json_content).expect("Failed to parse layer_workloads.json")
 }
 
-async fn run_benchmark_in_scope(
+fn run_benchmark_in_scope(
     t: &TaskScope,
     interaction_row_counts: Vec<u32>,
     num_row_variables: u32,
@@ -37,31 +36,31 @@ async fn run_benchmark_in_scope(
 
     let get_challenger = move || TestGC::default_challenger();
 
-    let layer = random_first_layer(&mut rng, interaction_row_counts, Some(num_row_variables)).await;
+    let layer = random_first_layer(&mut rng, interaction_row_counts, Some(num_row_variables));
     println!("Generated test data for {name}");
 
     let FirstGkrLayer { jagged_mle, num_interaction_variables, num_row_variables } = layer;
 
     let first_eval_point = Point::<Ext>::rand(&mut rng, num_interaction_variables + 1);
 
-    let jagged_mle = jagged_first_gkr_layer_to_device(jagged_mle, t).await;
+    let jagged_mle = jagged_first_gkr_layer_to_device(jagged_mle, t);
 
     let layer = FirstGkrLayer { jagged_mle, num_interaction_variables, num_row_variables };
 
     let layer = GkrCircuitLayer::FirstLayer(layer);
 
-    t.synchronize().await.unwrap();
-    let time = tokio::time::Instant::now();
+    t.synchronize_blocking().unwrap();
+    let time = std::time::Instant::now();
     let mut layers = vec![layer];
     for _ in 0..num_row_variables - 1 {
-        let layer = gkr_transition(layers.last().unwrap()).await;
+        let layer = gkr_transition(layers.last().unwrap());
 
         layers.push(layer);
     }
-    t.synchronize().await.unwrap();
+    t.synchronize_blocking().unwrap();
     let trace_gen_time = time.elapsed();
 
-    let time = tokio::time::Instant::now();
+    let time = std::time::Instant::now();
     layers.reverse();
     let first_layer = if let GkrCircuitLayer::Materialized(first_layer) = layers.first().unwrap() {
         first_layer
@@ -70,19 +69,25 @@ async fn run_benchmark_in_scope(
     };
     assert_eq!(first_layer.num_row_variables, 1);
 
-    let output = extract_outputs(first_layer, num_interaction_variables).await;
+    let output = extract_outputs(first_layer, num_interaction_variables);
     println!("time to extract values: {:?}", time.elapsed());
 
     // assert_eq!(first_eval_point.dimension(), numerator.num_variables() as usize);
-    let first_point_device = first_eval_point.to_device_in(t).await.unwrap();
-    let first_numerator_eval =
-        output.numerator.eval_at(&first_point_device).await.to_host().await.unwrap()[0];
-    let first_denominator_eval =
-        output.denominator.eval_at(&first_point_device).await.to_host().await.unwrap()[0];
+    let first_point_device = DevicePoint::from_host(&first_eval_point, t).unwrap().into_inner();
+    let first_point_eq =
+        Mle::new(DevicePoint::new(first_point_device.clone()).partial_lagrange().into_inner());
+    let first_numerator_eval = DeviceMle::new(output.numerator.clone())
+        .eval_at_eq(&DeviceTensor::from_raw(first_point_eq.guts().clone()))
+        .to_host_vec()
+        .unwrap()[0];
+    let first_denominator_eval = DeviceMle::new(output.denominator.clone())
+        .eval_at_eq(&DeviceTensor::from_raw(first_point_eq.guts().clone()))
+        .to_host_vec()
+        .unwrap()[0];
 
     let mut challenger = get_challenger();
-    t.synchronize().await.unwrap();
-    let time = tokio::time::Instant::now();
+    t.synchronize_blocking().unwrap();
+    let time = std::time::Instant::now();
     let mut round_proofs = Vec::new();
     // Follow the GKR protocol layer by layer.
     let mut numerator_eval = first_numerator_eval;
@@ -91,8 +96,7 @@ async fn run_benchmark_in_scope(
 
     for layer in layers {
         let round_proof =
-            prove_round(layer, &eval_point, numerator_eval, denominator_eval, &mut challenger)
-                .await;
+            prove_round(layer, &eval_point, numerator_eval, denominator_eval, &mut challenger);
 
         // Observe the prover message.
         challenger.observe_ext_element(round_proof.numerator_0);
@@ -112,7 +116,7 @@ async fn run_benchmark_in_scope(
         // Add the round proof to the total
         round_proofs.push(round_proof);
     }
-    t.synchronize().await.unwrap();
+    t.synchronize_blocking().unwrap();
     let proof_gen_time = time.elapsed();
 
     // Follow the GKR protocol layer by layer.
@@ -205,10 +209,9 @@ fn init_tracing() {
     }
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     init_tracing();
-    tracing::info!("Starting logup_gkr_bench with tokio-blocked profiling");
+    tracing::info!("Starting logup_gkr_bench");
 
     if ONLY_SUMCHECK {
         let mut rng = StdRng::seed_from_u64(0);
@@ -228,7 +231,7 @@ async fn main() {
             4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
             4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
             4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-            4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 123640, 123640, 123640, 123640,
+            4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 123640, 123640, 123640, 123640,
             123640, 123640, 123640, 3360, 3360, 3360, 3360, 3360, 3360, 3360, 3360, 3360, 3360,
             3360, 3360, 3360, 3360, 3360, 3360, 3360, 35400, 35400, 35400, 35400, 35400, 35400,
             35400, 35400, 35400, 35400, 35400, 35400, 35400, 35400, 35400, 35400, 35400, 35400,
@@ -265,8 +268,7 @@ async fn main() {
             29160, 29160, 29160,
         ];
         for _ in 0..9 {
-            bench_materialized_sumcheck::<TestGC>(interaction_row_counts.clone(), &mut rng, None)
-                .await;
+            bench_materialized_sumcheck::<TestGC>(interaction_row_counts.clone(), &mut rng, None);
             interaction_row_counts.iter_mut().for_each(|x| {
                 *x /= 2;
                 if *x <= 2 {
@@ -282,14 +284,14 @@ async fn main() {
 
         return;
     }
-    csl_cuda::spawn(|t| async move {
+    run_sync_in_place(|t| {
         println!("Loading workloads from JSON...");
         let workloads = load_workloads_from_json();
         println!("Loaded {} workloads", workloads.len());
 
         // Run warmup with small dataset
         println!("\n=== Running Warmup ===");
-        run_benchmark_in_scope(&t, vec![8u32; 3], 10, "Warmup".to_string()).await;
+        run_benchmark_in_scope(&t, vec![8u32; 3], 10, "Warmup".to_string());
 
         // Run benchmarks for all real workloads
         println!("\n=== Running Real Workload Benchmarks ===");
@@ -307,8 +309,7 @@ async fn main() {
                 workload.interaction_row_counts,
                 workload.num_row_variables,
                 layer_name,
-            )
-            .await;
+            );
             results.push((trace_time, proof_time));
 
             // Print progress every 10 layers
@@ -319,6 +320,5 @@ async fn main() {
 
         print_benchmark_summary(&results);
     })
-    .await
     .unwrap();
 }

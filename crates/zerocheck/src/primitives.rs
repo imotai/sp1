@@ -4,12 +4,12 @@ use csl_cuda::sys::v2_kernels::{
     fix_last_variable_jagged_ext, fix_last_variable_jagged_felt, fix_last_variable_jagged_info,
     initialize_jagged_info,
 };
-use csl_cuda::{args, TaskScope, ToDevice};
+use csl_cuda::{args, DeviceBuffer, DevicePoint, DeviceTensor, TaskScope};
 use csl_utils::{Ext, Felt, JaggedMle, JaggedTraceMle, TraceDenseData, TraceOffset};
 use slop_algebra::{AbstractField, ExtensionField, Field};
-use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend, Slice, ToHost};
+use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend, Slice};
 use slop_commit::Rounds;
-use slop_multilinear::{Evaluations, Mle, MleEval, Point};
+use slop_multilinear::{Evaluations, MleEval, Point};
 use slop_tensor::Tensor;
 use std::collections::BTreeMap;
 use std::iter::once;
@@ -31,7 +31,7 @@ impl JaggedFixLastVariableKernel<Ext> for TaskScope {
 }
 
 #[inline(always)]
-pub async fn evaluate_jagged_fix_last_variable<F: Field>(
+pub fn evaluate_jagged_fix_last_variable<F: Field>(
     jagged_mle: &JaggedTraceMle<F, TaskScope>,
     value: Ext,
 ) -> JaggedTraceMle<Ext, TaskScope>
@@ -75,7 +75,8 @@ where
 
     let new_total_length = buffer_start_idx.last().unwrap() * 2;
 
-    let output_start_idx = buffer_start_idx.to_device_in(backend).await.unwrap();
+    let output_start_idx =
+        DeviceBuffer::from_host(&buffer_start_idx, backend).unwrap().into_inner();
 
     let new_data =
         Buffer::<Ext, TaskScope>::with_capacity_in(new_total_length as usize, backend.clone());
@@ -121,34 +122,33 @@ where
 }
 
 #[inline(always)]
-pub async fn evaluate_traces(
-    traces: &JaggedTraceMle<Felt, TaskScope>,
-    point: &Point<Ext>,
-) -> Vec<Ext> {
+pub fn evaluate_traces(traces: &JaggedTraceMle<Felt, TaskScope>, point: &Point<Ext>) -> Vec<Ext> {
     let mut next_input_jagged_trace_mle =
-        evaluate_jagged_fix_last_variable(traces, *point.last().unwrap()).await;
+        evaluate_jagged_fix_last_variable(traces, *point.last().unwrap());
     for alpha in point.iter().rev().skip(1) {
         next_input_jagged_trace_mle =
-            evaluate_jagged_fix_last_variable(&next_input_jagged_trace_mle, *alpha).await;
+            evaluate_jagged_fix_last_variable(&next_input_jagged_trace_mle, *alpha);
     }
 
-    let host_dense = next_input_jagged_trace_mle.dense_data.dense.to_host().await.unwrap().to_vec();
+    let host_dense = DeviceBuffer::from_raw(next_input_jagged_trace_mle.dense_data.dense.clone())
+        .to_host()
+        .unwrap()
+        .to_vec();
 
     // Only every four elements is not padding.
     host_dense.into_iter().step_by(4).collect::<Vec<_>>()
 }
 
-pub async fn evaluate_jagged_columns(
+pub fn evaluate_jagged_columns(
     jagged_mle: &JaggedTraceMle<Felt, TaskScope>,
     point: Point<Ext>,
 ) -> Vec<Ext> {
     let input_heights = &jagged_mle.column_heights;
     let row_variable = point.dimension();
-    let mut jagged_mle =
-        evaluate_jagged_fix_last_variable(jagged_mle, *point[row_variable - 1]).await;
+    let mut jagged_mle = evaluate_jagged_fix_last_variable(jagged_mle, *point[row_variable - 1]);
 
     for i in (0..row_variable - 1).rev() {
-        jagged_mle = evaluate_jagged_fix_last_variable(&jagged_mle, *point[i]).await;
+        jagged_mle = evaluate_jagged_fix_last_variable(&jagged_mle, *point[i]);
     }
     let result = unsafe { jagged_mle.dense_data.dense.copy_into_host_vec() };
 
@@ -164,7 +164,7 @@ pub async fn evaluate_jagged_columns(
     evals
 }
 
-pub async fn initialize_jagged_dense_info(
+pub fn initialize_jagged_dense_info(
     heights: Vec<u32>,
     values: Vec<u32>,
     backend: &TaskScope,
@@ -175,8 +175,9 @@ pub async fn initialize_jagged_dense_info(
             Some(*acc)
         }))
         .collect::<Buffer<_>>();
-    let start_idx_device = buffer_start_idx.to_device_in(backend).await.unwrap();
-    let values = Buffer::from(values).to_device_in(backend).await.unwrap();
+    let start_idx_device =
+        DeviceBuffer::from_host(&buffer_start_idx, backend).unwrap().into_inner();
+    let values = DeviceBuffer::from_host(&Buffer::from(values), backend).unwrap().into_inner();
 
     let num_blocks = heights.len();
     assert_eq!(heights.len(), values.len());
@@ -207,7 +208,7 @@ pub async fn initialize_jagged_dense_info(
     JaggedDenseInfo(jagged_info)
 }
 
-pub async fn evaluate_jagged_info_fix_last_variable(
+pub fn evaluate_jagged_info_fix_last_variable(
     jagged_info: JaggedDenseInfo<TaskScope>,
 ) -> JaggedDenseInfo<TaskScope> {
     let backend = jagged_info.dense_data.backend();
@@ -224,7 +225,8 @@ pub async fn evaluate_jagged_info_fix_last_variable(
         .collect::<Vec<_>>();
     let new_total_length = *new_start_idx.last().unwrap() * 2;
     let buffer_start_idx = Buffer::from(new_start_idx);
-    let output_start_idx = buffer_start_idx.to_device_in(backend).await.unwrap();
+    let output_start_idx =
+        DeviceBuffer::from_host(&buffer_start_idx, backend).unwrap().into_inner();
     let new_data =
         Buffer::<u32, TaskScope>::with_capacity_in(new_total_length as usize, backend.clone());
     let new_cols = Buffer::<u32, TaskScope>::with_capacity_in(
@@ -257,7 +259,7 @@ pub async fn evaluate_jagged_info_fix_last_variable(
     next_jagged_info
 }
 
-pub async fn evaluate_jagged_mle_chunked<F: Field>(
+pub fn evaluate_jagged_mle_chunked<F: Field>(
     jagged_mle: JaggedTraceMle<F, TaskScope>,
     z_row: Point<Ext, TaskScope>,
     z_col: Point<Ext, TaskScope>,
@@ -287,13 +289,13 @@ pub async fn evaluate_jagged_mle_chunked<F: Field>(
     let mut output_evals =
         Tensor::<Ext, TaskScope>::with_sizes_in([1, grid_size.0], backend.clone());
 
-    let z_row_lagrange = Mle::partial_lagrange(&z_row).await;
-    let z_col_lagrange = Mle::partial_lagrange(&z_col).await;
+    let z_row_lagrange = DevicePoint::new(z_row.clone()).partial_lagrange();
+    let z_col_lagrange = DevicePoint::new(z_col.clone()).partial_lagrange();
 
     let args = args!(
         jagged_mle.as_raw(),
-        z_row_lagrange.guts().as_ptr(),
-        z_col_lagrange.guts().as_ptr(),
+        z_row_lagrange.as_ptr(),
+        z_col_lagrange.as_ptr(),
         (total_length as u32),
         (num_cols as u32),
         output_evals.as_mut_ptr()
@@ -304,22 +306,19 @@ pub async fn evaluate_jagged_mle_chunked<F: Field>(
         backend.launch_kernel(kernel(), grid_size, (BLOCK_SIZE, 1, 1), &args, shared_mem).unwrap();
     }
 
-    let output_eval = output_evals.sum(1).await;
-    output_eval
+    let output_eval = DeviceTensor::from_raw(output_evals).sum_dim(1);
+    output_eval.into_inner()
 }
 
 /// Evaluates each chip at `stacked_point` and returns the evaluations in a `Rounds<Evaluations>` form.
 /// Inserts padding for chips included in the smallest cluster, but not the actual trace.
-pub async fn round_batch_evaluations(
+pub fn round_batch_evaluations(
     stacked_point: &Point<Ext>,
     jagged_trace_mle: &JaggedTraceMle<Felt, TaskScope>,
 ) -> Rounds<Evaluations<Ext>> {
-    let evaluations = evaluate_traces(jagged_trace_mle, stacked_point).await;
+    let evaluations = evaluate_traces(jagged_trace_mle, stacked_point);
 
-    async fn mle_eval_from_slice<A: Backend>(
-        slice: &Slice<Ext, A>,
-        backend: &A,
-    ) -> MleEval<Ext, A> {
+    fn mle_eval_from_slice<A: Backend>(slice: &Slice<Ext, A>, backend: &A) -> MleEval<Ext, A> {
         let len = slice.len();
         let mut buf = Buffer::with_capacity_in(len, backend.clone());
         unsafe {
@@ -339,13 +338,13 @@ pub async fn round_batch_evaluations(
 
             zeros.write_bytes(0, offset.num_polys * size_of::<Ext>()).unwrap();
 
-            let mle_eval = mle_eval_from_slice(&zeros, &CpuBackend).await;
+            let mle_eval = mle_eval_from_slice(&zeros, &CpuBackend);
             preprocessed_host_evaluations.push(mle_eval);
         } else {
             let slice =
                 Buffer::from(evaluations[evals_so_far..evals_so_far + offset.num_polys].to_vec());
 
-            let mle_eval = mle_eval_from_slice(&slice[..], &CpuBackend).await;
+            let mle_eval = mle_eval_from_slice(&slice[..], &CpuBackend);
             preprocessed_host_evaluations.push(mle_eval);
             evals_so_far += offset.num_polys;
         }
@@ -363,13 +362,13 @@ pub async fn round_batch_evaluations(
 
             zeros.write_bytes(0, offset.num_polys * size_of::<Ext>()).unwrap();
 
-            let mle_eval = mle_eval_from_slice(&zeros, &CpuBackend).await;
+            let mle_eval = mle_eval_from_slice(&zeros, &CpuBackend);
             main_host_evaluations.push(mle_eval);
         } else {
             let slice =
                 Buffer::from(evaluations[evals_so_far..evals_so_far + offset.num_polys].to_vec());
 
-            let mle_eval = mle_eval_from_slice(&slice[..], &CpuBackend).await;
+            let mle_eval = mle_eval_from_slice(&slice[..], &CpuBackend);
             main_host_evaluations.push(mle_eval);
             evals_so_far += offset.num_polys;
         }
@@ -385,13 +384,15 @@ mod tests {
 
     use csl_cuda::run_in_place;
     use csl_cuda::sys::v2_kernels::jagged_eval_kernel_chunked_felt;
+    use csl_cuda::{DeviceBuffer, DevicePoint};
     use rand::rngs::StdRng;
     use rand::{RngCore, SeedableRng};
     use serial_test::serial;
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_alloc::Buffer;
     use slop_koala_bear::KoalaBear;
-    use slop_multilinear::{Mle, Point};
+    use slop_multilinear::Mle;
+    use slop_multilinear::Point;
     use sp1_hypercube::log2_ceil_usize;
 
     use crate::primitives::{evaluate_jagged_columns, evaluate_jagged_mle_chunked};
@@ -516,6 +517,8 @@ mod tests {
         let col_variable = log2_ceil_usize(mles.len());
         let z_row = Point::<Ext>::rand(&mut rng, row_variable as u32);
         let z_col = Point::<Ext>::rand(&mut rng, col_variable as u32);
+
+        // Compute expected value using async host-side evaluation
         let z_row_lagrange = Mle::partial_lagrange(&z_row).await;
         let z_col_lagrange = Mle::partial_lagrange(&z_col).await;
 
@@ -530,11 +533,11 @@ mod tests {
         let start_idx = Buffer::from(start_idx);
         run_in_place(|t| async move {
             // Warmup iteration.
-            let z_row_device = t.into_device(z_row.clone()).await.unwrap();
-            let z_col_device = t.into_device(z_col.clone()).await.unwrap();
+            let z_row_device = DevicePoint::from_host(&z_row, &t).unwrap().into_inner();
+            let z_col_device = DevicePoint::from_host(&z_col, &t).unwrap().into_inner();
             let jagged_mle = JaggedTraceMle::new(
                 TraceDenseData {
-                    dense: data.clone(),
+                    dense: DeviceBuffer::from_host(&data, &t).unwrap().into_inner(),
                     preprocessed_offset: 0,
                     preprocessed_cols: 0,
                     preprocessed_table_index: BTreeMap::new(),
@@ -542,12 +545,10 @@ mod tests {
                     main_padding: 0,
                     preprocessed_padding: 0,
                 },
-                cols.clone(),
-                start_idx.clone(),
+                DeviceBuffer::from_host(&cols, &t).unwrap().into_inner(),
+                DeviceBuffer::from_host(&start_idx, &t).unwrap().into_inner(),
                 input_heights.clone(),
-            )
-            .into_device(&t)
-            .await;
+            );
 
             t.synchronize().await.unwrap();
             let evaluation = evaluate_jagged_mle_chunked(
@@ -557,8 +558,7 @@ mod tests {
                 mles.len(),
                 data.len() / 2,
                 jagged_eval_kernel_chunked_felt,
-            )
-            .await;
+            );
             t.synchronize().await.unwrap();
 
             let host_evals = unsafe { evaluation.into_buffer().copy_into_host_vec() };
@@ -566,11 +566,11 @@ mod tests {
             assert_eq!(evaluation, eval);
 
             // Real iteration for benchmarking.
-            let z_row_device = t.into_device(z_row.clone()).await.unwrap();
-            let z_col_device = t.into_device(z_col.clone()).await.unwrap();
+            let z_row_device = DevicePoint::from_host(&z_row, &t).unwrap().into_inner();
+            let z_col_device = DevicePoint::from_host(&z_col, &t).unwrap().into_inner();
             let jagged_mle = JaggedTraceMle::new(
                 TraceDenseData {
-                    dense: data.clone(),
+                    dense: DeviceBuffer::from_host(&data, &t).unwrap().into_inner(),
                     preprocessed_offset: 0,
                     preprocessed_cols: 0,
                     preprocessed_table_index: BTreeMap::new(),
@@ -578,12 +578,10 @@ mod tests {
                     main_padding: 0,
                     preprocessed_padding: 0,
                 },
-                cols.clone(),
-                start_idx.clone(),
+                DeviceBuffer::from_host(&cols, &t).unwrap().into_inner(),
+                DeviceBuffer::from_host(&start_idx, &t).unwrap().into_inner(),
                 input_heights.clone(),
-            )
-            .into_device(&t)
-            .await;
+            );
 
             t.synchronize().await.unwrap();
             let now = std::time::Instant::now();
@@ -594,8 +592,7 @@ mod tests {
                 mles.len(),
                 data.len() / 2,
                 jagged_eval_kernel_chunked_felt,
-            )
-            .await;
+            );
 
             t.synchronize().await.unwrap();
             let elapsed = now.elapsed();
@@ -651,6 +648,8 @@ mod tests {
 
         let row_variable: usize = 22;
         let z_row = Point::<Ext>::rand(&mut rng, row_variable as u32);
+
+        // Compute expected values using async host-side evaluation
         let z_row_lagrange = Mle::partial_lagrange(&z_row).await;
 
         let mut eval = vec![];
@@ -664,7 +663,7 @@ mod tests {
         run_in_place(|t| async move {
             let jagged_mle = JaggedTraceMle::new(
                 TraceDenseData {
-                    dense: data.clone(),
+                    dense: DeviceBuffer::from_host(&data, &t).unwrap().into_inner(),
                     preprocessed_offset: preprocessed_offset as usize,
                     preprocessed_cols: preprocessed_cols as usize,
                     preprocessed_table_index,
@@ -672,17 +671,15 @@ mod tests {
                     main_padding: 0,
                     preprocessed_padding: 0,
                 },
-                cols.clone(),
-                start_idx.clone(),
+                DeviceBuffer::from_host(&cols, &t).unwrap().into_inner(),
+                DeviceBuffer::from_host(&start_idx, &t).unwrap().into_inner(),
                 input_heights.clone(),
-            )
-            .into_device(&t)
-            .await;
+            );
 
             t.synchronize().await.unwrap();
             let now = std::time::Instant::now();
 
-            let result = evaluate_jagged_columns(&jagged_mle, z_row).await;
+            let result = evaluate_jagged_columns(&jagged_mle, z_row.clone());
             assert_eq!(eval, result);
             t.synchronize().await.unwrap();
 

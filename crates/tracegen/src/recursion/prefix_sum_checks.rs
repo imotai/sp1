@@ -1,5 +1,5 @@
 use csl_cuda::TracegenRecursionPrefixSumChecksKernel;
-use csl_cuda::{args, TaskScope};
+use csl_cuda::{args, DeviceMle, TaskScope};
 use slop_air::BaseAir;
 use slop_alloc::mem::CopyError;
 use slop_alloc::Buffer;
@@ -20,7 +20,7 @@ impl CudaTracegenAir<F> for PrefixSumChecksChip {
         input: &Self::Record,
         _: &mut Self::Record,
         scope: &TaskScope,
-    ) -> Result<Mle<F, TaskScope>, CopyError> {
+    ) -> Result<DeviceMle<F>, CopyError> {
         let events = &input.prefix_sum_checks_events;
 
         let events_device = {
@@ -56,7 +56,7 @@ impl CudaTracegenAir<F> for PrefixSumChecksChip {
                 .unwrap();
         }
 
-        Ok(Mle::new(trace))
+        Ok(DeviceMle::new(Mle::new(trace)))
     }
 }
 

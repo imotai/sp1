@@ -5,10 +5,12 @@ use csl_sys::{
 use slop_algebra::{extension::BinomialExtensionField, Field};
 use slop_alloc::Backend;
 use slop_koala_bear::KoalaBear;
-use slop_multilinear::{MleBaseBackend, MleFoldBackend};
+use slop_multilinear::Mle;
 use slop_tensor::Tensor;
 
-use crate::{args, TaskScope};
+use crate::{args, DeviceCopy, TaskScope};
+
+use super::DeviceMle;
 
 /// # Safety
 ///
@@ -17,16 +19,21 @@ pub unsafe trait FoldKernel<F: Field>: Backend {
     fn fold_kernel() -> KernelPtr;
 }
 
-impl<F: Field> MleFoldBackend<F> for TaskScope
+impl<F: DeviceCopy + Field> DeviceMle<F>
 where
-    TaskScope: FoldKernel<F> + MleBaseBackend<F>,
+    TaskScope: FoldKernel<F>,
 {
-    async fn fold_mle(guts: &Tensor<F, Self>, beta: F) -> slop_tensor::Tensor<F, Self> {
-        let num_polynomials = Self::num_polynomials(guts);
-        let num_non_zero_entries = Self::num_non_zero_entries(guts);
+    /// Folds the MLE by the given beta value.
+    pub fn fold(&self, beta: F) -> DeviceMle<F> {
+        let guts = self.guts();
+        let num_polynomials = self.num_polynomials();
+        let num_non_zero_entries = self.num_non_zero_entries();
         let folded_num_non_zero_entries = num_non_zero_entries / 2;
-        let mut folded_guts =
-            Self::uninit_mle(guts.backend(), num_polynomials, folded_num_non_zero_entries);
+        // MLE guts shape is [num_polynomials, num_entries] for TaskScope convention
+        let mut folded_guts = Tensor::with_sizes_in(
+            [num_polynomials, folded_num_non_zero_entries],
+            self.backend().clone(),
+        );
 
         const BLOCK_SIZE: usize = 256;
         const STRIDE: usize = 16;
@@ -43,11 +50,11 @@ where
         );
         unsafe {
             folded_guts.assume_init();
-            guts.backend()
-                .launch_kernel(Self::fold_kernel(), grid_dim, block_dim, &args, 0)
+            self.backend()
+                .launch_kernel(TaskScope::fold_kernel(), grid_dim, block_dim, &args, 0)
                 .unwrap();
         }
-        folded_guts
+        DeviceMle::new(Mle::new(folded_guts))
     }
 }
 
@@ -66,13 +73,13 @@ unsafe impl FoldKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
 #[cfg(test)]
 mod tests {
     use rand::Rng;
-    use slop_alloc::IntoHost;
     use slop_multilinear::Mle;
 
     use super::*;
+    use crate::mle::DeviceMle;
 
-    #[tokio::test]
-    async fn test_fold_mle() {
+    #[test]
+    fn test_fold_mle() {
         let num_variables = 11;
 
         type EF = BinomialExtensionField<KoalaBear, 4>;
@@ -82,15 +89,14 @@ mod tests {
         let mle = Mle::<EF>::rand(&mut rng, 1, num_variables);
         let beta = rng.gen::<EF>();
 
-        let folded_mle_host = mle.fold(beta).await;
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let folded_mle_host = rt.block_on(mle.fold(beta));
 
-        let folded_mle_cuda = crate::run_in_place(|t| async move {
-            let mle = t.into_device(mle).await.unwrap();
-            let folded_mle_cuda = mle.fold(beta).await;
-            folded_mle_cuda.into_host().await.unwrap()
+        let folded_mle_cuda = crate::run_sync_in_place(|t| {
+            let d_mle = DeviceMle::from_host(&mle, &t).unwrap();
+            let folded_mle_cuda = d_mle.fold(beta);
+            folded_mle_cuda.to_host().unwrap()
         })
-        .await
-        .await
         .unwrap();
 
         for (val, exp) in

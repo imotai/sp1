@@ -7,9 +7,8 @@ mod prefix_sum_checks;
 mod sbox;
 mod select;
 
-use csl_cuda::TaskScope;
+use csl_cuda::{DeviceMle, TaskScope};
 use slop_alloc::mem::CopyError;
-use slop_multilinear::Mle;
 use sp1_recursion_machine::RecursionAir;
 
 use crate::{CudaTracegenAir, F};
@@ -37,7 +36,7 @@ impl<const DEGREE: usize, const VAR_EVENTS_PER_ROW: usize> CudaTracegenAir<F>
         &self,
         program: &Self::Program,
         scope: &TaskScope,
-    ) -> Result<Option<Mle<F, TaskScope>>, CopyError> {
+    ) -> Result<Option<DeviceMle<F>>, CopyError> {
         match self {
             Self::BaseAlu(chip) => chip.generate_preprocessed_trace_device(program, scope).await,
             Self::ExtAlu(chip) => chip.generate_preprocessed_trace_device(program, scope).await,
@@ -84,7 +83,7 @@ impl<const DEGREE: usize, const VAR_EVENTS_PER_ROW: usize> CudaTracegenAir<F>
         input: &Self::Record,
         output: &mut Self::Record,
         scope: &TaskScope,
-    ) -> Result<Mle<F, TaskScope>, CopyError> {
+    ) -> Result<DeviceMle<F>, CopyError> {
         match self {
             Self::BaseAlu(chip) => chip.generate_trace_device(input, output, scope).await,
             Self::ExtAlu(chip) => chip.generate_trace_device(input, output, scope).await,
@@ -109,7 +108,6 @@ pub(crate) mod tests {
 
     use rand::{rngs::StdRng, SeedableRng};
 
-    use slop_alloc::ToHost;
     use slop_tensor::Tensor;
 
     use sp1_hypercube::air::MachineAir;
@@ -153,7 +151,6 @@ pub(crate) mod tests {
             .expect("should copy events to device successfully")
             .expect("should generate Some(preprocessed_trace)")
             .to_host()
-            .await
             .expect("should copy trace to host successfully")
             .into_guts();
 

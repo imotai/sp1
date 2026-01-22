@@ -1,19 +1,19 @@
+use std::future::Future;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use csl_challenger::DeviceGrindingChallenger;
 use csl_cuda::reduce::DeviceSumKernel;
-use csl_cuda::{args, TaskScope};
+use csl_cuda::transpose::DeviceTransposeKernel;
+use csl_cuda::{args, DeviceBuffer, DeviceTensor, TaskScope};
 use slop_algebra::{ExtensionField, Field};
-use slop_alloc::{Backend, IntoHost};
-use slop_alloc::{Buffer, HasBackend};
+use slop_alloc::{Backend, Buffer, HasBackend};
 use slop_challenger::FieldChallenger;
-use slop_jagged::JaggedAssistSumAsPoly;
-use slop_jagged::JaggedEvalSumcheckPoly;
+use slop_jagged::{JaggedAssistSumAsPoly, JaggedEvalSumcheckPoly};
 use slop_multilinear::Point;
-use slop_tensor::{ReduceSumBackend, Tensor, TransposeBackend};
+use slop_tensor::Tensor;
 
 use crate::branching_program_and_sample;
+use crate::AsMutRawChallenger;
 use crate::BranchingProgramKernel;
 
 #[derive(Debug, Clone)]
@@ -28,37 +28,25 @@ pub struct JaggedAssistSumAsPolyGPUImpl<F: Field, EF: ExtensionField<F>, Challen
     _marker: PhantomData<Challenger>,
 }
 
-impl<
-        F: Field,
-        EF: ExtensionField<F>,
-        Challenger: DeviceGrindingChallenger + FieldChallenger<F> + Send + Sync,
-    > JaggedAssistSumAsPoly<F, EF, TaskScope, Challenger, Challenger::OnDeviceChallenger>
-    for JaggedAssistSumAsPolyGPUImpl<F, EF, Challenger>
+impl<F: Field, EF: ExtensionField<F>, Challenger> JaggedAssistSumAsPolyGPUImpl<F, EF, Challenger>
 where
-    TaskScope: Backend
-        + DeviceSumKernel<EF>
-        + BranchingProgramKernel<F, EF, Challenger::OnDeviceChallenger>
-        + ReduceSumBackend<EF>
-        + TransposeBackend<F>,
+    TaskScope: Backend + DeviceSumKernel<EF> + DeviceTransposeKernel<F>,
 {
-    async fn new(
+    pub fn new(
         z_row: Point<EF>,
         z_index: Point<EF>,
-        merged_prefix_sums: Arc<Vec<Point<F>>>,
-        _z_col_eq_vals: Vec<EF>,
-        t: TaskScope,
-    ) -> Self
-    where
-        TaskScope: Backend,
-    {
-        // *Warning*
-        // This is a hack to get around the fact that the TaskScope is not available from the prover
-        // and needs to be spawned. The issue here is that the task sciope should not live beyond
-        // the execution, but nothing really enforces this. It should be fixed in the future, but
-        // for now this hack should suffice since tasks are owned.
-        let z_row_device = t.into_device(z_row).await.unwrap();
+        merged_prefix_sums: &[Point<F>],
+        _z_col_eq_vals: &[EF],
+        t: &TaskScope,
+    ) -> Self {
+        // Convert z_row and z_index to device
+        let z_row_buffer: Buffer<EF> = z_row.to_vec().into();
+        let z_row_device: Point<EF, TaskScope> =
+            Point::new(DeviceBuffer::from_host(&z_row_buffer, t).unwrap().into_inner());
 
-        let z_index_device = t.into_device(z_index).await.unwrap();
+        let z_index_buffer: Buffer<EF> = z_index.to_vec().into();
+        let z_index_device: Point<EF, TaskScope> =
+            Point::new(DeviceBuffer::from_host(&z_index_buffer, t).unwrap().into_inner());
 
         // Chop up the merged prefix sums into current and next prefix sums.
         let mut flattened_current_prefix_sums = Vec::new();
@@ -77,17 +65,18 @@ where
         curr_prefix_sum_tensor.reshape_in_place([num_columns, prefix_sum_length]);
         next_prefix_sum_tensor.reshape_in_place([num_columns, prefix_sum_length]);
 
-        let curr_prefix_sums_device = t.into_device(curr_prefix_sum_tensor).await.unwrap();
-        let next_prefix_sums_device = t.into_device(next_prefix_sum_tensor).await.unwrap();
+        // Use DeviceTensor's transpose method
+        let curr_prefix_sums_device = DeviceTensor::from_host(&curr_prefix_sum_tensor, t).unwrap();
+        let next_prefix_sums_device = DeviceTensor::from_host(&next_prefix_sum_tensor, t).unwrap();
 
-        let curr_prefix_sums_device = curr_prefix_sums_device.transpose();
-        let next_prefix_sums_device = next_prefix_sums_device.transpose();
+        let curr_prefix_sums_device = curr_prefix_sums_device.transpose().into_inner();
+        let next_prefix_sums_device = next_prefix_sums_device.transpose().into_inner();
 
         let half = EF::two().inverse();
 
         let lambdas = vec![EF::zero(), half];
         let lambdas_tensor: Tensor<EF> = lambdas.into();
-        let lambdas_device = t.into_device(lambdas_tensor).await.unwrap();
+        let lambdas_device = DeviceTensor::from_host(&lambdas_tensor, t).unwrap().into_inner();
 
         Self {
             z_row: z_row_device,
@@ -101,16 +90,20 @@ where
         }
     }
 
-    async fn sum_as_poly_and_sample_into_point(
+    #[allow(clippy::too_many_arguments)]
+    pub fn sum_as_poly_and_sample_into_point<OnDeviceChallenger: AsMutRawChallenger>(
         &self,
         round_num: usize,
         z_col_eq_vals: &Buffer<EF, TaskScope>,
         intermediate_eq_full_evals: &Buffer<EF, TaskScope>,
         sum_values: &mut Buffer<EF, TaskScope>,
-        challenger: &mut Challenger::OnDeviceChallenger,
+        challenger: &mut OnDeviceChallenger,
         claim: EF,
         rhos: Point<EF, TaskScope>,
-    ) -> (EF, Point<EF, TaskScope>) {
+    ) -> (EF, Point<EF, TaskScope>)
+    where
+        TaskScope: BranchingProgramKernel<F, EF, OnDeviceChallenger>,
+    {
         let (current_prefix_sum_rho_point, next_prefix_sum_rho_point): (
             Point<EF, TaskScope>,
             Point<EF, TaskScope>,
@@ -159,57 +152,46 @@ where
             &rhos,
             sum_values,
             claim,
-        )
-        .await;
+        );
 
-        let bp_results_device = bp_results_device.storage.into_host().await.unwrap();
+        let bp_results_device: Vec<EF> =
+            DeviceBuffer::from_raw(bp_results_device.storage).to_host().unwrap();
 
-        let bp_results = bp_results_device.into_vec();
+        let bp_results = bp_results_device;
 
         (bp_results[0], Point::new(new_randomness))
     }
 
-    async fn fix_last_variable(
-        poly: slop_jagged::JaggedEvalSumcheckPoly<
-            F,
-            EF,
-            Challenger,
-            Challenger::OnDeviceChallenger,
-            Self,
-            TaskScope,
-        >,
-    ) -> slop_jagged::JaggedEvalSumcheckPoly<
-        F,
-        EF,
-        Challenger,
-        Challenger::OnDeviceChallenger,
-        Self,
-        TaskScope,
-    > {
-        let merged_prefix_sum_dim = poly.prefix_sum_dimension as usize;
-
-        let mut intermediate_eq_full_evals = poly.intermediate_eq_full_evals;
+    pub fn fix_last_variable_kernel<OnDeviceChallenger>(
+        merged_prefix_sums: &Buffer<F, TaskScope>,
+        intermediate_eq_full_evals: &mut Buffer<EF, TaskScope>,
+        rho: &Point<EF, TaskScope>,
+        merged_prefix_sum_dim: usize,
+        round_num: usize,
+    ) where
+        TaskScope: BranchingProgramKernel<F, EF, OnDeviceChallenger>,
+    {
         let backend = intermediate_eq_full_evals.backend().clone();
 
         const BLOCK_SIZE: usize = 512;
         const STRIDE: usize = 1;
-        let grid_size_x = poly.merged_prefix_sums.len().div_ceil(BLOCK_SIZE * STRIDE);
+        let grid_size_x = merged_prefix_sums.len().div_ceil(BLOCK_SIZE * STRIDE);
         let grid_size = (grid_size_x, 1, 1);
 
         unsafe {
             let args = args!(
-                poly.merged_prefix_sums.as_ptr(),
+                merged_prefix_sums.as_ptr(),
                 intermediate_eq_full_evals.as_mut_ptr(),
-                poly.rho.as_ptr(),
+                rho.as_ptr(),
                 merged_prefix_sum_dim,
                 intermediate_eq_full_evals.len(),
-                poly.round_num,
-                poly.rho.dimension()
+                round_num,
+                rho.dimension()
             );
 
             backend
                 .launch_kernel(
-                    <TaskScope as BranchingProgramKernel<F, EF, Challenger::OnDeviceChallenger>>::fix_last_variable(),
+                    <TaskScope as BranchingProgramKernel<F, EF, OnDeviceChallenger>>::fix_last_variable(),
                     grid_size,
                     (BLOCK_SIZE, 1, 1),
                     &args,
@@ -217,18 +199,78 @@ where
                 )
                 .unwrap();
         }
+    }
+}
 
-        JaggedEvalSumcheckPoly::new(
-            poly.bp_batch_eval,
-            poly.rho,
-            poly.z_col,
-            poly.merged_prefix_sums,
-            poly.z_col_eq_vals,
-            poly.round_num + 1,
+// Implement the async trait by wrapping sync operations in std::future::ready()
+impl<F, EF, HostChallenger, DeviceChallenger>
+    JaggedAssistSumAsPoly<F, EF, TaskScope, HostChallenger, DeviceChallenger>
+    for JaggedAssistSumAsPolyGPUImpl<F, EF, DeviceChallenger>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+    HostChallenger: FieldChallenger<F> + Send + Sync,
+    DeviceChallenger: AsMutRawChallenger + Send + Sync,
+    TaskScope: Backend
+        + DeviceSumKernel<EF>
+        + DeviceTransposeKernel<F>
+        + BranchingProgramKernel<F, EF, DeviceChallenger>,
+    Self: Clone,
+{
+    fn new(
+        z_row: Point<EF>,
+        z_index: Point<EF>,
+        merged_prefix_sums: Arc<Vec<Point<F>>>,
+        z_col_eq_vals: Vec<EF>,
+        backend: TaskScope,
+    ) -> impl Future<Output = Self> + Send + Sync {
+        std::future::ready(JaggedAssistSumAsPolyGPUImpl::new(
+            z_row,
+            z_index,
+            &merged_prefix_sums,
+            &z_col_eq_vals,
+            &backend,
+        ))
+    }
+
+    fn sum_as_poly_and_sample_into_point(
+        &self,
+        round_num: usize,
+        z_col_eq_vals: &Buffer<EF, TaskScope>,
+        intermediate_eq_full_evals: &Buffer<EF, TaskScope>,
+        sum_values: &mut Buffer<EF, TaskScope>,
+        challenger: &mut DeviceChallenger,
+        claim: EF,
+        rhos: Point<EF, TaskScope>,
+    ) -> impl Future<Output = (EF, Point<EF, TaskScope>)> + Send + Sync {
+        let result = self.sum_as_poly_and_sample_into_point(
+            round_num,
+            z_col_eq_vals,
             intermediate_eq_full_evals,
-            poly.half,
-            poly.prefix_sum_dimension,
-        )
+            sum_values,
+            challenger,
+            claim,
+            rhos,
+        );
+        std::future::ready(result)
+    }
+
+    fn fix_last_variable(
+        mut poly: JaggedEvalSumcheckPoly<F, EF, HostChallenger, DeviceChallenger, Self, TaskScope>,
+    ) -> impl Future<
+        Output = JaggedEvalSumcheckPoly<F, EF, HostChallenger, DeviceChallenger, Self, TaskScope>,
+    > + Send
+           + Sync {
+        Self::fix_last_variable_kernel::<DeviceChallenger>(
+            &poly.merged_prefix_sums,
+            &mut poly.intermediate_eq_full_evals,
+            &poly.rho,
+            poly.prefix_sum_dimension as usize,
+            poly.round_num,
+        );
+        // Increment round_num after fixing the last variable
+        poly.round_num += 1;
+        std::future::ready(poly)
     }
 }
 
@@ -247,8 +289,8 @@ mod tests {
     type F = KoalaBear;
     type EF = BinomialExtensionField<F, 4>;
 
-    #[tokio::test]
-    async fn test_fix_last_variable() {
+    #[test]
+    fn test_fix_last_variable() {
         let merged_prefix_sum_dim = 50;
 
         let num_columns = 1000;
@@ -264,22 +306,26 @@ mod tests {
         let new_randomness_point =
             (0..merged_prefix_sum_dim).map(|_| rng.gen::<EF>()).collect::<Vec<_>>();
 
-        csl_cuda::run_in_place(|backend| async move {
+        csl_cuda::run_sync_in_place(|backend| {
             for round_num in 0..merged_prefix_sum_dim {
-                let merged_prefix_sums_device = backend
-                    .into_device(Buffer::<F>::from(merged_prefix_sums.clone()))
-                    .await
-                    .unwrap();
+                let merged_prefix_sums_buffer = Buffer::<F>::from(merged_prefix_sums.clone());
+                let merged_prefix_sums_device =
+                    DeviceBuffer::from_host(&merged_prefix_sums_buffer, &backend)
+                        .unwrap()
+                        .into_inner();
 
-                let mut intermediate_eq_full_evals_device = backend
-                    .into_device(Buffer::<EF>::from(intermediate_eq_full_evals.clone()))
-                    .await
-                    .unwrap();
+                let intermediate_eq_full_evals_buffer =
+                    Buffer::<EF>::from(intermediate_eq_full_evals.clone());
+                let mut intermediate_eq_full_evals_device =
+                    DeviceBuffer::from_host(&intermediate_eq_full_evals_buffer, &backend)
+                        .unwrap()
+                        .into_inner();
 
-                let new_randomness_point_device = backend
-                    .into_device(Buffer::<EF>::from(new_randomness_point.clone()))
-                    .await
-                    .unwrap();
+                let new_randomness_point_buffer = Buffer::<EF>::from(new_randomness_point.clone());
+                let new_randomness_point_device =
+                    DeviceBuffer::from_host(&new_randomness_point_buffer, &backend)
+                        .unwrap()
+                        .into_inner();
 
                 const BLOCK_SIZE: usize = 512;
                 const STRIDE: usize = 1;
@@ -314,7 +360,7 @@ mod tests {
                     println!("Kernel execution time: {:?}", time.elapsed());
                 }
                 let intermediate_eq_full_evals_from_device =
-                    intermediate_eq_full_evals_device.into_host().await.unwrap();
+                    DeviceBuffer::from_raw(intermediate_eq_full_evals_device).to_host().unwrap();
 
                 let alpha = *new_randomness_point.first().unwrap();
 
@@ -339,8 +385,6 @@ mod tests {
                 }
             }
         })
-        .await
-        .await
         .unwrap();
     }
 }

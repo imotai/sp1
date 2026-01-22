@@ -9,6 +9,7 @@ categories.workspace = true
 
 [dependencies]
 csl-cuda = { workspace = true }
+csl-challenger = { workspace = true }
 csl-jagged-assist = { workspace = true }
 csl-air = { workspace = true }
 csl-tracegen = { workspace = true }
@@ -21,6 +22,7 @@ csl-jagged-tracegen = { workspace = true }
 # slop
 slop-koala-bear = { workspace = true }
 slop-algebra = { workspace = true }
+slop-bn254 = { workspace = true }
 slop-challenger = { workspace = true }
 slop-jagged = { workspace = true }
 slop-basefold = { workspace = true }

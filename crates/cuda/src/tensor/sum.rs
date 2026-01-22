@@ -7,9 +7,9 @@ use csl_sys::{
 };
 use slop_algebra::extension::BinomialExtensionField;
 use slop_koala_bear::KoalaBear;
-use slop_tensor::{AddAssignBackend, AddBackend, Tensor};
+// AddAssignBackend and AddBackend removed - using DeviceTensor methods instead
 
-use crate::{args, DeviceCopy, TaskScope};
+use crate::{args, DeviceCopy, DeviceTensor, TaskScope};
 
 ///
 /// # Safety
@@ -17,30 +17,29 @@ pub unsafe trait AddKernel<U: DeviceCopy, T: DeviceCopy> {
     fn add_kernel() -> KernelPtr;
 }
 
-///
 /// # Safety
+/// The implementor must ensure the kernel performs element-wise add-assign correctly.
+#[allow(dead_code)]
 pub unsafe trait AddAssignKernel<T: DeviceCopy> {
     fn add_assign_kernel() -> KernelPtr;
 }
 
-impl<T: DeviceCopy, U: DeviceCopy> AddBackend<U, T> for TaskScope
-where
-    TaskScope: AddKernel<U, T>,
-{
-    type AddOutput = U;
-
-    async fn add(lhs: &Tensor<U, Self>, rhs: &Tensor<T, Self>) -> Tensor<Self::AddOutput, Self> {
-        let mut dst = Tensor::with_sizes_in(lhs.sizes(), lhs.backend().clone());
+impl<T: DeviceCopy> DeviceTensor<T> {
+    pub fn add<U: DeviceCopy>(&self, other: &DeviceTensor<U>) -> DeviceTensor<T>
+    where
+        TaskScope: AddKernel<U, T>,
+    {
+        let mut dst = Self::with_sizes_in(self.sizes(), self.backend().clone());
         unsafe {
             dst.assume_init();
         }
         const BLOCK_SIZE: usize = 256;
         const GRID_STRIDE: usize = 1;
         unsafe {
-            let grid_dim = lhs.total_len().div_ceil(BLOCK_SIZE).div_ceil(GRID_STRIDE);
-            let args = args!(lhs.as_ptr(), rhs.as_ptr(), dst.as_ptr(), lhs.total_len());
-            lhs.backend()
-                .launch_kernel(Self::add_kernel(), grid_dim, BLOCK_SIZE, &args, 0)
+            let grid_dim = self.total_len().div_ceil(BLOCK_SIZE).div_ceil(GRID_STRIDE);
+            let args = args!(self.as_ptr(), other.as_ptr(), dst.as_ptr(), self.total_len());
+            self.backend()
+                .launch_kernel(TaskScope::add_kernel(), grid_dim, BLOCK_SIZE, &args, 0)
                 .unwrap();
         }
         dst
@@ -64,23 +63,6 @@ unsafe impl AddKernel<BinomialExtensionField<KoalaBear, 4>, BinomialExtensionFie
 {
     fn add_kernel() -> KernelPtr {
         unsafe { add_koala_bear_ext_ext_kernel() }
-    }
-}
-
-impl<T: DeviceCopy> AddAssignBackend<T> for TaskScope
-where
-    TaskScope: AddAssignKernel<T>,
-{
-    async fn add_assign(lhs: &mut Tensor<T, Self>, rhs: T) {
-        const BLOCK_SIZE: usize = 256;
-        const GRID_STRIDE: usize = 1;
-        unsafe {
-            let grid_dim = lhs.total_len().div_ceil(BLOCK_SIZE).div_ceil(GRID_STRIDE);
-            let args = args!(lhs.as_mut_ptr(), rhs, lhs.total_len());
-            lhs.backend()
-                .launch_kernel(Self::add_assign_kernel(), grid_dim, BLOCK_SIZE, &args, 0)
-                .unwrap();
-        }
     }
 }
 

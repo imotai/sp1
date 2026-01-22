@@ -1,13 +1,11 @@
 use std::ops::{Deref, DerefMut};
 
-use csl_cuda::IntoDevice;
-use csl_cuda::TaskScope;
+use csl_cuda::{DeviceBuffer, TaskScope};
 use csl_utils::DenseDataMut;
 use csl_utils::{DenseData, Ext, Felt, JaggedMle};
 use slop_algebra::Field;
 use slop_alloc::Buffer;
 use slop_alloc::HasBackend;
-use slop_alloc::ToHost;
 use slop_alloc::{Backend, CpuBackend};
 use thiserror::Error;
 
@@ -160,162 +158,144 @@ impl<A: Backend> DenseDataMut<A> for InfoBuffer<A> {
 }
 
 impl JaggedDenseMle<Felt, CpuBackend> {
-    pub async fn into_device(
+    pub fn to_device_sync(
         self,
         backend: &TaskScope,
     ) -> Result<JaggedDenseMle<Felt, TaskScope>, TransferError> {
         let JaggedMle { dense_data, col_index, start_indices, column_heights } = self.0;
 
-        let data = dense_data
-            .data
-            .into_device_in(backend)
-            .await
-            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?;
+        let data = DeviceBuffer::from_host(&dense_data.data, backend)
+            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?
+            .into_inner();
 
         let jagged_dense_mle_device = DenseBuffer::new(data);
 
-        let col_index = col_index
-            .into_device_in(backend)
-            .await
-            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?;
+        let col_index = DeviceBuffer::from_host(&col_index, backend)
+            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?
+            .into_inner();
 
-        let start_indices = start_indices
-            .into_device_in(backend)
-            .await
-            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?;
+        let start_indices = DeviceBuffer::from_host(&start_indices, backend)
+            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?
+            .into_inner();
 
         Ok(JaggedDenseMle::new(jagged_dense_mle_device, col_index, start_indices, column_heights))
     }
 }
 
 impl JaggedDenseMle<Ext, CpuBackend> {
-    pub async fn into_device(
+    pub fn to_device_sync(
         self,
         backend: &TaskScope,
     ) -> Result<JaggedDenseMle<Ext, TaskScope>, TransferError> {
         let JaggedMle { dense_data, col_index, start_indices, column_heights } = self.0;
 
-        let data = dense_data
-            .data
-            .into_device_in(backend)
-            .await
-            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?;
+        let data = DeviceBuffer::from_host(&dense_data.data, backend)
+            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?
+            .into_inner();
 
         let jagged_dense_mle_device = DenseBuffer::new(data);
 
-        let col_index = col_index
-            .into_device_in(backend)
-            .await
-            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?;
+        let col_index = DeviceBuffer::from_host(&col_index, backend)
+            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?
+            .into_inner();
 
-        let start_indices = start_indices
-            .into_device_in(backend)
-            .await
-            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?;
+        let start_indices = DeviceBuffer::from_host(&start_indices, backend)
+            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?
+            .into_inner();
 
         Ok(JaggedDenseMle::new(jagged_dense_mle_device, col_index, start_indices, column_heights))
     }
 }
 
 impl JaggedDenseInfo<CpuBackend> {
-    pub async fn into_device(
+    pub fn to_device_sync(
         self,
         backend: &TaskScope,
     ) -> Result<JaggedDenseInfo<TaskScope>, TransferError> {
         let JaggedMle { dense_data, col_index, start_indices, column_heights } = self.0;
 
-        let data = dense_data
-            .data
-            .into_device_in(backend)
-            .await
-            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?;
+        let data = DeviceBuffer::from_host(&dense_data.data, backend)
+            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?
+            .into_inner();
 
         let jagged_dense_info_device = InfoBuffer::new(data);
 
-        let col_index = col_index
-            .into_device_in(backend)
-            .await
-            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?;
+        let col_index = DeviceBuffer::from_host(&col_index, backend)
+            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?
+            .into_inner();
 
-        let start_indices = start_indices
-            .into_device_in(backend)
-            .await
-            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?;
+        let start_indices = DeviceBuffer::from_host(&start_indices, backend)
+            .map_err(|e| TransferError::HostToDeviceTransferError(e.to_string()))?
+            .into_inner();
 
         Ok(JaggedDenseInfo::new(jagged_dense_info_device, col_index, start_indices, column_heights))
     }
 }
 
 impl JaggedDenseMle<Felt, TaskScope> {
-    pub async fn into_host(self) -> Result<JaggedDenseMle<Felt, CpuBackend>, TransferError> {
+    pub fn to_host_sync(self) -> Result<JaggedDenseMle<Felt, CpuBackend>, TransferError> {
         let JaggedMle { dense_data, col_index, start_indices, column_heights } = self.0;
 
-        let data = dense_data
-            .data
+        let data = DeviceBuffer::from_raw(dense_data.data)
             .to_host()
-            .await
             .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
-        let jagged_dense_mle_host = DenseBuffer::new(data);
+        let jagged_dense_mle_host = DenseBuffer::new(data.into());
 
-        let col_index = col_index
+        let col_index: Buffer<u32, CpuBackend> = DeviceBuffer::from_raw(col_index)
             .to_host()
-            .await
-            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
+            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?
+            .into();
 
-        let start_indices = start_indices
+        let start_indices: Buffer<u32, CpuBackend> = DeviceBuffer::from_raw(start_indices)
             .to_host()
-            .await
-            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
+            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?
+            .into();
 
         Ok(JaggedDenseMle::new(jagged_dense_mle_host, col_index, start_indices, column_heights))
     }
 }
 
 impl JaggedDenseMle<Ext, TaskScope> {
-    pub async fn into_host(self) -> Result<JaggedDenseMle<Ext, CpuBackend>, TransferError> {
+    pub fn to_host_sync(self) -> Result<JaggedDenseMle<Ext, CpuBackend>, TransferError> {
         let JaggedMle { dense_data, col_index, start_indices, column_heights } = self.0;
 
-        let data = dense_data
-            .data
+        let data = DeviceBuffer::from_raw(dense_data.data)
             .to_host()
-            .await
             .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
-        let jagged_dense_mle_host = DenseBuffer::new(data);
+        let jagged_dense_mle_host = DenseBuffer::new(data.into());
 
-        let col_index = col_index
+        let col_index: Buffer<u32, CpuBackend> = DeviceBuffer::from_raw(col_index)
             .to_host()
-            .await
-            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
+            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?
+            .into();
 
-        let start_indices = start_indices
+        let start_indices: Buffer<u32, CpuBackend> = DeviceBuffer::from_raw(start_indices)
             .to_host()
-            .await
-            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
+            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?
+            .into();
 
         Ok(JaggedDenseMle::new(jagged_dense_mle_host, col_index, start_indices, column_heights))
     }
 }
 
 impl JaggedDenseInfo<TaskScope> {
-    pub async fn into_host(self) -> Result<JaggedDenseInfo<CpuBackend>, TransferError> {
+    pub fn to_host_sync(self) -> Result<JaggedDenseInfo<CpuBackend>, TransferError> {
         let JaggedMle { dense_data, col_index, start_indices, column_heights } = self.0;
 
-        let data = dense_data
-            .data
+        let data = DeviceBuffer::from_raw(dense_data.data)
             .to_host()
-            .await
             .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
-        let jagged_dense_info_host = InfoBuffer::new(data);
+        let jagged_dense_info_host = InfoBuffer::new(data.into());
 
-        let col_index = col_index
+        let col_index: Buffer<u32, CpuBackend> = DeviceBuffer::from_raw(col_index)
             .to_host()
-            .await
-            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
+            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?
+            .into();
 
-        let start_indices = start_indices
+        let start_indices: Buffer<u32, CpuBackend> = DeviceBuffer::from_raw(start_indices)
             .to_host()
-            .await
-            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?;
+            .map_err(|e| TransferError::DeviceToHostTransferError(e.to_string()))?
+            .into();
 
         Ok(JaggedDenseInfo::new(jagged_dense_info_host, col_index, start_indices, column_heights))
     }

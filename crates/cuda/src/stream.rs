@@ -308,22 +308,6 @@ where
     }
 }
 
-// impl Future for StreamSpinFuture {
-//     type Output = Result<(), CudaError>;
-
-//     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-//         match self.stream.query() {
-//             Ok(()) => Poll::Ready(Ok(())),
-//             Err(CudaError::NotReady) => {
-//                 // Tell the scheduler to wake us up again
-//                 cx.waker().wake_by_ref();
-//                 Poll::Pending
-//             }
-//             Err(e) => Poll::Ready(Err(e)),
-//         }
-//     }
-// }
-
 impl IntoFuture for CudaStream {
     type Output = Result<(), CudaError>;
     type IntoFuture = StreamCallbackFuture<Self>;

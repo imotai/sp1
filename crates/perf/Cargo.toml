@@ -28,6 +28,8 @@ csv = "1.3.0"
 tracing = { workspace = true }
 tokio = { workspace = true }
 
+tokio-blocked = { workspace = true, optional = true }
+
 clap = { version = "4.5.7", features = ["derive", "env"] }
 bincode = "1.3.3"
 prettytable = "0.10.0"
@@ -54,6 +56,7 @@ bigint-rug = [
 native-gnark = ["sp1-prover/native-gnark"]
 groth16-cuda = ["sp1-recursion-gnark-ffi/groth16-cuda"]
 experimental = ["sp1-prover/experimental"]
+tokio-blocked = ["dep:tokio-blocked", "tokio/tracing"]
 
 [lints]
 workspace = true

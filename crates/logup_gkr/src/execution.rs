@@ -3,7 +3,7 @@ use csl_cuda::{
     sys::v2_kernels::{
         logup_gkr_circuit_transition, logup_gkr_extract_output, logup_gkr_first_layer_transition,
     },
-    TaskScope, ToDevice,
+    DeviceBuffer, TaskScope,
 };
 use slop_alloc::{Buffer, HasBackend};
 use slop_multilinear::Mle;
@@ -25,7 +25,7 @@ use csl_utils::{Ext, JaggedMle};
 /// Since each layer needs to have a multiple-of-four size, sometimes we need to add padding
 /// values to the last row. In practice, since every row is even, we just add 2 padding
 /// values to rows with length 2 mod 4.
-pub async fn layer_transition(layer: &GkrLayer) -> GkrLayer {
+pub fn layer_transition(layer: &GkrLayer) -> GkrLayer {
     let backend = layer.jagged_mle.backend();
     let height = layer.jagged_mle.dense_data.height;
 
@@ -34,7 +34,7 @@ pub async fn layer_transition(layer: &GkrLayer) -> GkrLayer {
 
     let output_height = output_interaction_start_indices.last().copied().unwrap() as usize;
     let output_interaction_start_indices =
-        output_interaction_start_indices.to_device_in(backend).await.unwrap();
+        DeviceBuffer::from_host(&output_interaction_start_indices, backend).unwrap().into_inner();
 
     // Create a new layer
     let output_layer: Tensor<Ext, _> =
@@ -74,7 +74,7 @@ pub async fn layer_transition(layer: &GkrLayer) -> GkrLayer {
 }
 
 /// Combines numerator and denominator polynomials into the next gkr layer.
-pub async fn first_layer_transition(layer: &FirstGkrLayer) -> GkrLayer {
+pub fn first_layer_transition(layer: &FirstGkrLayer) -> GkrLayer {
     let backend = layer.jagged_mle.backend();
     let height = layer.jagged_mle.dense_data.height;
 
@@ -84,7 +84,7 @@ pub async fn first_layer_transition(layer: &FirstGkrLayer) -> GkrLayer {
         layer.jagged_mle.next_start_indices_and_column_heights();
     let output_height = output_interaction_start_indices.last().copied().unwrap() as usize;
     let output_interaction_start_indices =
-        output_interaction_start_indices.to_device_in(backend).await.unwrap();
+        DeviceBuffer::from_host(&output_interaction_start_indices, backend).unwrap().into_inner();
 
     // Create a new layer
     let output_layer: Tensor<Ext, _> =
@@ -122,13 +122,13 @@ pub async fn first_layer_transition(layer: &FirstGkrLayer) -> GkrLayer {
 }
 
 /// Wrapper for layer_transition and first_layer_transition. Do this for every row_variable.
-pub async fn gkr_transition<'a>(layer: &GkrCircuitLayer<'a>) -> GkrCircuitLayer<'a> {
+pub fn gkr_transition<'a>(layer: &GkrCircuitLayer<'a>) -> GkrCircuitLayer<'a> {
     match layer {
         GkrCircuitLayer::FirstLayer(layer) => {
-            GkrCircuitLayer::Materialized(first_layer_transition(layer).await)
+            GkrCircuitLayer::Materialized(first_layer_transition(layer))
         }
         GkrCircuitLayer::Materialized(layer) => {
-            GkrCircuitLayer::Materialized(layer_transition(layer).await)
+            GkrCircuitLayer::Materialized(layer_transition(layer))
         }
         GkrCircuitLayer::FirstLayerVirtual(_) => {
             unreachable!()
@@ -138,7 +138,7 @@ pub async fn gkr_transition<'a>(layer: &GkrCircuitLayer<'a>) -> GkrCircuitLayer<
 
 /// Takes as input the input layer p_0, p_1, q_0, q_1, after finishing the circuit section and
 /// doing all of the row variables.
-pub async fn extract_outputs(
+pub fn extract_outputs(
     layer: &GkrLayer,
     num_interaction_variables: u32,
 ) -> LogUpGkrOutput<Ext, TaskScope> {

@@ -1,6 +1,6 @@
 use csl_cuda::TaskScope;
 use slop_algebra::Field;
-use slop_alloc::{Backend, Buffer, CopyToBackend, CpuBackend, HasBackend};
+use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend};
 
 pub struct MerkleTreeHasher<F: Field, A: Backend, const WIDTH: usize> {
     pub internal_constants: Buffer<F, A>,
@@ -59,20 +59,24 @@ impl<F: Field, const WIDTH: usize, A: Backend> HasBackend for MerkleTreeHasher<F
     }
 }
 
-impl<F: Field, const WIDTH: usize> CopyToBackend<TaskScope, CpuBackend>
-    for MerkleTreeHasher<F, CpuBackend, WIDTH>
-{
-    type Output = MerkleTreeHasher<F, TaskScope, WIDTH>;
-
-    async fn copy_to_backend(
+impl<F: Field, const WIDTH: usize> MerkleTreeHasher<F, CpuBackend, WIDTH> {
+    /// Synchronously copy the hasher to the device.
+    pub fn to_device_sync(
         &self,
-        backend: &TaskScope,
-    ) -> Result<Self::Output, slop_alloc::mem::CopyError> {
-        let (internal_constants, external_constants, diffusion_matrix) = tokio::join!(
-            async { self.internal_constants.copy_to_backend(backend).await.unwrap() },
-            async { self.external_constants.copy_to_backend(backend).await.unwrap() },
-            async { self.diffusion_matrix.copy_to_backend(backend).await.unwrap() },
-        );
+        scope: &TaskScope,
+    ) -> Result<MerkleTreeHasher<F, TaskScope, WIDTH>, slop_alloc::mem::CopyError> {
+        let mut internal_constants =
+            Buffer::with_capacity_in(self.internal_constants.len(), scope.clone());
+        internal_constants.extend_from_host_slice(&self.internal_constants)?;
+
+        let mut external_constants =
+            Buffer::with_capacity_in(self.external_constants.len(), scope.clone());
+        external_constants.extend_from_host_slice(&self.external_constants)?;
+
+        let mut diffusion_matrix =
+            Buffer::with_capacity_in(self.diffusion_matrix.len(), scope.clone());
+        diffusion_matrix.extend_from_host_slice(&self.diffusion_matrix)?;
+
         Ok(MerkleTreeHasher {
             internal_constants,
             external_constants,
@@ -82,25 +86,4 @@ impl<F: Field, const WIDTH: usize> CopyToBackend<TaskScope, CpuBackend>
     }
 }
 
-impl<F: Field, const WIDTH: usize> CopyToBackend<CpuBackend, TaskScope>
-    for MerkleTreeHasher<F, TaskScope, WIDTH>
-{
-    type Output = MerkleTreeHasher<F, CpuBackend, WIDTH>;
-
-    async fn copy_to_backend(
-        &self,
-        backend: &CpuBackend,
-    ) -> Result<Self::Output, slop_alloc::mem::CopyError> {
-        let (internal_constants, external_constants, diffusion_matrix) = tokio::join!(
-            async { self.internal_constants.copy_to_backend(backend).await.unwrap() },
-            async { self.external_constants.copy_to_backend(backend).await.unwrap() },
-            async { self.diffusion_matrix.copy_to_backend(backend).await.unwrap() },
-        );
-        Ok(MerkleTreeHasher {
-            internal_constants,
-            external_constants,
-            diffusion_matrix,
-            monty_inverse: self.monty_inverse,
-        })
-    }
-}
+// Async CopyToBackend impls removed - use sync to_device_sync method instead

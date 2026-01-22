@@ -1,4 +1,4 @@
-use csl_cuda::{args, TaskScope};
+use csl_cuda::{args, DeviceMle, TaskScope};
 use csl_cuda::{
     TracegenPreprocessedRecursionLinearLayerKernel, TracegenRecursionLinearLayerKernel,
 };
@@ -22,7 +22,7 @@ impl CudaTracegenAir<F> for Poseidon2LinearLayerChip {
         &self,
         program: &Self::Program,
         scope: &TaskScope,
-    ) -> Result<Option<Mle<F, TaskScope>>, CopyError> {
+    ) -> Result<Option<DeviceMle<F>>, CopyError> {
         let instrs = program
             .inner
             .iter()
@@ -66,7 +66,7 @@ impl CudaTracegenAir<F> for Poseidon2LinearLayerChip {
                 .unwrap();
         }
 
-        Ok(Some(Mle::new(trace)))
+        Ok(Some(DeviceMle::new(Mle::new(trace))))
     }
 
     fn supports_device_main_tracegen(&self) -> bool {
@@ -78,7 +78,7 @@ impl CudaTracegenAir<F> for Poseidon2LinearLayerChip {
         input: &Self::Record,
         _: &mut Self::Record,
         scope: &TaskScope,
-    ) -> Result<Mle<F, TaskScope>, CopyError> {
+    ) -> Result<DeviceMle<F>, CopyError> {
         let events = &input.poseidon2_linear_layer_events;
 
         let events_device = {
@@ -114,7 +114,7 @@ impl CudaTracegenAir<F> for Poseidon2LinearLayerChip {
                 .unwrap();
         }
 
-        Ok(Mle::new(trace))
+        Ok(DeviceMle::new(Mle::new(trace)))
     }
 }
 

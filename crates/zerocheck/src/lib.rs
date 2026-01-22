@@ -15,8 +15,7 @@ use csl_cuda::sys::v2_kernels::{
     jagged_constraint_poly_eval_64_koala_bear_extension_kernel,
     jagged_constraint_poly_eval_64_koala_bear_kernel,
 };
-use csl_cuda::ToDevice;
-use csl_cuda::{args, TaskScope};
+use csl_cuda::{args, DeviceBuffer, DevicePoint, DeviceTensor, TaskScope};
 use csl_utils::{Ext, Felt, JaggedTraceMle};
 use data::JaggedDenseInfo;
 use itertools::Itertools;
@@ -29,10 +28,10 @@ use slop_algebra::{
     interpolate_univariate_polynomial, AbstractExtensionField, AbstractField, ExtensionField,
     Field, UnivariatePolynomial,
 };
-use slop_alloc::{Backend, Buffer, CanCopyFromRef, CpuBackend, HasBackend, IntoHost};
+use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend};
 use slop_challenger::{FieldChallenger, VariableLengthChallenger};
 use slop_matrix::dense::RowMajorMatrixView;
-use slop_multilinear::{Mle, Point, VirtualGeq};
+use slop_multilinear::{Point, VirtualGeq};
 use slop_sumcheck::PartialSumcheckProof;
 use slop_tensor::Tensor;
 use sp1_hypercube::air::MachineAir;
@@ -173,7 +172,7 @@ where
     }
 }
 
-pub async fn initialize_program<A>(
+pub fn initialize_program<A>(
     chips: &BTreeSet<Chip<Felt, A>>,
     zerocheck_programs: &BTreeMap<String, CudaEvalResult>,
     scope: &TaskScope,
@@ -183,23 +182,20 @@ where
 {
     let cpu_info = initialize_program_cpu(chips, zerocheck_programs);
 
-    let (
-        constraint_indices_device,
-        operations_device,
-        operations_indices_device,
-        f_constants_device,
-        f_constants_indices_device,
-        ef_constants_device,
-        ef_constants_indices_device,
-    ) = tokio::join!(
-        async { cpu_info.constraint_indices.to_device_in(scope).await.unwrap() },
-        async { cpu_info.operations.to_device_in(scope).await.unwrap() },
-        async { cpu_info.operations_indices.to_device_in(scope).await.unwrap() },
-        async { cpu_info.f_constants.to_device_in(scope).await.unwrap() },
-        async { cpu_info.f_constants_indices.to_device_in(scope).await.unwrap() },
-        async { cpu_info.ef_constants.to_device_in(scope).await.unwrap() },
-        async { cpu_info.ef_constants_indices.to_device_in(scope).await.unwrap() },
-    );
+    let constraint_indices_device =
+        DeviceBuffer::from_host(&cpu_info.constraint_indices, scope).unwrap().into_inner();
+    let operations_device =
+        DeviceBuffer::from_host(&cpu_info.operations, scope).unwrap().into_inner();
+    let operations_indices_device =
+        DeviceBuffer::from_host(&cpu_info.operations_indices, scope).unwrap().into_inner();
+    let f_constants_device =
+        DeviceBuffer::from_host(&cpu_info.f_constants, scope).unwrap().into_inner();
+    let f_constants_indices_device =
+        DeviceBuffer::from_host(&cpu_info.f_constants_indices, scope).unwrap().into_inner();
+    let ef_constants_device =
+        DeviceBuffer::from_host(&cpu_info.ef_constants, scope).unwrap().into_inner();
+    let ef_constants_indices_device =
+        DeviceBuffer::from_host(&cpu_info.ef_constants_indices, scope).unwrap().into_inner();
 
     EvalProgramInfo {
         constraint_indices: constraint_indices_device,
@@ -231,7 +227,7 @@ pub fn unpack_info(packed_info: u32) -> (u32, u32, u32, u32) {
 }
 
 #[allow(clippy::type_complexity)]
-pub async fn initialize_dense_info<A>(
+pub fn initialize_dense_info<A>(
     chips: &BTreeSet<Chip<Felt, A>>,
     initial_heights: &[u32],
     backend: &TaskScope,
@@ -271,12 +267,12 @@ where
         total_main += chip.air.clone().width() as u32;
     }
 
-    let info = initialize_jagged_dense_info(info_heights, info_data, backend).await;
+    let info = initialize_jagged_dense_info(info_heights, info_data, backend);
     (info, total_preprocessed, tot_len, chips_info)
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn initialize_zerocheck_poly<'b, A>(
+pub fn initialize_zerocheck_poly<'b, A>(
     data: &'b JaggedTraceMle<Felt, TaskScope>,
     chips: &BTreeSet<Chip<Felt, A>>,
     zerocheck_programs: &BTreeMap<String, CudaEvalResult>,
@@ -293,7 +289,7 @@ where
     A: for<'a> BlockAir<SymbolicProverFolder<'a>>,
 {
     let scope = data.dense().backend();
-    let program = initialize_program(chips, zerocheck_programs, scope).await;
+    let program = initialize_program(chips, zerocheck_programs, scope);
     let mut virtual_geq: Vec<VirtualGeq<Ext>> = vec![];
     let mut info_input_heights = vec![];
 
@@ -315,25 +311,21 @@ where
     let main_columns = chips.iter().map(|chip| chip.width() as u32).collect::<Buffer<u32>>();
 
     let (info, total_preprocessed, tot_len, chips_info) =
-        initialize_dense_info(chips, &initial_heights, scope).await;
+        initialize_dense_info(chips, &initial_heights, scope);
 
-    let (
-        padded_row_adjustment,
-        public_values_device,
-        powers_of_alpha_device,
-        gkr_powers_device,
-        powers_of_lambda_device,
-        preprocessed_columns_device,
-        main_columns_device,
-    ) = tokio::join!(
-        async { Buffer::from(padded_row_adjustment).to_device_in(scope).await.unwrap() },
-        async { Buffer::from(public_values).to_device_in(scope).await.unwrap() },
-        async { Buffer::from(powers_of_alpha).to_device_in(scope).await.unwrap() },
-        async { Buffer::from(gkr_powers).to_device_in(scope).await.unwrap() },
-        async { Buffer::from(powers_of_lambda).to_device_in(scope).await.unwrap() },
-        async { preprocessed_columns.to_device_in(scope).await.unwrap() },
-        async { main_columns.to_device_in(scope).await.unwrap() },
-    );
+    let padded_row_adjustment =
+        DeviceBuffer::from_host(&Buffer::from(padded_row_adjustment), scope).unwrap().into_inner();
+    let public_values_device =
+        DeviceBuffer::from_host(&Buffer::from(public_values), scope).unwrap().into_inner();
+    let powers_of_alpha_device =
+        DeviceBuffer::from_host(&Buffer::from(powers_of_alpha), scope).unwrap().into_inner();
+    let gkr_powers_device =
+        DeviceBuffer::from_host(&Buffer::from(gkr_powers), scope).unwrap().into_inner();
+    let powers_of_lambda_device =
+        DeviceBuffer::from_host(&Buffer::from(powers_of_lambda), scope).unwrap().into_inner();
+    let preprocessed_columns_device =
+        DeviceBuffer::from_host(&preprocessed_columns, scope).unwrap().into_inner();
+    let main_columns_device = DeviceBuffer::from_host(&main_columns, scope).unwrap().into_inner();
 
     ZeroCheckJaggedPoly {
         program,
@@ -388,7 +380,7 @@ impl JaggedConstraintPolyEvalKernel<Ext> for TaskScope {
     }
 }
 
-pub async fn evaluate_zerocheck<'b, K: Field>(
+pub fn evaluate_zerocheck<'b, K: Field>(
     input: &'b ZeroCheckJaggedPoly<'b, K>,
 ) -> UnivariatePolynomial<Ext>
 where
@@ -414,14 +406,12 @@ where
     let eq_coefficients =
         input.virtual_geq.iter().map(|geq| geq.eq_coefficient).collect::<Buffer<_>>();
 
-    let (rest_point, thresholds, eq_coefficients) = tokio::join!(
-        async { backend.copy_to(&rest).await.unwrap() },
-        async { thresholds.to_device_in(backend).await.unwrap() },
-        async { eq_coefficients.to_device_in(backend).await.unwrap() },
-    );
+    let rest_point = DevicePoint::from_host(&rest, backend).unwrap();
+    let thresholds = DeviceBuffer::from_host(&thresholds, backend).unwrap().into_inner();
+    let eq_coefficients = DeviceBuffer::from_host(&eq_coefficients, backend).unwrap().into_inner();
 
-    let partial_lagrange = Mle::partial_lagrange(&rest_point).await;
-    let rest_point_dim = rest_point.dimension() as u32;
+    let partial_lagrange = rest_point.partial_lagrange();
+    let rest_point_dim = rest.dimension() as u32;
 
     unsafe {
         output.assume_init();
@@ -435,7 +425,7 @@ where
             input.program.ef_constants_indices.as_ptr(),
             input.data.as_raw(),
             input.info.as_raw(),
-            partial_lagrange.guts().as_ptr(),
+            partial_lagrange.as_ptr(),
             thresholds.as_ptr(),
             eq_coefficients.as_ptr(),
             (input.total_len / 2) as u32,
@@ -463,8 +453,8 @@ where
             .unwrap();
     }
 
-    let output_eval = output.sum(1).await;
-    let result = output_eval.into_host().await.unwrap().into_buffer().into_vec();
+    let output_eval = DeviceTensor::from_raw(output).sum_dim(1);
+    let result = output_eval.to_host().unwrap().into_buffer().into_vec();
 
     let mut xs =
         vec![Ext::from_canonical_u32(0), Ext::from_canonical_u32(2), Ext::from_canonical_u32(4)];
@@ -487,7 +477,7 @@ where
     interpolate_univariate_polynomial(&xs, &ys)
 }
 
-pub async fn zerocheck_fix_last_variable<'b, K: Field>(
+pub fn zerocheck_fix_last_variable<'b, K: Field>(
     input: ZeroCheckJaggedPoly<'b, K>,
     point: Ext,
     claim: Ext,
@@ -499,8 +489,8 @@ where
     let (rest, last) = input.zeta.split_at(input.zeta.dimension() - 1);
     let last = *last[0];
 
-    let new_data = evaluate_jagged_fix_last_variable(&input.data, point).await;
-    let new_info = evaluate_jagged_info_fix_last_variable(input.info).await;
+    let new_data = evaluate_jagged_fix_last_variable(&input.data, point);
+    let new_info = evaluate_jagged_info_fix_last_variable(input.info);
 
     let virtual_geq =
         input.virtual_geq.iter().map(|geq| geq.fix_last_variable(point)).collect::<Vec<_>>();
@@ -545,7 +535,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn zerocheck<A, C>(
+pub fn zerocheck<A, C>(
     chips: &BTreeSet<Chip<Felt, A>>,
     zerocheck_programs: &BTreeMap<String, CudaEvalResult>,
     trace_mle: &JaggedTraceMle<Felt, TaskScope>,
@@ -646,22 +636,21 @@ where
         padded_row_adjustment,
         gkr_point.clone(),
         claim,
-    )
-    .await;
+    );
 
     let mut univariate_polys = vec![];
     let mut jagged_point: Point<Ext> = Point::from(vec![]);
-    let mut result = evaluate_zerocheck(&main_poly).await;
+    let mut result = evaluate_zerocheck(&main_poly);
     let (mut point, mut next_claim) = challenger_update(&result, challenger);
     univariate_polys.push(result);
     jagged_point.add_dimension(point);
-    let mut next_poly = zerocheck_fix_last_variable(main_poly, point, next_claim).await;
+    let mut next_poly = zerocheck_fix_last_variable(main_poly, point, next_claim);
     for _ in 0..max_log_row_count - 1 {
-        result = evaluate_zerocheck(&next_poly).await;
+        result = evaluate_zerocheck(&next_poly);
         (point, next_claim) = challenger_update(&result, challenger);
         univariate_polys.push(result);
         jagged_point.add_dimension(point);
-        next_poly = zerocheck_fix_last_variable(next_poly, point, next_claim).await;
+        next_poly = zerocheck_fix_last_variable(next_poly, point, next_claim);
     }
 
     let final_jagged_data =
@@ -722,7 +711,7 @@ where
 
 #[cfg(test)]
 pub mod tests {
-    use csl_cuda::{run_in_place, PinnedBuffer};
+    use csl_cuda::{run_in_place, run_sync_in_place, PinnedBuffer};
     use itertools::Itertools;
     use rand::Rng;
     use serial_test::serial;
@@ -1734,9 +1723,9 @@ pub mod tests {
         }
     }
 
-    #[tokio::test]
+    #[test]
     #[serial]
-    async fn test_zerocheck() {
+    fn test_zerocheck() {
         let mut chips: BTreeSet<Chip<Felt, _>> = BTreeSet::new();
         chips.insert(Chip::new(ZerocheckTestChip::Chip1(ZerocheckTestChip1)));
         chips.insert(Chip::new(ZerocheckTestChip::Chip2(ZerocheckTestChip2)));
@@ -1751,13 +1740,13 @@ pub mod tests {
         let chips_vec = chips.iter().cloned().collect::<Vec<_>>();
         let num_chips = chips_vec.len();
         let row_variables = 22;
-        run_in_place(|t| async move {
+        run_sync_in_place(move |t| {
             let input_size = get_input_sizes();
             let mut rng = rand::thread_rng();
             let public_values = vec![random_felt(&mut rng), random_felt(&mut rng)];
 
             let trace_mle = get_input(&input_size, &chips_vec, &public_values);
-            let trace_mle = Arc::new(trace_mle.into_device(&t).await);
+            let trace_mle = Arc::new(trace_mle.into_device(&t));
             let initial_heights = input_size.clone();
 
             let mut challenger = TestGC::default_challenger();
@@ -1808,7 +1797,7 @@ pub mod tests {
             }
 
             let zeta = Point::<Ext>::rand(&mut rng, row_variables);
-            let individual_column_evals = evaluate_jagged_columns(&trace_mle, zeta.clone()).await;
+            let individual_column_evals = evaluate_jagged_columns(&trace_mle, zeta.clone());
             let mut claim = Ext::zero();
             let mut preprocessed_ptr: usize = 0;
             let mut main_ptr = chips_vec.iter().map(|x| x.preprocessed_width()).sum::<usize>() + 1;
@@ -1840,19 +1829,18 @@ pub mod tests {
                 padded_row_adjustment.clone(),
                 zeta.clone(),
                 claim,
-            )
-            .await;
+            );
 
             let mut jagged_point = vec![];
-            let mut result = evaluate_zerocheck(&main_poly).await;
+            let mut result = evaluate_zerocheck(&main_poly);
             let (mut point, mut claim) = challenger_update(&result, &mut challenger);
             jagged_point.insert(0, point);
-            let mut next_poly = zerocheck_fix_last_variable(main_poly, point, claim).await;
+            let mut next_poly = zerocheck_fix_last_variable(main_poly, point, claim);
             for _ in 0..21 {
-                result = evaluate_zerocheck(&next_poly).await;
+                result = evaluate_zerocheck(&next_poly);
                 (point, claim) = challenger_update(&result, &mut challenger);
                 jagged_point.insert(0, point);
-                next_poly = zerocheck_fix_last_variable(next_poly, point, claim).await;
+                next_poly = zerocheck_fix_last_variable(next_poly, point, claim);
             }
             let result = unsafe { next_poly.data.as_ref().dense_data.dense.copy_into_host_vec() };
             let mut idx = 0;
@@ -1918,14 +1906,14 @@ pub mod tests {
             expected_final_claim *= eq_mul;
             assert_eq!(claim, expected_final_claim);
 
-            t.synchronize().await.unwrap();
+            t.synchronize_blocking().unwrap();
         })
-        .await;
+        .unwrap();
     }
 
-    #[tokio::test]
+    #[test]
     #[serial]
-    async fn test_zerocheck_function_verify() {
+    fn test_zerocheck_function_verify() {
         let mut chips: BTreeSet<Chip<Felt, _>> = BTreeSet::new();
         chips.insert(Chip::new(ZerocheckTestChip::Chip1(ZerocheckTestChip1)));
         chips.insert(Chip::new(ZerocheckTestChip::Chip2(ZerocheckTestChip2)));
@@ -1938,13 +1926,13 @@ pub mod tests {
         }
         let chips_vec = chips.iter().cloned().collect::<Vec<_>>();
         let row_variables = 22;
-        run_in_place(|t| async move {
+        run_sync_in_place(move |t| {
             let input_size = get_input_sizes();
             let mut rng = rand::thread_rng();
             let public_values = vec![random_felt(&mut rng), random_felt(&mut rng)];
 
             let trace_mle = get_input(&input_size, &chips_vec, &public_values);
-            let trace_mle = Arc::new(trace_mle.into_device(&t).await);
+            let trace_mle = Arc::new(trace_mle.into_device(&t));
 
             let mut challenger = TestGC::default_challenger();
             challenger.observe(Felt::from_canonical_u32(0x2013));
@@ -1961,7 +1949,7 @@ pub mod tests {
             let max_log_row_count = row_variables as usize;
 
             let zeta = Point::<Ext>::rand(&mut rng, row_variables);
-            let individual_column_evals = evaluate_jagged_columns(&trace_mle, zeta.clone()).await;
+            let individual_column_evals = evaluate_jagged_columns(&trace_mle, zeta.clone());
 
             let mut preprocessed_ptr: usize = 0;
             let mut main_ptr = chips_vec.iter().map(|x| x.preprocessed_width()).sum::<usize>() + 1;
@@ -2008,8 +1996,7 @@ pub mod tests {
                 public_values.clone(),
                 &mut challenger_prover,
                 max_log_row_count as u32,
-            )
-            .await;
+            );
 
             let mut challenger_verifier = challenger.clone();
             crate::tests::verify_zerocheck(
@@ -2022,7 +2009,7 @@ pub mod tests {
                 max_log_row_count,
             );
         })
-        .await;
+        .unwrap();
     }
 
     #[tokio::test]
@@ -2075,7 +2062,7 @@ pub mod tests {
             let max_log_row_count = CORE_MAX_LOG_ROW_COUNT;
 
             let zeta = Point::<Ext>::rand(&mut rng, CORE_MAX_LOG_ROW_COUNT);
-            let individual_column_evals = evaluate_jagged_columns(&trace_mle, zeta.clone()).await;
+            let individual_column_evals = evaluate_jagged_columns(&trace_mle, zeta.clone());
 
             let mut preprocessed_ptr: usize = 0;
             let mut main_ptr = chips.iter().map(|x| x.preprocessed_width()).sum::<usize>() + 1;
@@ -2116,8 +2103,7 @@ pub mod tests {
                 public_values.clone(),
                 &mut challenger_prover,
                 max_log_row_count,
-            )
-            .await;
+            );
 
             let mut challenger_verifier = challenger.clone();
             crate::tests::verify_zerocheck(

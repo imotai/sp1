@@ -154,13 +154,14 @@ mod tests {
     use itertools::Itertools;
     use rand::thread_rng;
     use slop_algebra::AbstractField;
-    use slop_alloc::IntoHost;
     use slop_dft::{p3::Radix2DitParallel, Dft};
+
+    use csl_cuda::{run_sync_in_place, DeviceTensor};
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_batch_coset_dft() {
+    #[test]
+    fn test_batch_coset_dft() {
         let mut rng = thread_rng();
 
         let log_degrees = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
@@ -176,8 +177,9 @@ mod tests {
             let tensor_h = Tensor::<KoalaBear>::rand(&mut rng, [d, batch_size]);
 
             let tensor_h_sent = tensor_h.clone();
-            let result = csl_cuda::spawn(move |t| async move {
-                let tensor = t.into_device(tensor_h_sent).await.unwrap().transpose();
+            let result = run_sync_in_place(|t| {
+                let tensor_raw = DeviceTensor::from_host(&tensor_h_sent, &t).unwrap().into_inner();
+                let tensor = DeviceTensor::from_raw(tensor_raw).transpose().into_inner();
                 let dft = SpparkDftKoalaBear::default();
                 let mut dst =
                     Tensor::<Felt, _>::with_sizes_in([batch_size, d << log_blowup], t.clone());
@@ -191,10 +193,9 @@ mod tests {
                 )
                 .unwrap();
 
-                let result = dst.transpose();
-                result.into_host().await.unwrap()
+                let result = DeviceTensor::from_raw(dst).transpose();
+                result.to_host().unwrap()
             })
-            .await
             .unwrap();
 
             let expected_result = p3_dft

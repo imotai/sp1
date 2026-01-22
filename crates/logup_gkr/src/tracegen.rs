@@ -4,13 +4,16 @@ use std::{
     sync::Arc,
 };
 
-use csl_cuda::{args, sys::v2_kernels::logup_gkr_populate_last_circuit_layer, TaskScope, ToDevice};
+use csl_cuda::{
+    args, sys::v2_kernels::logup_gkr_populate_last_circuit_layer, DeviceBuffer, DevicePoint,
+    TaskScope,
+};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use slop_alloc::{Buffer, HasBackend};
 use slop_multilinear::{Mle, Point};
 use slop_tensor::Tensor;
 use sp1_hypercube::{air::MachineAir, Chip, LogUpGkrOutput};
-use tracing::{instrument, Instrument};
+use tracing::instrument;
 
 use crate::{
     extract_outputs, gkr_transition,
@@ -30,7 +33,7 @@ pub struct CudaLogUpGkrOptions {
 ///
 /// Processes all of the chip interaction information and traces into GKR circuit format.
 #[instrument(skip_all, level = "debug")]
-pub async fn generate_first_layer<'a>(
+pub fn generate_first_layer<'a>(
     input_data: &GkrInputData<'a>,
     backend: &TaskScope,
 ) -> FirstGkrLayer {
@@ -64,14 +67,15 @@ pub async fn generate_first_layer<'a>(
         .collect::<Buffer<_>>();
     let height = interaction_start_indices.last().copied().unwrap() as usize;
 
-    let interaction_start_indices = interaction_start_indices.to_device_in(backend).await.unwrap();
+    let interaction_start_indices =
+        DeviceBuffer::from_host(&interaction_start_indices, backend).unwrap().into_inner();
     let mut interaction_data = Buffer::<u32, _>::with_capacity_in(height, backend.clone());
     let mut numerator = Tensor::<Felt, _>::with_sizes_in([2, 1, height * 2], backend.clone());
     let mut denominator = Tensor::<Ext, _>::with_sizes_in([2, 1, height * 2], backend.clone());
 
     let beta = input_data.beta_seed.clone();
-    let beta = beta.to_device_in(backend).await.unwrap();
-    let betas = Mle::partial_lagrange(&beta).await;
+    let beta = DevicePoint::from_host(&beta, backend).unwrap().into_inner();
+    let betas = Mle::new(DevicePoint::new(beta).partial_lagrange().into_inner());
 
     // Generate traces per chip, sorted by chip name.
     let mut interaction_offset = 0;
@@ -161,7 +165,7 @@ pub async fn generate_first_layer<'a>(
 }
 
 impl<'a> LogUpCudaCircuit<'a, TaskScope> {
-    pub async fn next(&'_ mut self, recompute_first_layer: bool) -> Option<GkrCircuitLayer<'_>> {
+    pub fn next(&'_ mut self, recompute_first_layer: bool) -> Option<GkrCircuitLayer<'_>> {
         if recompute_first_layer {
             if let Some(layer) = self.materialized_layers.pop() {
                 Some(layer)
@@ -171,7 +175,7 @@ impl<'a> LogUpCudaCircuit<'a, TaskScope> {
                 }
                 assert!(self.num_virtual_layers == 1);
                 // We need to generate the virtual layers and store them in the circuit.
-                let layer = generate_first_layer(&self.input_data, self.backend()).await;
+                let layer = generate_first_layer(&self.input_data, self.backend());
                 self.num_virtual_layers = 0;
                 Some(GkrCircuitLayer::FirstLayer(layer))
             }
@@ -183,7 +187,7 @@ impl<'a> LogUpCudaCircuit<'a, TaskScope> {
 
 /// Generates a GKR circuit from the given chips and jagged trace data.
 #[instrument(skip_all, level = "debug")]
-pub async fn generate_gkr_circuit<'a, A: MachineAir<Felt>>(
+pub fn generate_gkr_circuit<'a, A: MachineAir<Felt>>(
     chips: &BTreeSet<Chip<Felt, A>>,
     all_interactions: BTreeMap<String, Arc<Interactions<Felt, TaskScope>>>,
     jagged_trace_data: &'a JaggedTraceMle<Felt, TaskScope>,
@@ -206,12 +210,12 @@ pub async fn generate_gkr_circuit<'a, A: MachineAir<Felt>>(
     let mut materialized_layers = Vec::new();
 
     // Generate the first layer.
-    let first_layer = generate_first_layer(&input_data, &backend).await;
+    let first_layer = generate_first_layer(&input_data, &backend);
     let num_row_variables = first_layer.num_row_variables;
     let num_interaction_variables = first_layer.num_interaction_variables;
 
     let first_layer = GkrCircuitLayer::FirstLayer(first_layer);
-    let layer = gkr_transition(&first_layer).await;
+    let layer = gkr_transition(&first_layer);
 
     if recompute_first_layer {
         drop(first_layer);
@@ -222,9 +226,8 @@ pub async fn generate_gkr_circuit<'a, A: MachineAir<Felt>>(
     // Transition from the previous layer to generate the next one.
     materialized_layers.push(layer);
     for i in 0..num_row_variables - 2 {
-        let layer = gkr_transition(materialized_layers.last().unwrap())
-            .instrument(tracing::trace_span!("gkr transition", layer = i))
-            .await;
+        let layer = tracing::trace_span!("gkr transition", layer = i)
+            .in_scope(|| gkr_transition(materialized_layers.last().unwrap()));
         materialized_layers.push(layer);
     }
 
@@ -237,7 +240,7 @@ pub async fn generate_gkr_circuit<'a, A: MachineAir<Felt>>(
     assert_eq!(last_layer.num_row_variables, 1);
 
     // Extract the outputs from the last layer.
-    let output = extract_outputs(last_layer, num_interaction_variables).await;
+    let output = extract_outputs(last_layer, num_interaction_variables);
     let circuit = LogUpCudaCircuit { materialized_layers, input_data, num_virtual_layers: 1 };
 
     (output, circuit)

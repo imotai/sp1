@@ -6,17 +6,15 @@ use core::pin::pin;
 use std::collections::BTreeSet;
 use std::{collections::BTreeMap, sync::Arc};
 
-use csl_cuda::TaskScope;
+use csl_cuda::{DeviceMle, DeviceTransposeKernel, TaskScope};
 use futures::stream::FuturesUnordered;
 use futures::{join, StreamExt};
 use rayon::prelude::*;
 use slop_air::BaseAir;
 use slop_algebra::Field;
 use slop_alloc::mem::CopyError;
-use slop_alloc::CopyIntoBackend;
 use slop_koala_bear::KoalaBear;
 use slop_multilinear::{Mle, PaddedMle};
-use slop_tensor::TransposeBackend;
 use sp1_hypercube::prover::{MainTraceData, PreprocessedTraceData, ProverSemaphore, TraceData};
 use sp1_hypercube::{
     air::MachineAir,
@@ -59,7 +57,7 @@ impl<F, A> CudaTraceGenerator<F, A>
 where
     F: Field,
     A: CudaTracegenAir<F>,
-    TaskScope: TransposeBackend<F>,
+    TaskScope: DeviceTransposeKernel<F>,
 {
     /// TODO(tqn) documentation
     #[instrument(skip_all, level = "debug")]
@@ -102,7 +100,7 @@ where
 
         // Stream that, when polled, copies the host traces to the device.
         let copied_host_traces = pin!(host_traces.then(|(name, trace)| async move {
-            (name, trace.copy_into_backend(&self.trace_allocator).await.unwrap())
+            (name, DeviceMle::from_host(&trace, &self.trace_allocator).unwrap().into_inner())
         }));
         // Stream that, when polled, copies events to the device and generates traces.
         let device_traces = device_airs
@@ -120,7 +118,7 @@ where
             })
             .collect::<FuturesUnordered<_>>()
             .filter_map(|(air, maybe_trace)| {
-                ready(maybe_trace.map(|trace| (air.name().to_string(), trace)))
+                ready(maybe_trace.map(|trace| (air.name().to_string(), trace.into_inner())))
             });
 
         let named_traces = futures::stream_select!(copied_host_traces, device_traces)
@@ -218,7 +216,7 @@ where
 
         // Stream that, when polled, copies the host traces to the device.
         let copied_host_traces = pin!(host_traces.then(|(name, trace)| async move {
-            (name, trace.copy_into_backend(&self.trace_allocator).await.unwrap())
+            (name, DeviceMle::from_host(&trace, &self.trace_allocator).unwrap().into_inner())
         }));
         // Stream that, when polled, copies events to the device and generates traces.
         let device_traces = device_airs
@@ -235,7 +233,7 @@ where
                         )
                         .await
                         .unwrap();
-                    (air.name().to_string(), trace)
+                    (air.name().to_string(), trace.into_inner())
                 }
             })
             .collect::<FuturesUnordered<_>>();
@@ -270,7 +268,7 @@ impl<F, A> TraceGenerator<F, A, TaskScope> for CudaTraceGenerator<F, A>
 where
     F: Field,
     A: CudaTracegenAir<F>,
-    TaskScope: TransposeBackend<F>,
+    TaskScope: DeviceTransposeKernel<F>,
 {
     fn machine(&self) -> &Machine<F, A> {
         &self.machine
@@ -380,7 +378,7 @@ pub trait CudaTracegenAir<F: Field>: MachineAir<F> {
         &self,
         program: &Self::Program,
         scope: &TaskScope,
-    ) -> impl Future<Output = Result<Option<Mle<F, TaskScope>>, CopyError>> + Send {
+    ) -> impl Future<Output = Result<Option<DeviceMle<F>>, CopyError>> + Send {
         #[allow(unreachable_code)]
         ready(unimplemented!())
     }
@@ -400,7 +398,7 @@ pub trait CudaTracegenAir<F: Field>: MachineAir<F> {
         input: &Self::Record,
         output: &mut Self::Record,
         scope: &TaskScope,
-    ) -> impl Future<Output = Result<Mle<F, TaskScope>, CopyError>> + Send {
+    ) -> impl Future<Output = Result<DeviceMle<F>, CopyError>> + Send {
         #[allow(unreachable_code)]
         ready(unimplemented!())
     }
@@ -411,7 +409,6 @@ pub(crate) mod tests {
     use super::{CudaTracegenAir, F};
     use csl_cuda::TaskScope;
     use rand::{rngs::StdRng, SeedableRng};
-    use slop_alloc::ToHost;
     use slop_tensor::Tensor;
     use sp1_hypercube::air::MachineAir;
     use std::collections::BTreeSet;
@@ -483,7 +480,6 @@ pub(crate) mod tests {
             .await
             .expect("should copy events to device successfully")
             .to_host()
-            .await
             .expect("should copy trace to host successfully")
             .into_guts();
 

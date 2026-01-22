@@ -13,14 +13,15 @@ use csl_cuda::{
         logup_gkr_sum_as_poly_circuit_layer as sum_as_poly_circuit_layer_kernel,
         logup_gkr_sum_as_poly_first_layer as sum_as_poly_first_layer_kernel,
     },
-    TaskScope, ToDevice,
+    DeviceBuffer, DeviceTensor, TaskScope,
 };
+use csl_cuda::{DeviceMle, DevicePoint};
 use itertools::Itertools;
 use slop_algebra::{
     interpolate_univariate_polynomial, AbstractExtensionField, AbstractField, Field,
     UnivariatePolynomial,
 };
-use slop_alloc::{Buffer, HasBackend, ToHost};
+use slop_alloc::{Buffer, HasBackend};
 use slop_challenger::{FieldChallenger, IopCtx};
 use slop_multilinear::{Mle, Point};
 use slop_sumcheck::PartialSumcheckProof;
@@ -37,25 +38,25 @@ use csl_utils::{DenseData, Ext, Felt, JaggedMle};
 use rayon::prelude::*;
 use slop_sumcheck::partially_verify_sumcheck_proof;
 
-pub async fn get_component_poly_evals(poly: &LogupRoundPolynomial) -> Vec<Ext> {
+pub fn get_component_poly_evals(poly: &LogupRoundPolynomial) -> Vec<Ext> {
     match &poly.layer {
         PolynomialLayer::InteractionsLayer(guts) => {
             debug_assert_eq!(guts.sizes(), [4, 1]);
-            guts.as_buffer().to_host().await.unwrap().to_vec()
+            DeviceBuffer::from_raw(guts.as_buffer().clone()).to_host().unwrap().to_vec()
         }
         PolynomialLayer::CircuitLayer(_) => unreachable!(),
     }
 }
 
-async fn finalize_univariate(
+fn finalize_univariate(
     poly: &LogupRoundPolynomial,
     univariate_evals: Tensor<Ext, TaskScope>,
     claim: Ext,
 ) -> UnivariatePolynomial<Ext> {
-    let evals = univariate_evals.sum(1).await.into_buffer().to_host().await.unwrap();
-    let mut eval_zero: Ext = *evals[0];
-    let mut eval_half: Ext = *evals[1];
-    let eq_sum = *evals[2];
+    let evals = DeviceTensor::from_raw(univariate_evals).sum_dim(1).to_host().unwrap();
+    let mut eval_zero: Ext = *evals[[0]];
+    let mut eval_half: Ext = *evals[[1]];
+    let eq_sum = *evals[[2]];
     let point_last = *poly.point.last().unwrap();
 
     // Correct the evaluations by the sum of the eq polynomial, which accounts for the
@@ -92,10 +93,7 @@ async fn finalize_univariate(
 }
 
 /// Evaluates the first layer polynomial and eq polynomial at 0 and 1/2.
-async fn sum_as_poly_first_layer(
-    poly: &FirstLayerPolynomial,
-    claim: Ext,
-) -> UnivariatePolynomial<Ext> {
+fn sum_as_poly_first_layer(poly: &FirstLayerPolynomial, claim: Ext) -> UnivariatePolynomial<Ext> {
     let circuit = &poly.layer.jagged_mle;
 
     let height = circuit.dense_data.height >> 1;
@@ -130,11 +128,11 @@ async fn sum_as_poly_first_layer(
             )
             .unwrap();
     }
-    let evals = output.sum(1).await.into_buffer().to_host().await.unwrap();
+    let evals = DeviceTensor::from_raw(output).sum_dim(1).to_host().unwrap();
 
-    let mut eval_zero: Ext = *evals[0];
-    let mut eval_half: Ext = *evals[1];
-    let eq_sum = *evals[2];
+    let mut eval_zero: Ext = *evals[[0]];
+    let mut eval_half: Ext = *evals[[1]];
+    let eq_sum = *evals[[2]];
 
     // Correct the evaluations by the sum of the eq polynomial, which accounts for the
     // contribution of padded row for the denominator expression
@@ -166,7 +164,7 @@ async fn sum_as_poly_first_layer(
     )
 }
 
-async fn fix_last_variable_materialized_round(
+fn fix_last_variable_materialized_round(
     mut poly: LogupRoundPolynomial,
     alpha: Ext,
 ) -> LogupRoundPolynomial {
@@ -204,7 +202,9 @@ async fn fix_last_variable_materialized_round(
 
             let layer = PolynomialLayer::InteractionsLayer(output);
 
-            let eq_interaction = poly.eq_interaction.fix_last_variable(alpha).await;
+            let eq_interaction = DeviceMle::new(poly.eq_interaction)
+                .fix_last_variable_constant_padding(alpha, Ext::zero())
+                .into_inner();
 
             LogupRoundPolynomial {
                 layer,
@@ -244,7 +244,9 @@ async fn fix_last_variable_materialized_round(
                         )
                         .unwrap();
                 }
-                let eq_row = poly.eq_row.fix_last_variable(alpha).await;
+                let eq_row = DeviceMle::new(poly.eq_row)
+                    .fix_last_variable_constant_padding(alpha, Ext::zero())
+                    .into_inner();
 
                 return LogupRoundPolynomial {
                     layer: PolynomialLayer::InteractionsLayer(output),
@@ -261,7 +263,7 @@ async fn fix_last_variable_materialized_round(
     }
 }
 
-async fn fix_and_sum_first_layer(
+fn fix_and_sum_first_layer(
     mut poly: FirstLayerPolynomial,
     alpha: Ext,
     claim: Ext,
@@ -278,7 +280,7 @@ async fn fix_and_sum_first_layer(
         poly.layer.jagged_mle.next_start_indices_and_column_heights();
     let output_height = output_interaction_start_indices.last().copied().unwrap() as usize;
     let output_interaction_start_indices =
-        output_interaction_start_indices.to_device_in(backend).await.unwrap();
+        DeviceBuffer::from_host(&output_interaction_start_indices, backend).unwrap().into_inner();
 
     // Create a new layer
     let output_layer: Tensor<Ext, TaskScope> =
@@ -295,7 +297,9 @@ async fn fix_and_sum_first_layer(
     );
 
     // Fix the eq_row variables
-    let eq_row = poly.eq_row.fix_last_variable(alpha).await;
+    let eq_row = DeviceMle::new(poly.eq_row)
+        .fix_last_variable_constant_padding(alpha, Ext::zero())
+        .into_inner();
 
     // populate the new layer
     const BLOCK_SIZE: usize = 256;
@@ -348,11 +352,11 @@ async fn fix_and_sum_first_layer(
         eq_adjustment: Ext::one(),
         padding_adjustment,
     };
-    let univariate_evals = finalize_univariate(&result_poly, univariate_evals, claim).await;
+    let univariate_evals = finalize_univariate(&result_poly, univariate_evals, claim);
     (univariate_evals, result_poly)
 }
 
-async fn sum_as_poly_materialized_round(
+fn sum_as_poly_materialized_round(
     poly: &LogupRoundPolynomial,
     claim: Ext,
 ) -> UnivariatePolynomial<Ext> {
@@ -390,11 +394,11 @@ async fn sum_as_poly_materialized_round(
         }
     };
 
-    finalize_univariate(poly, univariate_evals, claim).await
+    finalize_univariate(poly, univariate_evals, claim)
 }
 
 // returns (next univariate, next round polynomial)
-async fn fix_and_sum_materialized_round(
+fn fix_and_sum_materialized_round(
     mut poly: LogupRoundPolynomial,
     alpha: Ext,
     claim: Ext,
@@ -407,7 +411,9 @@ async fn fix_and_sum_materialized_round(
     match &poly.layer {
         PolynomialLayer::InteractionsLayer(guts) => {
             // First, fix_last_variable on the eq_interaction
-            let eq_interaction = poly.eq_interaction.fix_last_variable(alpha).await;
+            let eq_interaction = DeviceMle::new(poly.eq_interaction)
+                .fix_last_variable_constant_padding(alpha, Ext::zero())
+                .into_inner();
             let height = guts.sizes()[1];
             let output_height = height.div_ceil(2);
             let backend = guts.backend();
@@ -458,7 +464,7 @@ async fn fix_and_sum_materialized_round(
                 eq_adjustment: poly.eq_adjustment,
                 padding_adjustment,
             };
-            let univariate_evals = finalize_univariate(&poly, univariate_evals, claim).await;
+            let univariate_evals = finalize_univariate(&poly, univariate_evals, claim);
             (univariate_evals, poly)
         }
         PolynomialLayer::CircuitLayer(circuit) => {
@@ -471,7 +477,9 @@ async fn fix_and_sum_materialized_round(
                 let mut output: Tensor<Ext, TaskScope> =
                     Tensor::with_sizes_in([4, height], backend.clone());
 
-                let eq_row = poly.eq_row.fix_last_variable(alpha).await;
+                let eq_row = DeviceMle::new(poly.eq_row)
+                    .fix_last_variable_constant_padding(alpha, Ext::zero())
+                    .into_inner();
 
                 const BLOCK_SIZE: usize = 256;
                 const STRIDE: usize = 32;
@@ -512,19 +520,22 @@ async fn fix_and_sum_materialized_round(
                     eq_adjustment: padding_adjustment,
                     padding_adjustment: Ext::one(),
                 };
-                let univariate_evals = finalize_univariate(&poly, univariate_evals, claim).await;
+                let univariate_evals = finalize_univariate(&poly, univariate_evals, claim);
                 (univariate_evals, poly)
             } else {
-                let eq_row_handle = tokio::spawn(async move {
-                    let eq_row = poly.eq_row.fix_last_variable(alpha).await;
-                    eq_row
-                });
+                // Sequential call instead of tokio::spawn
+                let eq_row = DeviceMle::new(poly.eq_row)
+                    .fix_last_variable_constant_padding(alpha, Ext::zero())
+                    .into_inner();
+
                 let (output_interaction_start_indices, output_interaction_row_counts) =
                     circuit.jagged_mle.next_start_indices_and_column_heights();
                 let output_height =
                     output_interaction_start_indices.last().copied().unwrap() as usize;
                 let output_interaction_start_indices =
-                    output_interaction_start_indices.to_device_in(backend).await.unwrap();
+                    DeviceBuffer::from_host(&output_interaction_start_indices, backend)
+                        .unwrap()
+                        .into_inner();
 
                 // Create a new layer
                 let output_layer: Tensor<Ext, TaskScope> =
@@ -551,7 +562,6 @@ async fn fix_and_sum_materialized_round(
                     Tensor::<Ext, TaskScope>::with_sizes_in([3, grid_size_x], backend.clone());
                 let num_tiles = BLOCK_SIZE.checked_div(32).unwrap_or(1);
                 let shared_mem = num_tiles * std::mem::size_of::<Ext>();
-                let eq_row = eq_row_handle.await.unwrap();
 
                 unsafe {
                     univariate_evals.assume_init();
@@ -593,7 +603,7 @@ async fn fix_and_sum_materialized_round(
                     padding_adjustment,
                 };
 
-                let univariate = finalize_univariate(&poly, univariate_evals, claim).await;
+                let univariate = finalize_univariate(&poly, univariate_evals, claim);
                 (univariate, poly)
             }
         }
@@ -620,7 +630,7 @@ where
     alpha
 }
 
-pub async fn first_round_sumcheck<C>(
+pub fn first_round_sumcheck<C>(
     poly: FirstLayerPolynomial,
     challenger: &mut C,
     claim: Ext,
@@ -640,14 +650,14 @@ where
     // The univariate poly messages.  This will be a rlc of the polys' univariate polys.
     let mut univariate_poly_msgs: Vec<UnivariatePolynomial<Ext>> = vec![];
 
-    let uni_poly = sum_as_poly_first_layer(&poly, claim).await;
+    let uni_poly = sum_as_poly_first_layer(&poly, claim);
 
     let mut alpha =
         process_univariate_polynomial(uni_poly, challenger, &mut univariate_poly_msgs, &mut point);
 
     let round_claim = univariate_poly_msgs.last().unwrap().eval_at_point(*point.first().unwrap());
 
-    let (mut uni_poly, mut poly) = fix_and_sum_first_layer(poly, alpha, round_claim).await;
+    let (mut uni_poly, mut poly) = fix_and_sum_first_layer(poly, alpha, round_claim);
 
     alpha =
         process_univariate_polynomial(uni_poly, challenger, &mut univariate_poly_msgs, &mut point);
@@ -656,7 +666,7 @@ where
         // Get the round claims from the last round's univariate poly messages.
         let round_claim = univariate_poly_msgs.last().unwrap().eval_at_point(alpha);
 
-        (uni_poly, poly) = fix_and_sum_materialized_round(poly, alpha, round_claim).await;
+        (uni_poly, poly) = fix_and_sum_materialized_round(poly, alpha, round_claim);
 
         alpha = process_univariate_polynomial(
             uni_poly,
@@ -666,11 +676,11 @@ where
         );
     }
 
-    poly = fix_last_variable_materialized_round(poly, *point.first().unwrap()).await;
+    poly = fix_last_variable_materialized_round(poly, *point.first().unwrap());
 
     let evals = univariate_poly_msgs.last().unwrap().eval_at_point(*point.first().unwrap());
 
-    let component_poly_evals = get_component_poly_evals(&poly).await;
+    let component_poly_evals = get_component_poly_evals(&poly);
 
     (
         PartialSumcheckProof {
@@ -682,7 +692,7 @@ where
     )
 }
 
-pub async fn materialized_round_sumcheck<C: FieldChallenger<Felt>>(
+pub fn materialized_round_sumcheck<C: FieldChallenger<Felt>>(
     mut poly: LogupRoundPolynomial,
     challenger: &mut C,
     claim: Ext,
@@ -694,15 +704,15 @@ pub async fn materialized_round_sumcheck<C: FieldChallenger<Felt>>(
     let mut univariate_poly_msgs = Vec::with_capacity(num_variables as usize);
 
     // First round: compute initial univariate polynomial
-    let uni_poly = sum_as_poly_materialized_round(&poly, claim).await;
+    let uni_poly = sum_as_poly_materialized_round(&poly, claim);
     let alpha =
         process_univariate_polynomial(uni_poly, challenger, &mut univariate_poly_msgs, &mut point);
 
     // Early return for single variable case
     if num_variables == 1 {
-        poly = fix_last_variable_materialized_round(poly, alpha).await;
+        poly = fix_last_variable_materialized_round(poly, alpha);
         let eval = univariate_poly_msgs[0].eval_at_point(alpha);
-        let component_poly_evals = get_component_poly_evals(&poly).await;
+        let component_poly_evals = get_component_poly_evals(&poly);
 
         return (
             PartialSumcheckProof {
@@ -718,8 +728,7 @@ pub async fn materialized_round_sumcheck<C: FieldChallenger<Felt>>(
     let mut round_claim = univariate_poly_msgs[0].eval_at_point(alpha);
 
     for _round in 1..num_variables as usize {
-        let (uni_poly, next_poly) =
-            fix_and_sum_materialized_round(poly, point[0], round_claim).await;
+        let (uni_poly, next_poly) = fix_and_sum_materialized_round(poly, point[0], round_claim);
         poly = next_poly;
 
         let alpha = process_univariate_polynomial(
@@ -732,11 +741,11 @@ pub async fn materialized_round_sumcheck<C: FieldChallenger<Felt>>(
     }
 
     // Final fix_last_variable
-    poly = fix_last_variable_materialized_round(poly, point[0]).await;
+    poly = fix_last_variable_materialized_round(poly, point[0]);
 
     // Compute final evaluation
     let eval = univariate_poly_msgs.last().unwrap().eval_at_point(point[0]);
-    let component_poly_evals = get_component_poly_evals(&poly).await;
+    let component_poly_evals = get_component_poly_evals(&poly);
 
     (
         PartialSumcheckProof {
@@ -748,7 +757,7 @@ pub async fn materialized_round_sumcheck<C: FieldChallenger<Felt>>(
     )
 }
 
-pub async fn bench_materialized_sumcheck<GC: IopCtx>(
+pub fn bench_materialized_sumcheck<GC: IopCtx>(
     interaction_row_counts: Vec<u32>,
     rng: &mut impl rand::Rng,
     num_row_variables: Option<u32>,
@@ -758,8 +767,7 @@ pub async fn bench_materialized_sumcheck<GC: IopCtx>(
     let get_challenger = move || GC::default_challenger();
     let now = std::time::Instant::now();
 
-    let (layer, test_data) =
-        generate_test_data(rng, interaction_row_counts, num_row_variables).await;
+    let (layer, test_data) = generate_test_data(rng, interaction_row_counts, num_row_variables);
 
     println!("generate test data took {}s", now.elapsed().as_secs_f64());
 
@@ -774,18 +782,19 @@ pub async fn bench_materialized_sumcheck<GC: IopCtx>(
 
     let lambda = rng.gen::<Ext>();
 
-    csl_cuda::spawn(move |t| async move {
+    csl_cuda::run_sync_in_place(move |t| {
         let now = std::time::Instant::now();
-        let jagged_mle = jagged_gkr_layer_to_device(jagged_mle, &t).await;
+        let jagged_mle = jagged_gkr_layer_to_device(jagged_mle, &t);
 
-        let row_point = row_point.to_device_in(&t).await.unwrap();
-        let interaction_point = interaction_point.to_device_in(&t).await.unwrap();
+        let row_point = DevicePoint::from_host(&row_point, &t).unwrap().into_inner();
+        let interaction_point =
+            DevicePoint::from_host(&interaction_point, &t).unwrap().into_inner();
 
-        let eq_row = Mle::partial_lagrange(&row_point).await;
+        let eq_row = Mle::new(DevicePoint::new(row_point).partial_lagrange().into_inner());
         let eq_interaction: Mle<
             slop_algebra::extension::BinomialExtensionField<slop_koala_bear::KoalaBear, 4>,
             TaskScope,
-        > = Mle::partial_lagrange(&interaction_point).await;
+        > = Mle::new(DevicePoint::new(interaction_point).partial_lagrange().into_inner());
 
         println!("moving to device took {}s", now.elapsed().as_secs_f64());
 
@@ -801,29 +810,25 @@ pub async fn bench_materialized_sumcheck<GC: IopCtx>(
             point: poly_point.clone(),
         };
 
-        let host_eq = Mle::partial_lagrange(&poly_point).await;
+        let host_eq = Mle::blocking_partial_lagrange(&poly_point);
         let now = std::time::Instant::now();
-        let claim = slop_futures::rayon::spawn(move || {
-            numerator_0
-                .guts()
-                .as_slice()
-                .par_iter()
-                .zip_eq(numerator_1.guts().as_slice().par_iter())
-                .zip_eq(denominator_0.guts().as_slice().par_iter())
-                .zip_eq(denominator_1.guts().as_slice().par_iter())
-                .zip_eq(host_eq.guts().as_slice().par_iter())
-                .map(|((((n_0, n_1), d_0), d_1), eq)| {
-                    let numerator_eval = *n_0 * *d_1 + *n_1 * *d_0;
-                    let denominator_eval = *d_0 * *d_1;
-                    *eq * (numerator_eval * lambda + denominator_eval)
-                })
-                .sum::<Ext>()
-        })
-        .await
-        .unwrap();
+        let claim = numerator_0
+            .guts()
+            .as_slice()
+            .par_iter()
+            .zip_eq(numerator_1.guts().as_slice().par_iter())
+            .zip_eq(denominator_0.guts().as_slice().par_iter())
+            .zip_eq(denominator_1.guts().as_slice().par_iter())
+            .zip_eq(host_eq.guts().as_slice().par_iter())
+            .map(|((((n_0, n_1), d_0), d_1), eq)| {
+                let numerator_eval = *n_0 * *d_1 + *n_1 * *d_0;
+                let denominator_eval = *d_0 * *d_1;
+                *eq * (numerator_eval * lambda + denominator_eval)
+            })
+            .sum::<Ext>();
 
         let mut challenger = get_challenger();
-        t.synchronize().await.unwrap();
+        t.synchronize_blocking().unwrap();
         println!(
             "time for claim on host is {}, now starting sumcheck",
             now.elapsed().as_secs_f64()
@@ -831,15 +836,15 @@ pub async fn bench_materialized_sumcheck<GC: IopCtx>(
 
         let now = std::time::Instant::now();
         let (mut proof, mut evals) =
-            materialized_round_sumcheck(polynomial.clone(), &mut challenger, claim).await;
+            materialized_round_sumcheck(polynomial.clone(), &mut challenger, claim);
         println!("time for sumcheck: {}", now.elapsed().as_secs_f64());
 
         for _ in 0..2 {
             let now = std::time::Instant::now();
-            t.synchronize().await.unwrap();
+            t.synchronize_blocking().unwrap();
             let mut challenger = get_challenger();
             (proof, evals) =
-                materialized_round_sumcheck(polynomial.clone(), &mut challenger, claim).await;
+                materialized_round_sumcheck(polynomial.clone(), &mut challenger, claim);
             println!("time for sumcheck: {}", now.elapsed().as_secs_f64());
         }
 
@@ -869,13 +874,13 @@ pub async fn bench_materialized_sumcheck<GC: IopCtx>(
         // Assert that the final eval is correct.
         assert_eq!(final_eval, expected_final_eval);
     })
-    .await
     .unwrap();
 }
 
 #[cfg(test)]
 mod tests {
     use crate::utils::{generate_test_data, GkrTestData};
+    use csl_cuda::DevicePoint;
     use csl_utils::TestGC;
     use slop_multilinear::Mle;
     use slop_multilinear::Point;
@@ -885,13 +890,13 @@ mod tests {
     use rand::{rngs::StdRng, Rng, SeedableRng as _};
 
     /// Since we don't ever *only* fix last variable on a normal circuit layer, this unit test does fix_and_sum with a dummy claim.q
-    #[tokio::test]
-    async fn test_logup_round_polynomial_fix_last_variable() {
+    #[test]
+    fn test_logup_round_polynomial_fix_last_variable() {
         let mut rng = StdRng::seed_from_u64(0);
 
         let interaction_row_counts: Vec<u32> =
             vec![(1 << 8) + 2, (1 << 10) + 2, 1 << 8, 1 << 6, 1 << 10, 1 << 8, (1 << 6) + 2];
-        let (layer, test_data) = generate_test_data(&mut rng, interaction_row_counts, None).await;
+        let (layer, test_data) = generate_test_data(&mut rng, interaction_row_counts, None);
         let GkrTestData { numerator_0, numerator_1, denominator_0, denominator_1 } = test_data;
 
         let GkrLayer { jagged_mle, num_interaction_variables, num_row_variables } = layer;
@@ -906,14 +911,16 @@ mod tests {
 
         let lambda = rng.gen::<Ext>();
 
-        csl_cuda::spawn(move |t| async move {
-            let jagged_mle = jagged_gkr_layer_to_device(jagged_mle, &t).await;
+        csl_cuda::run_sync_in_place(move |t| {
+            let jagged_mle = jagged_gkr_layer_to_device(jagged_mle, &t);
 
-            let row_point = row_point.to_device_in(&t).await.unwrap();
-            let interaction_point = interaction_point.to_device_in(&t).await.unwrap();
+            let row_point = DevicePoint::from_host(&row_point, &t).unwrap().into_inner();
+            let interaction_point =
+                DevicePoint::from_host(&interaction_point, &t).unwrap().into_inner();
 
-            let eq_row = Mle::partial_lagrange(&row_point).await;
-            let eq_interaction = Mle::partial_lagrange(&interaction_point).await;
+            let eq_row = Mle::new(DevicePoint::new(row_point).partial_lagrange().into_inner());
+            let eq_interaction =
+                Mle::new(DevicePoint::new(interaction_point).partial_lagrange().into_inner());
 
             let layer = GkrLayer { jagged_mle, num_interaction_variables, num_row_variables };
 
@@ -927,18 +934,19 @@ mod tests {
                 point: poly_point,
             };
 
-            // Get the exepcted evaluations
-            let numerator_0_eval = numerator_0.eval_at(&random_point).await[0];
-            let numerator_1_eval = numerator_1.eval_at(&random_point).await[0];
-            let denominator_0_eval = denominator_0.eval_at(&random_point).await[0];
-            let denominator_1_eval = denominator_1.eval_at(&random_point).await[0];
+            // Get the expected evaluations using host-side computation
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let numerator_0_eval = rt.block_on(numerator_0.eval_at(&random_point))[0];
+            let numerator_1_eval = rt.block_on(numerator_1.eval_at(&random_point))[0];
+            let denominator_0_eval = rt.block_on(denominator_0.eval_at(&random_point))[0];
+            let denominator_1_eval = rt.block_on(denominator_1.eval_at(&random_point))[0];
 
             for alpha in random_point.iter().rev() {
                 let _uni_poly;
                 (_uni_poly, polynomial) =
-                    fix_and_sum_materialized_round(polynomial, *alpha, Ext::zero()).await;
+                    fix_and_sum_materialized_round(polynomial, *alpha, Ext::zero());
             }
-            let component_poly_evals = get_component_poly_evals(&polynomial).await;
+            let component_poly_evals = get_component_poly_evals(&polynomial);
 
             // Get the values from the sumcheck polynomial
             let [n_0, n_1, d_0, d_1] = component_poly_evals.try_into().unwrap();
@@ -947,65 +955,14 @@ mod tests {
             assert_eq!(denominator_0_eval, d_0);
             assert_eq!(denominator_1_eval, d_1);
         })
-        .await
         .unwrap();
     }
 
-    #[tokio::test]
-    async fn test_logup_round_sumcheck_polynomial() {
+    #[test]
+    fn test_logup_round_sumcheck_polynomial() {
         let mut rng = StdRng::seed_from_u64(0);
-        // let interaction_row_counts: Vec<u32> = vec![
-        //     14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216,
-        //     14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 14216, 362856, 362856, 362856,
-        //     362856, 362856, 362856, 362856, 362856, 362856, 362856, 362856, 362856, 362856, 362856,
-        //     362856, 362856, 362856, 312, 312, 312, 312, 312, 312, 312, 312, 312, 312, 312, 312,
-        //     312, 312, 312, 312, 312, 312, 312, 312, 129480, 129480, 129480, 129480, 129480, 129480,
-        //     129480, 129480, 129480, 129480, 129480, 129480, 129480, 129480, 129480, 129480, 129480,
-        //     129480, 129480, 129480, 129480, 129480, 129480, 129480, 129480, 185848, 185848, 185848,
-        //     185848, 185848, 185848, 185848, 185848, 185848, 185848, 185848, 185848, 185848, 185848,
-        //     185848, 185848, 185848, 185848, 185848, 16384, 16384, 16384, 16384, 16384, 16384, 4, 4,
-        //     4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-        //     4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-        //     4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-        //     4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-        //     4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 123640, 123640, 123640, 123640,
-        //     123640, 123640, 123640, 3360, 3360, 3360, 3360, 3360, 3360, 3360, 3360, 3360, 3360,
-        //     3360, 3360, 3360, 3360, 3360, 3360, 3360, 35400, 35400, 35400, 35400, 35400, 35400,
-        //     35400, 35400, 35400, 35400, 35400, 35400, 35400, 35400, 35400, 35400, 35400, 35400,
-        //     35400, 35400, 35400, 162272, 162272, 162272, 162272, 162272, 162272, 162272, 162272,
-        //     162272, 162272, 162272, 162272, 162272, 162272, 162272, 162272, 162272, 162272, 162272,
-        //     162272, 162272, 162272, 162272, 172136, 172136, 172136, 172136, 172136, 172136, 172136,
-        //     172136, 172136, 172136, 172136, 172136, 172136, 172136, 172136, 172136, 172136, 172136,
-        //     172136, 172136, 172136, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200,
-        //     200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 2472, 2472, 2472, 2472, 2472, 2472,
-        //     2472, 2472, 2472, 2472, 2472, 2472, 2472, 2472, 2472, 2472, 2472, 2472, 2472, 2472,
-        //     2472, 2472, 2384, 2384, 2384, 2384, 2384, 2384, 2384, 2384, 2384, 2384, 2384, 2384,
-        //     2384, 2384, 2384, 2384, 2384, 2384, 2384, 2384, 2384, 4568, 4568, 4568, 4568, 4568,
-        //     4568, 4568, 4568, 4568, 4568, 4568, 4568, 4568, 4568, 4568, 4568, 4568, 4568, 4568,
-        //     4568, 16, 16, 16, 16, 16, 16, 16, 61824, 61824, 61824, 61824, 61824, 61824, 61824,
-        //     61824, 61824, 61824, 61824, 61824, 61824, 61824, 32, 32, 32, 32, 32, 32, 32, 32, 32,
-        //     32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
-        //     32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
-        //     118008, 32768, 44304, 44304, 44304, 44304, 44304, 44304, 44304, 44304, 44304, 44304,
-        //     44304, 44304, 44304, 44304, 44304, 44304, 44304, 44304, 44304, 44304, 44304, 44304,
-        //     44304, 44304, 44304, 44304, 44304, 6928, 6928, 6928, 6928, 6928, 6928, 6928, 6928,
-        //     6928, 6928, 6928, 6928, 6928, 6928, 6928, 6928, 6928, 6928, 6928, 6928, 6928, 6928,
-        //     6928, 6928, 6928, 6928, 6928, 6928, 6928, 8, 8, 8, 8, 8, 8, 8, 8, 117224, 117224,
-        //     117224, 117224, 117224, 117224, 117224, 117224, 117224, 117224, 117224, 117224, 117224,
-        //     117224, 117224, 117224, 117224, 117224, 117224, 117224, 117224, 117224, 117224, 181136,
-        //     181136, 181136, 181136, 181136, 181136, 181136, 181136, 181136, 181136, 181136, 181136,
-        //     181136, 181136, 181136, 181136, 181136, 181136, 181136, 181136, 181136, 3032, 3032,
-        //     3032, 3032, 3032, 3032, 3032, 3032, 3032, 3032, 3032, 3032, 3032, 3032, 3032, 3032,
-        //     3032, 3032, 3032, 3032, 3032, 2640, 2640, 2640, 2640, 2640, 2640, 2640, 2640, 2640,
-        //     2640, 2640, 2640, 2640, 2640, 2640, 2640, 2640, 2640, 2640, 2640, 2640, 4648, 4648,
-        //     4648, 4648, 4648, 4648, 4648, 4648, 4648, 4648, 4648, 4648, 4648, 4648, 4648, 4648,
-        //     4648, 4648, 4648, 4648, 4648, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
-        //     8, 4, 4, 4, 4, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
-        //     8, 8, 8, 8, 8, 8, 29160, 29160, 29160, 29160, 29160, 29160, 29160, 29160, 29160, 29160,
-        //     29160, 29160, 29160,
-        // ];
         let interaction_row_counts: Vec<u32> = vec![92, 100, 278, 220, 82, 82];
 
-        bench_materialized_sumcheck::<TestGC>(interaction_row_counts, &mut rng, None).await;
+        bench_materialized_sumcheck::<TestGC>(interaction_row_counts, &mut rng, None);
     }
 }

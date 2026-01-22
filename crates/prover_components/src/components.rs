@@ -1,5 +1,8 @@
+use std::{collections::BTreeMap, sync::Arc};
+
 use csl_air::{air_block::BlockAir, codegen_cuda_eval, SymbolicProverFolder};
-use csl_cuda::{PinnedBuffer, TaskScope, ToDevice};
+use csl_challenger::{DuplexChallenger, MultiField32Challenger};
+use csl_cuda::{PinnedBuffer, TaskScope};
 
 use csl_basefold::FriCudaProver;
 use csl_merkle_tree::{CudaTcsProver, Poseidon2Bn254CudaProver, Poseidon2KoalaBear16CudaProver};
@@ -7,6 +10,7 @@ use csl_shard_prover::{CudaShardProver, CudaShardProverComponents};
 use csl_tracegen::CudaTracegenAir;
 use slop_algebra::extension::BinomialExtensionField;
 use slop_basefold::BasefoldVerifier;
+use slop_bn254::Bn254Fr;
 use slop_challenger::IopCtx;
 use slop_futures::queue::WorkerQueue;
 use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
@@ -14,7 +18,6 @@ use sp1_core_machine::riscv::RiscvAir;
 use sp1_hypercube::{air::MachineAir, prover::ZerocheckAir, SP1InnerPcs, SP1OuterPcs, SP1SC};
 use sp1_primitives::{SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_prover::{CompressAir, SP1ProverComponents, WrapAir};
-use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
 
 pub struct SP1CudaProverComponents;
 
@@ -31,6 +34,7 @@ impl CudaShardProverComponents<KoalaBearDegree4Duplex> for CudaProverCoreCompone
     type P = Poseidon2KoalaBear16CudaProver;
     type Air = RiscvAir<KoalaBear>;
     type C = SP1InnerPcs;
+    type DeviceChallenger = DuplexChallenger<KoalaBear, TaskScope>;
 }
 
 /// Recursion prover components for the CUDA prover.
@@ -40,6 +44,7 @@ impl CudaShardProverComponents<KoalaBearDegree4Duplex> for CudaProverRecursionCo
     type P = Poseidon2KoalaBear16CudaProver;
     type Air = CompressAir<<SP1GlobalContext as IopCtx>::F>;
     type C = SP1InnerPcs;
+    type DeviceChallenger = DuplexChallenger<KoalaBear, TaskScope>;
 }
 
 /// Wrap prover components for the CUDA prover.
@@ -49,6 +54,7 @@ impl CudaShardProverComponents<SP1OuterGlobalContext> for CudaProverWrapComponen
     type P = Poseidon2Bn254CudaProver;
     type Air = WrapAir<<SP1OuterGlobalContext as IopCtx>::F>;
     type C = SP1OuterPcs;
+    type DeviceChallenger = MultiField32Challenger<KoalaBear, Bn254Fr, TaskScope>;
 }
 
 pub async fn new_cuda_prover<GC, PC>(
@@ -82,7 +88,7 @@ where
     // TODO: get this straight from the verifier.
     let basefold_verifier = BasefoldVerifier::<GC>::new(*verifier.fri_config(), 2);
 
-    let tcs_prover = PC::P::new(&scope).await;
+    let tcs_prover = PC::P::new(&scope);
     let basefold_prover = FriCudaProver::<GC, PC::P, GC::F>::new(
         tcs_prover,
         basefold_verifier.fri_config,
@@ -93,8 +99,7 @@ where
 
     for chip in machine.chips().iter() {
         let host_interactions = csl_logup_gkr::Interactions::new(chip.sends(), chip.receives());
-        let device_interactions =
-            csl_logup_gkr::Interactions::to_device_in(&host_interactions, &scope).await.unwrap();
+        let device_interactions = host_interactions.copy_to_device(&scope).unwrap();
         all_interactions.insert(chip.name().to_string(), Arc::new(device_interactions));
     }
 
@@ -104,17 +109,17 @@ where
         trace_buffers.push(pinned_buffer);
     }
 
-    CudaShardProver {
-        trace_buffers: Arc::new(WorkerQueue::new(trace_buffers)),
-        all_interactions,
-        all_zerocheck_programs: cache,
-        max_log_row_count: max_log_row_count as u32,
+    let trace_buffers = Arc::new(WorkerQueue::new(trace_buffers));
+    CudaShardProver::<GC, PC>::new(
+        trace_buffers,
+        max_log_row_count as u32,
         basefold_prover,
-        max_trace_size,
         machine,
-        backend: scope,
+        max_trace_size,
+        scope,
+        all_interactions,
+        cache,
         recompute_first_layer,
-        drop_ldes: recompute_first_layer,
-        _marker: PhantomData,
-    }
+        recompute_first_layer,
+    )
 }

@@ -1,6 +1,4 @@
-use csl_cuda::TaskScope;
-use csl_cuda::ToDevice;
-use slop_alloc::ToHost;
+use csl_cuda::{DeviceBuffer, DeviceTensor, TaskScope};
 use slop_alloc::{Backend, CpuBackend, HasBackend};
 use slop_tensor::Tensor;
 use std::collections::BTreeSet;
@@ -194,70 +192,74 @@ impl LogupRoundPolynomial {
     }
 }
 
-pub async fn jagged_gkr_layer_to_device(
+pub fn jagged_gkr_layer_to_device(
     jagged: JaggedMle<JaggedGkrLayer<CpuBackend>, CpuBackend>,
     backend: &TaskScope,
 ) -> JaggedMle<JaggedGkrLayer<TaskScope>, TaskScope> {
     let jagged_dense_device = JaggedGkrLayer {
-        layer: jagged.dense_data.layer.to_device_in(backend).await.unwrap(),
+        layer: DeviceTensor::from_host(&jagged.dense_data.layer, backend).unwrap().into_inner(),
         height: jagged.dense_data.height,
     };
 
     JaggedMle::new(
         jagged_dense_device,
-        jagged.col_index.to_device_in(backend).await.unwrap(),
-        jagged.start_indices.to_device_in(backend).await.unwrap(),
+        DeviceBuffer::from_host(&jagged.col_index, backend).unwrap().into_inner(),
+        DeviceBuffer::from_host(&jagged.start_indices, backend).unwrap().into_inner(),
         jagged.column_heights,
     )
 }
 
-pub async fn jagged_gkr_layer_to_host(
+pub fn jagged_gkr_layer_to_host(
     jagged: JaggedMle<JaggedGkrLayer<TaskScope>, TaskScope>,
 ) -> JaggedMle<JaggedGkrLayer<CpuBackend>, CpuBackend> {
     let jagged_dense_host = JaggedGkrLayer {
-        layer: jagged.dense_data.layer.to_host().await.unwrap(),
+        layer: DeviceTensor::from_raw(jagged.dense_data.layer).to_host().unwrap(),
         height: jagged.dense_data.height,
     };
 
     JaggedMle::new(
         jagged_dense_host,
-        jagged.col_index.to_host().await.unwrap(),
-        jagged.start_indices.to_host().await.unwrap(),
+        DeviceBuffer::from_raw(jagged.col_index).to_host().unwrap().into(),
+        DeviceBuffer::from_raw(jagged.start_indices).to_host().unwrap().into(),
         jagged.column_heights,
     )
 }
 
-pub async fn jagged_first_gkr_layer_to_device(
+pub fn jagged_first_gkr_layer_to_device(
     jagged: JaggedMle<JaggedFirstGkrLayer<CpuBackend>, CpuBackend>,
     backend: &TaskScope,
 ) -> JaggedMle<JaggedFirstGkrLayer<TaskScope>, TaskScope> {
     let jagged_dense_device = JaggedFirstGkrLayer {
-        numerator: jagged.dense_data.numerator.to_device_in(backend).await.unwrap(),
-        denominator: jagged.dense_data.denominator.to_device_in(backend).await.unwrap(),
+        numerator: DeviceTensor::from_host(&jagged.dense_data.numerator, backend)
+            .unwrap()
+            .into_inner(),
+        denominator: DeviceTensor::from_host(&jagged.dense_data.denominator, backend)
+            .unwrap()
+            .into_inner(),
         height: jagged.dense_data.height,
     };
 
     JaggedMle::new(
         jagged_dense_device,
-        jagged.col_index.to_device_in(backend).await.unwrap(),
-        jagged.start_indices.to_device_in(backend).await.unwrap(),
+        DeviceBuffer::from_host(&jagged.col_index, backend).unwrap().into_inner(),
+        DeviceBuffer::from_host(&jagged.start_indices, backend).unwrap().into_inner(),
         jagged.column_heights,
     )
 }
 
-pub async fn jagged_first_gkr_layer_to_host(
+pub fn jagged_first_gkr_layer_to_host(
     jagged: JaggedMle<JaggedFirstGkrLayer<TaskScope>, TaskScope>,
 ) -> JaggedMle<JaggedFirstGkrLayer<CpuBackend>, CpuBackend> {
     let jagged_dense_host = JaggedFirstGkrLayer {
-        numerator: jagged.dense_data.numerator.to_host().await.unwrap(),
-        denominator: jagged.dense_data.denominator.to_host().await.unwrap(),
+        numerator: DeviceTensor::from_raw(jagged.dense_data.numerator).to_host().unwrap(),
+        denominator: DeviceTensor::from_raw(jagged.dense_data.denominator).to_host().unwrap(),
         height: jagged.dense_data.height,
     };
 
     JaggedMle::new(
         jagged_dense_host,
-        jagged.col_index.to_host().await.unwrap(),
-        jagged.start_indices.to_host().await.unwrap(),
+        DeviceBuffer::from_raw(jagged.col_index).to_host().unwrap().into(),
+        DeviceBuffer::from_raw(jagged.start_indices).to_host().unwrap().into(),
         jagged.column_heights,
     )
 }
@@ -273,7 +275,7 @@ pub struct GkrTestData {
 /// Generates a random first layer from an rng, and some interaction row counts.
 ///
 /// Padded to num_row_variables if provided.
-pub async fn random_first_layer<R: Rng>(
+pub fn random_first_layer<R: Rng>(
     rng: &mut R,
     interaction_row_counts: Vec<u32>,
     num_row_variables: Option<u32>,
@@ -316,7 +318,7 @@ pub async fn random_first_layer<R: Rng>(
 /// Generates a random layer from an rng, and some interaction row counts.
 ///
 /// Padded to num_row_variables if provided.
-pub async fn random_layer<R: Rng>(
+pub fn random_layer<R: Rng>(
     rng: &mut R,
     interaction_row_counts: Vec<u32>,
     num_row_variables: Option<u32>,
@@ -366,19 +368,19 @@ pub async fn random_layer<R: Rng>(
 }
 
 /// Generates test data for a layer.
-pub async fn generate_test_data<R: Rng>(
+pub fn generate_test_data<R: Rng>(
     rng: &mut R,
     interaction_row_counts: Vec<u32>,
     num_row_variables: Option<u32>,
 ) -> (GkrLayer<CpuBackend>, GkrTestData) {
-    let layer = random_layer(rng, interaction_row_counts, num_row_variables).await;
-    let test_data = get_polys_from_layer(&layer).await;
+    let layer = random_layer(rng, interaction_row_counts, num_row_variables);
+    let test_data = get_polys_from_layer(&layer);
     (layer, test_data)
 }
 
 /// Gets nicely formatted numerator_0, numerator_1, denominator_0, denominator_1 polynomials from dense GkrLayer data.
 /// Materializes padding for each row to 2^num_row_variables.
-pub async fn get_polys_from_layer(layer: &GkrLayer<CpuBackend>) -> GkrTestData {
+pub fn get_polys_from_layer(layer: &GkrLayer<CpuBackend>) -> GkrTestData {
     let GkrLayer {
         jagged_mle: JaggedMle { dense_data: layer_data, column_heights: interaction_row_counts, .. },
         num_interaction_variables,
@@ -417,53 +419,42 @@ pub async fn get_polys_from_layer(layer: &GkrLayer<CpuBackend>) -> GkrTestData {
         Mle::from(result)
     };
 
-    // Extract numerator_0, numerator_1, denominator_0, denominator_1 from the layer_data in parallel
+    // Extract numerator_0, numerator_1, denominator_0, denominator_1 from the layer_data
     let data_0 = layer_data.layer.get(0).unwrap().get(0).unwrap().as_slice().to_vec();
     let data_1 = layer_data.layer.get(1).unwrap().get(0).unwrap().as_slice().to_vec();
     let data_2 = layer_data.layer.get(2).unwrap().get(0).unwrap().as_slice().to_vec();
     let data_3 = layer_data.layer.get(3).unwrap().get(0).unwrap().as_slice().to_vec();
 
-    let interaction_row_counts = interaction_row_counts.clone();
-    let irc1 = interaction_row_counts.clone();
-    let irc2 = interaction_row_counts.clone();
-    let irc3 = interaction_row_counts.clone();
     let num_interaction_vars = *num_interaction_variables;
 
-    let (numerator_0, numerator_1, denominator_0, denominator_1) = tokio::join!(
-        tokio::task::spawn_blocking(move || get_mle(
-            data_0,
-            Ext::zero(),
-            &interaction_row_counts,
-            num_interaction_vars,
-            full_padded_height
-        )),
-        tokio::task::spawn_blocking(move || get_mle(
-            data_1,
-            Ext::zero(),
-            &irc1,
-            num_interaction_vars,
-            full_padded_height
-        )),
-        tokio::task::spawn_blocking(move || get_mle(
-            data_2,
-            Ext::one(),
-            &irc2,
-            num_interaction_vars,
-            full_padded_height
-        )),
-        tokio::task::spawn_blocking(move || get_mle(
-            data_3,
-            Ext::one(),
-            &irc3,
-            num_interaction_vars,
-            full_padded_height
-        ))
+    let numerator_0 = get_mle(
+        data_0,
+        Ext::zero(),
+        interaction_row_counts,
+        num_interaction_vars,
+        full_padded_height,
+    );
+    let numerator_1 = get_mle(
+        data_1,
+        Ext::zero(),
+        interaction_row_counts,
+        num_interaction_vars,
+        full_padded_height,
+    );
+    let denominator_0 = get_mle(
+        data_2,
+        Ext::one(),
+        interaction_row_counts,
+        num_interaction_vars,
+        full_padded_height,
+    );
+    let denominator_1 = get_mle(
+        data_3,
+        Ext::one(),
+        interaction_row_counts,
+        num_interaction_vars,
+        full_padded_height,
     );
 
-    GkrTestData {
-        numerator_0: numerator_0.unwrap(),
-        numerator_1: numerator_1.unwrap(),
-        denominator_0: denominator_0.unwrap(),
-        denominator_1: denominator_1.unwrap(),
-    }
+    GkrTestData { numerator_0, numerator_1, denominator_0, denominator_1 }
 }

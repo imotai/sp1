@@ -29,9 +29,12 @@ slop-challenger = { workspace = true }
 slop-koala-bear = { workspace = true }
 slop-symmetric = { workspace = true }
 slop-dft = { workspace = true }
+slop-poseidon2 = { workspace = true }
+slop-bn254 = { workspace = true }
 
 # sp1
 sp1-hypercube = { workspace = true }
+sp1-primitives = { workspace = true }
 
 # misc
 itertools = { workspace = true }

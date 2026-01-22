@@ -10,9 +10,9 @@ use csl_sys::{
 };
 use slop_algebra::extension::BinomialExtensionField;
 use slop_koala_bear::KoalaBear;
-use slop_tensor::{DotBackend, Tensor, TensorView};
+use slop_tensor::{Tensor, TensorView};
 
-use crate::{args, reduce::partial_sum_reduction_into, DeviceCopy, TaskScope};
+use crate::{args, reduce::partial_sum_reduction_into, DeviceCopy, DeviceTensor, TaskScope};
 
 use super::reduce::DeviceSumKernel;
 
@@ -89,18 +89,32 @@ where
     dst
 }
 
-impl<T: DeviceCopy, U: DeviceCopy> DotBackend<T, U> for TaskScope
-where
-    TaskScope: DotKernel<T, U>,
-{
-    async fn dot_along_dim(
-        src: &Tensor<T, Self>,
-        scalars: &Tensor<U, Self>,
+impl<T: DeviceCopy> DeviceTensor<T> {
+    pub fn dot_along_dim<U: DeviceCopy>(
+        &self,
+        scalars: &DeviceTensor<U>,
         dim: usize,
-    ) -> Tensor<U, Self> {
-        dot_along_dim_view(src.as_view(), scalars.as_view(), dim)
+    ) -> DeviceTensor<U>
+    where
+        TaskScope: DotKernel<T, U>,
+    {
+        let raw = dot_along_dim_view(self.raw.as_view(), scalars.raw.as_view(), dim);
+        DeviceTensor { raw }
     }
 }
+
+// impl<T: DeviceCopy, U: DeviceCopy> DotBackend<T, U> for TaskScope
+// where
+//     TaskScope: DotKernel<T, U>,
+// {
+//     async fn dot_along_dim(
+//         src: &Tensor<T, Self>,
+//         scalars: &Tensor<U, Self>,
+//         dim: usize,
+//     ) -> Tensor<U, Self> {
+//         dot_along_dim_view(src.as_view(), scalars.as_view(), dim)
+//     }
+// }
 
 unsafe impl DotKernel<KoalaBear, KoalaBear> for TaskScope {
     fn partial_dot_kernel_last_dim() -> KernelPtr {
@@ -138,14 +152,15 @@ unsafe impl DotKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> for TaskS
 mod tests {
     use itertools::Itertools;
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
-    use slop_alloc::IntoHost;
     use slop_koala_bear::KoalaBear;
     use slop_tensor::Tensor;
 
+    use super::DeviceTensor;
+
     type KoalaBearExt = BinomialExtensionField<KoalaBear, 4>;
 
-    #[tokio::test]
-    async fn test_koala_bear_dot() {
+    #[test]
+    fn test_koala_bear_dot() {
         let num_summands = 100;
         let mut rng = rand::thread_rng();
 
@@ -153,15 +168,12 @@ mod tests {
             let tensor = Tensor::<KoalaBear>::rand(&mut rng, [num_summands, size]);
             let scalars = Tensor::<KoalaBear>::rand(&mut rng, [size]);
 
-            let tensor_sent = tensor.clone();
-            let scalars_sent = scalars.clone();
-            let inner_product = crate::spawn(|t| async move {
-                let device_tensor = t.into_device(tensor_sent).await.unwrap();
-                let device_scalars = t.into_device(scalars_sent).await.unwrap();
-                let inner_product = device_tensor.dot(&device_scalars, 1).await;
-                inner_product.into_host().await.unwrap()
+            let inner_product = crate::run_sync_in_place(|t| {
+                let device_tensor = DeviceTensor::from_host(&tensor, &t).unwrap();
+                let device_scalars = DeviceTensor::from_host(&scalars, &t).unwrap();
+                let inner_product = device_tensor.dot_along_dim(&device_scalars, 1);
+                inner_product.to_host().unwrap()
             })
-            .await
             .unwrap();
 
             assert_eq!(inner_product.sizes(), [num_summands]);
@@ -180,8 +192,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_koala_bear_extension_dot() {
+    #[test]
+    fn test_koala_bear_extension_dot() {
         let num_summands = 100;
         let mut rng = rand::thread_rng();
 
@@ -191,15 +203,12 @@ mod tests {
             let tensor = Tensor::<EF>::rand(&mut rng, [num_summands, size]);
             let scalars = Tensor::<EF>::rand(&mut rng, [size]);
 
-            let tensor_sent = tensor.clone();
-            let scalars_sent = scalars.clone();
-            let inner_product = crate::spawn(|t| async move {
-                let device_tensor = t.into_device(tensor_sent).await.unwrap();
-                let device_scalars = t.into_device(scalars_sent).await.unwrap();
-                let inner_product = device_tensor.dot(&device_scalars, 1).await;
-                inner_product.into_host().await.unwrap()
+            let inner_product = crate::run_sync_in_place(|t| {
+                let device_tensor = DeviceTensor::from_host(&tensor, &t).unwrap();
+                let device_scalars = DeviceTensor::from_host(&scalars, &t).unwrap();
+                let inner_product = device_tensor.dot_along_dim(&device_scalars, 1);
+                inner_product.to_host().unwrap()
             })
-            .await
             .unwrap();
 
             assert_eq!(inner_product.sizes(), [num_summands]);
@@ -218,8 +227,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_koala_bear_base_extension_dot() {
+    #[test]
+    fn test_koala_bear_base_extension_dot() {
         let mut rng = rand::thread_rng();
 
         type F = KoalaBear;
@@ -230,14 +239,12 @@ mod tests {
                 let tensor = Tensor::<F>::rand(&mut rng, [num_summands, size]);
                 let scalars = Tensor::<EF>::rand(&mut rng, [size]);
 
-                let tensor_sent = tensor.clone();
-                let scalars_sent = scalars.clone();
-                let inner_product = crate::spawn(move |t| async move {
-                    let device_tensor = t.into_device(tensor_sent).await.unwrap();
-                    let device_scalars = t.into_device(scalars_sent).await.unwrap();
+                let inner_product = crate::run_sync_in_place(|t| {
+                    let device_tensor = DeviceTensor::from_host(&tensor, &t).unwrap();
+                    let device_scalars = DeviceTensor::from_host(&scalars, &t).unwrap();
                     t.synchronize_blocking().unwrap();
                     let time = std::time::Instant::now();
-                    let inner_product = device_tensor.dot(&device_scalars, 1).await;
+                    let inner_product = device_tensor.dot_along_dim(&device_scalars, 1);
                     t.synchronize_blocking().unwrap();
                     println!(
                         "Dot time for size {}, num_summands: {}, time: {:?}",
@@ -245,9 +252,8 @@ mod tests {
                         num_summands,
                         time.elapsed()
                     );
-                    inner_product.into_host().await.unwrap()
+                    inner_product.to_host().unwrap()
                 })
-                .await
                 .unwrap();
 
                 assert_eq!(inner_product.sizes(), [num_summands]);
@@ -267,8 +273,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_dot_along_dim_0_base_base() {
+    #[test]
+    fn test_dot_along_dim_0_base_base() {
         let mut rng = rand::thread_rng();
 
         let width = 10;
@@ -277,15 +283,12 @@ mod tests {
         let host_tensor = Tensor::<KoalaBear>::rand(&mut rng, [width, height]);
         let host_scalars = Tensor::<KoalaBear>::rand(&mut rng, [width]);
 
-        let tensor = host_tensor.clone();
-        let scalars = host_scalars.clone();
-        let dot = crate::spawn(|t| async move {
-            let tensor = t.into_device(tensor).await.unwrap();
-            let scalars = t.into_device(scalars).await.unwrap();
-            let dot = tensor.dot(&scalars, 0).await;
-            dot.into_host().await.unwrap()
+        let dot = crate::run_sync_in_place(|t| {
+            let tensor = DeviceTensor::from_host(&host_tensor, &t).unwrap();
+            let scalars = DeviceTensor::from_host(&host_scalars, &t).unwrap();
+            let dot = tensor.dot_along_dim(&scalars, 0);
+            dot.to_host().unwrap()
         })
-        .await
         .unwrap();
 
         assert_eq!(dot.sizes(), [height]);
@@ -298,8 +301,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_dot_along_dim_0_base_ext() {
+    #[test]
+    fn test_dot_along_dim_0_base_ext() {
         let mut rng = rand::thread_rng();
 
         let width = 10;
@@ -308,15 +311,12 @@ mod tests {
         let host_tensor = Tensor::<KoalaBear>::rand(&mut rng, [width, height]);
         let host_scalars = Tensor::<KoalaBearExt>::rand(&mut rng, [width]);
 
-        let tensor = host_tensor.clone();
-        let scalars = host_scalars.clone();
-        let dot = crate::spawn(|t| async move {
-            let tensor = t.into_device(tensor).await.unwrap();
-            let scalars = t.into_device(scalars).await.unwrap();
-            let dot = tensor.dot(&scalars, 0).await;
-            dot.into_host().await.unwrap()
+        let dot = crate::run_sync_in_place(|t| {
+            let tensor = DeviceTensor::from_host(&host_tensor, &t).unwrap();
+            let scalars = DeviceTensor::from_host(&host_scalars, &t).unwrap();
+            let dot = tensor.dot_along_dim(&scalars, 0);
+            dot.to_host().unwrap()
         })
-        .await
         .unwrap();
 
         assert_eq!(dot.sizes(), [height]);
@@ -329,8 +329,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_dot_along_dim_0_ext_ext() {
+    #[test]
+    fn test_dot_along_dim_0_ext_ext() {
         let mut rng = rand::thread_rng();
 
         let width = 10;
@@ -339,15 +339,12 @@ mod tests {
         let host_tensor = Tensor::<KoalaBearExt>::rand(&mut rng, [width, height]);
         let host_scalars = Tensor::<KoalaBearExt>::rand(&mut rng, [width]);
 
-        let tensor = host_tensor.clone();
-        let scalars = host_scalars.clone();
-        let dot = crate::spawn(|t| async move {
-            let tensor = t.into_device(tensor).await.unwrap();
-            let scalars = t.into_device(scalars).await.unwrap();
-            let dot = tensor.dot(&scalars, 0).await;
-            dot.into_host().await.unwrap()
+        let dot = crate::run_sync_in_place(|t| {
+            let tensor = DeviceTensor::from_host(&host_tensor, &t).unwrap();
+            let scalars = DeviceTensor::from_host(&host_scalars, &t).unwrap();
+            let dot = tensor.dot_along_dim(&scalars, 0);
+            dot.to_host().unwrap()
         })
-        .await
         .unwrap();
 
         assert_eq!(dot.sizes(), [height]);

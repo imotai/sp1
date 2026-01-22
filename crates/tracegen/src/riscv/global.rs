@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use csl_cuda::sys::runtime::Dim3;
 use csl_cuda::transpose::DeviceTransposeKernel;
-use csl_cuda::{args, ScanKernel, TaskScope};
+use csl_cuda::{args, DeviceMle, ScanKernel, TaskScope};
 use futures::future::join_all;
 use slop_algebra::PrimeField32;
 use slop_alloc::mem::CopyError;
@@ -30,7 +30,7 @@ impl CudaTracegenAir<F> for GlobalChip {
         input: &Self::Record,
         output: &mut Self::Record,
         scope: &TaskScope,
-    ) -> Result<Mle<F, TaskScope>, CopyError> {
+    ) -> Result<DeviceMle<F>, CopyError> {
         let events = &input.global_interaction_events;
         let events_len = events.len();
 
@@ -252,7 +252,7 @@ impl CudaTracegenAir<F> for GlobalChip {
         let trace =
             Arc::into_inner(trace).expect("trace Arc should have exactly one strong reference");
 
-        Ok(Mle::new(trace))
+        Ok(DeviceMle::new(Mle::new(trace)))
     }
 }
 
@@ -261,7 +261,6 @@ mod tests {
     use csl_cuda::TaskScope;
     use rand::{rngs::StdRng, Rng, SeedableRng};
     use slop_algebra::PrimeField32;
-    use slop_alloc::ToHost;
     use slop_tensor::Tensor;
     use sp1_core_executor::{events::GlobalInteractionEvent, ExecutionRecord};
     use sp1_core_machine::global::GlobalChip;
@@ -300,7 +299,6 @@ mod tests {
             .await
             .expect("should copy events to device successfully")
             .to_host()
-            .await
             .expect("should copy trace to host successfully")
             .into_guts();
 

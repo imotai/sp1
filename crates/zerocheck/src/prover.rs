@@ -20,7 +20,7 @@ use std::{
 };
 
 use crate::{EvalProgram, InterpolateRowKernel};
-use csl_cuda::{args, TaskScope, ToDevice};
+use csl_cuda::{args, DeviceBuffer, DeviceTensor, TaskScope};
 
 use super::ConstraintPolyEvalKernel;
 
@@ -91,7 +91,7 @@ where
     type Air = A;
     type RoundProver = ZerocheckEvalProgramProver<F, EF, A>;
 
-    async fn round_prover(
+    fn round_prover(
         &self,
         air: Arc<A>,
         public_values: Arc<Vec<F>>,
@@ -103,15 +103,13 @@ where
         let powers_of_alpha = Arc::new(Buffer::from(powers_of_alpha.to_vec()));
         let gkr_powers = Arc::new(Buffer::from(gkr_powers.to_vec()));
 
-        let (eval_program, public_values_device, powers_of_alpha_device, gkr_powers_device) = tokio::join!(
-            async { Arc::new(eval_program.to_device_in(&self.allocator).await.unwrap()) },
-            async { Arc::new(public_values.to_device_in(&self.allocator).await.unwrap()) },
-            async { Arc::new(powers_of_alpha.to_device_in(&self.allocator).await.unwrap()) },
-            async { Arc::new(gkr_powers.to_device_in(&self.allocator).await.unwrap()) },
-        );
+        let eval_program_device = Arc::new(eval_program.to_device_sync(&self.allocator).unwrap());
+        let public_values_device = Arc::new(DeviceBuffer::from_host(&public_values, &self.allocator).unwrap().into_inner());
+        let powers_of_alpha_device = Arc::new(DeviceBuffer::from_host(&powers_of_alpha, &self.allocator).unwrap().into_inner());
+        let gkr_powers_device = Arc::new(DeviceBuffer::from_host(&gkr_powers, &self.allocator).unwrap().into_inner());
 
         ZerocheckEvalProgramProver::new(
-            eval_program,
+            eval_program_device,
             air,
             public_values,
             public_values_device,
@@ -180,7 +178,7 @@ impl<F, EF, A> ZerocheckEvalProgramProver<F, EF, A> {
         }
     }
 
-    async fn constraint_poly_eval<
+    fn constraint_poly_eval<
         K: Field + From<F> + Add<F, Output = K> + Sub<F, Output = K> + Mul<F, Output = K>,
     >(
         &self,
@@ -322,7 +320,7 @@ where
         &self.gkr_powers
     }
 
-    async fn sum_as_poly_in_last_variable<const IS_FIRST_ROUND: bool>(
+    fn sum_as_poly_in_last_variable<const IS_FIRST_ROUND: bool>(
         &self,
         partial_lagrange: Arc<Mle<EF, TaskScope>>,
         preprocessed_values: Option<PaddedMle<K, TaskScope>>,
@@ -355,10 +353,9 @@ where
                     &interpolated_preprocessed_rows,
                     &interpolated_main_rows,
                     eval_start,
-                )
-                .await;
-            let y_s_device = Tensor::sum(&output, 1).await;
-            let y_s_host = y_s_device.into_host().await.unwrap().into_buffer().into_vec();
+                );
+            let y_s_device = DeviceTensor::from_raw(output).sum_dim(1);
+            let y_s_host = DeviceTensor::from_raw(y_s_device).to_host().unwrap().into_buffer().into_vec();
             for (acc, val) in y_s.iter_mut().zip(y_s_host.iter()) {
                 *acc += *val;
             }
@@ -421,6 +418,7 @@ where
 mod tests {
     use super::*;
 
+    use csl_cuda::DeviceMle;
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_koala_bear::KoalaBear;
     use slop_matrix::dense::RowMajorMatrix;
@@ -471,13 +469,13 @@ mod tests {
         let expected_y_4s = RowMajorMatrix::new(expected_y_4s, main_width).transpose().values;
 
         let interpolated_rows_host = csl_cuda::spawn(move |t| async move {
-            let main_mle_device = t.into_device(main_mle).await.unwrap();
+            let main_mle_device = DeviceMle::from_host(&main_mle, &t).into_inner();
             let interpolated_rows = interpolate_rows::<EF>(
                 &main_mle_device,
                 1..main_height.div_ceil(2),
                 main_height.div_ceil(2),
             );
-            let interpolated_rows_host = interpolated_rows.storage.into_host().await.unwrap();
+            let interpolated_rows_host = DeviceTensor::from_raw(interpolated_rows.storage).to_host().unwrap();
             Tensor::from(interpolated_rows_host).reshape([
                 3,
                 main_width,

@@ -10,9 +10,9 @@ use csl_sys::{
 };
 use slop_algebra::extension::BinomialExtensionField;
 use slop_koala_bear::KoalaBear;
-use slop_tensor::{Dimensions, ReduceSumBackend, Tensor, TensorViewMut};
+use slop_tensor::{Dimensions, Tensor, TensorViewMut};
 
-use crate::{args, DeviceCopy};
+use crate::{args, DeviceCopy, DeviceTensor};
 
 use super::TaskScope;
 
@@ -168,11 +168,12 @@ where
     dst
 }
 
-impl<T: DeviceCopy> ReduceSumBackend<T> for TaskScope
+impl<T: DeviceCopy> DeviceTensor<T>
 where
     TaskScope: DeviceSumKernel<T>,
 {
-    async fn sum_tensor_dim(src: &Tensor<T, Self>, dim: usize) -> Tensor<T, Self> {
+    pub fn sum_dim(&self, dim: usize) -> DeviceTensor<T> {
+        let src = &self.raw;
         let mut sizes = src.sizes().to_vec();
         sizes.remove(dim);
         let mut dst = Tensor::zeros_in(sizes, src.backend().clone());
@@ -185,7 +186,7 @@ where
 
         if height <= BLOCK_SIZE {
             block_sum::<T, BLOCK_SIZE, INTIAL_STRIDE>(src, dst.as_view_mut(), dim);
-            return dst;
+            return DeviceTensor { raw: dst };
         }
 
         // If the number of elements to sum is bigger than the block size, we need to use a two
@@ -206,7 +207,7 @@ where
                 src.backend(),
             );
         }
-        dst
+        DeviceTensor { raw: dst }
     }
 }
 
@@ -233,25 +234,24 @@ unsafe impl DeviceSumKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope 
 #[cfg(test)]
 mod tests {
     use slop_algebra::extension::BinomialExtensionField;
-    use slop_alloc::IntoHost;
     use slop_koala_bear::KoalaBear;
     use slop_tensor::Tensor;
 
-    #[tokio::test]
-    async fn test_koala_bear_sum() {
+    use super::DeviceTensor;
+
+    #[test]
+    fn test_koala_bear_sum() {
         let num_summands = 100;
         let mut rng = rand::thread_rng();
 
         for size in [10, 100, 1 << 16] {
             let tensor = Tensor::<KoalaBear>::rand(&mut rng, [num_summands, size]);
 
-            let tensor_sent = tensor.clone();
-            let sum_tensor = crate::spawn(|t| async move {
-                let device_tensor = t.into_device(tensor_sent).await.unwrap();
-                let sums = device_tensor.sum(1).await;
-                sums.into_host().await.unwrap()
+            let sum_tensor = crate::run_sync_in_place(|t| {
+                let device_tensor = DeviceTensor::from_host(&tensor, &t).unwrap();
+                let sums = device_tensor.sum_dim(1);
+                sums.to_host().unwrap()
             })
-            .await
             .unwrap();
 
             assert_eq!(sum_tensor.sizes(), [num_summands]);
@@ -263,8 +263,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_koala_bear_ext_sum() {
+    #[test]
+    fn test_koala_bear_ext_sum() {
         let num_summands = 128;
         let size = 1 << 16;
         let mut rng = rand::thread_rng();
@@ -273,13 +273,11 @@ mod tests {
 
         let tensor = Tensor::<EF>::rand(&mut rng, [num_summands, size]);
 
-        let tensor_sent = tensor.clone();
-        let sum_tensor = crate::spawn(|t| async move {
-            let device_tensor = t.into_device(tensor_sent).await.unwrap();
-            let sums = device_tensor.sum(1).await;
-            sums.into_host().await.unwrap()
+        let sum_tensor = crate::run_sync_in_place(|t| {
+            let device_tensor = DeviceTensor::from_host(&tensor, &t).unwrap();
+            let sums = device_tensor.sum_dim(1);
+            sums.to_host().unwrap()
         })
-        .await
         .unwrap();
 
         assert_eq!(sum_tensor.sizes(), [num_summands]);

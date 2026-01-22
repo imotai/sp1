@@ -1,153 +1,142 @@
-use slop_alloc::{
-    mem::CopyError, Backend, Buffer, CopyIntoBackend, CopyToBackend, CpuBackend, HasBackend,
-};
-use tokio::sync::oneshot;
+use std::mem::MaybeUninit;
+
+use slop_alloc::{mem::CopyError, Buffer, HasBackend};
 
 use crate::{DeviceCopy, TaskScope};
 
-impl<T: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for Buffer<T, TaskScope> {
-    type Output = Buffer<T, CpuBackend>;
-    async fn copy_into_backend(self, _backend: &CpuBackend) -> Result<Self::Output, CopyError> {
-        let (tx, rx) = oneshot::channel::<Result<Buffer<T, CpuBackend>, CopyError>>();
-        tokio::task::spawn_blocking(move || {
-            let buffer = self;
-            let mut vec = Vec::with_capacity(buffer.len());
-            unsafe {
-                let res = buffer.copy_into_host(vec.spare_capacity_mut());
-                vec.set_len(buffer.len());
-                tx.send(res.map(move |_| Buffer::from(vec)))
-            }
-        });
-        rx.await.unwrap()
+pub struct DeviceBuffer<T> {
+    buf: Buffer<T, TaskScope>,
+}
+
+impl<T: DeviceCopy> HasBackend for DeviceBuffer<T> {
+    type Backend = TaskScope;
+    fn backend(&self) -> &TaskScope {
+        self.buf.backend()
     }
 }
 
-impl<T: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for Buffer<T, CpuBackend> {
-    type Output = Buffer<T, TaskScope>;
-    async fn copy_into_backend(self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
-        let scope = backend.clone();
-        let (tx, rx) = oneshot::channel::<Result<Self::Output, CopyError>>();
-        tokio::task::spawn_blocking(move || {
-            let buf = self;
-            let mut buffer = Buffer::with_capacity_in(buf.len(), scope);
-            let res = buffer.extend_from_host_slice(&buf);
-            tx.send(res.map(move |_| buffer)).ok();
-        });
-        rx.await.unwrap()
+impl<T: DeviceCopy> DeviceBuffer<T> {
+    /// Create a new device buffer with the given capacity in the specified scope.
+    pub fn with_capacity_in(capacity: usize, scope: TaskScope) -> Self {
+        Self { buf: Buffer::with_capacity_in(capacity, scope) }
     }
-}
 
-impl<T: DeviceCopy> CopyToBackend<CpuBackend, TaskScope> for Buffer<T, TaskScope> {
-    type Output = Buffer<T, CpuBackend>;
-    async fn copy_to_backend(&self, _backend: &CpuBackend) -> Result<Self::Output, CopyError> {
-        let (tx, rx) = oneshot::channel::<Result<Buffer<T, CpuBackend>, CopyError>>();
-        let buffer = unsafe { self.owned_unchecked() };
-        tokio::task::spawn_blocking(move || {
-            let mut vec = Vec::with_capacity(buffer.len());
-            unsafe {
-                let res = buffer.copy_into_host(vec.spare_capacity_mut());
-                vec.set_len(buffer.len());
-                tx.send(res.map(move |_| Buffer::from(vec)))
-            }
-        });
-        rx.await.unwrap()
+    /// Creates a DeviceBuffer from an existing Buffer on the device.
+    pub fn from_raw(buf: Buffer<T, TaskScope>) -> Self {
+        Self { buf }
     }
-}
 
-impl<T: DeviceCopy> CopyToBackend<TaskScope, CpuBackend> for Buffer<T, CpuBackend> {
-    type Output = Buffer<T, TaskScope>;
-    async fn copy_to_backend(&self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
-        let scope = backend.clone();
-        let (tx, rx) = oneshot::channel::<Result<Self::Output, CopyError>>();
-        let src = unsafe { self.owned_unchecked() };
-        tokio::task::spawn_blocking(move || {
-            let mut buffer = Buffer::with_capacity_in(src.len(), scope);
-            let res = buffer.extend_from_host_slice(&src);
-            tx.send(res.map(move |_| buffer)).ok();
-        });
-        rx.await.unwrap()
+    /// Returns a raw pointer to the device buffer's data.
+    pub fn as_ptr(&self) -> *const T {
+        self.buf.as_ptr()
     }
-}
 
-pub struct SmallBuffer<'a, T, A: Backend> {
-    buffer: &'a Buffer<T, A>,
-}
+    /// Returns a mutable raw pointer to the device buffer's data.
+    pub fn as_mut_ptr(&mut self) -> *mut T {
+        self.buf.as_mut_ptr()
+    }
 
-impl<'a, T, A: Backend> SmallBuffer<'a, T, A> {
+    /// Copy the contents of this buffer to the host slice `dst`.
+    ///
     /// # Safety
-    /// The buffer must be small enough so that copying from it to or from host does not block.
-    pub unsafe fn new(buffer: &'a Buffer<T, A>) -> Self {
-        Self { buffer }
+    ///
+    /// The memory being copied to might be pinned, so the copy will not block. Therefore, the
+    /// caller must ensure that the source buffer lives long enough for the copy to complete.
+    pub unsafe fn copy_to_host_slice(&self, dst: &mut [MaybeUninit<T>]) -> Result<(), CopyError> {
+        self.buf.copy_into_host(dst)
     }
-}
 
-impl<T, A: Backend> HasBackend for SmallBuffer<'_, T, A> {
-    type Backend = A;
-    fn backend(&self) -> &A {
-        self.buffer.backend()
+    /// Extend the device buffer by copying data from the host slice `src`.
+    ///
+    /// # Safety
+    /// See [Buffer::extend_from_host_slice]
+    pub unsafe fn extend_from_host_slice(&mut self, src: &[T]) -> Result<(), CopyError> {
+        self.buf.extend_from_host_slice(src)
     }
-}
 
-impl<T: DeviceCopy> CopyIntoBackend<CpuBackend, TaskScope> for SmallBuffer<'_, T, TaskScope> {
-    type Output = Buffer<T, CpuBackend>;
-    async fn copy_into_backend(self, _backend: &CpuBackend) -> Result<Self::Output, CopyError> {
-        let mut vec = Vec::with_capacity(self.buffer.len());
+    pub fn to_host(&self) -> Result<Vec<T>, CopyError> {
+        let len = self.buf.len();
+        let mut host_vec = Vec::with_capacity(len);
+        // Safety: The memory being allocated is not pinned, so the copy will block until completed.
+        // After copying, we set the length since the copy has initialized the memory.
         unsafe {
-            self.buffer.copy_into_host(vec.spare_capacity_mut())?;
-            vec.set_len(self.buffer.len());
-            let host_buffer = Buffer::from(vec);
-            Ok(host_buffer)
+            self.copy_to_host_slice(host_vec.spare_capacity_mut())?;
+            host_vec.set_len(len);
         }
+        Ok(host_vec)
     }
-}
 
-impl<T: DeviceCopy> CopyIntoBackend<TaskScope, CpuBackend> for SmallBuffer<'_, T, CpuBackend> {
-    type Output = Buffer<T, TaskScope>;
-    async fn copy_into_backend(self, backend: &TaskScope) -> Result<Self::Output, CopyError> {
-        let mut buffer = Buffer::with_capacity_in(self.buffer.len(), backend.clone());
-        buffer.extend_from_host_slice(self.buffer)?;
-        Ok(buffer)
+    pub fn len(&self) -> usize {
+        self.buf.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.buf.is_empty()
+    }
+
+    /// Forcibly set the length of the buffer.
+    ///
+    /// # Safety
+    ///  See [Buffer::set_len]
+    pub unsafe fn set_len(&mut self, len: usize) {
+        self.buf.set_len(len);
+    }
+
+    #[allow(clippy::ptr_arg)]
+    pub fn extend_from_vec(&mut self, host_data: &Vec<T>) -> Result<(), CopyError> {
+        // Safety: The memory being copied from is not pinned, so the copy will block until completed.
+        unsafe { self.extend_from_host_slice(host_data) }
+    }
+
+    pub fn extend(&mut self, host_data: &Buffer<T>) -> Result<(), CopyError> {
+        // Safety: The memory being copied from is not pinned, so the copy will block until completed.
+        unsafe { self.extend_from_host_slice(host_data) }
+    }
+
+    /// Creates a DeviceBuffer by copying data from a host Buffer.
+    pub fn from_host(host_buf: &Buffer<T>, scope: &TaskScope) -> Result<Self, CopyError> {
+        let mut device_buf = Self::with_capacity_in(host_buf.len(), scope.clone());
+        device_buf.extend(host_buf)?;
+        Ok(device_buf)
+    }
+
+    /// Creates a DeviceBuffer by copying data from a host slice.
+    pub fn from_host_slice(host_slice: &[T], scope: &TaskScope) -> Result<Self, CopyError> {
+        let mut device_buf = Self::with_capacity_in(host_slice.len(), scope.clone());
+        // Safety: The memory being copied from is not pinned, so the copy will block until completed.
+        unsafe { device_buf.extend_from_host_slice(host_slice)? };
+        Ok(device_buf)
+    }
+
+    pub fn into_inner(self) -> Buffer<T, TaskScope> {
+        self.buf
+    }
+
+    /// # Safety
+    /// See [Buffer::assume_init]
+    pub unsafe fn assume_init(&mut self) {
+        self.buf.assume_init();
     }
 }
 
 #[cfg(test)]
 mod tests {
     use rand::{thread_rng, Rng};
-    use slop_alloc::Backend;
 
-    use slop_alloc::IntoHost;
     use slop_koala_bear::KoalaBear;
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_copy_buffer_into_backend() {
+    #[test]
+    fn test_copy_buffer_into_backend() {
         let mut rng = thread_rng();
-        let buffer: Buffer<KoalaBear> = (0..10000).map(|_| rng.gen::<KoalaBear>()).collect();
+        let buffer: Vec<KoalaBear> = (0..10000).map(|_| rng.gen::<KoalaBear>()).collect();
 
-        let cloned_buffer = buffer.clone();
-        let buffer_back = crate::spawn(|t| async move {
-            let device_buffer = t.copy_from(cloned_buffer).await.unwrap();
-            device_buffer.into_host().await.unwrap()
+        let buffer_back = crate::run_sync_in_place(|t| {
+            let mut device_buffer = DeviceBuffer::with_capacity_in(buffer.len(), t);
+            device_buffer.extend_from_vec(&buffer).unwrap();
+            device_buffer.to_host().unwrap()
         })
-        .await
-        .unwrap();
-
-        assert_eq!(buffer_back, buffer);
-    }
-
-    #[tokio::test]
-    async fn test_copy_small_buffer_into_backend() {
-        let mut rng = thread_rng();
-        let buffer: Buffer<KoalaBear> = (0..10).map(|_| rng.gen::<KoalaBear>()).collect();
-
-        let cloned_buffer = buffer.clone();
-        let buffer_back = crate::spawn(|t| async move {
-            let small_buffer = unsafe { SmallBuffer::new(&cloned_buffer) };
-            let device_buffer = t.copy_from(small_buffer).await.unwrap();
-            device_buffer.into_host().await.unwrap()
-        })
-        .await
         .unwrap();
 
         assert_eq!(buffer_back, buffer);

@@ -1,4 +1,4 @@
-use csl_cuda::{args, TaskScope};
+use csl_cuda::{args, DeviceMle, TaskScope};
 use csl_cuda::{
     TracegenPreprocessedRecursionPoseidon2WideKernel, TracegenRecursionPoseidon2WideKernel,
 };
@@ -22,7 +22,7 @@ impl<const DEGREE: usize> CudaTracegenAir<F> for Poseidon2WideChip<DEGREE> {
         &self,
         program: &Self::Program,
         scope: &TaskScope,
-    ) -> Result<Option<Mle<F, TaskScope>>, CopyError> {
+    ) -> Result<Option<DeviceMle<F>>, CopyError> {
         let instrs = program
             .inner
             .iter() // Faster than using `rayon` for some reason. Maybe vectorization?
@@ -66,7 +66,7 @@ impl<const DEGREE: usize> CudaTracegenAir<F> for Poseidon2WideChip<DEGREE> {
                 .unwrap();
         }
 
-        Ok(Some(Mle::new(trace)))
+        Ok(Some(DeviceMle::new(Mle::new(trace))))
     }
 
     fn supports_device_main_tracegen(&self) -> bool {
@@ -78,7 +78,7 @@ impl<const DEGREE: usize> CudaTracegenAir<F> for Poseidon2WideChip<DEGREE> {
         input: &Self::Record,
         _: &mut Self::Record,
         scope: &TaskScope,
-    ) -> Result<Mle<F, TaskScope>, CopyError> {
+    ) -> Result<DeviceMle<F>, CopyError> {
         debug_assert!(DEGREE == 3 || DEGREE == 9);
         let sbox_state = DEGREE == 3;
 
@@ -119,7 +119,7 @@ impl<const DEGREE: usize> CudaTracegenAir<F> for Poseidon2WideChip<DEGREE> {
                 .unwrap();
         }
 
-        Ok(Mle::new(trace))
+        Ok(DeviceMle::new(Mle::new(trace)))
     }
 }
 

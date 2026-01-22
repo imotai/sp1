@@ -6,10 +6,10 @@ use std::{
     sync::Arc,
 };
 
-use csl_cuda::{TaskScope, ToDevice};
+use csl_cuda::{DeviceMle, DevicePoint, DeviceTensor, TaskScope};
 use itertools::Itertools;
 use slop_algebra::AbstractField;
-use slop_alloc::{CanCopyFromRef, HasBackend, ToHost};
+use slop_alloc::HasBackend;
 use slop_challenger::{FieldChallenger, IopCtx, VariableLengthChallenger};
 use slop_multilinear::{Mle, MultilinearPcsChallenger, Point};
 use tracing::instrument;
@@ -40,7 +40,7 @@ pub use sumcheck::{
 
 pub use execution::{extract_outputs, gkr_transition};
 
-async fn prove_materialized_round<C: FieldChallenger<Felt>>(
+fn prove_materialized_round<C: FieldChallenger<Felt>>(
     layer: GkrLayer,
     eval_point: &Point<Ext>,
     numerator_eval: Ext,
@@ -53,10 +53,12 @@ async fn prove_materialized_round<C: FieldChallenger<Felt>>(
         eval_point.split_at(layer.num_interaction_variables as usize);
 
     let backend = layer.jagged_mle.backend().clone();
-    let interaction_point = interaction_point.to_device_in(&backend).await.unwrap();
-    let row_point = row_point.to_device_in(&backend).await.unwrap();
-    let eq_interaction = Mle::partial_lagrange(&interaction_point).await;
-    let eq_row = Mle::partial_lagrange(&row_point).await;
+    let interaction_point =
+        DevicePoint::from_host(&interaction_point, &backend).unwrap().into_inner();
+    let row_point = DevicePoint::from_host(&row_point, &backend).unwrap().into_inner();
+    let eq_interaction =
+        Mle::new(DevicePoint::new(interaction_point).partial_lagrange().into_inner());
+    let eq_row = Mle::new(DevicePoint::new(row_point).partial_lagrange().into_inner());
     let sumcheck_poly = LogupRoundPolynomial {
         layer: PolynomialLayer::CircuitLayer(layer),
         eq_row,
@@ -69,13 +71,13 @@ async fn prove_materialized_round<C: FieldChallenger<Felt>>(
 
     // Produce the sumcheck proof.
     let (sumcheck_proof, openings) =
-        sumcheck::materialized_round_sumcheck(sumcheck_poly, challenger, claim).await;
+        sumcheck::materialized_round_sumcheck(sumcheck_poly, challenger, claim);
     let [numerator_0, numerator_1, denominator_0, denominator_1] = openings.try_into().unwrap();
 
     LogupGkrRoundProof { numerator_0, numerator_1, denominator_0, denominator_1, sumcheck_proof }
 }
 
-async fn prove_first_round<C: FieldChallenger<Felt>>(
+fn prove_first_round<C: FieldChallenger<Felt>>(
     layer: FirstGkrLayer,
     eval_point: &Point<Ext>,
     numerator_eval: Ext,
@@ -88,22 +90,24 @@ async fn prove_first_round<C: FieldChallenger<Felt>>(
         eval_point.split_at(layer.num_interaction_variables as usize);
 
     let backend = layer.jagged_mle.backend();
-    let interaction_point = interaction_point.to_device_in(backend).await.unwrap();
-    let row_point = row_point.to_device_in(backend).await.unwrap();
-    let eq_interaction = Mle::partial_lagrange(&interaction_point).await;
-    let eq_row = Mle::partial_lagrange(&row_point).await;
+    let interaction_point =
+        DevicePoint::from_host(&interaction_point, backend).unwrap().into_inner();
+    let row_point = DevicePoint::from_host(&row_point, backend).unwrap().into_inner();
+    let eq_interaction =
+        Mle::new(DevicePoint::new(interaction_point).partial_lagrange().into_inner());
+    let eq_row = Mle::new(DevicePoint::new(row_point).partial_lagrange().into_inner());
 
     let sumcheck_poly =
         FirstLayerPolynomial { layer, eq_row, eq_interaction, lambda, point: eval_point.clone() };
 
     // Produce the sumcheck proof.
     let (sumcheck_proof, openings) =
-        sumcheck::first_round_sumcheck(sumcheck_poly, challenger, claim).await;
+        sumcheck::first_round_sumcheck(sumcheck_poly, challenger, claim);
     let [numerator_0, numerator_1, denominator_0, denominator_1] = openings.try_into().unwrap();
     LogupGkrRoundProof { numerator_0, numerator_1, denominator_0, denominator_1, sumcheck_proof }
 }
 
-pub async fn prove_round<'a, C: FieldChallenger<Felt>>(
+pub fn prove_round<'a, C: FieldChallenger<Felt>>(
     circuit: GkrCircuitLayer<'a>,
     eval_point: &Point<Ext>,
     numerator_eval: Ext,
@@ -111,18 +115,15 @@ pub async fn prove_round<'a, C: FieldChallenger<Felt>>(
     challenger: &mut C,
 ) -> LogupGkrRoundProof<Ext> {
     match circuit {
-        GkrCircuitLayer::Materialized(layer) => {
-            prove_materialized_round(
-                layer,
-                eval_point,
-                numerator_eval,
-                denominator_eval,
-                challenger,
-            )
-            .await
-        }
+        GkrCircuitLayer::Materialized(layer) => prove_materialized_round(
+            layer,
+            eval_point,
+            numerator_eval,
+            denominator_eval,
+            challenger,
+        ),
         GkrCircuitLayer::FirstLayer(layer) => {
-            prove_first_round(layer, eval_point, numerator_eval, denominator_eval, challenger).await
+            prove_first_round(layer, eval_point, numerator_eval, denominator_eval, challenger)
         }
         GkrCircuitLayer::FirstLayerVirtual(_) => unreachable!(),
     }
@@ -130,7 +131,7 @@ pub async fn prove_round<'a, C: FieldChallenger<Felt>>(
 
 /// Proves the GKR circuit, layer by layer.
 #[instrument(skip_all, level = "debug")]
-pub async fn prove_gkr_circuit<'a, C: FieldChallenger<Felt>>(
+pub fn prove_gkr_circuit<'a, C: FieldChallenger<Felt>>(
     numerator_value: Ext,
     denominator_value: Ext,
     eval_point: Point<Ext>,
@@ -143,10 +144,10 @@ pub async fn prove_gkr_circuit<'a, C: FieldChallenger<Felt>>(
     let mut numerator_eval = numerator_value;
     let mut denominator_eval = denominator_value;
     let mut eval_point = eval_point;
-    while let Some(layer) = circuit.next(recompute_first_layer).await {
+    while let Some(layer) = circuit.next(recompute_first_layer) {
         // Generate the round proof.
         let round_proof =
-            prove_round(layer, &eval_point, numerator_eval, denominator_eval, challenger).await;
+            prove_round(layer, &eval_point, numerator_eval, denominator_eval, challenger);
 
         // Observe the prover message.
         challenger.observe_ext_element::<Ext>(round_proof.numerator_0);
@@ -174,7 +175,7 @@ pub async fn prove_gkr_circuit<'a, C: FieldChallenger<Felt>>(
 }
 
 /// End-to-end proves lookups for a given trace.
-pub async fn prove_logup_gkr<
+pub fn prove_logup_gkr<
     GC: IopCtx<F = Felt, EF = Ext>,
     A: MachineAir<Felt>,
     C: MultilinearPcsChallenger<Felt> + VariableLengthChallenger<Felt, <GC as IopCtx>::Digest>,
@@ -202,14 +203,13 @@ pub async fn prove_logup_gkr<
         beta_seed,
         options,
         backend,
-    )
-    .await;
+    );
 
     let LogUpGkrOutput { numerator, denominator } = &output;
 
     // Copy the output to host and observe the claims.
-    let host_numerator = numerator.to_host().await.unwrap();
-    let host_denominator = denominator.to_host().await.unwrap();
+    let host_numerator = DeviceMle::new(numerator.clone()).to_host().unwrap();
+    let host_denominator = DeviceMle::new(denominator.clone()).to_host().unwrap();
     challenger
         .observe_variable_length_extension_slice(host_numerator.guts().as_buffer().as_slice());
     challenger
@@ -223,12 +223,19 @@ pub async fn prove_logup_gkr<
     let first_eval_point = challenger.sample_point::<Ext>(initial_number_of_variables);
 
     // Follow the GKR protocol layer by layer.
-    let first_point = numerator.backend().copy_to(&first_eval_point).await.unwrap();
-    let first_point_eq = Mle::partial_lagrange(&first_point).await;
-    let first_numerator_eval =
-        numerator.eval_at_eq(&first_point_eq).await.to_host().await.unwrap()[0];
-    let first_denominator_eval =
-        denominator.eval_at_eq(&first_point_eq).await.to_host().await.unwrap()[0];
+    let first_point =
+        DevicePoint::from_host(&first_eval_point, numerator.backend()).unwrap().into_inner();
+    let first_point_eq = Mle::new(DevicePoint::new(first_point).partial_lagrange().into_inner());
+    let device_numerator = DeviceMle::new(numerator.clone());
+    let device_denominator = DeviceMle::new(denominator.clone());
+    let first_numerator_eval = device_numerator
+        .eval_at_eq(&DeviceTensor::from_raw(first_point_eq.guts().clone()))
+        .to_host_vec()
+        .unwrap()[0];
+    let first_denominator_eval = device_denominator
+        .eval_at_eq(&DeviceTensor::from_raw(first_point_eq.guts().clone()))
+        .to_host_vec()
+        .unwrap()[0];
 
     let (eval_point, round_proofs) = prove_gkr_circuit(
         first_numerator_eval,
@@ -237,13 +244,12 @@ pub async fn prove_logup_gkr<
         circuit,
         challenger,
         recompute_first_layer,
-    )
-    .await;
+    );
 
     // Get the evaluations for each chip at the evaluation point of the last round.
     // We accomplish this by doing jagged fix last variable on the evaluation point.
     let eval_point = eval_point.last_k(num_row_variables as usize);
-    let host_evaluations = round_batch_evaluations(&eval_point, jagged_trace_data).await;
+    let host_evaluations = round_batch_evaluations(&eval_point, jagged_trace_data);
     let [preprocessed, main] = host_evaluations.rounds.try_into().unwrap();
 
     let mut chip_evaluations = BTreeMap::new();
@@ -283,7 +289,7 @@ mod tests {
         generate_test_data, get_polys_from_layer, jagged_first_gkr_layer_to_device,
         jagged_gkr_layer_to_device, jagged_gkr_layer_to_host, random_first_layer, GkrTestData,
     };
-    use csl_cuda::{run_in_place, PinnedBuffer};
+    use csl_cuda::{run_sync_in_place, DevicePoint, PinnedBuffer};
     use csl_jagged_tracegen::{
         full_tracegen,
         test_utils::tracegen_setup::{self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT},
@@ -292,7 +298,6 @@ mod tests {
     use csl_utils::TestGC;
     use itertools::Itertools;
     use serial_test::serial;
-    use slop_alloc::ToHost;
     use slop_challenger::{FieldChallenger, IopCtx};
     use slop_futures::queue::WorkerQueue;
     use slop_sumcheck::partially_verify_sumcheck_proof;
@@ -308,25 +313,25 @@ mod tests {
 
     use rand::{rngs::StdRng, SeedableRng};
 
-    #[tokio::test]
+    #[test]
     #[serial]
-    async fn test_logup_gkr_circuit_transition() {
+    fn test_logup_gkr_circuit_transition() {
         let mut rng = StdRng::seed_from_u64(1);
 
         let interaction_row_counts: Vec<u32> =
             vec![(1 << 10) + 32, (1 << 10) - 2, 1 << 6, 1 << 8, (1 << 10) + 2];
-        let (layer, test_data) = generate_test_data(&mut rng, interaction_row_counts, None).await;
+        let (layer, test_data) = generate_test_data(&mut rng, interaction_row_counts, None);
         let GkrTestData { numerator_0, numerator_1, denominator_0, denominator_1 } = test_data;
 
         let GkrLayer { jagged_mle, num_interaction_variables, num_row_variables } = layer;
 
-        csl_cuda::spawn(move |t| async move {
-            let jagged_mle = jagged_gkr_layer_to_device(jagged_mle, &t).await;
+        run_sync_in_place(move |t| {
+            let jagged_mle = jagged_gkr_layer_to_device(jagged_mle, &t);
 
             let layer = GkrLayer { jagged_mle, num_interaction_variables, num_row_variables };
 
             // Test a single transition.
-            let next_layer = layer_transition(&layer).await;
+            let next_layer = layer_transition(&layer);
 
             let GkrLayer {
                 jagged_mle: next_layer_data,
@@ -334,7 +339,7 @@ mod tests {
                 num_row_variables,
             } = next_layer;
 
-            let next_layer_data = jagged_gkr_layer_to_host(next_layer_data).await;
+            let next_layer_data = jagged_gkr_layer_to_host(next_layer_data);
 
             let next_layer_host = GkrLayer {
                 jagged_mle: next_layer_data,
@@ -342,7 +347,7 @@ mod tests {
                 num_row_variables,
             };
 
-            let next_layer_data = get_polys_from_layer(&next_layer_host).await;
+            let next_layer_data = get_polys_from_layer(&next_layer_host);
 
             let next_numerator_0 = next_layer_data.numerator_0;
             let next_numerator_1 = next_layer_data.numerator_1;
@@ -378,13 +383,12 @@ mod tests {
                 assert_eq!(*next_n, *n_0 * *d_1 + *n_1 * *d_0, "failed at index {i}");
             }
         })
-        .await
         .unwrap();
     }
 
-    #[tokio::test]
+    #[test]
     #[serial]
-    async fn test_logup_gkr_round_prover() {
+    fn test_logup_gkr_round_prover() {
         let mut rng = StdRng::seed_from_u64(1);
 
         let get_challenger = move || TestGC::default_challenger();
@@ -396,7 +400,7 @@ mod tests {
             25112, 25112, 25112, 25112, 25112, 25112, 56360, 56360, 56360, 56360, 56360, 56360, 4,
             169496, 169496, 169496, 169496, 169496,
         ];
-        let layer = random_first_layer(&mut rng, interaction_row_counts, Some(19)).await;
+        let layer = random_first_layer(&mut rng, interaction_row_counts, Some(19));
         println!("generated test data");
 
         let FirstGkrLayer { jagged_mle, num_interaction_variables, num_row_variables } = layer;
@@ -405,23 +409,23 @@ mod tests {
 
         let first_eval_point = Point::<Ext>::rand(&mut rng, num_interaction_variables + 1);
 
-        csl_cuda::spawn(move |t| async move {
-            let jagged_mle = jagged_first_gkr_layer_to_device(jagged_mle, &t).await;
+        run_sync_in_place(move |t| {
+            let jagged_mle = jagged_first_gkr_layer_to_device(jagged_mle, &t);
 
             let layer = FirstGkrLayer { jagged_mle, num_interaction_variables, num_row_variables };
             let layer = GkrCircuitLayer::FirstLayer(layer);
 
-            t.synchronize().await.unwrap();
-            let time = tokio::time::Instant::now();
+            t.synchronize_blocking().unwrap();
+            let time = std::time::Instant::now();
             let mut layers = vec![layer];
             for _ in 0..num_row_variables - 1 {
-                let layer = gkr_transition(layers.last().unwrap()).await;
+                let layer = gkr_transition(layers.last().unwrap());
                 layers.push(layer);
             }
-            t.synchronize().await.unwrap();
+            t.synchronize_blocking().unwrap();
             println!("trace generation time: {:?}", time.elapsed());
 
-            let time = tokio::time::Instant::now();
+            let time = std::time::Instant::now();
             layers.reverse();
             let first_layer =
                 if let GkrCircuitLayer::Materialized(first_layer) = layers.first().unwrap() {
@@ -431,18 +435,27 @@ mod tests {
                 };
             assert_eq!(first_layer.num_row_variables, 1);
 
-            let output = extract_outputs(first_layer, num_interaction_variables).await;
+            let output = extract_outputs(first_layer, num_interaction_variables);
             println!("time to extract values: {:?}", time.elapsed());
 
-            let first_point_device = first_eval_point.to_device_in(&t).await.unwrap();
-            let first_numerator_eval =
-                output.numerator.eval_at(&first_point_device).await.to_host().await.unwrap()[0];
-            let first_denominator_eval =
-                output.denominator.eval_at(&first_point_device).await.to_host().await.unwrap()[0];
+            let first_point_device =
+                DevicePoint::from_host(&first_eval_point, &t).unwrap().into_inner();
+            let device_numerator = DeviceMle::new(output.numerator.clone());
+            let device_denominator = DeviceMle::new(output.denominator.clone());
+            let first_point_eq =
+                Mle::new(DevicePoint::new(first_point_device).partial_lagrange().into_inner());
+            let first_numerator_eval = device_numerator
+                .eval_at_eq(&DeviceTensor::from_raw(first_point_eq.guts().clone()))
+                .to_host_vec()
+                .unwrap()[0];
+            let first_denominator_eval = device_denominator
+                .eval_at_eq(&DeviceTensor::from_raw(first_point_eq.guts().clone()))
+                .to_host_vec()
+                .unwrap()[0];
 
             let mut challenger = get_challenger();
-            t.synchronize().await.unwrap();
-            let time = tokio::time::Instant::now();
+            t.synchronize_blocking().unwrap();
+            let time = std::time::Instant::now();
             let mut round_proofs = Vec::new();
             // Follow the GKR protocol layer by layer.
             let mut numerator_eval = first_numerator_eval;
@@ -456,8 +469,7 @@ mod tests {
                     numerator_eval,
                     denominator_eval,
                     &mut challenger,
-                )
-                .await;
+                );
 
                 // Observe the prover message.
                 challenger.observe_ext_element(round_proof.numerator_0);
@@ -477,7 +489,7 @@ mod tests {
                 // Add the round proof to the total
                 round_proofs.push(round_proof);
             }
-            t.synchronize().await.unwrap();
+            t.synchronize_blocking().unwrap();
             println!("proof generation time: {:?}", time.elapsed());
 
             // Follow the GKR protocol layer by layer.
@@ -532,34 +544,34 @@ mod tests {
                     + (round_proof.denominator_1 - round_proof.denominator_0) * last_coordinate;
             }
         })
-        .await
         .unwrap();
     }
 
-    #[tokio::test]
+    #[test]
     #[serial]
-    async fn test_logup_gkr_e2e() {
-        let (machine, record, program) = tracegen_setup::setup().await;
+    fn test_logup_gkr_e2e() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let (machine, record, program) = rt.block_on(tracegen_setup::setup());
 
-        run_in_place(|scope| async move {
+        run_sync_in_place(|scope| {
             // *********** Generate traces using the host tracegen. ***********
             let capacity = CORE_MAX_TRACE_SIZE as usize;
             let buffer = PinnedBuffer::<Felt>::with_capacity(capacity);
             let queue = Arc::new(WorkerQueue::new(vec![buffer]));
-            let buffer = queue.pop().await.unwrap();
-            let (public_values, jagged_trace_data, shard_chips, _permit) = full_tracegen(
-                &machine,
-                program.clone(),
-                Arc::new(record),
-                &buffer,
-                CORE_MAX_TRACE_SIZE as usize,
-                LOG_STACKING_HEIGHT,
-                CORE_MAX_LOG_ROW_COUNT,
-                &scope,
-                ProverSemaphore::new(1),
-                true,
-            )
-            .await;
+            let buffer = rt.block_on(queue.pop()).unwrap();
+            let (public_values, jagged_trace_data, shard_chips, _permit) =
+                rt.block_on(full_tracegen(
+                    &machine,
+                    program.clone(),
+                    Arc::new(record),
+                    &buffer,
+                    CORE_MAX_TRACE_SIZE as usize,
+                    LOG_STACKING_HEIGHT,
+                    CORE_MAX_LOG_ROW_COUNT,
+                    &scope,
+                    ProverSemaphore::new(1),
+                    true,
+                ));
 
             // *********** Generate LogupGKR traces and prove end to end ***********
             let mut challenger = TestGC::default_challenger();
@@ -601,7 +613,7 @@ mod tests {
             let mut all_interactions = BTreeMap::new();
             for chip in shard_chips.iter() {
                 let interactions = Interactions::new(chip.sends(), chip.receives());
-                let device_interactions = interactions.to_device_in(&scope).await.unwrap();
+                let device_interactions = interactions.copy_to_device(&scope).unwrap();
                 all_interactions.insert(chip.name().to_string(), Arc::new(device_interactions));
             }
 
@@ -617,8 +629,7 @@ mod tests {
                     num_row_variables: CORE_MAX_LOG_ROW_COUNT,
                 },
                 &mut prover_challenger,
-            )
-            .await;
+            );
             let prover_challenge: Ext = prover_challenger.sample_ext_element();
 
             let degrees = shard_chips
@@ -649,6 +660,6 @@ mod tests {
             let verifier_challenge: Ext = verifier_challenger.sample_ext_element();
             assert_eq!(verifier_challenge, prover_challenge);
         })
-        .await;
+        .unwrap();
     }
 }

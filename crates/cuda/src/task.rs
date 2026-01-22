@@ -28,7 +28,10 @@ use slop_futures::queue::{AcquireWorkerError, TryAcquireWorkerError, Worker, Wor
 use thiserror::Error;
 use tokio::{sync::oneshot, task::JoinHandle};
 
-use crate::{DeviceCopy, ToDevice};
+use slop_alloc::{CanCopyFrom, CanCopyFromRef, CanCopyIntoRef};
+use slop_multilinear::Point;
+
+use crate::{DeviceBuffer, DeviceCopy, ToDevice};
 
 use super::{
     stream::{StreamRef, INTERVAL_MS},
@@ -114,6 +117,17 @@ where
 {
     let pool = global_task_pool();
     pool.run(f).await
+}
+
+/// Run a task on the task pool.
+///
+/// The future returned by this function will wait for the task to finish.
+pub fn run_sync_in_place<F, R>(f: F) -> Result<R, CudaError>
+where
+    F: FnOnce(TaskScope) -> R,
+{
+    let pool = global_task_pool();
+    pool.run_sync(f)
 }
 
 #[derive(Debug, Clone, Error)]
@@ -239,24 +253,15 @@ pub enum TrySpawnError {
 }
 
 impl TaskPool {
-    // /// Get a task from the task pool.
-    // async fn task(&self) -> Result<OwnedTask, TaskSpawnError> {
-    //     let worker = self.inner.clone().pop().await.map_err(TaskSpawnError::AcquireError)?;
-    //     Ok(OwnedTask { inner: worker })
-    // }
-
     async fn task(inner: Arc<WorkerQueue<Task>>) -> Result<OwnedTask, TaskSpawnError> {
         let worker = inner.clone().pop().await.map_err(TaskSpawnError::AcquireError)?;
         Ok(OwnedTask { inner: worker })
     }
 
-    // /// Get a task from the task pool.
-    // ///
-    // /// This function will block the current thread until a task becomes available.
-    // fn try_get_task(&self) -> Result<OwnedTask, TrySpawnError> {
-    //     let task = self.inner.clone().try_pop().map_err(TrySpawnError::TryAcquireError)?;
-    //     Ok(OwnedTask { inner: task })
-    // }
+    fn try_task(inner: Arc<WorkerQueue<Task>>) -> Result<OwnedTask, TrySpawnError> {
+        let worker = inner.clone().try_pop().map_err(TrySpawnError::TryAcquireError)?;
+        Ok(OwnedTask { inner: worker })
+    }
 
     /// Spawn a task on the task pool.
     ///
@@ -275,6 +280,20 @@ impl TaskPool {
         SpawnHandle { handle }
     }
 
+    pub fn spawn_blocking<F, R>(&self, f: F) -> SpawnHandle<R>
+    where
+        F: FnOnce(TaskScope) -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        let queue = self.inner.clone();
+        let handle = tokio::task::spawn_blocking(move || {
+            let task = TaskPool::try_task(queue).expect("failed to acquire a task from the pool");
+            let task = Arc::new(task);
+            task.run_sync(f)
+        });
+        SpawnHandle { handle }
+    }
+
     /// Run a task on the task pool.
     ///
     /// The future returned by this function will wait for the task to finish.
@@ -286,6 +305,16 @@ impl TaskPool {
         let queue = self.inner.clone();
         let task = TaskPool::task(queue).await.expect("failed to acquire a task from the pool");
         task.run(f).await
+    }
+
+    pub fn run_sync<F, R>(&self, f: F) -> Result<R, CudaError>
+    where
+        F: FnOnce(TaskScope) -> R,
+    {
+        let queue = self.inner.clone();
+        let task = TaskPool::try_task(queue).expect("failed to acquire a task from the pool");
+        let task = Arc::new(task);
+        task.run_sync(f)
     }
 }
 
@@ -598,6 +627,48 @@ impl DeviceMemory for TaskScope {
     }
 }
 
+// Implement CanCopyFrom for TaskScope to copy from CpuBackend
+impl<T: DeviceCopy> CanCopyFrom<Buffer<T>, slop_alloc::CpuBackend> for TaskScope {
+    type Output = Buffer<T, TaskScope>;
+
+    fn copy_into(
+        &self,
+        value: Buffer<T>,
+    ) -> impl std::future::Future<Output = Result<Self::Output, CopyError>> + Send + Sync {
+        let result = DeviceBuffer::from_host(&value, self).map(|b| b.into_inner());
+        std::future::ready(result)
+    }
+}
+
+// Implement CanCopyFromRef for TaskScope to copy Point from CpuBackend
+impl<T: DeviceCopy> CanCopyFromRef<Point<T>, slop_alloc::CpuBackend> for TaskScope {
+    type Output = Point<T, TaskScope>;
+
+    fn copy_to(
+        &self,
+        value: &Point<T>,
+    ) -> impl std::future::Future<Output = Result<Self::Output, CopyError>> + Send + Sync {
+        let result =
+            DeviceBuffer::from_host(value.values(), self).map(|b| Point::new(b.into_inner()));
+        std::future::ready(result)
+    }
+}
+
+// Implement CanCopyIntoRef for TaskScope to copy Point to CpuBackend
+impl<T: DeviceCopy> CanCopyIntoRef<Point<T, TaskScope>, slop_alloc::CpuBackend> for TaskScope {
+    type Output = Point<T>;
+
+    fn copy_to_dst(
+        dst: &slop_alloc::CpuBackend,
+        value: &Point<T, TaskScope>,
+    ) -> impl std::future::Future<Output = Result<Self::Output, CopyError>> + Send + Sync {
+        let _ = dst;
+        let result =
+            DeviceBuffer::from_raw(value.values().clone()).to_host().map(|v| Point::new(v.into()));
+        std::future::ready(result)
+    }
+}
+
 impl OwnedTask {
     fn is_finished(&self) -> Result<bool, CudaError> {
         self.inner.end_event.query().map(|()| true).or_else(|e| match e {
@@ -616,6 +687,19 @@ impl OwnedTask {
         let value = f(scope.clone()).await;
         unsafe { scope.stream.record_unchecked(&scope.end_event).unwrap() };
         TaskHandle { task: strong_ptr, scope, value }
+    }
+
+    fn run_sync<F, R>(self: Arc<Self>, f: F) -> Result<R, CudaError>
+    where
+        F: FnOnce(TaskScope) -> R,
+    {
+        let scope = TaskScope(Arc::downgrade(&self));
+        let output = f(scope.clone());
+        unsafe {
+            scope.stream.record_unchecked(&scope.end_event)?;
+            scope.end_event.synchronize()?;
+        };
+        Ok(output)
     }
 }
 
