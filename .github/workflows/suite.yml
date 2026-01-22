@@ -15,9 +15,9 @@ on:
       cuslop_checkout:
         description: "git ref to checkout for cuslop"
         required: false
-  merge_group:
-  # pull_request:
-  #   branches: [ main ]
+      network_concurrent_repeat_count:
+        description: "Number of times to repeat the network workload concurrently (using tokio tasks)"
+        default: "1"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-
@@ -41,7 +41,7 @@ jobs:
       - name: Get cache key for sp1-perf
         id: sp1-perf-cache-key
         run: |
-          echo "key=sp1-perf-avx512-${{ github.ref }}" >> $GITHUB_OUTPUT
+          echo "key=sp1-perf-avx512-${{ github.sha }}" >> $GITHUB_OUTPUT
 
       - name: Setup/restore sp1-perf cache
         id: sp1-perf-cache
@@ -78,8 +78,9 @@ jobs:
           mkdir -p ~/.sp1/bin
           mv target/release/sp1-perf ~/.sp1/bin/sp1-perf
 
-  build-sp1-perf:
-    name: Build sp1-perf
+  build-sp1-perf-cuda:
+    if: ${{ fromJSON(github.event.inputs.cuda_workloads)[0] != null }}
+    name: Build sp1-perf (CUDA)
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     runs-on:
@@ -96,7 +97,7 @@ jobs:
       - name: Get cache key for sp1-perf
         id: sp1-perf-cache-key
         run: |
-          echo "key=sp1-perf-${{ github.ref }}" >> $GITHUB_OUTPUT
+          echo "key=sp1-perf-cuda-${{ github.sha }}" >> $GITHUB_OUTPUT
 
       - name: Setup/restore sp1-perf cache
         id: sp1-perf-cache
@@ -284,7 +285,7 @@ jobs:
         "run-id=${{ github.run_id }}",
       ]
     needs:
-      - build-sp1-perf
+      - build-sp1-perf-cuda
       - build-cuslop-server
     steps:
       - name: Restore sp1-perf cache
@@ -293,7 +294,7 @@ jobs:
         with:
           fail-on-cache-miss: true
           path: ~/.sp1/bin/sp1-perf
-          key: ${{ needs.build-sp1-perf.outputs.cache-key }}
+          key: ${{ needs.build-sp1-perf-cuda.outputs.cache-key }}
 
       - name: Restore cuslop-server cache
         id: restore-cuslop-server-cache
@@ -410,4 +411,4 @@ jobs:
           NETWORK_PRIVATE_KEY: ${{ secrets.NETWORK_PRIVATE_KEY }}
           NETWORK_RPC_URL: "https://rpc.production.succinct.xyz" 
         run: |
-          ~/.sp1/bin/sp1-perf --program workdir/program.bin --stdin workdir/stdin.bin --mode network
+          ~/.sp1/bin/sp1-perf --program workdir/program.bin --stdin workdir/stdin.bin --mode network --concurrent-repeat-count ${{ github.event.inputs.network_concurrent_repeat_count }}

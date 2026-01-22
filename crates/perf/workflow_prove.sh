@@ -3,6 +3,7 @@
 # Get the current git branch.
 GIT_REF=$(git rev-parse --abbrev-ref HEAD)
 CUSLOP_CHECKOUT="main"
+NETWORK_CONCURRENT_REPEAT_COUNT=10
 
 # Define the list of CPU workloads.
 CPU_WORKLOADS=(
@@ -51,4 +52,5 @@ gh workflow run suite.yml \
     -f cuslop_checkout="$CUSLOP_CHECKOUT" \
     -f cpu_workloads="$(json_array "${CPU_WORKLOADS[@]}")" \
     -f cuda_workloads="$(json_array "${CUDA_WORKLOADS[@]}")" \
-    -f network_workloads="$(json_array "${NETWORK_WORKLOADS[@]}")"
+    -f network_workloads="$(json_array "${NETWORK_WORKLOADS[@]}")" \
+    -f network_concurrent_repeat_count="$NETWORK_CONCURRENT_REPEAT_COUNT"

@@ -23,11 +23,16 @@ sp1-prover-types = { workspace = true }
 sp1-core-machine = { workspace = true }
 sp1-hypercube = { workspace = true }
 sp1-primitives = { workspace = true }
+sp1-cuda = { workspace = true }
 slop-algebra = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 bincode = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 rand = { workspace = true }
+async-scoped = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
 
 [[bin]]
 name = "sp1-perf"
