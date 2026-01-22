@@ -1,7 +1,6 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::anyhow;
-use slop_air::BaseAir;
 use slop_algebra::AbstractField;
 use slop_futures::pipeline::{AsyncEngine, AsyncWorker, Pipeline, SubmitError, SubmitHandle};
 use sp1_core_executor::{
@@ -10,8 +9,7 @@ use sp1_core_executor::{
 };
 use sp1_core_machine::{executor::trace_chunk, riscv::RiscvAir};
 use sp1_hypercube::{
-    air::MachineAir,
-    prover::{CoreProofShape, ProverSemaphore, ProvingKey},
+    prover::{shape_from_record, CoreProofShape, ProverSemaphore, ProvingKey},
     Machine, MachineProof, MachineVerifier, SP1VerifyingKey,
 };
 use sp1_jit::TraceChunk;
@@ -793,49 +791,4 @@ impl<A: ArtifactClient, W: WorkerClient, C: SP1ProverComponents> SP1CoreProver<A
 
         Self { prove_shard_engine, setup_engine }
     }
-}
-
-/// Given a record, compute the shape of the resulting shard proof.
-fn shape_from_record(
-    verifier: &MachineVerifier<SP1GlobalContext, CoreSC>,
-    record: &ExecutionRecord,
-) -> Option<CoreProofShape<SP1Field, RiscvAir<SP1Field>>> {
-    let log_stacking_height = verifier.log_stacking_height() as usize;
-    let max_log_row_count = verifier.max_log_row_count();
-    let airs = verifier.machine().chips();
-    let shard_chips: BTreeSet<_> =
-        airs.iter().filter(|air| air.included(record)).cloned().collect();
-    let preprocessed_multiple = shard_chips
-        .iter()
-        .map(|air| air.preprocessed_width() * air.num_rows(record).unwrap_or_default())
-        .sum::<usize>()
-        .div_ceil(1 << log_stacking_height);
-    let main_multiple = shard_chips
-        .iter()
-        .map(|air| air.width() * air.num_rows(record).unwrap_or_default())
-        .sum::<usize>()
-        .div_ceil(1 << log_stacking_height);
-
-    let main_padding_cols = (main_multiple * (1 << log_stacking_height)
-        - shard_chips
-            .iter()
-            .map(|air| air.width() * air.num_rows(record).unwrap_or_default())
-            .sum::<usize>())
-    .div_ceil(1 << max_log_row_count);
-
-    let preprocessed_padding_cols = (preprocessed_multiple * (1 << log_stacking_height)
-        - shard_chips
-            .iter()
-            .map(|air| air.preprocessed_width() * air.num_rows(record).unwrap_or_default())
-            .sum::<usize>())
-    .div_ceil(1 << max_log_row_count);
-
-    let shard_chips = verifier.machine().smallest_cluster(&shard_chips).cloned()?;
-    Some(CoreProofShape {
-        shard_chips,
-        preprocessed_multiple,
-        main_multiple,
-        preprocessed_padding_cols,
-        main_padding_cols,
-    })
 }

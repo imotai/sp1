@@ -1,232 +1,125 @@
-use std::{
-    borrow::Borrow,
-    collections::BTreeMap,
-    fs::File,
-    io::{self, Seek, SeekFrom},
-    sync::{Arc, Mutex},
-};
-use tokio::sync::mpsc::{self, Receiver, Sender, UnboundedSender};
+use std::{borrow::Borrow, collections::BTreeMap, fs::File, io, sync::Arc};
 
-use crate::{executor::MachineExecutor, riscv::RiscvAir};
+use crate::executor::trace_chunk;
+use crate::riscv::RiscvAir;
+use hashbrown::HashSet;
 use thiserror::Error;
 
 use slop_algebra::PrimeField32;
 use slop_challenger::IopCtx;
 use sp1_hypercube::{
-    air::PublicValues,
-    prover::{
-        AirProver, MachineProverBuilder, MemoryPermit, PcsProof, ProverSemaphore, ProvingKey,
-    },
-    Machine, MachineProof, MachineRecord, ShardContext, ShardProof, ShardVerifier,
+    air::{PublicValues, PROOF_NONCE_NUM_WORDS},
+    prover::{AirProver, PcsProof, ProvingKey, SimpleProver},
+    MachineProof, MachineRecord, ShardContext,
 };
 
-use crate::{io::SP1Stdin, utils::concurrency::TurnBasedSync};
+use crate::io::SP1Stdin;
 use sp1_core_executor::{ExecutionState, SP1CoreOpts, SplitOpts};
 
 use sp1_core_executor::{
-    subproof::NoOpSubproofVerifier, ExecutionError, ExecutionRecord, ExecutionReport, Executor,
-    Program, SP1Context,
+    subproof::NoOpSubproofVerifier, CompressedMemory, CycleResult, ExecutionError, ExecutionRecord,
+    ExecutionReport, Executor, MinimalExecutor, Program, SP1Context, SplicedMinimalTrace,
+    SplicingVM,
 };
+use sp1_jit::MinimalTrace;
 
-pub fn generate_checkpoints(
-    mut runtime: Executor,
-    checkpoints_tx: Sender<(usize, File, bool, u64)>,
-) -> Result<Vec<u8>, SP1CoreProverError> {
-    let mut index = 0;
-    loop {
-        // Enter the span.
-        let span = tracing::debug_span!("batch");
-        let _span = span.enter();
-
-        // Execute the runtime until we reach a checkpoint.
-        let (checkpoint, _, done) =
-            runtime.execute_state(false).map_err(SP1CoreProverError::ExecutionError)?;
-
-        // Save the checkpoint to a temp file.
-        let mut checkpoint_file = tempfile::tempfile().map_err(SP1CoreProverError::IoError)?;
-        checkpoint.save(&mut checkpoint_file).map_err(SP1CoreProverError::IoError)?;
-
-        // Send the checkpoint.
-        checkpoints_tx
-            .blocking_send((index, checkpoint_file, done, runtime.state.global_clk))
-            .unwrap();
-
-        // If we've reached the final checkpoint, break out of the loop.
-        if done {
-            break Ok(runtime.state.public_values_stream);
-        }
-
-        // Update the index.
-        index += 1;
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn generate_records<F: PrimeField32>(
-    machine: &Machine<F, RiscvAir<F>>,
+/// Generate execution records from a program and inputs.
+///
+/// This function executes the program, splits execution into shards, and generates
+/// execution records suitable for proving. Returns the records and total cycle count.
+///
+/// This is a test-only function that generates records sequentially for simplicity.
+pub fn generate_records<F>(
     program: Arc<Program>,
-    record_gen_sync: Arc<TurnBasedSync>,
-    checkpoints_rx: Arc<Mutex<Receiver<(usize, File, bool, u64)>>>,
-    records_tx: UnboundedSender<(ExecutionRecord, Option<MemoryPermit>)>,
-    state: Arc<Mutex<PublicValues<u32, u64, u64, u32>>>,
-    deferred: Arc<Mutex<ExecutionRecord>>,
-    report_aggregate: Arc<Mutex<ExecutionReport>>,
+    stdin: SP1Stdin,
     opts: SP1CoreOpts,
-) {
-    let split_opts =
-        SplitOpts::new(&opts, program.instructions.len(), program.enable_untrusted_programs);
-    loop {
-        let received = { checkpoints_rx.lock().unwrap().blocking_recv() };
-        if let Some((index, mut checkpoint, done, _)) = received {
-            let (mut record, report) = tracing::debug_span!("trace checkpoint")
-                .in_scope(|| trace_checkpoint(program.clone(), &checkpoint, opts.clone()));
+    proof_nonce: [u32; PROOF_NONCE_NUM_WORDS],
+) -> Result<(Vec<ExecutionRecord>, u64), SP1CoreProverError>
+where
+    F: PrimeField32,
+{
+    let machine = RiscvAir::<F>::machine();
+    let split_opts = SplitOpts::new(&opts, program.instructions.len(), false);
 
-            // Trace the checkpoint and reconstruct the execution records.
-            *report_aggregate.lock().unwrap() += report;
-            checkpoint.seek(SeekFrom::Start(0)).expect("failed to seek to start of tempfile");
+    // Phase 1: Run MinimalExecutor to generate trace chunks
+    let mut minimal_executor =
+        MinimalExecutor::tracing(program.clone(), opts.minimal_trace_chunk_threshold);
 
-            // Wait for our turn to update the state.
-            record_gen_sync.wait_for_turn(index);
+    for buf in stdin.buffer {
+        minimal_executor.with_input(&buf);
+    }
 
-            // Update the public values & prover state for the shards which contain
-            // "cpu events".
-            let mut state = state.lock().unwrap();
-            state.is_execution_shard = 1;
-            state.pc_start = record.public_values.pc_start;
-            state.next_pc = record.public_values.next_pc;
-            state.initial_timestamp = record.public_values.initial_timestamp;
-            state.last_timestamp = record.public_values.last_timestamp;
-            state.is_first_execution_shard = (record.public_values.initial_timestamp == 1) as u32;
+    let mut trace_chunks = Vec::new();
+    while let Some(chunk) = minimal_executor.execute_chunk() {
+        trace_chunks.push(chunk);
+    }
 
-            let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
-            let initial_timestamp_low = (state.initial_timestamp & 0xFFFFFF) as u32;
-            let last_timestamp_high = (state.last_timestamp >> 24) as u32;
-            let last_timestamp_low = (state.last_timestamp & 0xFFFFFF) as u32;
+    // Phase 2: Splice chunks and trace them to generate records
+    let mut all_records = Vec::new();
+    let mut deferred =
+        ExecutionRecord::new(program.clone(), proof_nonce, opts.global_dependencies_opt);
+    let mut touched_addresses = HashSet::new();
 
-            state.initial_timestamp_inv = if state.initial_timestamp == 1 {
-                0
-            } else {
-                F::from_canonical_u32(initial_timestamp_high + initial_timestamp_low - 1)
-                    .inverse()
-                    .as_canonical_u32()
-            };
+    for chunk in trace_chunks {
+        // Splice the chunk into shards
+        let spliced_traces = splice_chunk_sequential(
+            program.clone(),
+            chunk,
+            proof_nonce,
+            opts.clone(),
+            &mut touched_addresses,
+        );
 
-            state.last_timestamp_inv =
-                F::from_canonical_u32(last_timestamp_high + last_timestamp_low - 1)
-                    .inverse()
-                    .as_canonical_u32();
-            if initial_timestamp_high == last_timestamp_high {
-                state.is_timestamp_high_eq = 1;
-            } else {
-                state.is_timestamp_high_eq = 0;
-                state.inv_timestamp_high = (F::from_canonical_u32(last_timestamp_high)
-                    - F::from_canonical_u32(initial_timestamp_high))
-                .inverse()
-                .as_canonical_u32();
-            }
-            if initial_timestamp_low == last_timestamp_low {
-                state.is_timestamp_low_eq = 1;
-            } else {
-                state.is_timestamp_low_eq = 0;
-                state.inv_timestamp_low = (F::from_canonical_u32(last_timestamp_low)
-                    - F::from_canonical_u32(initial_timestamp_low))
-                .inverse()
-                .as_canonical_u32();
-            }
-            if state.committed_value_digest == [0u32; 8] {
-                state.committed_value_digest = record.public_values.committed_value_digest;
-            }
-            if state.deferred_proofs_digest == [0u32; 8] {
-                state.deferred_proofs_digest = record.public_values.deferred_proofs_digest;
-            }
-            if state.commit_syscall == 0 {
-                state.commit_syscall = record.public_values.commit_syscall;
-            }
-            if state.commit_deferred_syscall == 0 {
-                state.commit_deferred_syscall = record.public_values.commit_deferred_syscall;
-            }
-            if state.exit_code == 0 {
-                state.exit_code = record.public_values.exit_code;
-            }
-            record.public_values = *state;
-            state.prev_exit_code = state.exit_code;
-            state.prev_commit_syscall = state.commit_syscall;
-            state.prev_commit_deferred_syscall = state.commit_deferred_syscall;
-            state.prev_committed_value_digest = state.committed_value_digest;
-            state.prev_deferred_proofs_digest = state.deferred_proofs_digest;
-            state.initial_timestamp = state.last_timestamp;
+        // Trace each spliced chunk to generate execution records
+        for (is_last, spliced) in spliced_traces {
+            let record =
+                ExecutionRecord::new(program.clone(), proof_nonce, opts.global_dependencies_opt);
+            let (done, mut record, final_registers) =
+                trace_chunk::<F>(program.clone(), opts.clone(), spliced, proof_nonce, record)
+                    .map_err(SP1CoreProverError::ExecutionError)?;
 
-            // Defer events that are too expensive to include in every shard.
-            let mut deferred = deferred.lock().unwrap();
-            deferred.append(&mut record.defer(&[]));
-
-            // See if any deferred shards are ready to be committed to.
-            let mut deferred = deferred.split(done, &mut record, false, &split_opts);
-            tracing::debug!("deferred {} records", deferred.len());
-
-            // Update the public values & prover state for the shards which do not
-            // contain "cpu events" before committing to them.
-            for record in deferred.iter_mut() {
-                state.previous_init_addr = record.public_values.previous_init_addr;
-                state.last_init_addr = record.public_values.last_init_addr;
-                state.previous_finalize_addr = record.public_values.previous_finalize_addr;
-                state.last_finalize_addr = record.public_values.last_finalize_addr;
-                state.previous_init_page_idx = record.public_values.previous_init_page_idx;
-                state.last_init_page_idx = record.public_values.last_init_page_idx;
-                state.previous_finalize_page_idx = record.public_values.previous_finalize_page_idx;
-                state.last_finalize_page_idx = record.public_values.last_finalize_page_idx;
-                state.pc_start = state.next_pc;
-                state.prev_exit_code = state.exit_code;
-                state.prev_commit_syscall = state.commit_syscall;
-                state.prev_commit_deferred_syscall = state.commit_deferred_syscall;
-                state.prev_committed_value_digest = state.committed_value_digest;
-                state.prev_deferred_proofs_digest = state.deferred_proofs_digest;
-                state.last_timestamp = state.initial_timestamp;
-                state.is_timestamp_high_eq = 1;
-                state.is_timestamp_low_eq = 1;
-                state.is_first_execution_shard = 0;
-                state.is_execution_shard = 0;
-
-                let initial_timestamp_high = (state.initial_timestamp >> 24) as u32;
-                let initial_timestamp_low = (state.initial_timestamp & 0xFFFFFF) as u32;
-                let last_timestamp_high = (state.last_timestamp >> 24) as u32;
-                let last_timestamp_low = (state.last_timestamp & 0xFFFFFF) as u32;
-
-                state.is_first_execution_shard =
-                    (record.public_values.initial_timestamp == 1) as u32;
-                state.initial_timestamp_inv =
-                    F::from_canonical_u32(initial_timestamp_high + initial_timestamp_low - 1)
-                        .inverse()
-                        .as_canonical_u32();
-                state.last_timestamp_inv =
-                    F::from_canonical_u32(last_timestamp_high + last_timestamp_low - 1)
-                        .inverse()
-                        .as_canonical_u32();
-                record.public_values = *state;
+            if done {
+                // Insert global memory events for the last record
+                minimal_executor.emit_globals(
+                    &mut record,
+                    final_registers,
+                    touched_addresses.clone(),
+                );
             }
 
-            // Generate the dependencies.
-            let mut records = Vec::new();
-            records.push(*record);
-            records.extend(deferred);
+            // Handle deferral
+            deferred.append(&mut record.defer(&opts.retained_events_presets));
+            let can_pack = done
+                && record.estimated_trace_area <= split_opts.pack_trace_threshold
+                && deferred.global_memory_initialize_events.len()
+                    <= split_opts.combine_memory_threshold
+                && deferred.global_memory_finalize_events.len()
+                    <= split_opts.combine_memory_threshold
+                && deferred.global_page_prot_initialize_events.len()
+                    <= split_opts.combine_page_prot_threshold
+                && deferred.global_page_prot_finalize_events.len()
+                    <= split_opts.combine_page_prot_threshold;
+            let deferred_records =
+                deferred.split(done || is_last, &mut record, can_pack, &split_opts);
+
+            // Generate dependencies and collect records
+            let mut records = vec![record];
+            records.extend(deferred_records);
             machine.generate_dependencies(records.iter_mut(), None);
-
-            // Let another worker update the state.
-            record_gen_sync.advance_turn();
-
-            // Send the records to the prover.
-            for record in records {
-                records_tx.send((record, None)).unwrap();
-            }
-        } else {
-            break;
+            all_records.extend(records);
         }
     }
+
+    let cycles = minimal_executor.global_clk();
+    Ok((all_records, cycles))
 }
 
+/// Prove a program with the given inputs using SimpleProver.
+///
+/// This is a test-only function that proves records sequentially for simplicity. It is
+/// extremely inefficient in both time and space, and should only be used for testing.
 pub async fn prove_core<GC, SC, PC>(
-    verifier: ShardVerifier<GC, SC>,
-    prover: Arc<PC>,
+    prover: &SimpleProver<GC, SC, PC>,
     pk: Arc<ProvingKey<GC, SC, PC>>,
     program: Arc<Program>,
     stdin: SP1Stdin,
@@ -239,16 +132,13 @@ where
     PC: AirProver<GC, SC>,
     GC::F: PrimeField32,
 {
-    let (proof_tx, mut proof_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (all_records, cycles) =
+        generate_records::<GC::F>(program, stdin, opts, context.proof_nonce)?;
 
-    let (_, cycles) = prove_core_stream::<GC, SC, PC>(
-        verifier, prover, pk, program, stdin, opts, context, proof_tx,
-    )
-    .await
-    .unwrap();
-
+    // Prove records sequentially
     let mut shard_proofs = BTreeMap::new();
-    while let Some(proof) = proof_rx.recv().await {
+    for record in all_records {
+        let proof = prover.prove_shard(pk.clone(), record).await;
         let public_values: &PublicValues<[GC::F; 4], [GC::F; 3], [GC::F; 4], GC::F> =
             proof.public_values.as_slice().borrow();
         shard_proofs.insert(
@@ -261,78 +151,63 @@ where
             proof,
         );
     }
+
     let shard_proofs = shard_proofs.into_values().collect();
     let proof = MachineProof { shard_proofs };
 
     Ok((proof, cycles))
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn prove_core_stream<GC, SC, PC>(
-    // TODO: clean this up
-    verifier: ShardVerifier<GC, SC>,
-    prover: Arc<PC>,
-    pk: Arc<ProvingKey<GC, SC, PC>>,
+/// Splice a trace chunk into shard-sized pieces sequentially.
+/// Returns a vector of (is_last, spliced_trace) pairs.
+fn splice_chunk_sequential(
     program: Arc<Program>,
-    stdin: SP1Stdin,
+    chunk: sp1_core_executor::TraceChunkRaw,
+    proof_nonce: [u32; sp1_hypercube::air::PROOF_NONCE_NUM_WORDS],
     opts: SP1CoreOpts,
-    context: SP1Context<'static>,
-    proof_tx: UnboundedSender<ShardProof<GC, PcsProof<GC, SC>>>,
-) -> Result<(Vec<u8>, u64), SP1CoreProverError>
-where
-    GC: IopCtx,
-    SC: ShardContext<GC, Air = RiscvAir<GC::F>>,
-    PC: AirProver<GC, SC>,
-    GC::F: PrimeField32,
-{
-    // TODO: get this from input
-    let num_record_workers = 4;
-    let num_trace_gen_workers = 4;
-    let (records_tx, mut records_rx) =
-        mpsc::unbounded_channel::<(ExecutionRecord, Option<MemoryPermit>)>();
+    touched_addresses: &mut HashSet<u64>,
+) -> Vec<(bool, SplicedMinimalTrace<sp1_core_executor::TraceChunkRaw>)> {
+    let mut result = Vec::new();
+    let mut compressed_touched = CompressedMemory::new();
+    let mut vm =
+        SplicingVM::new(&chunk, program.clone(), &mut compressed_touched, proof_nonce, opts);
 
-    let record_memory = sysinfo::System::new_all().total_memory() / 7;
+    let mut last_splice = SplicedMinimalTrace::new_full_trace(chunk.clone());
+    let start_num_mem_reads = chunk.num_mem_reads();
 
-    let machine_executor = MachineExecutor::<GC::F>::new(
-        record_memory.try_into().unwrap_or_else(|_| {
-            tracing::warn!(
-                "truncating available memory {record_memory} into {}. this is a bug.",
-                usize::MAX
-            );
-            usize::MAX
-        }),
-        num_record_workers,
-        opts.clone(),
-    );
-
-    let prover_permits = ProverSemaphore::new(5);
-    let prover =
-        MachineProverBuilder::<GC, SC, PC>::new(verifier, vec![prover_permits], vec![prover])
-            .num_workers(num_trace_gen_workers)
-            .build();
-
-    let prover_handle = tokio::spawn(async move {
-        let mut handles = Vec::new();
-        while let Some(record) = records_rx.recv().await {
-            let handle = prover.prove_shard(pk.clone(), record.0);
-            handles.push(handle);
+    loop {
+        match vm.execute().expect("splicing execution failed") {
+            CycleResult::ShardBoundary => {
+                if let Some(spliced) = vm.splice(chunk.clone()) {
+                    last_splice.set_last_clk(vm.core.clk());
+                    last_splice.set_last_mem_reads_idx(
+                        start_num_mem_reads as usize - vm.core.mem_reads.len(),
+                    );
+                    let splice_to_emit = std::mem::replace(&mut last_splice, spliced);
+                    result.push((false, splice_to_emit));
+                } else {
+                    last_splice.set_last_clk(vm.core.clk());
+                    last_splice.set_last_mem_reads_idx(
+                        start_num_mem_reads as usize - vm.core.mem_reads.len(),
+                    );
+                    result.push((true, last_splice));
+                    break;
+                }
+            }
+            CycleResult::Done(true) => {
+                last_splice.set_last_clk(vm.core.clk());
+                last_splice.set_last_mem_reads_idx(chunk.num_mem_reads() as usize);
+                result.push((true, last_splice));
+                break;
+            }
+            CycleResult::Done(false) | CycleResult::TraceEnd => {
+                unreachable!("splicing should not return incomplete without shard boundary");
+            }
         }
-        for handle in handles {
-            let proof = handle.await;
-            proof_tx.send(proof).unwrap();
-        }
-    });
+    }
 
-    // Run the machine executor.
-    let output = machine_executor.execute(program, stdin, context, records_tx).await.unwrap();
-
-    // Wait for the prover to finish.
-    prover_handle.await.unwrap();
-
-    let pv_stream = output.public_value_stream;
-    let cycles = output.cycles;
-
-    Ok((pv_stream, cycles))
+    touched_addresses.extend(compressed_touched.is_set());
+    result
 }
 
 pub fn trace_checkpoint(

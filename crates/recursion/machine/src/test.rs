@@ -3,7 +3,7 @@ use std::sync::Arc;
 use slop_algebra::extension::BinomialExtensionField;
 use slop_basefold::FriConfig;
 use sp1_hypercube::{
-    inner_perm, prover::CpuProverBuilder, Machine, MachineProof, MachineVerifier,
+    inner_perm, prover::simple_prover, Machine, MachineProof, MachineVerifier,
     MachineVerifierConfigError, SP1InnerPcs, SP1PcsProofInner, ShardVerifier,
 };
 use sp1_primitives::{
@@ -61,10 +61,10 @@ pub async fn run_test_recursion<const DEGREE: usize, const VAR_EVENTS_PER_ROW: u
         max_log_row_count,
         machine,
     );
-    let prover = CpuProverBuilder::simple(verifier.clone()).build();
+    let prover = simple_prover(verifier.clone());
 
     let (pk, vk) = prover
-        .setup(Arc::new(program), None)
+        .setup(Arc::new(program))
         .instrument(tracing::debug_span!("setup").or_current())
         .await;
 

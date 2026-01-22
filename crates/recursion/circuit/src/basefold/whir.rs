@@ -631,7 +631,7 @@ mod tests {
     use slop_merkle_tree::{FieldMerkleTreeProver, MerkleTreeTcs, Poseidon2KoalaBear16Prover};
     use slop_whir::{Prover, Verifier};
     use sp1_core_machine::utils::setup_logger;
-    use sp1_hypercube::{prover::CpuProverBuilder, MachineProof, MachineVerifier, ShardVerifier};
+    use sp1_hypercube::{prover::simple_prover, MachineProof, MachineVerifier, ShardVerifier};
     use sp1_primitives::SP1GlobalContext;
     use sp1_recursion_compiler::{circuit::AsmConfig, config::InnerConfig};
     use sp1_recursion_machine::RecursionAir;
@@ -774,9 +774,9 @@ mod tests {
             max_log_row_count,
             machine,
         );
-        let prover = CpuProverBuilder::simple(verifier.clone()).build();
+        let prover = simple_prover(verifier.clone());
 
-        let (pk, vk) = prover.setup(program, None).await;
+        let (pk, vk) = prover.setup(program).await;
 
         let records = vec![executor.record.clone()];
 

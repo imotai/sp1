@@ -1,18 +1,18 @@
 //! Prover components.
 
 mod cpu;
-mod machine;
 mod memory_permit;
 mod permits;
 mod shard;
+mod simple;
 mod trace;
 mod zerocheck;
 
 pub use cpu::*;
-pub use machine::*;
 pub use memory_permit::*;
 pub use permits::*;
 pub use shard::*;
+pub use simple::*;
 use slop_merkle_tree::BnProver;
 use slop_stacked::StackedPcsProver;
 use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext, SP1OuterGlobalContext};
