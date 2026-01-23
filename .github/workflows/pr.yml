@@ -104,51 +104,50 @@ jobs:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0
           RUST_BACKTRACE: 1
 
-  # TODO: Enable once recursion crates are fixed for multilinear.
-  # test-verifier:
-  #   name: Test Verifier Crate
-  #   runs-on:
-  #     [
-  #       runs-on,
-  #       runner=64cpu-linux-arm64,
-  #       spot=false,
-  #       disk=large,
-  #       "run-id=${{ github.run_id }}",
-  #     ]
-  #   env:
-  #     CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-  #   steps:
-  #     - name: Checkout sources
-  #       uses: actions/checkout@v4
+  test-verifier:
+    name: Test Verifier Crate
+    runs-on:
+      [
+        runs-on,
+        runner=64cpu-linux-arm64,
+        spot=false,
+        disk=large,
+        "run-id=${{ github.run_id }}",
+      ]
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
 
-  #     - name: Setup CI
-  #       uses: ./.github/actions/setup
-  #       with:
-  #         pull_token: ${{ secrets.PRIVATE_PULL_TOKEN }}
+      - name: Setup CI
+        uses: ./.github/actions/setup
+        with:
+          pull_token: ${{ secrets.PRIVATE_PULL_TOKEN }}
 
-  #     - name: Install SP1 toolchain from repo
-  #       run: |
-  #         cargo run -p sp1-cli --no-default-features -- prove install-toolchain
-  #         cd crates/cli
+      - name: Install SP1 toolchain from repo
+        run: |
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
+          cd crates/cli
   
-  #     - name: Run cargo check
-  #       uses: actions-rs/cargo@v1
-  #       with:
-  #         command: check
-  #         args: --all-targets --all-features --tests
+      - name: Run cargo check
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --all-targets --all-features --tests
 
-  #     - name: Run cargo test
-  #       uses: actions-rs/cargo@v1
-  #       with:
-  #         command: test
-  #         args: --release --package sp1-verifier -F ark
-  #       env:
-  #         RUSTFLAGS: -Copt-level=3 -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
-  #         RUST_BACKTRACE: 1
+      - name: Run cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release --package sp1-verifier -F ark
+        env:
+          RUSTFLAGS: -Copt-level=3 -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
+          RUST_BACKTRACE: 1
 
   lint:
     name: Formatting & Clippy
-    runs-on: [runs-on, runner=16cpu-linux-x64, disk=large, "run-id=${{ github.run_id }}"]
+    runs-on: [runs-on, runner=16cpu-linux-x64, disk=large, spot=false, "run-id=${{ github.run_id }}"]
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
@@ -184,7 +183,7 @@ jobs:
 
   check:
     name: Cargo Check
-    runs-on: [runs-on, runner=16cpu-linux-x64, disk=large, "run-id=${{ github.run_id }}"]
+    runs-on: [runs-on, runner=16cpu-linux-x64, disk=large, spot=false, "run-id=${{ github.run_id }}"]
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       RUSTFLAGS: "--cfg sp1_debug_constraints"
@@ -222,7 +221,7 @@ jobs:
 
   check-nightly:
     name: Cargo Check (Nightly)
-    runs-on: [runs-on, runner=16cpu-linux-x64, disk=large, "run-id=${{ github.run_id }}"]
+    runs-on: [runs-on, runner=16cpu-linux-x64, disk=large, spot=false, "run-id=${{ github.run_id }}"]
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:

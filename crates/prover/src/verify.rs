@@ -1,5 +1,5 @@
 use crate::{
-    build::{get_groth16_artifacts_build_dir, get_plonk_artifacts_build_dir},
+    build::{groth16_bn254_artifacts_dev_dir, plonk_bn254_artifacts_dev_dir, use_development_mode},
     utils::{is_recursion_public_values_valid, is_root_public_values_valid},
     CoreSC, CpuSP1ProverComponents, RecursionSC, SP1ProverComponents, ShrinkSC, WrapSC,
 };
@@ -26,7 +26,8 @@ use sp1_recursion_executor::RecursionPublicValues;
 use sp1_recursion_gnark_ffi::{
     Groth16Bn254Proof, Groth16Bn254Prover, PlonkBn254Proof, PlonkBn254Prover,
 };
-use std::{borrow::Borrow, path::PathBuf, str::FromStr};
+use sp1_verifier::{Groth16Verifier, PlonkVerifier, GROTH16_VK_BYTES, PLONK_VK_BYTES};
+use std::{borrow::Borrow, str::FromStr};
 use thiserror::Error;
 
 use crate::SP1CoreProofData;
@@ -689,10 +690,6 @@ impl SP1Verifier {
         Ok(())
     }
 
-    pub fn plonk_build_dir(&self) -> PathBuf {
-        get_plonk_artifacts_build_dir(&self.wrap_vk).expect("plonk artifacts not found")
-    }
-
     /// Verifies a PLONK proof using the circuit artifacts in the build directory.
     pub fn verify_plonk_bn254(&self, proof: &PlonkBn254Proof, vk: &SP1VerifyingKey) -> Result<()> {
         let prover = PlonkBn254Prover::new();
@@ -708,27 +705,57 @@ impl SP1Verifier {
             return Err(anyhow!("vk_root mismatch"));
         }
 
-        // Verify the proof with the corresponding public inputs.
-        let build_dir = self.plonk_build_dir();
-        prover.verify(
-            proof,
-            &vkey_hash,
-            &committed_values_digest,
-            &exit_code,
-            &vk_root,
-            &proof_nonce,
-            &build_dir,
-        )?;
-
         if vk.hash_bn254().as_canonical_biguint() != vkey_hash {
             return Err(PlonkVerificationError::InvalidVerificationKey.into());
         }
 
-        Ok(())
-    }
+        // Verify the proof with the corresponding public inputs.
+        if use_development_mode() {
+            let build_dir = plonk_bn254_artifacts_dev_dir(&self.wrap_vk);
+            if !build_dir.exists() {
+                return Err(anyhow!("{:?} development plonk build dir does not exist", build_dir));
+            }
+            prover.verify(
+                proof,
+                &vkey_hash,
+                &committed_values_digest,
+                &exit_code,
+                &vk_root,
+                &proof_nonce,
+                &build_dir,
+            )?;
+        } else {
+            // The encoded_proof contains: exit_code(32) + vk_root(32) + proof_nonce(32) + proof
+            // We need to extract just the proof bytes (starting at offset 96)
+            let encoded_bytes = hex::decode(&proof.encoded_proof)?;
+            if encoded_bytes.len() < 96 {
+                return Err(anyhow!(
+                    "Invalid encoded_proof length: {} (expected at least 96)",
+                    encoded_bytes.len()
+                ));
+            }
+            let proof_bytes = &encoded_bytes[96..];
 
-    pub fn groth16_build_dir(&self) -> PathBuf {
-        get_groth16_artifacts_build_dir(&self.wrap_vk).expect("groth16 artifacts not found")
+            // Convert BigUint to padded 32-byte big-endian array
+            let to_bytes32 = |v: &BigUint| -> [u8; 32] {
+                let mut padded = [0u8; 32];
+                let bytes = v.to_bytes_be();
+                let start = 32usize.saturating_sub(bytes.len());
+                padded[start..].copy_from_slice(&bytes[..bytes.len().min(32)]);
+                padded
+            };
+
+            let public_inputs = [
+                to_bytes32(&vkey_hash),
+                to_bytes32(&committed_values_digest),
+                to_bytes32(&exit_code),
+                to_bytes32(&vk_root),
+                to_bytes32(&proof_nonce),
+            ];
+            PlonkVerifier::verify_gnark_proof(proof_bytes, &public_inputs, &PLONK_VK_BYTES)?
+        }
+
+        Ok(())
     }
 
     /// Verifies a Groth16 proof using the circuit artifacts in the build directory.
@@ -750,20 +777,58 @@ impl SP1Verifier {
             return Err(anyhow!("vk_root mismatch"));
         }
 
-        // Verify the proof with the corresponding public inputs.
-        let build_dir = self.groth16_build_dir();
-        prover.verify(
-            proof,
-            &vkey_hash,
-            &committed_values_digest,
-            &exit_code,
-            &vk_root,
-            &proof_nonce,
-            &build_dir,
-        )?;
-
         if vk.hash_bn254().as_canonical_biguint() != vkey_hash {
             return Err(Groth16VerificationError::InvalidVerificationKey.into());
+        }
+
+        // Verify the proof with the corresponding public inputs.
+        if use_development_mode() {
+            let build_dir = groth16_bn254_artifacts_dev_dir(&self.wrap_vk);
+            if !build_dir.exists() {
+                return Err(anyhow!(
+                    "{:?} development groth16 build dir does not exist",
+                    build_dir
+                ));
+            }
+            prover.verify(
+                proof,
+                &vkey_hash,
+                &committed_values_digest,
+                &exit_code,
+                &vk_root,
+                &proof_nonce,
+                &build_dir,
+            )?;
+        } else {
+            // The encoded_proof contains: exit_code(32) + vk_root(32) + proof_nonce(32) + proof(256)
+            // We need to extract just the proof bytes (starting at offset 96)
+            let encoded_bytes = hex::decode(&proof.encoded_proof)?;
+            if encoded_bytes.len() < 96 + 256 {
+                return Err(anyhow!(
+                    "Invalid encoded_proof length: {} (expected at least {})",
+                    encoded_bytes.len(),
+                    96 + 256
+                ));
+            }
+            let proof_bytes = &encoded_bytes[96..];
+
+            // Convert BigUint to padded 32-byte big-endian array
+            let to_bytes32 = |v: &BigUint| -> [u8; 32] {
+                let mut padded = [0u8; 32];
+                let bytes = v.to_bytes_be();
+                let start = 32usize.saturating_sub(bytes.len());
+                padded[start..].copy_from_slice(&bytes[..bytes.len().min(32)]);
+                padded
+            };
+
+            let public_inputs = [
+                to_bytes32(&vkey_hash),
+                to_bytes32(&committed_values_digest),
+                to_bytes32(&exit_code),
+                to_bytes32(&vk_root),
+                to_bytes32(&proof_nonce),
+            ];
+            Groth16Verifier::verify_gnark_proof(proof_bytes, &public_inputs, &GROTH16_VK_BYTES)?
         }
 
         Ok(())

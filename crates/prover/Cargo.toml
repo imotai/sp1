@@ -22,6 +22,7 @@ sp1-jit = { workspace = true }
 sp1-recursion-gnark-ffi = { workspace = true }
 sp1-core-machine = { workspace = true }
 sp1-derive = { workspace = true }
+
 slop-challenger = { workspace = true }
 slop-basefold = { workspace = true }
 sp1-hypercube = { workspace = true }

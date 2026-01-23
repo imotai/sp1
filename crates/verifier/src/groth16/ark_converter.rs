@@ -5,6 +5,9 @@ use ark_groth16::{Proof, VerifyingKey};
 use ark_serialize::{CanonicalDeserialize, Compress, Validate};
 use thiserror::Error;
 
+use crate::alloc::borrow::ToOwned;
+use alloc::vec::Vec;
+
 const GNARK_MASK: u8 = 0b11 << 6;
 const GNARK_COMPRESSED_POSITIVE: u8 = 0b10 << 6;
 const GNARK_COMPRESSED_NEGATIVE: u8 = 0b11 << 6;

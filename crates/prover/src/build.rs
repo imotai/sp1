@@ -27,7 +27,6 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
 };
-use tokio::sync::oneshot;
 
 pub use sp1_recursion_circuit::witness::{OuterWitness, Witnessable};
 
@@ -48,70 +47,25 @@ use crate::{
     SP1_CIRCUIT_VERSION,
 };
 
-pub(crate) fn get_plonk_artifacts_build_dir(
-    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
-) -> Option<PathBuf> {
-    if crate::build::use_development_mode() {
-        let build_dir = crate::build::plonk_bn254_artifacts_dev_dir(template_vk);
-        return build_dir.exists().then_some(build_dir);
-    }
-
-    let build_dir = plonk_circuit_artifacts_dir();
-    // if the build dir exists, return it, else try downloading.
-    if build_dir.exists() {
-        Some(build_dir)
-    } else {
-        let (tx, rx) = oneshot::channel();
-        tokio::spawn(async move {
-            let build_dir = crate::build::try_install_circuit_artifacts("plonk").await;
-            tx.send(build_dir).unwrap();
-        });
-        let build_dir = rx.blocking_recv().unwrap();
-        Some(build_dir)
-    }
-}
-
-pub(crate) fn get_groth16_artifacts_build_dir(
-    template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
-) -> Option<PathBuf> {
-    if crate::build::use_development_mode() {
-        let build_dir = crate::build::groth16_bn254_artifacts_dev_dir(template_vk);
-        return build_dir.exists().then_some(build_dir);
-    }
-
-    let build_dir = groth16_circuit_artifacts_dir();
-
-    // if the build dir exists, return it, else try downloading.
-    if build_dir.exists() {
-        Some(build_dir)
-    } else {
-        let (tx, rx) = oneshot::channel();
-        tokio::spawn(async move {
-            let build_dir = crate::build::try_install_circuit_artifacts("groth16").await;
-            tx.send(build_dir).unwrap();
-        });
-        let build_dir = rx.blocking_recv().unwrap();
-        Some(build_dir)
-    }
-}
-
-pub(crate) fn get_or_create_plonk_artifacts_build_dir(
+pub(crate) fn get_or_create_plonk_artifacts_dev_build_dir(
     template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
     template_proof: &ShardProof<SP1OuterGlobalContext, SP1PcsProofOuter>,
 ) -> PathBuf {
-    if let Some(build_dir) = get_plonk_artifacts_build_dir(template_vk) {
-        build_dir
+    let dev_dir = plonk_bn254_artifacts_dev_dir(template_vk);
+    if dev_dir.exists() {
+        dev_dir
     } else {
         crate::build::try_build_plonk_bn254_artifacts_dev(template_vk, template_proof)
     }
 }
 
-pub(crate) fn get_or_create_groth16_artifacts_build_dir(
+pub(crate) fn get_or_create_groth16_artifacts_dev_build_dir(
     template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
     template_proof: &ShardProof<SP1OuterGlobalContext, SP1PcsProofOuter>,
 ) -> PathBuf {
-    if let Some(build_dir) = get_groth16_artifacts_build_dir(template_vk) {
-        build_dir
+    let dev_dir = groth16_bn254_artifacts_dev_dir(template_vk);
+    if dev_dir.exists() {
+        dev_dir
     } else {
         crate::build::try_build_groth16_bn254_artifacts_dev(template_vk, template_proof)
     }
@@ -167,7 +121,7 @@ pub(crate) fn plonk_bn254_artifacts_dev_dir(
 }
 
 /// Gets the directory where the groth16 artifacts are installed in development mode.
-fn groth16_bn254_artifacts_dev_dir(
+pub(crate) fn groth16_bn254_artifacts_dev_dir(
     template_vk: &MachineVerifyingKey<SP1OuterGlobalContext>,
 ) -> PathBuf {
     let serialized_vk = bincode::serialize(template_vk).unwrap();
@@ -372,7 +326,7 @@ fn build_outer_circuit(
 pub const CIRCUIT_ARTIFACTS_URL_BASE: &str = "https://sp1-circuits.s3-us-east-2.amazonaws.com";
 
 /// Whether use the development mode for the circuit artifacts.
-fn use_development_mode() -> bool {
+pub(crate) fn use_development_mode() -> bool {
     // TODO: Change this after v6.0.0 binary release
     std::env::var("SP1_CIRCUIT_MODE").unwrap_or("release".to_string()) == "dev"
 }
