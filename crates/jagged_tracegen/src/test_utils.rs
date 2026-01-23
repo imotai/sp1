@@ -2,11 +2,10 @@
 //! TODO: This should only be built in tests.
 
 pub mod tracegen_setup {
-    use sp1_core_executor::{ExecutionRecord, Program, SP1Context, SP1CoreOpts};
-    use sp1_core_machine::{executor::MachineExecutor, io::SP1Stdin, riscv::RiscvAir};
-    use sp1_hypercube::Machine;
+    use sp1_core_executor::{ExecutionRecord, Program, SP1CoreOpts};
+    use sp1_core_machine::{io::SP1Stdin, riscv::RiscvAir, utils::generate_records};
+    use sp1_hypercube::{air::PROOF_NONCE_NUM_WORDS, Machine};
     use std::sync::Arc;
-    use tokio::sync::mpsc;
 
     use csl_utils::Felt;
 
@@ -98,35 +97,19 @@ pub mod tracegen_setup {
         // 2. Create stdin with program-specific input
         let stdin = test_program.stdin();
 
-        // 3. Create executor and channel
-        let opts = SP1CoreOpts { global_dependencies_opt: true, ..Default::default() };
-        let executor = MachineExecutor::<Felt>::new(
-            2 * 1024 * 1024 * 1024, // 2GB buffer
-            2,                      // 2 workers
-            opts,
-        );
-        let (records_tx, mut records_rx) = mpsc::unbounded_channel();
+        // 3. Generate records
+        let sp1_core_opts = SP1CoreOpts { global_dependencies_opt: true, ..Default::default() };
+        let (records, _cycles) = generate_records::<Felt>(
+            program.clone(),
+            stdin,
+            sp1_core_opts,
+            [0; PROOF_NONCE_NUM_WORDS],
+        )
+        .expect("failed to generate records");
 
-        // 4. Execute program (spawns async, sends records to channel)
-        let context = SP1Context::default();
-        executor
-            .execute(program.clone(), stdin, context, records_tx)
-            .await
-            .unwrap_or_else(|_| panic!("{} program execution failed", test_program.name()));
+        let record = records[test_program.records_to_skip()].clone();
 
-        // 5. Skip initial records if needed, then collect the desired record
-        for _ in 0..test_program.records_to_skip() {
-            let _ = records_rx
-                .recv()
-                .await
-                .expect("Not enough execution records - executor may have failed");
-        }
-        let (record, _permit) = records_rx
-            .recv()
-            .await
-            .expect("No execution records received - executor may have failed");
-
-        // 6. Get machine
+        // 4. Get machine
         let machine = RiscvAir::<Felt>::machine();
 
         (machine, record, program)
