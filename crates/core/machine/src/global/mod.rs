@@ -99,7 +99,7 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
                     let message0_8bit_limb = ((event.message[0] >> 16) & 0xff) as u8;
                     blu.add_u16_range_check(message0_16bit_limb);
                     blu.add_u16_range_check(event.message[7] as u16);
-                    blu.add_u8_range_check(0, message0_8bit_limb);
+                    blu.add_u8_range_check(message0_8bit_limb, 0);
                     blu.add_bit_range_check(event.kind as u16, 6);
                     if !input.global_dependencies_opt {
                         cols.interaction.populate(
