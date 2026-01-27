@@ -20,7 +20,7 @@ pub fn commit_multilinears<GC: IopCtx<F = Felt, EF = Ext>, P: CudaTcsProver<GC>>
     drop_main_traces: bool,
     basefold_prover: &FriCudaProver<GC, P, Felt>,
 ) -> Result<
-    (GC::Digest, JaggedProverData<GC, Option<CudaStackedPcsProverData<GC>>>),
+    (GC::Digest, JaggedProverData<GC, CudaStackedPcsProverData<GC>>),
     SingleLayerMerkleTreeProverError,
 > {
     let (index, padding, dst) = if use_preprocessed {

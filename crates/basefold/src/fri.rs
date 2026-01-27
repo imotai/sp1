@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use std::{borrow::Cow, marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc};
 
 use slop_algebra::{
     extension::BinomialExtensionField, AbstractExtensionField, AbstractField, ExtensionField,
@@ -85,7 +85,7 @@ where
         jagged_trace_mle: &JaggedTraceMle<Felt, TaskScope>,
         mut dst: Tensor<Felt, TaskScope>,
     ) -> Result<
-        (<GC as IopCtx>::Digest, Option<CudaStackedPcsProverData<GC>>),
+        (<GC as IopCtx>::Digest, CudaStackedPcsProverData<GC>),
         SingleLayerMerkleTreeProverError,
     > {
         let encoder = SpparkDftKoalaBear::default();
@@ -106,14 +106,8 @@ where
 
         let (commitment, tcs_data) = self.tcs_prover.commit_tensors(&dst)?;
 
-        let prover_data = if drop_traces {
-            None
-        } else {
-            Some(CudaStackedPcsProverData {
-                merkle_tree_tcs_data: tcs_data,
-                codeword_mle: Arc::new(dst),
-            })
-        };
+        let codeword_mle = if drop_traces { None } else { Some(Arc::new(dst)) };
+        let prover_data = CudaStackedPcsProverData { merkle_tree_tcs_data: tcs_data, codeword_mle };
 
         Ok((commitment, prover_data))
     }
@@ -334,34 +328,44 @@ where
         mut eval_point: Point<GC::EF>,
         evaluation_claims: Rounds<Evaluations<GC::EF, TaskScope>>,
         mles: &JaggedTraceMle<GC::F, TaskScope>,
-        prover_data: Rounds<Option<&CudaStackedPcsProverData<GC>>>,
+        prover_data: Rounds<&CudaStackedPcsProverData<GC>>,
         challenger: &mut GC::Challenger,
     ) -> Result<BasefoldProof<GC>, BasefoldProverError<SingleLayerMerkleTreeProverError>>
     where
         GC::Challenger: DeviceGrindingChallenger<Witness = GC::F>,
     {
         let scope = mles.dense().dense.backend().clone();
-        let mut new_prover_data = Vec::new();
-        for data in prover_data {
-            if let Some(data) = data {
-                new_prover_data.push(Cow::Borrowed(data));
+        let mut codewords: Vec<Arc<Tensor<Felt, TaskScope>>> = Vec::new();
+        for data in prover_data.iter() {
+            if let Some(ref codeword) = data.codeword_mle {
+                codewords.push(codeword.clone());
             } else {
-                let dst = Tensor::<Felt, TaskScope>::with_sizes_in(
+                // Codeword was dropped - this is always a main trace.
+                let mut dst = Tensor::<Felt, TaskScope>::with_sizes_in(
                     [
                         mles.dense().main_size() >> self.log_height,
                         1 << (self.log_height as usize + self.config.log_blowup()),
                     ],
                     scope.clone(),
                 );
+                unsafe {
+                    dst.assume_init();
+                }
 
-                let result = self.encode_and_commit(false, false, mles, dst).unwrap().1.unwrap();
+                let encoder = SpparkDftKoalaBear::default();
+                encode_batch(
+                    encoder,
+                    self.config.log_blowup as u32,
+                    mles.main_virtual_tensor(self.log_height),
+                    &mut dst,
+                )
+                .unwrap();
 
-                new_prover_data.push(Cow::Owned(result));
+                codewords.push(Arc::new(dst));
             }
         }
 
-        let encoded_messages: Message<Tensor<Felt, TaskScope>> =
-            new_prover_data.iter().map(|data| data.codeword_mle.clone()).collect();
+        let encoded_messages: Message<_> = codewords.iter().cloned().collect();
 
         let evaluation_claims = evaluation_claims.into_iter().flatten().collect::<Vec<_>>();
 
@@ -434,13 +438,11 @@ where
 
         // Open the original polynomials at the query indices.
         let mut component_polynomials_query_openings_and_proofs = vec![];
-        for prover_data in new_prover_data {
-            let CudaStackedPcsProverData { merkle_tree_tcs_data, codeword_mle } =
-                prover_data.as_ref();
-            let values = self.tcs_prover.compute_openings_at_indices(codeword_mle, &query_indices);
+        for (data, codeword) in prover_data.iter().zip(codewords.iter()) {
+            let values = self.tcs_prover.compute_openings_at_indices(codeword, &query_indices);
             let proof = self
                 .tcs_prover
-                .prove_openings_at_indices(merkle_tree_tcs_data, &query_indices)
+                .prove_openings_at_indices(&data.merkle_tree_tcs_data, &query_indices)
                 .map_err(BasefoldProverError::TcsCommitError)?;
             let opening = MerkleTreeOpeningAndProof::<GC> { values, proof };
             component_polynomials_query_openings_and_proofs.push(opening);
@@ -752,9 +754,7 @@ mod tests {
                     eval_point_host.clone(),
                     [evaluation_claims_1_device, evaluation_claims_2].into_iter().collect(),
                     &new_traces,
-                    [new_preprocessed_prover_data.as_ref(), new_main_prover_data.as_ref()]
-                        .into_iter()
-                        .collect(),
+                    [&new_preprocessed_prover_data, &new_main_prover_data].into_iter().collect(),
                     &mut challenger,
                 )
                 .unwrap();

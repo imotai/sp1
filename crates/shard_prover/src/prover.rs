@@ -358,7 +358,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
         multilinears: &JaggedTraceMle<Felt, TaskScope>,
         use_preprocessed_data: bool,
     ) -> Result<
-        (GC::Digest, JaggedProverData<GC, Option<CudaStackedPcsProverData<GC>>>),
+        (GC::Digest, JaggedProverData<GC, CudaStackedPcsProverData<GC>>),
         JaggedProverError<SingleLayerMerkleTreeProverError>,
     > {
         sp1_gpu_commit::commit_multilinears::<GC, PC::P>(
@@ -422,7 +422,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
         eval_point: Point<Ext>,
         evaluation_claims: Rounds<Evaluations<Ext, TaskScope>>,
         all_mles: &JaggedTraceMle<Felt, TaskScope>,
-        prover_data: Rounds<&JaggedProverData<GC, Option<CudaStackedPcsProverData<GC>>>>,
+        prover_data: Rounds<&JaggedProverData<GC, CudaStackedPcsProverData<GC>>>,
         challenger: &mut GC::Challenger,
     ) -> Result<
         JaggedPcsProof<GC, <PC::C as MultilinearPcsVerifier<GC>>::Proof>,
@@ -544,10 +544,8 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
         let original_commitments: Rounds<_> =
             prover_data.iter().map(|data| data.original_commitment).collect();
 
-        let stacked_prover_data = prover_data
-            .into_iter()
-            .map(|data| data.pcs_prover_data.as_ref())
-            .collect::<Rounds<_>>();
+        let stacked_prover_data =
+            prover_data.iter().map(|data| &data.pcs_prover_data).collect::<Rounds<_>>();
 
         let final_eval_point = sumcheck_proof.point_and_eval.0.clone();
 
@@ -627,7 +625,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
         &self,
         traces: &JaggedTraceMle<GC::F, TaskScope>,
         use_preprocessed: bool,
-    ) -> (GC::Digest, JaggedProverData<GC, Option<CudaStackedPcsProverData<GC>>>) {
+    ) -> (GC::Digest, JaggedProverData<GC, CudaStackedPcsProverData<GC>>) {
         self.commit_multilinears(traces, use_preprocessed).unwrap()
     }
 
