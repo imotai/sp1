@@ -1,8 +1,8 @@
-use csl_cuda::TaskScope;
 use slop_alloc::{Backend, HasBackend};
 use slop_tensor::Tensor;
+use sp1_gpu_cudart::TaskScope;
 
-use csl_utils::{DenseData, DenseDataMut, Ext, Felt};
+use sp1_gpu_utils::{DenseData, DenseDataMut, Ext, Felt};
 
 /// A layer of the GKR circuit.
 ///

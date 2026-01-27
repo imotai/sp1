@@ -1,12 +1,12 @@
-use csl_challenger::{DuplexChallenger, MultiField32Challenger};
-use csl_cuda::reduce::DeviceSumKernel;
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::Buffer;
 use slop_bn254::Bn254Fr;
 use slop_multilinear::Point;
 use slop_tensor::Tensor;
+use sp1_gpu_challenger::{DuplexChallenger, MultiField32Challenger};
+use sp1_gpu_cudart::reduce::DeviceSumKernel;
 
-use csl_cuda::{
+use sp1_gpu_cudart::{
     args,
     sys::{
         jagged::{
@@ -26,7 +26,7 @@ pub trait AsMutRawChallenger {
 }
 
 impl<F> AsMutRawChallenger for DuplexChallenger<F, TaskScope> {
-    type ChallengerRawMut = csl_challenger::DuplexChallengerRawMut<F>;
+    type ChallengerRawMut = sp1_gpu_challenger::DuplexChallengerRawMut<F>;
 
     fn as_mut_raw(&mut self) -> Self::ChallengerRawMut {
         DuplexChallenger::as_mut_raw(self)
@@ -34,7 +34,7 @@ impl<F> AsMutRawChallenger for DuplexChallenger<F, TaskScope> {
 }
 
 impl<F, PF> AsMutRawChallenger for MultiField32Challenger<F, PF, TaskScope> {
-    type ChallengerRawMut = csl_challenger::MultiField32ChallengerRawMut<F, PF>;
+    type ChallengerRawMut = sp1_gpu_challenger::MultiField32ChallengerRawMut<F, PF>;
 
     fn as_mut_raw(&mut self) -> Self::ChallengerRawMut {
         MultiField32Challenger::as_mut_raw(self)
@@ -199,7 +199,6 @@ mod tests {
 
     use super::*;
 
-    use csl_tracing::init_tracer;
     use itertools::Itertools;
     use rand::{distributions::Standard, thread_rng, Rng};
     use slop_algebra::{
@@ -207,6 +206,7 @@ mod tests {
         AbstractExtensionField, AbstractField,
     };
     use slop_alloc::{Buffer, CpuBackend};
+    use sp1_gpu_tracing::init_tracer;
 
     use slop_challenger::{CanObserve, FieldChallenger, IopCtx};
     use slop_jagged::{
@@ -217,7 +217,7 @@ mod tests {
     use slop_multilinear::Point;
     use slop_tensor::Tensor;
 
-    use csl_cuda::{
+    use sp1_gpu_cudart::{
         args,
         sys::{jagged::transition_kernel, runtime::KernelPtr},
         DeviceBuffer, DeviceTensor, TaskScope,
@@ -250,30 +250,34 @@ mod tests {
             cpu_transition_results.push(bit_state_results);
         }
 
-        let gpu_transition_results: Buffer<usize, CpuBackend> = csl_cuda::run_sync_in_place(|t| {
-            unsafe {
-                // The +1 is for the FAIL state.
-                let mut gpu_transition_results: Tensor<usize, TaskScope> =
-                    Tensor::with_sizes_in([bit_states.len(), memory_states.len() + 1], t.clone());
+        let gpu_transition_results: Buffer<usize, CpuBackend> =
+            sp1_gpu_cudart::run_sync_in_place(|t| {
+                unsafe {
+                    // The +1 is for the FAIL state.
+                    let mut gpu_transition_results: Tensor<usize, TaskScope> =
+                        Tensor::with_sizes_in(
+                            [bit_states.len(), memory_states.len() + 1],
+                            t.clone(),
+                        );
 
-                let args = args!(gpu_transition_results.as_mut_ptr());
+                    let args = args!(gpu_transition_results.as_mut_ptr());
 
-                gpu_transition_results.assume_init();
+                    gpu_transition_results.assume_init();
 
-                t.launch_kernel(
-                    <TaskScope as TransitionKernel>::transition_kernel(),
-                    (1usize, 1usize, 1usize),
-                    (1usize, 1usize, 1usize),
-                    &args,
-                    0,
-                )
-                .unwrap();
+                    t.launch_kernel(
+                        <TaskScope as TransitionKernel>::transition_kernel(),
+                        (1usize, 1usize, 1usize),
+                        (1usize, 1usize, 1usize),
+                        &args,
+                        0,
+                    )
+                    .unwrap();
 
-                DeviceBuffer::from_raw(gpu_transition_results.storage).to_host().unwrap()
-            }
-        })
-        .unwrap()
-        .into();
+                    DeviceBuffer::from_raw(gpu_transition_results.storage).to_host().unwrap()
+                }
+            })
+            .unwrap()
+            .into();
 
         // Need to retrieve these again, because they are moved into the cuda task.
         let bit_states = all_bit_states();
@@ -384,7 +388,7 @@ mod tests {
     //     // the round number == -1).
     //     let lambdas = vec![EF::zero(), EF::two().inverse()];
 
-    //     let bp_results_host = csl_cuda::run_in_place(|t| async move {
+    //     let bp_results_host = sp1_gpu_cudart::run_in_place(|t| async move {
     //         let curr_prefix_sum_values = curr_prefix_sum_points
     //             .iter()
     //             .flat_map(|x| x.values().clone().into_vec())
@@ -504,7 +508,7 @@ mod tests {
 
         let mut sum_values = vec![EF::zero(); 6 * PREFIX_SUM_LENGTH];
         let challenger_for_device = challenger.clone();
-        csl_cuda::run_sync_in_place(|t| {
+        sp1_gpu_cudart::run_sync_in_place(|t| {
             let sum_values_for_device: Buffer<EF> = vec![EF::zero(); 6 * PREFIX_SUM_LENGTH].into();
 
             let mut sum_values_device =

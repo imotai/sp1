@@ -1,12 +1,12 @@
-use csl_sys::{
+use slop_algebra::extension::BinomialExtensionField;
+use slop_koala_bear::KoalaBear;
+use sp1_gpu_sys::{
     runtime::{Dim3, KernelPtr},
     transpose::{
         transpose_kernel_koala_bear, transpose_kernel_koala_bear_digest,
         transpose_kernel_koala_bear_extension, transpose_kernel_u32, transpose_kernel_u32_digest,
     },
 };
-use slop_algebra::extension::BinomialExtensionField;
-use slop_koala_bear::KoalaBear;
 // TransposeBackend removed - using DeviceTensor methods instead
 
 use crate::{args, DeviceCopy, DeviceTensor, TaskScope};

@@ -41,13 +41,13 @@ RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh \
     && git config --global url."git@github.com:".insteadOf "https://github.com/"
 
 # Build the Rust project
-RUN --mount=type=ssh CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build -p cuslop-server --release
+RUN --mount=type=ssh CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build -p sp1-gpu-server --release
 
 # Runtime stage
 FROM nvidia/cuda:12.5.1-runtime-ubuntu22.04
 
 # Copy the binary from the builder stage
-COPY --from=builder /usr/src/app/target/release/cuslop-server /usr/local/bin/cuslop-server
+COPY --from=builder /usr/src/app/target/release/sp1-gpu-server /usr/local/bin/sp1-gpu-server
 
 # Set the entrypoint to run the binary
-ENTRYPOINT ["cuslop-server"]
+ENTRYPOINT ["sp1-gpu-server"]

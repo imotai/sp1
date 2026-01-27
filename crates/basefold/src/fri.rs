@@ -15,7 +15,7 @@ use slop_merkle_tree::MerkleTreeOpeningAndProof;
 use slop_multilinear::{Evaluations, Mle, MleEval, Point};
 use slop_tensor::Tensor;
 
-use csl_cuda::{
+use sp1_gpu_cudart::{
     args,
     sys::{
         basefold::{
@@ -27,8 +27,8 @@ use csl_cuda::{
     },
     DeviceBuffer, DeviceTensor, TaskScope,
 };
-use csl_merkle_tree::{CudaTcsProver, MerkleTreeProverData, SingleLayerMerkleTreeProverError};
-use csl_utils::{Ext, Felt, JaggedTraceMle, TraceDenseData};
+use sp1_gpu_merkle_tree::{CudaTcsProver, MerkleTreeProverData, SingleLayerMerkleTreeProverError};
+use sp1_gpu_utils::{Ext, Felt, JaggedTraceMle, TraceDenseData};
 
 use crate::{
     encode_batch, CudaStackedPcsProverData, DeviceGrindingChallenger, GrindingPowCudaProver,
@@ -260,7 +260,7 @@ where
 
         // Fold the mle.
         let folded_mle = {
-            use csl_cuda::DeviceMle;
+            use sp1_gpu_cudart::DeviceMle;
             let device_mle = DeviceMle::new(current_mle);
             device_mle.fold(beta).into_inner()
         };
@@ -394,7 +394,7 @@ where
             // Compute claims for `g(X_0, X_1, ..., X_{d-1}, 0)` and `g(X_0, X_1, ..., X_{d-1}, 1)`.
             let last_coord = eval_point.remove_last_coordinate();
             let zero_values = {
-                use csl_cuda::DeviceMle;
+                use sp1_gpu_cudart::DeviceMle;
                 let device_mle = DeviceMle::new(current_mle.clone());
                 let evals = device_mle.fixed_at_zero(&eval_point);
                 evals.to_host_vec().unwrap()
@@ -504,9 +504,6 @@ unsafe impl MleFlattenKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> fo
 mod tests {
     use std::sync::Arc;
 
-    use csl_cuda::{run_sync_in_place, DeviceTensor, PinnedBuffer};
-    use csl_merkle_tree::{CudaTcsProver, Poseidon2KoalaBear16CudaProver};
-    use csl_tracegen::CudaTraceGenerator;
     use slop_alloc::{CpuBackend, ToHost};
     use slop_basefold::BasefoldVerifier;
     use slop_basefold_prover::BasefoldProver;
@@ -516,13 +513,16 @@ mod tests {
     use slop_merkle_tree::Poseidon2KoalaBear16Prover;
     use slop_multilinear::Mle;
     use slop_stacked::interleave_multilinears_with_fixed_rate;
+    use sp1_gpu_cudart::{run_sync_in_place, DeviceTensor, PinnedBuffer};
+    use sp1_gpu_merkle_tree::{CudaTcsProver, Poseidon2KoalaBear16CudaProver};
+    use sp1_gpu_tracegen::CudaTraceGenerator;
     use sp1_hypercube::prover::{ProverSemaphore, TraceGenerator};
 
-    use csl_jagged_tracegen::test_utils::tracegen_setup::{
+    use sp1_gpu_jagged_tracegen::test_utils::tracegen_setup::{
         self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT,
     };
-    use csl_jagged_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
-    use csl_utils::{Ext, Felt, TestGC};
+    use sp1_gpu_jagged_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
+    use sp1_gpu_utils::{Ext, Felt, TestGC};
     use sp1_primitives::fri_params::core_fri_config;
 
     use super::*;
@@ -568,7 +568,7 @@ mod tests {
                 .clone()
                 .into_iter()
                 .map(|mle| {
-                    let device_mle = csl_cuda::DeviceMle::new(Arc::unwrap_or_clone(mle));
+                    let device_mle = sp1_gpu_cudart::DeviceMle::new(Arc::unwrap_or_clone(mle));
                     device_mle.to_host().unwrap()
                 })
                 .collect();
@@ -636,7 +636,7 @@ mod tests {
 
             let mut host_message = Vec::new();
             for mle in message.into_iter() {
-                let device_mle = csl_cuda::DeviceMle::new(Arc::unwrap_or_clone(mle));
+                let device_mle = sp1_gpu_cudart::DeviceMle::new(Arc::unwrap_or_clone(mle));
                 let mle_host = device_mle.to_host().unwrap();
                 host_message.push(mle_host);
             }

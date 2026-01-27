@@ -1,6 +1,6 @@
 #pragma once
 
-#include "csl-cbindgen.hpp"
+#include "sp1-gpu-cbindgen.hpp"
 
 #include "fields/kb31_t.cuh"
 

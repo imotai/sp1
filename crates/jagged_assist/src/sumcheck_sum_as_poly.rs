@@ -2,15 +2,15 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use csl_cuda::reduce::DeviceSumKernel;
-use csl_cuda::transpose::DeviceTransposeKernel;
-use csl_cuda::{args, DeviceBuffer, DeviceTensor, TaskScope};
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::{Backend, Buffer, HasBackend};
 use slop_challenger::FieldChallenger;
 use slop_jagged::{JaggedAssistSumAsPoly, JaggedEvalSumcheckPoly};
 use slop_multilinear::Point;
 use slop_tensor::Tensor;
+use sp1_gpu_cudart::reduce::DeviceSumKernel;
+use sp1_gpu_cudart::transpose::DeviceTransposeKernel;
+use sp1_gpu_cudart::{args, DeviceBuffer, DeviceTensor, TaskScope};
 
 use crate::branching_program_and_sample;
 use crate::AsMutRawChallenger;
@@ -277,14 +277,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use csl_challenger::DuplexChallenger;
-    use csl_cuda::TaskScope;
     use itertools::Itertools;
     use rand::Rng;
     use slop_algebra::extension::BinomialExtensionField;
     use slop_algebra::AbstractField;
     use slop_alloc::Buffer;
     use slop_koala_bear::KoalaBear;
+    use sp1_gpu_challenger::DuplexChallenger;
+    use sp1_gpu_cudart::TaskScope;
 
     type F = KoalaBear;
     type EF = BinomialExtensionField<F, 4>;
@@ -306,7 +306,7 @@ mod tests {
         let new_randomness_point =
             (0..merged_prefix_sum_dim).map(|_| rng.gen::<EF>()).collect::<Vec<_>>();
 
-        csl_cuda::run_sync_in_place(|backend| {
+        sp1_gpu_cudart::run_sync_in_place(|backend| {
             for round_num in 0..merged_prefix_sum_dim {
                 let merged_prefix_sums_buffer = Buffer::<F>::from(merged_prefix_sums.clone());
                 let merged_prefix_sums_device =

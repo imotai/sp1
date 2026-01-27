@@ -1,4 +1,4 @@
-#include "csl-cbindgen.hpp"
+#include "sp1-gpu-cbindgen.hpp"
 
 #include "fields/kb31_t.cuh"
 #include "fields/kb31_extension_t.cuh"
@@ -16,8 +16,8 @@ constexpr static const uint32_t HALF_MOD_LOW = (kb31_t::MOD - 1) / 2;
 // (kb::MOD+1)/2
 constexpr static const uint32_t HALF_MOD_HIGH = (kb31_t::MOD + 1) / 2;
 __device__ void populate_global_interaction(
-    csl_sys::GlobalInteractionOperation<kb31_t>* cols,
-    const csl_sys::GlobalInteractionEvent* event) {
+    sp1_gpu_sys::GlobalInteractionOperation<kb31_t>* cols,
+    const sp1_gpu_sys::GlobalInteractionEvent* event) {
     // Initialize `m_trial` to the first 7 elements of the message.
 
 #pragma unroll(1)
@@ -90,7 +90,7 @@ __device__ void populate_global_interaction(
 }
 
 __device__ void
-populate_global_interaction_dummy(csl_sys::GlobalInteractionOperation<kb31_t>* cols) {
+populate_global_interaction_dummy(sp1_gpu_sys::GlobalInteractionOperation<kb31_t>* cols) {
     kb31_t m_trial[POSEIDON2_WIDTH];
     {
         m_trial[0] = kb31_t::zero();
@@ -118,9 +118,9 @@ populate_global_interaction_dummy(csl_sys::GlobalInteractionOperation<kb31_t>* c
 __global__ void riscv_global_generate_trace_decompress_kernel(
     kb31_t* trace,
     uintptr_t trace_height,
-    const csl_sys::GlobalInteractionEvent* events,
+    const sp1_gpu_sys::GlobalInteractionEvent* events,
     uintptr_t nb_events) {
-    static const size_t GLOBAL_COLUMNS = sizeof(csl_sys::GlobalCols<kb31_t>) / sizeof(kb31_t);
+    static const size_t GLOBAL_COLUMNS = sizeof(sp1_gpu_sys::GlobalCols<kb31_t>) / sizeof(kb31_t);
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 #pragma unroll(1)
@@ -130,7 +130,7 @@ __global__ void riscv_global_generate_trace_decompress_kernel(
         if (i == 0) {
             sum = bb31_septic_curve_t::start_point();
         }
-        csl_sys::GlobalCols<kb31_t> cols;
+        sp1_gpu_sys::GlobalCols<kb31_t> cols;
         kb31_t* cols_arr = reinterpret_cast<kb31_t*>(&cols);
         for (int k = 0; k < GLOBAL_COLUMNS; k++) {
             cols_arr[k] = kb31_t::zero();
@@ -182,13 +182,13 @@ __global__ void riscv_global_generate_trace_finalize_kernel(
     uintptr_t trace_height,
     const bb31_septic_curve_t* cumulative_sums,
     uintptr_t nb_events) {
-    static const size_t GLOBAL_COLUMNS = sizeof(csl_sys::GlobalCols<kb31_t>) / sizeof(kb31_t);
+    static const size_t GLOBAL_COLUMNS = sizeof(sp1_gpu_sys::GlobalCols<kb31_t>) / sizeof(kb31_t);
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 
 #pragma unroll(1)
     for (; i < trace_height; i += blockDim.x * gridDim.x) {
-        csl_sys::GlobalCols<kb31_t> cols;
+        sp1_gpu_sys::GlobalCols<kb31_t> cols;
         kb31_t* temp_arr = reinterpret_cast<kb31_t*>(&cols);
         for (int j = 0; j < GLOBAL_COLUMNS; j++) {
             temp_arr[j] = trace[i + j * trace_height];
@@ -242,11 +242,11 @@ __global__ void riscv_global_generate_trace_finalize_kernel(
     }
 }
 
-namespace csl_sys {
+namespace sp1_gpu_sys {
 extern KernelPtr riscv_global_generate_trace_decompress_kernel() {
     return (KernelPtr)::riscv_global_generate_trace_decompress_kernel;
 }
 extern KernelPtr riscv_global_generate_trace_finalize_kernel() {
     return (KernelPtr)::riscv_global_generate_trace_finalize_kernel;
 }
-} // namespace csl_sys
+} // namespace sp1_gpu_sys

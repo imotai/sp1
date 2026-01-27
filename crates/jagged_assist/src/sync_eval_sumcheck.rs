@@ -3,10 +3,6 @@
 
 use std::sync::Arc;
 
-use csl_challenger::FromHostChallengerSync;
-use csl_cuda::reduce::DeviceSumKernel;
-use csl_cuda::transpose::DeviceTransposeKernel;
-use csl_cuda::{DeviceBuffer, TaskScope};
 use itertools::Itertools;
 use slop_algebra::{interpolate_univariate_polynomial, ExtensionField, Field};
 use slop_alloc::Buffer;
@@ -17,6 +13,10 @@ use slop_jagged::{
 use slop_multilinear::{Mle, Point};
 use slop_sumcheck::PartialSumcheckProof;
 use slop_tensor::Tensor;
+use sp1_gpu_challenger::FromHostChallengerSync;
+use sp1_gpu_cudart::reduce::DeviceSumKernel;
+use sp1_gpu_cudart::transpose::DeviceTransposeKernel;
+use sp1_gpu_cudart::{DeviceBuffer, TaskScope};
 
 use crate::{AsMutRawChallenger, BranchingProgramKernel, JaggedAssistSumAsPolyGPUImpl};
 

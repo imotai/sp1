@@ -1,6 +1,6 @@
 use crate::{CudaError, TaskScope};
-use csl_sys::runtime::cuda_mem_get_info;
 use slop_alloc::{mem::CopyError, CopyIntoBackend, CopyToBackend, CpuBackend};
+use sp1_gpu_sys::runtime::cuda_mem_get_info;
 use std::future::Future;
 
 pub trait DeviceCopy: Copy + 'static + Sized {}

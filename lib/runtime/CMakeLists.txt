@@ -4,4 +4,4 @@ add_library(runtime_objs OBJECT
     memory.cu
     stream.cu
 )
-target_link_libraries(runtime_objs PRIVATE csl_common)
+target_link_libraries(runtime_objs PRIVATE sp1_gpu_common)

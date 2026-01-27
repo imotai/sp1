@@ -1,9 +1,9 @@
-#include "csl-cbindgen.hpp"
+#include "sp1-gpu-cbindgen.hpp"
 
 #include "fields/kb31_t.cuh"
 
 // // Manual struct definition for ExtFeltInstr (cbindgen has issues with this)
-// namespace csl_sys {
+// namespace sp1_gpu_sys {
 //     template<typename F>
 //     struct ExtFeltInstr {
 //         Address<F> addrs[5];  // D + 1 = 4 + 1 = 5
@@ -16,13 +16,13 @@ template <class T>
 __global__ void recursion_convert_generate_preprocessed_trace_kernel(
     T* trace,
     uintptr_t trace_height,
-    const csl_sys::ExtFeltInstr<T>* instructions,
+    const sp1_gpu_sys::ExtFeltInstr<T>* instructions,
     uintptr_t nb_instructions) {
-    static const size_t COLUMNS = sizeof(csl_sys::ConvertAccessCols<T>) / sizeof(T);
+    static const size_t COLUMNS = sizeof(sp1_gpu_sys::ConvertAccessCols<T>) / sizeof(T);
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     for (; i < nb_instructions; i += blockDim.x * gridDim.x) {
-        csl_sys::ConvertAccessCols<T> cols;
+        sp1_gpu_sys::ConvertAccessCols<T> cols;
         const auto& instr = instructions[i];
         cols.addrs[0] = instr.addrs[0];
         cols.addrs[1] = instr.addrs[1];
@@ -45,9 +45,9 @@ __global__ void recursion_convert_generate_preprocessed_trace_kernel(
         }
 
         const T* arr = reinterpret_cast<T*>(&cols);
-        size_t start = (i % csl_sys::NUM_CONVERT_ENTRIES_PER_ROW) * COLUMNS;
+        size_t start = (i % sp1_gpu_sys::NUM_CONVERT_ENTRIES_PER_ROW) * COLUMNS;
         for (size_t j = 0; j < COLUMNS; ++j) {
-            trace[(i / csl_sys::NUM_CONVERT_ENTRIES_PER_ROW) + (j + start) * trace_height] = arr[j];
+            trace[(i / sp1_gpu_sys::NUM_CONVERT_ENTRIES_PER_ROW) + (j + start) * trace_height] = arr[j];
         }
     }
 }
@@ -56,28 +56,28 @@ template <class T>
 __global__ void recursion_convert_generate_trace_kernel(
     T* trace,
     uintptr_t trace_height,
-    const csl_sys::ExtFeltEvent<T>* events,
+    const sp1_gpu_sys::ExtFeltEvent<T>* events,
     uintptr_t nb_events) {
-    static const size_t COLUMNS = sizeof(csl_sys::ConvertValueCols<T>) / sizeof(T);
+    static const size_t COLUMNS = sizeof(sp1_gpu_sys::ConvertValueCols<T>) / sizeof(T);
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     for (; i < nb_events; i += blockDim.x * gridDim.x) {
-        csl_sys::ConvertValueCols<T> cols;
+        sp1_gpu_sys::ConvertValueCols<T> cols;
         cols.input = events[i].input;
 
         const T* arr = reinterpret_cast<T*>(&cols);
-        size_t start = (i % csl_sys::NUM_CONVERT_ENTRIES_PER_ROW) * COLUMNS;
+        size_t start = (i % sp1_gpu_sys::NUM_CONVERT_ENTRIES_PER_ROW) * COLUMNS;
         for (size_t j = 0; j < COLUMNS; ++j) {
-            trace[(i / csl_sys::NUM_CONVERT_ENTRIES_PER_ROW) + (j + start) * trace_height] = arr[j];
+            trace[(i / sp1_gpu_sys::NUM_CONVERT_ENTRIES_PER_ROW) + (j + start) * trace_height] = arr[j];
         }
     }
 }
 
-namespace csl_sys {
+namespace sp1_gpu_sys {
 extern KernelPtr recursion_convert_generate_preprocessed_trace_koala_bear_kernel() {
     return (KernelPtr)::recursion_convert_generate_preprocessed_trace_kernel<kb31_t>;
 }
 extern KernelPtr recursion_convert_generate_trace_koala_bear_kernel() {
     return (KernelPtr)::recursion_convert_generate_trace_kernel<kb31_t>;
 }
-} // namespace csl_sys
+} // namespace sp1_gpu_sys

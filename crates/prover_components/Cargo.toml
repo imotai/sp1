@@ -1,5 +1,5 @@
 [package]
-name = "csl-prover"
+name = "sp1-gpu-prover"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,16 +8,16 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-csl-cuda = { workspace = true }
-csl-challenger = { workspace = true }
-csl-jagged-assist = { workspace = true }
-csl-air = { workspace = true }
-csl-tracegen = { workspace = true }
-csl-shard-prover = { workspace = true }
-csl-logup-gkr = { workspace = true }
-csl-basefold = { workspace = true }
-csl-merkle-tree = { workspace = true }
-csl-jagged-tracegen = { workspace = true }
+sp1-gpu-cudart = { workspace = true }
+sp1-gpu-challenger = { workspace = true }
+sp1-gpu-jagged-assist = { workspace = true }
+sp1-gpu-air = { workspace = true }
+sp1-gpu-tracegen = { workspace = true }
+sp1-gpu-shard-prover = { workspace = true }
+sp1-gpu-logup-gkr = { workspace = true }
+sp1-gpu-basefold = { workspace = true }
+sp1-gpu-merkle-tree = { workspace = true }
+sp1-gpu-jagged-tracegen = { workspace = true }
 
 # slop
 slop-koala-bear = { workspace = true }

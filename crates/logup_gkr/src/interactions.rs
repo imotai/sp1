@@ -1,7 +1,7 @@
-use csl_cuda::{DeviceBuffer, TaskScope};
 use slop_air::PairCol;
 use slop_algebra::Field;
 use slop_alloc::{mem::CopyError, Backend, Buffer, CpuBackend, HasBackend};
+use sp1_gpu_cudart::{DeviceBuffer, TaskScope};
 use sp1_hypercube::Interaction;
 use std::ops::Mul;
 

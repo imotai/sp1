@@ -1,15 +1,15 @@
 use std::{iter::once, sync::Arc};
 
-use csl_basefold::{CudaStackedPcsProverData, FriCudaProver};
-use csl_cuda::TaskScope;
-use csl_merkle_tree::{CudaTcsProver, SingleLayerMerkleTreeProverError};
-use csl_utils::{traces::JaggedTraceMle, Ext, Felt};
 use slop_algebra::AbstractField;
 use slop_alloc::HasBackend;
 use slop_challenger::IopCtx;
 use slop_jagged::JaggedProverData;
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction as _};
 use slop_tensor::Tensor;
+use sp1_gpu_basefold::{CudaStackedPcsProverData, FriCudaProver};
+use sp1_gpu_cudart::TaskScope;
+use sp1_gpu_merkle_tree::{CudaTcsProver, SingleLayerMerkleTreeProverError};
+use sp1_gpu_utils::{traces::JaggedTraceMle, Ext, Felt};
 
 /// TODO: document
 #[allow(clippy::type_complexity)]
@@ -92,14 +92,6 @@ pub fn commit_multilinears<GC: IopCtx<F = Felt, EF = Ext>, P: CudaTcsProver<GC>>
 mod tests {
     use std::sync::Arc;
 
-    use csl_basefold::FriCudaProver;
-    use csl_cuda::{run_in_place, PinnedBuffer};
-    use csl_jagged_tracegen::test_utils::tracegen_setup::{
-        self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT,
-    };
-    use csl_jagged_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
-    use csl_merkle_tree::{CudaTcsProver, Poseidon2KoalaBear16CudaProver};
-    use csl_utils::{Felt, TestGC};
     use serial_test::serial;
     use slop_alloc::{CpuBackend, ToHost};
     use slop_challenger::IopCtx;
@@ -107,6 +99,14 @@ mod tests {
     use slop_jagged::{JaggedPcsVerifier, JaggedProver};
     use slop_merkle_tree::Poseidon2KoalaBear16Prover;
     use slop_stacked::StackedPcsProver;
+    use sp1_gpu_basefold::FriCudaProver;
+    use sp1_gpu_cudart::{run_in_place, PinnedBuffer};
+    use sp1_gpu_jagged_tracegen::test_utils::tracegen_setup::{
+        self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT,
+    };
+    use sp1_gpu_jagged_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
+    use sp1_gpu_merkle_tree::{CudaTcsProver, Poseidon2KoalaBear16CudaProver};
+    use sp1_gpu_utils::{Felt, TestGC};
     use sp1_hypercube::prover::{DefaultTraceGenerator, ProverSemaphore, TraceGenerator};
     use sp1_hypercube::{SP1InnerPcs, SP1PcsProofInner};
     use sp1_primitives::fri_params::core_fri_config;

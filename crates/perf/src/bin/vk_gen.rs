@@ -17,10 +17,10 @@ Usage:
 use std::collections::BTreeSet;
 
 use clap::Parser;
-use csl_perf::get_program_and_input;
-use csl_prover::cuda_worker_builder;
 use either::Either;
 use sp1_core_executor::SP1Context;
+use sp1_gpu_perf::get_program_and_input;
+use sp1_gpu_prover::cuda_worker_builder;
 use sp1_prover::{
     shapes::{SP1RecursionProgramShape, DEFAULT_ARITY},
     worker::{SP1LocalNodeBuilder, SP1Proof},
@@ -44,13 +44,13 @@ async fn main() {
 
     // Load the environment variables.
     dotenv::dotenv().ok();
-    csl_tracing::init_tracer();
+    sp1_gpu_tracing::init_tracer();
 
     // Get the program and input.
     let (elf, stdin) = get_program_and_input(args.program.clone(), args.param);
 
     // Initialize the AirProver and permits
-    csl_cuda::spawn(move |t| async move {
+    sp1_gpu_cudart::spawn(move |t| async move {
         let node =
             SP1LocalNodeBuilder::from_worker_client_builder(cuda_worker_builder(t.clone()).await)
                 .build()

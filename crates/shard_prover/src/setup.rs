@@ -3,14 +3,14 @@ use std::sync::Arc;
 use sp1_hypercube::ShardContextImpl;
 use tokio::sync::Mutex;
 
-use csl_basefold::DeviceGrindingChallenger;
-use csl_cuda::TaskScope;
-use csl_jagged_tracegen::setup_tracegen_permit;
-use csl_jagged_tracegen::CudaShardProverData;
-use csl_utils::{Ext, Felt, JaggedTraceMle};
 use slop_challenger::IopCtx;
 use slop_multilinear::MultilinearPcsVerifier;
 use slop_stacked::StackedBasefoldProof;
+use sp1_gpu_basefold::DeviceGrindingChallenger;
+use sp1_gpu_cudart::TaskScope;
+use sp1_gpu_jagged_tracegen::setup_tracegen_permit;
+use sp1_gpu_jagged_tracegen::CudaShardProverData;
+use sp1_gpu_utils::{Ext, Felt, JaggedTraceMle};
 use sp1_hypercube::{
     air::{MachineAir, MachineProgram},
     prover::{PreprocessedData, ProverSemaphore, ProvingKey},
@@ -27,7 +27,7 @@ where
         <GC::Challenger as slop_challenger::GrindingChallenger>::Witness,
     >,
     StackedBasefoldProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
-    TaskScope: csl_jagged_assist::BranchingProgramKernel<GC::F, GC::EF, PC::DeviceChallenger>,
+    TaskScope: sp1_gpu_jagged_assist::BranchingProgramKernel<GC::F, GC::EF, PC::DeviceChallenger>,
 {
     /// Setup from a program with a specific initial global cumulative sum.
     pub async fn setup_with_initial_global_cumulative_sum(
@@ -88,7 +88,7 @@ where
         enable_untrusted_programs: GC::F,
     ) -> (CudaShardProverData<GC, PC::Air>, MachineVerifyingKey<GC>) {
         // Commit to the preprocessed traces, if there are any.
-        let (preprocessed_commit, preprocessed_data) = csl_commit::commit_multilinears(
+        let (preprocessed_commit, preprocessed_data) = sp1_gpu_commit::commit_multilinears(
             &preprocessed_traces,
             self.max_log_row_count,
             true,

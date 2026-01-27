@@ -19,7 +19,7 @@ add_library(mymodule_objs OBJECT
     existing_file.cu
     your_new_file.cu  # Add this line
 )
-target_link_libraries(mymodule_objs PRIVATE csl_common)
+target_link_libraries(mymodule_objs PRIVATE sp1_gpu_common)
 ```
 
 That's it! The file will be compiled on the next build.
@@ -41,10 +41,10 @@ add_library(your_module_objs OBJECT
     your_file.cu
     # Add more .cu files here as needed
 )
-target_link_libraries(your_module_objs PRIVATE csl_common)
+target_link_libraries(your_module_objs PRIVATE sp1_gpu_common)
 ```
 
-The `csl_common` library provides:
+The `sp1_gpu_common` library provides:
 - Include paths (`include/`, `sppark/`, CUDA toolkit headers)
 - Compile definitions (`SPPARK`, `FEATURE_KOALA_BEAR`)
 
@@ -99,7 +99,7 @@ add_library(hash_objs OBJECT
     sha256.cu
     poseidon.cu
 )
-target_link_libraries(hash_objs PRIVATE csl_common)
+target_link_libraries(hash_objs PRIVATE sp1_gpu_common)
 EOF
 
 # 3. Create source files
@@ -115,7 +115,7 @@ touch lib/hash/sha256.cu lib/hash/poseidon.cu
 - Check that the module is in `add_subdirectory()` in root `CMakeLists.txt`
 
 ### Include not found
-- Headers in `include/` are automatically available via `csl_common`
+- Headers in `include/` are automatically available via `sp1_gpu_common`
 - Use `#include "subfolder/header.cuh"` relative to `include/`
 
 ### Undefined symbol at link time

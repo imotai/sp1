@@ -1,10 +1,10 @@
-use csl_cuda::{args, DeviceMle, TaskScope};
-use csl_cuda::{TracegenPreprocessedRecursionBaseAluKernel, TracegenRecursionBaseAluKernel};
 use slop_air::BaseAir;
 use slop_alloc::mem::CopyError;
 use slop_alloc::Buffer;
 use slop_multilinear::Mle;
 use slop_tensor::Tensor;
+use sp1_gpu_cudart::{args, DeviceMle, TaskScope};
+use sp1_gpu_cudart::{TracegenPreprocessedRecursionBaseAluKernel, TracegenRecursionBaseAluKernel};
 use sp1_hypercube::air::MachineAir;
 use sp1_recursion_executor::Instruction;
 use sp1_recursion_machine::chips::alu_base::BaseAluChip;
@@ -50,7 +50,7 @@ impl CudaTracegenAir<F> for BaseAluChip {
             // args:
             // T *trace,
             // uintptr_t trace_height,
-            // const csl_sys::BaseAluInstr<T> *instructions,
+            // const sp1_gpu_sys::BaseAluInstr<T> *instructions,
             // uintptr_t nb_instructions
             let args = args!(trace.as_mut_ptr(), height, instrs_device.as_ptr(), instrs.len());
             scope
@@ -98,7 +98,7 @@ impl CudaTracegenAir<F> for BaseAluChip {
             // args:
             // T *trace,
             // uintptr_t trace_height,
-            // const csl_sys::BaseAluEvent<T> *events,
+            // const sp1_gpu_sys::BaseAluEvent<T> *events,
             // uintptr_t nb_events
             let args = args!(trace.as_mut_ptr(), height, events_device.as_ptr(), events.len());
             scope
@@ -132,7 +132,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_base_alu_generate_preprocessed_trace() {
-        csl_cuda::spawn(|scope| {
+        sp1_gpu_cudart::spawn(|scope| {
             crate::recursion::tests::test_preprocessed_tracegen(
                 BaseAluChip,
                 |rng| {
@@ -164,7 +164,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_base_alu_generate_main_trace() {
-        csl_cuda::spawn(move |scope| {
+        sp1_gpu_cudart::spawn(move |scope| {
             crate::tests::test_main_tracegen(
                 BaseAluChip,
                 |rng| {

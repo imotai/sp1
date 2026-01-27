@@ -1,5 +1,5 @@
 [package]
-name = "csl-jagged-assist"
+name = "sp1-gpu-jagged-assist"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,9 +8,9 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-csl-cuda = { workspace = true }
-csl-challenger = { workspace = true }
-csl-tracing = { workspace = true }
+sp1-gpu-cudart = { workspace = true }
+sp1-gpu-challenger = { workspace = true }
+sp1-gpu-tracing = { workspace = true }
 slop-tensor = { workspace = true }
 slop-koala-bear = { workspace = true }
 slop-bn254 = { workspace = true }

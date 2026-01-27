@@ -1,4 +1,7 @@
-# CUSLOP Repository Guide
+# SP1-GPU Repository Guide
+
+# Rust best practices
+Make sure to follow Rust best practices when working with this repository. This includes using `cargo fmt` for formatting and `cargo clippy` for linting.
 
 ## Repository Overview
 
@@ -7,7 +10,7 @@ CUSLOP is a high-performance GPU-accelerated cryptographic proving system for SP
 ### What This Repo Does
 - **GPU-accelerated proving**: Implements CUDA kernels for computationally intensive operations (NTT, Poseidon2 hashing, Merkle trees, sumcheck, etc.)
 - **SP1 integration**: Works with the SP1 zkVM prover stack via the `slop-*` and `sp1-*` crate dependencies
-- **FFI bridge**: Exposes CUDA functionality to Rust through the `csl-sys` crate
+- **FFI bridge**: Exposes CUDA functionality to Rust through the `sp1-gpu-sys` crate
 
 ### Key Dependencies
 - **slop-*** crates: Core proving primitives from `sp1-wip` (multilinear_v6 branch)
@@ -79,16 +82,16 @@ cargo build                   # Debug build (still uses -O3 for CUDA)
 ### Core Crates
 | Crate | Purpose |
 |-------|---------|
-| **csl-sys** | FFI bindings, CUDA compilation, kernel function exports |
-| **csl-cuda** | High-level Rust API for GPU operations (TaskScope, memory management) |
-| **csl-shard-prover** | Main shard proving logic |
-| **csl-merkle-tree** | GPU-accelerated Merkle tree commitment |
-| **csl-jagged-tracegen** | GPU trace generation for jagged/stacked traces |
-| **csl-perf** | Benchmarks and performance testing |
-| **csl-challenger** | Fiat-Shamir challenger implementation |
-| **csl-basefold** | Basefold polynomial commitment |
-| **csl-zerocheck** | Zerocheck protocol |
-| **csl-logup-gkr** | LogUp-GKR protocol |
+| **sp1-gpu-sys** | FFI bindings, CUDA compilation, kernel function exports |
+| **sp1-gpu-cudart** | High-level Rust API for GPU operations (TaskScope, memory management) |
+| **sp1-gpu-shard-prover** | Main shard proving logic |
+| **sp1-gpu-merkle-tree** | GPU-accelerated Merkle tree commitment |
+| **sp1-gpu-jagged-tracegen** | GPU trace generation for jagged/stacked traces |
+| **sp1-gpu-perf** | Benchmarks and performance testing |
+| **sp1-gpu-challenger** | Fiat-Shamir challenger implementation |
+| **sp1-gpu-basefold** | Basefold polynomial commitment |
+| **sp1-gpu-zerocheck** | Zerocheck protocol |
+| **sp1-gpu-logup-gkr** | LogUp-GKR protocol |
 
 ## CUDA Modules
 
@@ -119,18 +122,18 @@ The CUDA code is organized into modules under `include/` (headers) and `lib/` (s
 ### Node Benchmark (Full Proving)
 ```bash
 # Core mode (fastest, no recursion)
-RUST_LOG="info" cargo run --release -p csl-perf --bin node -- \
+RUST_LOG="info" cargo run --release -p sp1-gpu-perf --bin node -- \
     --program v6/fibonacci-200m --mode core
 
 # Compressed mode (with recursion)
-RUST_LOG="info" cargo run --release -p csl-perf --bin node -- \
+RUST_LOG="info" cargo run --release -p sp1-gpu-perf --bin node -- \
     --program v6/fibonacci-200m --mode compressed
 ```
 
 ### Available Programs
 Programs are in the `v6/` directory convention. Common ones:
 - `fibonacci-20m`, `fibonacci-200m` - Fibonacci sequence computation
-- Check `csl-perf` for available benchmark programs
+- Check `sp1-gpu-perf` for available benchmark programs
 
 ## Development Notes
 
@@ -177,10 +180,10 @@ cargo +stable clippy -- -D warnings -A incomplete-features
 Use NVIDIA tools for GPU profiling:
 ```bash
 # Nsight Systems (timeline)
-nsys profile cargo run --release -p csl-perf --bin node -- --program v6/fibonacci-20m --mode core
+nsys profile cargo run --release -p sp1-gpu-perf --bin node -- --program v6/fibonacci-20m --mode core
 
 # Nsight Compute (kernel analysis)
-ncu --set full cargo run --release -p csl-perf --bin node -- --program v6/fibonacci-20m --mode core
+ncu --set full cargo run --release -p sp1-gpu-perf --bin node -- --program v6/fibonacci-20m --mode core
 ```
 
 The `-lineinfo` CUDA flag is always enabled for profiler source correlation.

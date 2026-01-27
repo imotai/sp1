@@ -1,5 +1,5 @@
 [package]
-name = "csl-jagged-sumcheck"
+name = "sp1-gpu-jagged-sumcheck"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,10 +8,10 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-# cuslop
-csl-cuda = { workspace = true }
+# sp1-gpu
+sp1-gpu-cudart = { workspace = true }
 
-csl-utils = { workspace = true }
+sp1-gpu-utils = { workspace = true }
 slop-algebra = { workspace = true }
 slop-alloc = { workspace = true }
 slop-tensor = { workspace = true }
@@ -33,7 +33,7 @@ serial_test = "3.1"
 zstd = "0.13.3"
 sp1-sdk = { workspace = true }
 sp1-recursion-circuit = { workspace = true }
-csl-prover = { workspace = true }
+sp1-gpu-prover = { workspace = true }
 sp1-recursion-compiler = { workspace = true }
 slop-stacked = { workspace = true }
 

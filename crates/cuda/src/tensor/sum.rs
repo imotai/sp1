@@ -1,12 +1,12 @@
-use csl_sys::{
+use slop_algebra::extension::BinomialExtensionField;
+use slop_koala_bear::KoalaBear;
+use sp1_gpu_sys::{
     algebra::{
         add_assign_koala_bear_ext_kernel, add_assign_koala_bear_kernel,
         add_koala_bear_base_ext_kernel, add_koala_bear_ext_ext_kernel, add_koala_bear_kernel,
     },
     runtime::KernelPtr,
 };
-use slop_algebra::extension::BinomialExtensionField;
-use slop_koala_bear::KoalaBear;
 // AddAssignBackend and AddBackend removed - using DeviceTensor methods instead
 
 use crate::{args, DeviceCopy, DeviceTensor, TaskScope};

@@ -1,9 +1,6 @@
 use core::mem;
 use std::sync::Arc;
 
-use csl_cuda::sys::runtime::Dim3;
-use csl_cuda::transpose::DeviceTransposeKernel;
-use csl_cuda::{args, DeviceMle, ScanKernel, TaskScope};
 use futures::future::join_all;
 use slop_algebra::PrimeField32;
 use slop_alloc::mem::CopyError;
@@ -11,12 +8,15 @@ use slop_alloc::Buffer;
 use slop_multilinear::Mle;
 use slop_tensor::Tensor;
 use sp1_core_machine::global::{GlobalChip, GlobalCols, GLOBAL_INITIAL_DIGEST_POS};
+use sp1_gpu_cudart::sys::runtime::Dim3;
+use sp1_gpu_cudart::transpose::DeviceTransposeKernel;
+use sp1_gpu_cudart::{args, DeviceMle, ScanKernel, TaskScope};
 use sp1_hypercube::air::MachineAir;
 use sp1_hypercube::septic_curve::SepticCurve;
 use sp1_hypercube::septic_digest::SepticDigest;
 use sp1_hypercube::septic_extension::{SepticBlock, SepticExtension};
 
-use csl_cuda::TracegenRiscvGlobalKernel;
+use sp1_gpu_cudart::TracegenRiscvGlobalKernel;
 
 use crate::{CudaTracegenAir, F};
 
@@ -54,7 +54,7 @@ impl CudaTracegenAir<F> for GlobalChip {
             // args:
             // kb31_t *trace,
             // uintptr_t trace_height,
-            // const csl_sys::GlobalInteractionEvent *events,
+            // const sp1_gpu_sys::GlobalInteractionEvent *events,
             // uintptr_t nb_events
             let tracegen_riscv_global_args =
                 args!(trace.as_mut_ptr(), height, events_device.as_ptr(), events.len());
@@ -258,12 +258,12 @@ impl CudaTracegenAir<F> for GlobalChip {
 
 #[cfg(test)]
 mod tests {
-    use csl_cuda::TaskScope;
     use rand::{rngs::StdRng, Rng, SeedableRng};
     use slop_algebra::PrimeField32;
     use slop_tensor::Tensor;
     use sp1_core_executor::{events::GlobalInteractionEvent, ExecutionRecord};
     use sp1_core_machine::global::GlobalChip;
+    use sp1_gpu_cudart::TaskScope;
     use sp1_hypercube::air::MachineAir;
     use sp1_hypercube::MachineRecord;
 
@@ -271,7 +271,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_global_generate_trace() {
-        csl_cuda::spawn(inner_test_global_generate_trace).await.unwrap();
+        sp1_gpu_cudart::spawn(inner_test_global_generate_trace).await.unwrap();
     }
 
     async fn inner_test_global_generate_trace(scope: TaskScope) {

@@ -1,5 +1,5 @@
 [package]
-name = "csl-jagged-tracegen"
+name = "sp1-gpu-jagged-tracegen"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,12 +8,12 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-# cuslop
-csl-cuda = { workspace = true }
-csl-tracegen = { workspace = true }
+# sp1-gpu
+sp1-gpu-cudart = { workspace = true }
+sp1-gpu-tracegen = { workspace = true }
 
-csl-utils = { workspace = true }
-csl-basefold = { workspace = true }
+sp1-gpu-utils = { workspace = true }
+sp1-gpu-basefold = { workspace = true }
 
 # slop
 slop-air = { workspace = true }
@@ -42,9 +42,9 @@ serial_test = "3.1"
 zstd = "0.13.3"
 sp1-sdk = { workspace = true }
 sp1-recursion-circuit = { workspace = true }
-csl-prover = { workspace = true }
+sp1-gpu-prover = { workspace = true }
 sp1-recursion-compiler = { workspace = true }
-csl-zerocheck = { workspace = true }
+sp1-gpu-zerocheck = { workspace = true }
 
 [lints]
 workspace = true

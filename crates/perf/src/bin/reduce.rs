@@ -1,6 +1,6 @@
 use clap::Parser;
-// use csl_perf::FIBONACCI_LONG_ELF;
-use csl_tracing::init_tracer;
+// use sp1_gpu_perf::FIBONACCI_LONG_ELF;
+use sp1_gpu_tracing::init_tracer;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

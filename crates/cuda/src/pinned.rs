@@ -5,8 +5,8 @@ use std::{
     ptr::{self, NonNull},
 };
 
-use csl_sys::runtime::{cuda_free_host, cuda_malloc_host};
 use slop_alloc::{AllocError, Allocator, RawBuffer};
+use sp1_gpu_sys::runtime::{cuda_free_host, cuda_malloc_host};
 
 use crate::CudaError;
 

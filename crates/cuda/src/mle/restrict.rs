@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use csl_sys::{
+use slop_algebra::{extension::BinomialExtensionField, ExtensionField, Field};
+use slop_koala_bear::KoalaBear;
+use slop_multilinear::{Mle, MleEval};
+use slop_tensor::Tensor;
+use sp1_gpu_sys::{
     runtime::KernelPtr,
     v2_kernels::{
         fix_last_variable_ext_ext_kernel, fix_last_variable_felt_ext_kernel,
@@ -8,10 +12,6 @@ use csl_sys::{
         mle_fix_last_variable_koala_bear_ext_ext_constant_padding,
     },
 };
-use slop_algebra::{extension::BinomialExtensionField, ExtensionField, Field};
-use slop_koala_bear::KoalaBear;
-use slop_multilinear::{Mle, MleEval};
-use slop_tensor::Tensor;
 
 use crate::{args, DeviceCopy, TaskScope};
 

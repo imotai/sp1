@@ -1,5 +1,5 @@
 [package]
-name = "csl-shard-prover"
+name = "sp1-gpu-shard-prover"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,20 +8,20 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-# cuslop
-csl-cuda = { workspace = true }
-csl-challenger = { workspace = true }
-csl-jagged-assist = { workspace = true }
-csl-tracegen = { workspace = true }
-csl-air = { workspace = true }
-csl-merkle-tree = { workspace = true }
-csl-utils = { workspace = true }
-csl-commit = { workspace = true }
-csl-basefold = { workspace = true }
-csl-jagged-sumcheck = { workspace = true }
-csl-zerocheck = { workspace = true }
-csl-jagged-tracegen = { workspace = true }
-csl-logup-gkr = { workspace = true }
+# sp1-gpu
+sp1-gpu-cudart = { workspace = true }
+sp1-gpu-challenger = { workspace = true }
+sp1-gpu-jagged-assist = { workspace = true }
+sp1-gpu-tracegen = { workspace = true }
+sp1-gpu-air = { workspace = true }
+sp1-gpu-merkle-tree = { workspace = true }
+sp1-gpu-utils = { workspace = true }
+sp1-gpu-commit = { workspace = true }
+sp1-gpu-basefold = { workspace = true }
+sp1-gpu-jagged-sumcheck = { workspace = true }
+sp1-gpu-zerocheck = { workspace = true }
+sp1-gpu-jagged-tracegen = { workspace = true }
+sp1-gpu-logup-gkr = { workspace = true }
 
 # slop
 slop-alloc = { workspace = true }
@@ -47,7 +47,7 @@ tokio = { workspace = true }
 serial_test = "3.1"
 zstd = "0.13.3"
 sp1-recursion-circuit = { workspace = true }
-csl-prover = { workspace = true }
+sp1-gpu-prover = { workspace = true }
 sp1-recursion-compiler = { workspace = true }
 slop-stacked = { workspace = true }
 

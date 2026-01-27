@@ -14,10 +14,6 @@ use std::{
     time::Duration,
 };
 
-use csl_sys::runtime::{
-    cuda_device_get_mem_pool, cuda_mem_pool_set_release_threshold, CudaDevice, CudaMemPool,
-    CudaStreamHandle, Dim3, KernelPtr,
-};
 use futures::{future::MapOkOrElse, TryFutureExt};
 use pin_project::pin_project;
 use slop_alloc::{
@@ -25,6 +21,10 @@ use slop_alloc::{
     AllocError, Allocator, Backend, Buffer, Slice,
 };
 use slop_futures::queue::{AcquireWorkerError, TryAcquireWorkerError, Worker, WorkerQueue};
+use sp1_gpu_sys::runtime::{
+    cuda_device_get_mem_pool, cuda_mem_pool_set_release_threshold, CudaDevice, CudaMemPool,
+    CudaStreamHandle, Dim3, KernelPtr,
+};
 use thiserror::Error;
 use tokio::{sync::oneshot, task::JoinHandle};
 

@@ -1,6 +1,6 @@
-use csl_cuda::{DeviceBuffer, DeviceTensor, TaskScope};
 use slop_alloc::{Backend, CpuBackend, HasBackend};
 use slop_tensor::Tensor;
+use sp1_gpu_cudart::{DeviceBuffer, DeviceTensor, TaskScope};
 use std::collections::BTreeSet;
 use std::{collections::BTreeMap, iter::once};
 
@@ -15,8 +15,8 @@ use crate::{
     interactions::Interactions,
     layer::{JaggedFirstGkrLayer, JaggedGkrLayer},
 };
-use csl_utils::traces::JaggedTraceMle;
-use csl_utils::{DenseData, Ext, Felt, JaggedMle};
+use sp1_gpu_utils::traces::JaggedTraceMle;
+use sp1_gpu_utils::{DenseData, Ext, Felt, JaggedMle};
 
 /// A layer of the GKR circuit.
 ///

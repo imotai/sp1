@@ -6,8 +6,8 @@ use tikv_jemallocator::Jemalloc;
 static GLOBAL: Jemalloc = Jemalloc;
 
 use clap::Parser;
-use csl_cuda::run_in_place;
 use server::Server;
+use sp1_gpu_cudart::run_in_place;
 
 mod server;
 

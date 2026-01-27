@@ -1,4 +1,4 @@
-#include "csl-cbindgen.hpp"
+#include "sp1-gpu-cbindgen.hpp"
 
 #include "fields/kb31_t.cuh"
 
@@ -12,18 +12,18 @@ template <class T>
 __global__ void recursion_poseidon2_wide_generate_preprocessed_trace_kernel(
     T* trace,
     uintptr_t trace_height,
-    const csl_sys::Poseidon2Instr<T>* instructions,
+    const sp1_gpu_sys::Poseidon2Instr<T>* instructions,
     uintptr_t nb_instructions) {
-    static const size_t COLUMNS = sizeof(csl_sys::Poseidon2PreprocessedColsWide<T>) / sizeof(T);
+    static const size_t COLUMNS = sizeof(sp1_gpu_sys::Poseidon2PreprocessedColsWide<T>) / sizeof(T);
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     for (; i < nb_instructions; i += blockDim.x * gridDim.x) {
-        csl_sys::Poseidon2PreprocessedColsWide<T> cols;
+        sp1_gpu_sys::Poseidon2PreprocessedColsWide<T> cols;
 
         const auto& instr = instructions[i];
         for (size_t j = 0; j < POSEIDON2_WIDTH; j++) {
             cols.input[j] = instr.addrs.input[j];
-            cols.output[j] = csl_sys::MemoryAccessColsChips<T>{
+            cols.output[j] = sp1_gpu_sys::MemoryAccessColsChips<T>{
                 .addr = instr.addrs.output[j],
                 .mult = instr.mults[j]};
         }
@@ -39,7 +39,7 @@ __global__ void recursion_poseidon2_wide_generate_preprocessed_trace_kernel(
 __global__ void recursion_poseidon2_wide_generate_trace_koala_bear_kernel(
     kb31_t* trace,
     uintptr_t trace_height,
-    const csl_sys::Poseidon2Event<kb31_t>* events,
+    const sp1_gpu_sys::Poseidon2Event<kb31_t>* events,
     uintptr_t nb_events) {
     kb31_t dummy_input[POSEIDON2_WIDTH];
     for (size_t i = 0; i < POSEIDON2_WIDTH; ++i) {
@@ -56,11 +56,11 @@ __global__ void recursion_poseidon2_wide_generate_trace_koala_bear_kernel(
     }
 }
 
-namespace csl_sys {
+namespace sp1_gpu_sys {
 extern KernelPtr recursion_poseidon2_wide_generate_preprocessed_trace_koala_bear_kernel() {
     return (KernelPtr)::recursion_poseidon2_wide_generate_preprocessed_trace_kernel<kb31_t>;
 }
 extern KernelPtr recursion_poseidon2_wide_generate_trace_koala_bear_kernel() {
     return (KernelPtr)::recursion_poseidon2_wide_generate_trace_koala_bear_kernel;
 }
-} // namespace csl_sys
+} // namespace sp1_gpu_sys

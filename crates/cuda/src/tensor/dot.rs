@@ -1,4 +1,7 @@
-use csl_sys::{
+use slop_algebra::extension::BinomialExtensionField;
+use slop_koala_bear::KoalaBear;
+use slop_tensor::{Tensor, TensorView};
+use sp1_gpu_sys::{
     reduce::{
         dot_along_short_dimension_kernel_koala_bear_base_base,
         dot_along_short_dimension_kernel_koala_bear_base_extension,
@@ -8,9 +11,6 @@ use csl_sys::{
     },
     runtime::KernelPtr,
 };
-use slop_algebra::extension::BinomialExtensionField;
-use slop_koala_bear::KoalaBear;
-use slop_tensor::{Tensor, TensorView};
 
 use crate::{args, reduce::partial_sum_reduction_into, DeviceCopy, DeviceTensor, TaskScope};
 

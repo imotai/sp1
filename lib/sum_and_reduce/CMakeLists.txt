@@ -4,4 +4,4 @@ add_library(sum_and_reduce_objs OBJECT
     reduction.cu
     sum.cu
 )
-target_link_libraries(sum_and_reduce_objs PRIVATE csl_common)
+target_link_libraries(sum_and_reduce_objs PRIVATE sp1_gpu_common)

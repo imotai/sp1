@@ -1,5 +1,5 @@
 [package]
-name = "csl-logup-gkr"
+name = "sp1-gpu-logup-gkr"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,11 +11,11 @@ categories.workspace = true
 tokio-blocked = ["dep:tokio-blocked", "dep:tracing-subscriber"]
 
 [dependencies]
-# cuslop
-csl-cuda = { workspace = true }
-csl-utils = { workspace = true }
-csl-jagged-tracegen = { workspace = true }
-csl-zerocheck = { workspace = true }
+# sp1-gpu
+sp1-gpu-cudart = { workspace = true }
+sp1-gpu-utils = { workspace = true }
+sp1-gpu-jagged-tracegen = { workspace = true }
+sp1-gpu-zerocheck = { workspace = true }
 
 # slop
 slop-air = { workspace = true }

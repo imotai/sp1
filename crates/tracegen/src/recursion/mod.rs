@@ -7,8 +7,8 @@ mod prefix_sum_checks;
 mod sbox;
 mod select;
 
-use csl_cuda::{DeviceMle, TaskScope};
 use slop_alloc::mem::CopyError;
+use sp1_gpu_cudart::{DeviceMle, TaskScope};
 use sp1_recursion_machine::RecursionAir;
 
 use crate::{CudaTracegenAir, F};
@@ -104,7 +104,7 @@ impl<const DEGREE: usize, const VAR_EVENTS_PER_ROW: usize> CudaTracegenAir<F>
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use csl_cuda::TaskScope;
+    use sp1_gpu_cudart::TaskScope;
 
     use rand::{rngs::StdRng, SeedableRng};
 

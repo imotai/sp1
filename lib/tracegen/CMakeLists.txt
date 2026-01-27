@@ -10,4 +10,4 @@ add_library(tracegen_objs OBJECT
     recursion/select.cu
     riscv/global.cu
 )
-target_link_libraries(tracegen_objs PRIVATE csl_common)
+target_link_libraries(tracegen_objs PRIVATE sp1_gpu_common)

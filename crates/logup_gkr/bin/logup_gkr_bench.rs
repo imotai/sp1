@@ -1,18 +1,18 @@
 use std::fs;
 use std::time::Duration;
 
-use csl_cuda::{run_sync_in_place, DeviceMle, DevicePoint, DeviceTensor, TaskScope};
-use csl_logup_gkr::{
-    bench_materialized_sumcheck, extract_outputs, gkr_transition, jagged_first_gkr_layer_to_device,
-    prove_round,
-};
-use csl_logup_gkr::{random_first_layer, FirstGkrLayer, GkrCircuitLayer};
-use csl_utils::config::{Ext, TestGC};
 use rand::{rngs::StdRng, SeedableRng};
 use serde::Deserialize;
 use slop_challenger::{FieldChallenger, IopCtx};
 use slop_multilinear::{Mle, Point};
 use slop_sumcheck::partially_verify_sumcheck_proof;
+use sp1_gpu_cudart::{run_sync_in_place, DeviceMle, DevicePoint, DeviceTensor, TaskScope};
+use sp1_gpu_logup_gkr::{
+    bench_materialized_sumcheck, extract_outputs, gkr_transition, jagged_first_gkr_layer_to_device,
+    prove_round,
+};
+use sp1_gpu_logup_gkr::{random_first_layer, FirstGkrLayer, GkrCircuitLayer};
+use sp1_gpu_utils::config::{Ext, TestGC};
 
 #[derive(Deserialize)]
 struct Workload {

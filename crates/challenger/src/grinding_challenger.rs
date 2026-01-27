@@ -1,12 +1,12 @@
 use crate::DuplexChallenger;
-use csl_cuda::sys::challenger::grind_koala_bear;
-use csl_cuda::sys::runtime::KernelPtr;
-use csl_cuda::{args, DeviceBuffer, TaskScope};
 use slop_algebra::PrimeField64;
 use slop_challenger::GrindingChallenger;
 use slop_koala_bear::KoalaBear;
 use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 use slop_symmetric::CryptographicPermutation;
+use sp1_gpu_cudart::sys::challenger::grind_koala_bear;
+use sp1_gpu_cudart::sys::runtime::KernelPtr;
+use sp1_gpu_cudart::{args, DeviceBuffer, TaskScope};
 use sp1_primitives::SP1DiffusionMatrix;
 
 /// Poseidon2 permutation type for KoalaBear grinding.
@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn test_grinding() {
-        csl_cuda::run_sync_in_place(|t| {
+        sp1_gpu_cudart::run_sync_in_place(|t| {
             for bits in 1..20 {
                 let default_perm = inner_perm();
                 let mut challenger = KoalaBearDuplexChallenger::new(default_perm);

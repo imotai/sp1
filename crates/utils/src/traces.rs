@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut, Range};
 
-use csl_cuda::{DeviceBuffer, TaskScope};
 use slop_algebra::Field;
 use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend};
 use slop_tensor::{Dimensions, Tensor, TensorView};
+use sp1_gpu_cudart::{DeviceBuffer, TaskScope};
 
 use crate::jagged::JaggedMle;
 use crate::{DenseData, DenseDataMut};

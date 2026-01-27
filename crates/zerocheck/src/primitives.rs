@@ -1,16 +1,16 @@
 use crate::data::{InfoBuffer, JaggedDenseInfo};
-use csl_cuda::sys::runtime::KernelPtr;
-use csl_cuda::sys::v2_kernels::{
-    fix_last_variable_jagged_ext, fix_last_variable_jagged_felt, fix_last_variable_jagged_info,
-    initialize_jagged_info,
-};
-use csl_cuda::{args, DeviceBuffer, DevicePoint, DeviceTensor, TaskScope};
-use csl_utils::{Ext, Felt, JaggedMle, JaggedTraceMle, TraceDenseData, TraceOffset};
 use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend, Slice};
 use slop_commit::Rounds;
 use slop_multilinear::{Evaluations, MleEval, Point};
 use slop_tensor::Tensor;
+use sp1_gpu_cudart::sys::runtime::KernelPtr;
+use sp1_gpu_cudart::sys::v2_kernels::{
+    fix_last_variable_jagged_ext, fix_last_variable_jagged_felt, fix_last_variable_jagged_info,
+    initialize_jagged_info,
+};
+use sp1_gpu_cudart::{args, DeviceBuffer, DevicePoint, DeviceTensor, TaskScope};
+use sp1_gpu_utils::{Ext, Felt, JaggedMle, JaggedTraceMle, TraceDenseData, TraceOffset};
 use std::collections::BTreeMap;
 use std::iter::once;
 
@@ -382,9 +382,6 @@ pub fn round_batch_evaluations(
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use csl_cuda::run_in_place;
-    use csl_cuda::sys::v2_kernels::jagged_eval_kernel_chunked_felt;
-    use csl_cuda::{DeviceBuffer, DevicePoint};
     use rand::rngs::StdRng;
     use rand::{RngCore, SeedableRng};
     use serial_test::serial;
@@ -393,11 +390,14 @@ mod tests {
     use slop_koala_bear::KoalaBear;
     use slop_multilinear::Mle;
     use slop_multilinear::Point;
+    use sp1_gpu_cudart::run_in_place;
+    use sp1_gpu_cudart::sys::v2_kernels::jagged_eval_kernel_chunked_felt;
+    use sp1_gpu_cudart::{DeviceBuffer, DevicePoint};
     use sp1_hypercube::log2_ceil_usize;
 
     use crate::primitives::{evaluate_jagged_columns, evaluate_jagged_mle_chunked};
-    use csl_utils::{Ext, Felt};
-    use csl_utils::{JaggedTraceMle, TraceDenseData, TraceOffset};
+    use sp1_gpu_utils::{Ext, Felt};
+    use sp1_gpu_utils::{JaggedTraceMle, TraceDenseData, TraceOffset};
 
     fn get_keccak_size() -> Vec<(u32, u32)> {
         vec![

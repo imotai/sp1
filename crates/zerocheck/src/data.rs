@@ -1,12 +1,12 @@
 use std::ops::{Deref, DerefMut};
 
-use csl_cuda::{DeviceBuffer, TaskScope};
-use csl_utils::DenseDataMut;
-use csl_utils::{DenseData, Ext, Felt, JaggedMle};
 use slop_algebra::Field;
 use slop_alloc::Buffer;
 use slop_alloc::HasBackend;
 use slop_alloc::{Backend, CpuBackend};
+use sp1_gpu_cudart::{DeviceBuffer, TaskScope};
+use sp1_gpu_utils::DenseDataMut;
+use sp1_gpu_utils::{DenseData, Ext, Felt, JaggedMle};
 use thiserror::Error;
 
 pub struct JaggedDenseMle<F, B: Backend>(pub JaggedMle<DenseBuffer<F, B>, B>);

@@ -1,7 +1,7 @@
 use std::{collections::BTreeSet, sync::Arc};
 
-use csl_utils::{Ext, Felt};
 use slop_challenger::IopCtx;
+use sp1_gpu_utils::{Ext, Felt};
 use sp1_hypercube::{
     prover::{AirProver, ProverPermit, ProvingKey},
     Chip, ShardContext, ShardContextImpl,

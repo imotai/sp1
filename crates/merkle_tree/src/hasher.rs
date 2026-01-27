@@ -1,6 +1,6 @@
-use csl_cuda::TaskScope;
 use slop_algebra::Field;
 use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend};
+use sp1_gpu_cudart::TaskScope;
 
 pub struct MerkleTreeHasher<F: Field, A: Backend, const WIDTH: usize> {
     pub internal_constants: Buffer<F, A>,

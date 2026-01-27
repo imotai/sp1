@@ -1,8 +1,8 @@
 mod global;
 
-use csl_cuda::{DeviceMle, TaskScope};
 use slop_alloc::mem::CopyError;
 use sp1_core_machine::riscv::RiscvAir;
+use sp1_gpu_cudart::{DeviceMle, TaskScope};
 
 use crate::{CudaTracegenAir, F};
 

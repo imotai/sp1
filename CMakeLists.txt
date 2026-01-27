@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.30)
-project(csl-cuda LANGUAGES CXX CUDA)
+project(sp1-gpu-cuda LANGUAGES CXX CUDA)
 
 # Require CUDA 12.0+
 find_package(CUDAToolkit 12.0 REQUIRED)
@@ -61,17 +61,17 @@ set(CSL_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Create an INTERFACE library for common settings (following CUTLASS pattern)
 # All CUDA modules link to this to get proper include paths and definitions
-add_library(csl_common INTERFACE)
-target_include_directories(csl_common INTERFACE
+add_library(sp1_gpu_common INTERFACE)
+target_include_directories(sp1_gpu_common INTERFACE
     ${CSL_SOURCE_DIR}/include
     ${CSL_SOURCE_DIR}/sppark
     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
 )
-target_compile_definitions(csl_common INTERFACE SPPARK FEATURE_KOALA_BEAR)
+target_compile_definitions(sp1_gpu_common INTERFACE SPPARK FEATURE_KOALA_BEAR)
 
 # Add cbindgen include directory if provided
 if(DEFINED CBINDGEN_INCLUDE_DIR)
-    target_include_directories(csl_common INTERFACE ${CBINDGEN_INCLUDE_DIR})
+    target_include_directories(sp1_gpu_common INTERFACE ${CBINDGEN_INCLUDE_DIR})
 endif()
 
 # Output directories - use the project root's target directory
@@ -102,7 +102,7 @@ add_library(sppark_objs OBJECT
     ${CSL_SOURCE_DIR}/sppark/rust/src/lib.cpp
     ${CSL_SOURCE_DIR}/sppark/util/all_gpus.cpp
 )
-target_link_libraries(sppark_objs PRIVATE csl_common)
+target_link_libraries(sppark_objs PRIVATE sp1_gpu_common)
 
 # Collect all object libraries
 set(ALL_CUDA_OBJECTS

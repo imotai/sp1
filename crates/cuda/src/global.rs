@@ -4,7 +4,7 @@
 //     ptr::{self, NonNull},
 // };
 
-// use csl_sys::runtime::{
+// use sp1_gpu_sys::runtime::{
 //     cuda_free, cuda_malloc, cuda_mem_copy_device_to_device, cuda_mem_copy_device_to_host,
 //     cuda_mem_copy_host_to_device, cuda_mem_set,
 // };

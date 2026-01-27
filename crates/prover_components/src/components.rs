@@ -1,13 +1,9 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use csl_air::{air_block::BlockAir, codegen_cuda_eval, SymbolicProverFolder};
-use csl_challenger::{DuplexChallenger, MultiField32Challenger};
-use csl_cuda::{PinnedBuffer, TaskScope};
+use sp1_gpu_air::{air_block::BlockAir, codegen_cuda_eval, SymbolicProverFolder};
+use sp1_gpu_challenger::{DuplexChallenger, MultiField32Challenger};
+use sp1_gpu_cudart::{PinnedBuffer, TaskScope};
 
-use csl_basefold::FriCudaProver;
-use csl_merkle_tree::{CudaTcsProver, Poseidon2Bn254CudaProver, Poseidon2KoalaBear16CudaProver};
-use csl_shard_prover::{CudaShardProver, CudaShardProverComponents};
-use csl_tracegen::CudaTracegenAir;
 use slop_algebra::extension::BinomialExtensionField;
 use slop_basefold::BasefoldVerifier;
 use slop_bn254::Bn254Fr;
@@ -15,6 +11,12 @@ use slop_challenger::IopCtx;
 use slop_futures::queue::WorkerQueue;
 use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 use sp1_core_machine::riscv::RiscvAir;
+use sp1_gpu_basefold::FriCudaProver;
+use sp1_gpu_merkle_tree::{
+    CudaTcsProver, Poseidon2Bn254CudaProver, Poseidon2KoalaBear16CudaProver,
+};
+use sp1_gpu_shard_prover::{CudaShardProver, CudaShardProverComponents};
+use sp1_gpu_tracegen::CudaTracegenAir;
 use sp1_hypercube::{air::MachineAir, prover::ZerocheckAir, SP1InnerPcs, SP1OuterPcs, SP1SC};
 use sp1_primitives::{SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_prover::{CompressAir, SP1ProverComponents, WrapAir};
@@ -98,7 +100,7 @@ where
     let mut all_interactions = BTreeMap::new();
 
     for chip in machine.chips().iter() {
-        let host_interactions = csl_logup_gkr::Interactions::new(chip.sends(), chip.receives());
+        let host_interactions = sp1_gpu_logup_gkr::Interactions::new(chip.sends(), chip.receives());
         let device_interactions = host_interactions.copy_to_device(&scope).unwrap();
         all_interactions.insert(chip.name().to_string(), Arc::new(device_interactions));
     }

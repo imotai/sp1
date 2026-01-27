@@ -1,14 +1,14 @@
-use csl_sys::{
-    mle::{
-        partial_geq_koala_bear, partial_lagrange_koala_bear, partial_lagrange_koala_bear_extension,
-    },
-    runtime::KernelPtr,
-};
 use slop_algebra::{extension::BinomialExtensionField, ExtensionField, Field};
 use slop_alloc::{mem::CopyError, CpuBackend};
 use slop_koala_bear::KoalaBear;
 use slop_multilinear::{MleBaseBackend, MleEval, Point};
 use slop_tensor::Tensor;
+use sp1_gpu_sys::{
+    mle::{
+        partial_geq_koala_bear, partial_lagrange_koala_bear, partial_lagrange_koala_bear_extension,
+    },
+    runtime::KernelPtr,
+};
 
 use crate::{args, tensor::dot::DotKernel, DeviceCopy, DeviceTensor, TaskScope};
 

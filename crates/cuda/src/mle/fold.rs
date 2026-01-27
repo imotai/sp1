@@ -1,12 +1,12 @@
-use csl_sys::{
-    mle::{mle_fold_koala_bear_base_base, mle_fold_koala_bear_ext_ext},
-    runtime::KernelPtr,
-};
 use slop_algebra::{extension::BinomialExtensionField, Field};
 use slop_alloc::Backend;
 use slop_koala_bear::KoalaBear;
 use slop_multilinear::Mle;
 use slop_tensor::Tensor;
+use sp1_gpu_sys::{
+    mle::{mle_fold_koala_bear_base_base, mle_fold_koala_bear_ext_ext},
+    runtime::KernelPtr,
+};
 
 use crate::{args, DeviceCopy, TaskScope};
 

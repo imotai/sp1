@@ -6,7 +6,6 @@ use core::pin::pin;
 use std::collections::BTreeSet;
 use std::{collections::BTreeMap, sync::Arc};
 
-use csl_cuda::{DeviceMle, DeviceTransposeKernel, TaskScope};
 use futures::stream::FuturesUnordered;
 use futures::{join, StreamExt};
 use rayon::prelude::*;
@@ -15,6 +14,7 @@ use slop_algebra::Field;
 use slop_alloc::mem::CopyError;
 use slop_koala_bear::KoalaBear;
 use slop_multilinear::{Mle, PaddedMle};
+use sp1_gpu_cudart::{DeviceMle, DeviceTransposeKernel, TaskScope};
 use sp1_hypercube::prover::{MainTraceData, PreprocessedTraceData, ProverSemaphore, TraceData};
 use sp1_hypercube::{
     air::MachineAir,
@@ -407,9 +407,9 @@ pub trait CudaTracegenAir<F: Field>: MachineAir<F> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::{CudaTracegenAir, F};
-    use csl_cuda::TaskScope;
     use rand::{rngs::StdRng, SeedableRng};
     use slop_tensor::Tensor;
+    use sp1_gpu_cudart::TaskScope;
     use sp1_hypercube::air::MachineAir;
     use std::collections::BTreeSet;
 

@@ -1,19 +1,19 @@
-use csl_cuda::{
+use slop_alloc::{Buffer, HasBackend};
+use slop_multilinear::Mle;
+use sp1_gpu_cudart::{
     args,
     sys::v2_kernels::{
         logup_gkr_circuit_transition, logup_gkr_extract_output, logup_gkr_first_layer_transition,
     },
     DeviceBuffer, TaskScope,
 };
-use slop_alloc::{Buffer, HasBackend};
-use slop_multilinear::Mle;
 
 use slop_tensor::Tensor;
 use sp1_hypercube::LogUpGkrOutput;
 
 use crate::layer::JaggedGkrLayer;
 use crate::utils::{FirstGkrLayer, GkrCircuitLayer, GkrLayer};
-use csl_utils::{Ext, JaggedMle};
+use sp1_gpu_utils::{Ext, JaggedMle};
 
 /// Takes as input a GkrLayer, which represents evaluations of p_0, p_1, q_0, q_1.
 /// Computes the next layer like

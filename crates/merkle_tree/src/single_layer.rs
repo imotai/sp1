@@ -1,6 +1,16 @@
 use std::{marker::PhantomData, os::raw::c_void};
 
-use csl_cuda::{
+use slop_algebra::extension::BinomialExtensionField;
+use slop_algebra::{AbstractField, Field};
+use slop_alloc::CpuBackend;
+use slop_alloc::{mem::CopyError, Buffer, HasBackend};
+use slop_bn254::{bn254_poseidon2_rc3, Bn254Fr, BNGC};
+use slop_challenger::IopCtx;
+use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
+use slop_merkle_tree::MerkleTreeTcsProof;
+use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
+use slop_tensor::Tensor;
+use sp1_gpu_cudart::{
     args,
     sys::{
         merkle_tree::{
@@ -14,16 +24,6 @@ use csl_cuda::{
     },
     CudaError, DeviceTensor, TaskScope,
 };
-use slop_algebra::extension::BinomialExtensionField;
-use slop_algebra::{AbstractField, Field};
-use slop_alloc::CpuBackend;
-use slop_alloc::{mem::CopyError, Buffer, HasBackend};
-use slop_bn254::{bn254_poseidon2_rc3, Bn254Fr, BNGC};
-use slop_challenger::IopCtx;
-use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
-use slop_merkle_tree::MerkleTreeTcsProof;
-use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
-use slop_tensor::Tensor;
 use thiserror::Error;
 
 use crate::{MerkleTree, MerkleTreeHasher};
@@ -374,18 +374,18 @@ unsafe impl MerkleTreeSingleLayerKernels<BNGC<KoalaBear, BinomialExtensionField<
 mod tests {
     use std::sync::Arc;
 
-    use csl_cuda::{run_in_place, PinnedBuffer};
     use slop_commit::Message;
     use slop_futures::queue::WorkerQueue;
     use slop_multilinear::Mle;
     use slop_stacked::interleave_multilinears_with_fixed_rate;
+    use sp1_gpu_cudart::{run_in_place, PinnedBuffer};
     use sp1_hypercube::prover::{DefaultTraceGenerator, ProverSemaphore, TraceGenerator};
 
-    use csl_jagged_tracegen::test_utils::tracegen_setup::{
+    use sp1_gpu_jagged_tracegen::test_utils::tracegen_setup::{
         self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT,
     };
-    use csl_jagged_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
-    use csl_utils::Felt;
+    use sp1_gpu_jagged_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
+    use sp1_gpu_utils::Felt;
 
     use super::*;
     use slop_merkle_tree::{ComputeTcsOpenings, TensorCsProver};

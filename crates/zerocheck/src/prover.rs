@@ -1,4 +1,4 @@
-use csl_air::{air_block::BlockAir, codegen_cuda_eval, SymbolicProverFolder};
+use sp1_gpu_air::{air_block::BlockAir, codegen_cuda_eval, SymbolicProverFolder};
 use slop_air::Air;
 use slop_algebra::{
     extension::BinomialExtensionField, AbstractExtensionField, ExtensionField, Field,
@@ -20,7 +20,7 @@ use std::{
 };
 
 use crate::{EvalProgram, InterpolateRowKernel};
-use csl_cuda::{args, DeviceBuffer, DeviceTensor, TaskScope};
+use sp1_gpu_cudart::{args, DeviceBuffer, DeviceTensor, TaskScope};
 
 use super::ConstraintPolyEvalKernel;
 
@@ -418,7 +418,7 @@ where
 mod tests {
     use super::*;
 
-    use csl_cuda::DeviceMle;
+    use sp1_gpu_cudart::DeviceMle;
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_koala_bear::KoalaBear;
     use slop_matrix::dense::RowMajorMatrix;
@@ -468,7 +468,7 @@ mod tests {
         let expected_y_2s = RowMajorMatrix::new(expected_y_2s, main_width).transpose().values;
         let expected_y_4s = RowMajorMatrix::new(expected_y_4s, main_width).transpose().values;
 
-        let interpolated_rows_host = csl_cuda::spawn(move |t| async move {
+        let interpolated_rows_host = sp1_gpu_cudart::spawn(move |t| async move {
             let main_mle_device = DeviceMle::from_host(&main_mle, &t).into_inner();
             let interpolated_rows = interpolate_rows::<EF>(
                 &main_mle_device,

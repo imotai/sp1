@@ -1,8 +1,8 @@
 use std::iter::once;
 
-use csl_cuda::TaskScope;
 use slop_alloc::{Backend, Buffer, HasBackend};
 use slop_tensor::{Dimensions, Tensor};
+use sp1_gpu_cudart::TaskScope;
 
 #[derive(Clone, Debug)]
 #[repr(C)]

@@ -1,6 +1,16 @@
 //! Gkr is composed of rounds. Each round corresponds to a layer. Each round is a sumcheck.
 //! For the first layer, the numerator is a base field element and the denominator over extension field elements, so it requires some special treatment.
-use csl_cuda::{
+use itertools::Itertools;
+use slop_algebra::{
+    interpolate_univariate_polynomial, AbstractExtensionField, AbstractField, Field,
+    UnivariatePolynomial,
+};
+use slop_alloc::{Buffer, HasBackend};
+use slop_challenger::{FieldChallenger, IopCtx};
+use slop_multilinear::{Mle, Point};
+use slop_sumcheck::PartialSumcheckProof;
+use slop_tensor::Tensor;
+use sp1_gpu_cudart::{
     args,
     sys::v2_kernels::{
         logup_gkr_first_sum_as_poly_circuit_layer as first_sum_as_poly_layer_circuit_layer_kernel,
@@ -15,17 +25,7 @@ use csl_cuda::{
     },
     DeviceBuffer, DeviceTensor, TaskScope,
 };
-use csl_cuda::{DeviceMle, DevicePoint};
-use itertools::Itertools;
-use slop_algebra::{
-    interpolate_univariate_polynomial, AbstractExtensionField, AbstractField, Field,
-    UnivariatePolynomial,
-};
-use slop_alloc::{Buffer, HasBackend};
-use slop_challenger::{FieldChallenger, IopCtx};
-use slop_multilinear::{Mle, Point};
-use slop_sumcheck::PartialSumcheckProof;
-use slop_tensor::Tensor;
+use sp1_gpu_cudart::{DeviceMle, DevicePoint};
 
 use crate::{
     layer::JaggedGkrLayer,
@@ -34,9 +34,9 @@ use crate::{
         GkrTestData, LogupRoundPolynomial, PolynomialLayer,
     },
 };
-use csl_utils::{DenseData, Ext, Felt, JaggedMle};
 use rayon::prelude::*;
 use slop_sumcheck::partially_verify_sumcheck_proof;
+use sp1_gpu_utils::{DenseData, Ext, Felt, JaggedMle};
 
 pub fn get_component_poly_evals(poly: &LogupRoundPolynomial) -> Vec<Ext> {
     match &poly.layer {
@@ -782,7 +782,7 @@ pub fn bench_materialized_sumcheck<GC: IopCtx>(
 
     let lambda = rng.gen::<Ext>();
 
-    csl_cuda::run_sync_in_place(move |t| {
+    sp1_gpu_cudart::run_sync_in_place(move |t| {
         let now = std::time::Instant::now();
         let jagged_mle = jagged_gkr_layer_to_device(jagged_mle, &t);
 
@@ -880,10 +880,10 @@ pub fn bench_materialized_sumcheck<GC: IopCtx>(
 #[cfg(test)]
 mod tests {
     use crate::utils::{generate_test_data, GkrTestData};
-    use csl_cuda::DevicePoint;
-    use csl_utils::TestGC;
     use slop_multilinear::Mle;
     use slop_multilinear::Point;
+    use sp1_gpu_cudart::DevicePoint;
+    use sp1_gpu_utils::TestGC;
 
     use super::*;
 
@@ -911,7 +911,7 @@ mod tests {
 
         let lambda = rng.gen::<Ext>();
 
-        csl_cuda::run_sync_in_place(move |t| {
+        sp1_gpu_cudart::run_sync_in_place(move |t| {
             let jagged_mle = jagged_gkr_layer_to_device(jagged_mle, &t);
 
             let row_point = DevicePoint::from_host(&row_point, &t).unwrap().into_inner();

@@ -7,7 +7,7 @@ pub mod tracegen_setup {
     use sp1_hypercube::{air::PROOF_NONCE_NUM_WORDS, Machine};
     use std::sync::Arc;
 
-    use csl_utils::Felt;
+    use sp1_gpu_utils::Felt;
 
     pub const FIBONACCI_ELF: &[u8] =
         include_bytes!("../../prover_components/programs/fibonacci/riscv64im-succinct-zkvm-elf");

@@ -1,7 +1,7 @@
 use core::fmt;
 use std::ffi::CStr;
 
-use csl_sys::runtime::{
+use sp1_gpu_sys::runtime::{
     CudaRustError, CUDA_ERROR_NOT_READY_SLOP, CUDA_OUT_OF_MEMORY, CUDA_SUCCESS_CSL,
 };
 use thiserror::Error;

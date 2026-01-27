@@ -1,12 +1,12 @@
-use csl_cuda::{args, DeviceMle, TaskScope};
-use csl_cuda::{
-    TracegenPreprocessedRecursionPoseidon2WideKernel, TracegenRecursionPoseidon2WideKernel,
-};
 use slop_air::BaseAir;
 use slop_alloc::mem::CopyError;
 use slop_alloc::Buffer;
 use slop_multilinear::Mle;
 use slop_tensor::Tensor;
+use sp1_gpu_cudart::{args, DeviceMle, TaskScope};
+use sp1_gpu_cudart::{
+    TracegenPreprocessedRecursionPoseidon2WideKernel, TracegenRecursionPoseidon2WideKernel,
+};
 use sp1_hypercube::air::MachineAir;
 use sp1_recursion_executor::Instruction;
 use sp1_recursion_machine::chips::poseidon2_wide::Poseidon2WideChip;
@@ -52,7 +52,7 @@ impl<const DEGREE: usize> CudaTracegenAir<F> for Poseidon2WideChip<DEGREE> {
             // args:
             // T *trace,
             // uintptr_t trace_height,
-            // const csl_sys::Poseidon2Instr<T> *instructions,
+            // const sp1_gpu_sys::Poseidon2Instr<T> *instructions,
             // uintptr_t nb_instructions
             let args = args!(trace.as_mut_ptr(), height, instrs_device.as_ptr(), instrs.len());
             scope
@@ -103,7 +103,7 @@ impl<const DEGREE: usize> CudaTracegenAir<F> for Poseidon2WideChip<DEGREE> {
             // args:
             // kb31_t *trace,
             // uintptr_t trace_height,
-            // const csl_sys::Poseidon2Event<kb31_t> *events,
+            // const sp1_gpu_sys::Poseidon2Event<kb31_t> *events,
             // uintptr_t nb_events,
             // bool sbox_state
             let args =
@@ -153,7 +153,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_poseidon2_wide_deg_3_generate_preprocessed_trace() {
-        csl_cuda::spawn(move |scope| {
+        sp1_gpu_cudart::spawn(move |scope| {
             crate::recursion::tests::test_preprocessed_tracegen(
                 Poseidon2WideChip::<3>,
                 make_poseidon2_instr,
@@ -166,7 +166,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_poseidon2_wide_deg_3_generate_main_trace() {
-        csl_cuda::spawn(move |scope| {
+        sp1_gpu_cudart::spawn(move |scope| {
             crate::tests::test_main_tracegen(
                 Poseidon2WideChip::<3>,
                 |rng| {

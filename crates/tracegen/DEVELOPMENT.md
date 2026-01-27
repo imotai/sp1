@@ -1,4 +1,4 @@
-# Developing `csl-tracegen`
+# Developing `sp1-gpu-tracegen`
 
 This crate supports GPU trace generation. It exports two main items:
 

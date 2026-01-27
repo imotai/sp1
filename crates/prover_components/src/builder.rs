@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use csl_cuda::{cuda_memory_info, TaskScope};
+use sp1_gpu_cudart::{cuda_memory_info, TaskScope};
 
 use sp1_core_executor::{SP1CoreOpts, ELEMENT_THRESHOLD};
 use sp1_hypercube::prover::ProverSemaphore;

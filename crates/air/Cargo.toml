@@ -1,5 +1,5 @@
 [package]
-name = "csl-air"
+name = "sp1-gpu-air"
 version = "0.1.0"
 edition = "2021"
 

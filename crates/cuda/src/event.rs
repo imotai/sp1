@@ -1,6 +1,6 @@
 use std::ptr;
 
-use csl_sys::runtime::{
+use sp1_gpu_sys::runtime::{
     cuda_event_create, cuda_event_destroy, cuda_event_query, cuda_event_synchronize,
     CudaEventHandle,
 };

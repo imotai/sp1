@@ -1,4 +1,4 @@
-use csl_cuda::sys::runtime::{nvtx_range_end, nvtx_range_start, NvtxRangeId};
+use sp1_gpu_cudart::sys::runtime::{nvtx_range_end, nvtx_range_start, NvtxRangeId};
 use tracing::{span, Subscriber};
 use tracing_subscriber::{layer::Context, registry::LookupSpan, Layer};
 

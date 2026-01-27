@@ -1,5 +1,5 @@
 [package]
-name = "csl-cuda"
+name = "sp1-gpu-cudart"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,7 +8,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-csl-sys = { workspace = true }
+sp1-gpu-sys = { workspace = true }
 slop-alloc = { workspace = true }
 slop-algebra = { workspace = true }
 slop-koala-bear = { workspace = true }

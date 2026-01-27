@@ -4,14 +4,14 @@ use std::{
     sync::Arc,
 };
 
-use csl_cuda::{
-    args, sys::v2_kernels::logup_gkr_populate_last_circuit_layer, DeviceBuffer, DevicePoint,
-    TaskScope,
-};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use slop_alloc::{Buffer, HasBackend};
 use slop_multilinear::{Mle, Point};
 use slop_tensor::Tensor;
+use sp1_gpu_cudart::{
+    args, sys::v2_kernels::logup_gkr_populate_last_circuit_layer, DeviceBuffer, DevicePoint,
+    TaskScope,
+};
 use sp1_hypercube::{air::MachineAir, Chip, LogUpGkrOutput};
 use tracing::instrument;
 
@@ -21,8 +21,8 @@ use crate::{
     layer::JaggedFirstGkrLayer,
     utils::{FirstGkrLayer, GkrCircuitLayer, GkrInputData, LogUpCudaCircuit},
 };
-use csl_utils::{traces::JaggedTraceMle, JaggedMle};
-use csl_utils::{Ext, Felt};
+use sp1_gpu_utils::{traces::JaggedTraceMle, JaggedMle};
+use sp1_gpu_utils::{Ext, Felt};
 
 pub struct CudaLogUpGkrOptions {
     pub recompute_first_layer: bool,

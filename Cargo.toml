@@ -38,10 +38,10 @@ opt-level = 3
 debug = true
 incremental = false
 
-[profile.dev.package.csl-sys]
+[profile.dev.package.sp1-gpu-sys]
 debug = false
 
-[profile.dev.package.csl-prover]
+[profile.dev.package.sp1-gpu-prover]
 debug = false
 
 [profile.lto]
@@ -59,27 +59,27 @@ debug = true
 lto = false
 
 [workspace.dependencies]
-# cuslop
-csl-sys = { path = "crates/sys" }
-csl-cuda = { path = "crates/cuda" }
-csl-challenger = { path = "crates/challenger" }
-csl-jagged-assist = { path = "crates/jagged_assist" }
-csl-air = { path = "crates/air" }
-csl-tracing = { path = "crates/tracing" }
-csl-prover = { path = "crates/prover_components" }
-csl-tracegen = { path = "crates/tracegen" }
-csl-server = { path = "crates/cuslop" }
-csl-perf = { path = "crates/perf" }
+# sp1-gpu
+sp1-gpu-sys = { path = "crates/sys" }
+sp1-gpu-cudart = { path = "crates/cuda" }
+sp1-gpu-challenger = { path = "crates/challenger" }
+sp1-gpu-jagged-assist = { path = "crates/jagged_assist" }
+sp1-gpu-air = { path = "crates/air" }
+sp1-gpu-tracing = { path = "crates/tracing" }
+sp1-gpu-prover = { path = "crates/prover_components" }
+sp1-gpu-tracegen = { path = "crates/tracegen" }
+sp1-gpu-server = { path = "crates/cuslop" }
+sp1-gpu-perf = { path = "crates/perf" }
 
-csl-utils = { path = "crates/utils" }
-csl-commit = { path = "crates/commit" }
-csl-shard-prover = { path = "crates/shard_prover" }
-csl-jagged-sumcheck = { path = "crates/jagged_sumcheck" }
-csl-merkle-tree = { path = "crates/merkle_tree" }
-csl-jagged-tracegen = { path = "crates/jagged_tracegen" }
-csl-logup-gkr = { path = "crates/logup_gkr" }
-csl-zerocheck = { path = "crates/zerocheck" }
-csl-basefold = { path = "crates/basefold" }
+sp1-gpu-utils = { path = "crates/utils" }
+sp1-gpu-commit = { path = "crates/commit" }
+sp1-gpu-shard-prover = { path = "crates/shard_prover" }
+sp1-gpu-jagged-sumcheck = { path = "crates/jagged_sumcheck" }
+sp1-gpu-merkle-tree = { path = "crates/merkle_tree" }
+sp1-gpu-jagged-tracegen = { path = "crates/jagged_tracegen" }
+sp1-gpu-logup-gkr = { path = "crates/logup_gkr" }
+sp1-gpu-zerocheck = { path = "crates/zerocheck" }
+sp1-gpu-basefold = { path = "crates/basefold" }
 
 # slop 
 slop-air = { git = "https://github.com/succinctlabs/sp1-wip.git", branch = "multilinear_v6" }

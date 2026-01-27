@@ -67,7 +67,7 @@ fn cbindgen_builder() -> cbindgen::Builder {
         .include_item("PERMUTATION_WIDTH")
         .include_item("PrefixSumChecksEvent")
         .include_item("PrefixSumChecksCols")
-        .with_namespace("csl_sys")
+        .with_namespace("sp1_gpu_sys")
         .with_crate(env::var("CARGO_MANIFEST_DIR").unwrap())
 }
 
@@ -114,7 +114,7 @@ fn main() {
     const INCLUDE_DIRNAME: &str = "include";
 
     // Generate cbindgen headers BEFORE building with CMake
-    let cbindgen_hpp = "csl-cbindgen.hpp";
+    let cbindgen_hpp = "sp1-gpu-cbindgen.hpp";
     let header_path = out_include_dir.join(cbindgen_hpp);
 
     match cbindgen_builder().generate() {

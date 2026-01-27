@@ -1,19 +1,4 @@
 use crate::{MainTraceData, ShardData};
-use csl_air::air_block::BlockAir;
-use csl_air::SymbolicProverFolder;
-use csl_basefold::{CudaStackedPcsProverData, DeviceGrindingChallenger, FriCudaProver};
-use csl_challenger::FromHostChallengerSync;
-use csl_cuda::PinnedBuffer;
-use csl_cuda::{DeviceMle, DevicePoint, TaskScope};
-use csl_jagged_assist::prove_jagged_evaluation_sync;
-use csl_jagged_sumcheck::{generate_jagged_sumcheck_poly, jagged_sumcheck};
-use csl_jagged_tracegen::{full_tracegen_permit, main_tracegen_permit, CudaShardProverData};
-use csl_logup_gkr::{prove_logup_gkr, CudaLogUpGkrOptions, Interactions};
-use csl_merkle_tree::{CudaTcsProver, SingleLayerMerkleTreeProverError};
-use csl_tracegen::CudaTracegenAir;
-use csl_utils::{Ext, Felt, JaggedTraceMle};
-use csl_zerocheck::zerocheck;
-use csl_zerocheck::CudaEvalResult;
 use slop_algebra::AbstractField;
 use slop_alloc::{Buffer, HasBackend};
 use slop_challenger::{CanObserve, FieldChallenger, FromChallenger, IopCtx};
@@ -25,6 +10,21 @@ use slop_jagged::{
 };
 use slop_multilinear::{Evaluations, Mle, MleEval, MultilinearPcsVerifier, Point};
 use slop_stacked::StackedBasefoldProof;
+use sp1_gpu_air::air_block::BlockAir;
+use sp1_gpu_air::SymbolicProverFolder;
+use sp1_gpu_basefold::{CudaStackedPcsProverData, DeviceGrindingChallenger, FriCudaProver};
+use sp1_gpu_challenger::FromHostChallengerSync;
+use sp1_gpu_cudart::PinnedBuffer;
+use sp1_gpu_cudart::{DeviceMle, DevicePoint, TaskScope};
+use sp1_gpu_jagged_assist::prove_jagged_evaluation_sync;
+use sp1_gpu_jagged_sumcheck::{generate_jagged_sumcheck_poly, jagged_sumcheck};
+use sp1_gpu_jagged_tracegen::{full_tracegen_permit, main_tracegen_permit, CudaShardProverData};
+use sp1_gpu_logup_gkr::{prove_logup_gkr, CudaLogUpGkrOptions, Interactions};
+use sp1_gpu_merkle_tree::{CudaTcsProver, SingleLayerMerkleTreeProverError};
+use sp1_gpu_tracegen::CudaTracegenAir;
+use sp1_gpu_utils::{Ext, Felt, JaggedTraceMle};
+use sp1_gpu_zerocheck::zerocheck;
+use sp1_gpu_zerocheck::CudaEvalResult;
 use sp1_hypercube::prover::ZerocheckAir;
 use sp1_hypercube::ShardContextImpl;
 use sp1_hypercube::{
@@ -46,7 +46,7 @@ pub trait CudaShardProverComponents<GC: IopCtx>: Send + Sync + 'static {
         + for<'a> BlockAir<SymbolicProverFolder<'a>>;
     type C: MultilinearPcsVerifier<GC> + Send + Sync;
     /// The device challenger type used for GPU-based challenger operations.
-    type DeviceChallenger: csl_jagged_assist::AsMutRawChallenger
+    type DeviceChallenger: sp1_gpu_jagged_assist::AsMutRawChallenger
         + FromChallenger<GC::Challenger, TaskScope>
         + FromHostChallengerSync<GC::Challenger>
         + Clone
@@ -132,7 +132,7 @@ where
         <GC::Challenger as slop_challenger::GrindingChallenger>::Witness,
     >,
     StackedBasefoldProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
-    TaskScope: csl_jagged_assist::BranchingProgramKernel<GC::F, GC::EF, PC::DeviceChallenger>,
+    TaskScope: sp1_gpu_jagged_assist::BranchingProgramKernel<GC::F, GC::EF, PC::DeviceChallenger>,
 {
     type PreprocessedData = Mutex<CudaShardProverData<GC, PC::Air>>;
 
@@ -361,7 +361,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
         (GC::Digest, JaggedProverData<GC, Option<CudaStackedPcsProverData<GC>>>),
         JaggedProverError<SingleLayerMerkleTreeProverError>,
     > {
-        csl_commit::commit_multilinears::<GC, PC::P>(
+        sp1_gpu_commit::commit_multilinears::<GC, PC::P>(
             multilinears,
             self.max_log_row_count,
             use_preprocessed_data,
@@ -395,13 +395,13 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
         let preprocessed_virtual_tensor =
             jagged_trace_mle.dense().preprocessed_virtual_tensor(log_stacking_height as u32);
 
-        let preprocessed_evaluations = MleEval::new(csl_cuda::dot_along_dim_view(
+        let preprocessed_evaluations = MleEval::new(sp1_gpu_cudart::dot_along_dim_view(
             preprocessed_virtual_tensor,
             lagrange.guts().as_view(),
             1,
         ));
 
-        let main_evaluations = MleEval::new(csl_cuda::dot_along_dim_view(
+        let main_evaluations = MleEval::new(sp1_gpu_cudart::dot_along_dim_view(
             main_virtual_tensor,
             lagrange.guts().as_view(),
             1,
@@ -434,7 +434,8 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
             <GC::Challenger as slop_challenger::GrindingChallenger>::Witness,
         >,
         StackedBasefoldProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
-        TaskScope: csl_jagged_assist::BranchingProgramKernel<GC::F, GC::EF, PC::DeviceChallenger>,
+        TaskScope:
+            sp1_gpu_jagged_assist::BranchingProgramKernel<GC::F, GC::EF, PC::DeviceChallenger>,
     {
         let num_col_variables = prover_data
             .iter()
@@ -561,7 +562,8 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
         for round_evals in batch_evaluations.iter() {
             let mut host_round_evals = vec![];
             for eval in round_evals.iter() {
-                let host_eval = csl_cuda::DeviceTensor::copy_to_host(eval.evaluations()).unwrap();
+                let host_eval =
+                    sp1_gpu_cudart::DeviceTensor::copy_to_host(eval.evaluations()).unwrap();
                 host_round_evals.extend(host_eval.into_buffer().into_vec());
             }
             let host_round_evals = Evaluations::new(vec![host_round_evals.into()]);
@@ -570,7 +572,8 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
 
         for round in batch_evaluations.iter() {
             for claim in round.iter() {
-                let host_claim = csl_cuda::DeviceTensor::copy_to_host(claim.evaluations()).unwrap();
+                let host_claim =
+                    sp1_gpu_cudart::DeviceTensor::copy_to_host(claim.evaluations()).unwrap();
                 for evaluation in host_claim.into_buffer().into_vec() {
                     challenger.observe_ext_element(evaluation);
                 }
@@ -642,7 +645,8 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
             <GC::Challenger as slop_challenger::GrindingChallenger>::Witness,
         >,
         StackedBasefoldProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
-        TaskScope: csl_jagged_assist::BranchingProgramKernel<GC::F, GC::EF, PC::DeviceChallenger>,
+        TaskScope:
+            sp1_gpu_jagged_assist::BranchingProgramKernel<GC::F, GC::EF, PC::DeviceChallenger>,
     {
         let ShardData { main_trace_data } = data;
         let MainTraceData { traces, public_values, shard_chips, permit } = main_trace_data;
@@ -736,7 +740,8 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
             if !prep_local.is_empty() {
                 let host_mle_eval = MleEval::from(prep_local.clone());
                 let device_tensor =
-                    csl_cuda::DeviceTensor::from_host(host_mle_eval.evaluations(), &alloc).unwrap();
+                    sp1_gpu_cudart::DeviceTensor::from_host(host_mle_eval.evaluations(), &alloc)
+                        .unwrap();
                 let preprocessed_evals = MleEval::new(device_tensor.into_inner());
                 if let Some(preprocessed_claims) = preprocessed_evaluation_claims.as_mut() {
                     preprocessed_claims.push(preprocessed_evals);
@@ -747,7 +752,8 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
             }
             let host_mle_eval = MleEval::from(main_local.clone());
             let device_tensor =
-                csl_cuda::DeviceTensor::from_host(host_mle_eval.evaluations(), &alloc).unwrap();
+                sp1_gpu_cudart::DeviceTensor::from_host(host_mle_eval.evaluations(), &alloc)
+                    .unwrap();
             let main_evals = MleEval::new(device_tensor.into_inner());
             main_evaluation_claims.push(main_evals);
         }
@@ -788,21 +794,21 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use csl_air::codegen_cuda_eval;
-    use csl_cuda::run_in_place;
-    use csl_jagged_tracegen::test_utils::tracegen_setup::{
-        self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT,
-    };
-    use csl_jagged_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
-    use csl_merkle_tree::{CudaTcsProver, Poseidon2KoalaBear16CudaProver};
-    use csl_utils::TestGC;
-    use csl_zerocheck::primitives::round_batch_evaluations;
     use serial_test::serial;
     use slop_basefold::BasefoldVerifier;
     use slop_jagged::JaggedPcsVerifier;
     use slop_multilinear::MultilinearPcsChallenger;
     use slop_tensor::Tensor;
     use sp1_core_machine::riscv::RiscvAir;
+    use sp1_gpu_air::codegen_cuda_eval;
+    use sp1_gpu_cudart::run_in_place;
+    use sp1_gpu_jagged_tracegen::test_utils::tracegen_setup::{
+        self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT,
+    };
+    use sp1_gpu_jagged_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
+    use sp1_gpu_merkle_tree::{CudaTcsProver, Poseidon2KoalaBear16CudaProver};
+    use sp1_gpu_utils::TestGC;
+    use sp1_gpu_zerocheck::primitives::round_batch_evaluations;
     use sp1_hypercube::SP1InnerPcs;
     use sp1_primitives::fri_params::core_fri_config;
 
@@ -812,7 +818,7 @@ mod tests {
         type P = Poseidon2KoalaBear16CudaProver;
         type Air = RiscvAir<Felt>;
         type C = SP1InnerPcs;
-        type DeviceChallenger = csl_challenger::DuplexChallenger<Felt, TaskScope>;
+        type DeviceChallenger = sp1_gpu_challenger::DuplexChallenger<Felt, TaskScope>;
     }
 
     #[tokio::test]
@@ -910,7 +916,8 @@ mod tests {
                 for eval in round_evals.iter() {
                     // Copy the host MleEval to device
                     let device_tensor =
-                        csl_cuda::DeviceTensor::from_host(eval.evaluations(), &scope).unwrap();
+                        sp1_gpu_cudart::DeviceTensor::from_host(eval.evaluations(), &scope)
+                            .unwrap();
                     let device_eval = MleEval::new(device_tensor.into_inner());
                     round_claims.push(device_eval);
                 }

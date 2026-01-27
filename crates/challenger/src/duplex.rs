@@ -1,8 +1,8 @@
-use csl_cuda::{DeviceBuffer, TaskScope};
 use slop_algebra::{Field, PrimeField64};
 use slop_alloc::{Backend, Buffer, CpuBackend, HasBackend};
 use slop_challenger::FromChallenger;
 use slop_symmetric::CryptographicPermutation;
+use sp1_gpu_cudart::{DeviceBuffer, TaskScope};
 
 #[derive(Debug, Clone)]
 #[repr(C)]

@@ -1,5 +1,5 @@
-use csl_sys::runtime::KernelPtr;
 use slop_koala_bear::KoalaBear;
+use sp1_gpu_sys::runtime::KernelPtr;
 
 use crate::TaskScope;
 
@@ -11,10 +11,10 @@ pub unsafe trait TracegenRiscvGlobalKernel<F> {
 
 unsafe impl TracegenRiscvGlobalKernel<KoalaBear> for TaskScope {
     fn tracegen_riscv_global_decompress_kernel() -> KernelPtr {
-        unsafe { csl_sys::tracegen::riscv_global_generate_trace_decompress_kernel() }
+        unsafe { sp1_gpu_sys::tracegen::riscv_global_generate_trace_decompress_kernel() }
     }
     fn tracegen_riscv_global_finalize_kernel() -> KernelPtr {
-        unsafe { csl_sys::tracegen::riscv_global_generate_trace_finalize_kernel() }
+        unsafe { sp1_gpu_sys::tracegen::riscv_global_generate_trace_finalize_kernel() }
     }
 }
 
@@ -26,7 +26,8 @@ pub unsafe trait TracegenPreprocessedRecursionBaseAluKernel<F> {
 unsafe impl TracegenPreprocessedRecursionBaseAluKernel<KoalaBear> for TaskScope {
     fn tracegen_preprocessed_recursion_base_alu_kernel() -> KernelPtr {
         unsafe {
-            csl_sys::tracegen::recursion_base_alu_generate_preprocessed_trace_koala_bear_kernel()
+            sp1_gpu_sys::tracegen::recursion_base_alu_generate_preprocessed_trace_koala_bear_kernel(
+            )
         }
     }
 }
@@ -38,7 +39,7 @@ pub unsafe trait TracegenRecursionBaseAluKernel<F> {
 
 unsafe impl TracegenRecursionBaseAluKernel<KoalaBear> for TaskScope {
     fn tracegen_recursion_base_alu_kernel() -> KernelPtr {
-        unsafe { csl_sys::tracegen::recursion_base_alu_generate_trace_koala_bear_kernel() }
+        unsafe { sp1_gpu_sys::tracegen::recursion_base_alu_generate_trace_koala_bear_kernel() }
     }
 }
 
@@ -50,7 +51,7 @@ pub unsafe trait TracegenPreprocessedRecursionExtAluKernel<F> {
 unsafe impl TracegenPreprocessedRecursionExtAluKernel<KoalaBear> for TaskScope {
     fn tracegen_preprocessed_recursion_ext_alu_kernel() -> KernelPtr {
         unsafe {
-            csl_sys::tracegen::recursion_ext_alu_generate_preprocessed_trace_koala_bear_kernel()
+            sp1_gpu_sys::tracegen::recursion_ext_alu_generate_preprocessed_trace_koala_bear_kernel()
         }
     }
 }
@@ -62,7 +63,7 @@ pub unsafe trait TracegenRecursionExtAluKernel<F> {
 
 unsafe impl TracegenRecursionExtAluKernel<KoalaBear> for TaskScope {
     fn tracegen_recursion_ext_alu_kernel() -> KernelPtr {
-        unsafe { csl_sys::tracegen::recursion_ext_alu_generate_trace_koala_bear_kernel() }
+        unsafe { sp1_gpu_sys::tracegen::recursion_ext_alu_generate_trace_koala_bear_kernel() }
     }
 }
 
@@ -74,7 +75,7 @@ pub unsafe trait TracegenPreprocessedRecursionPoseidon2WideKernel<F> {
 unsafe impl TracegenPreprocessedRecursionPoseidon2WideKernel<KoalaBear> for TaskScope {
     fn tracegen_preprocessed_recursion_poseidon2_wide_kernel() -> KernelPtr {
         unsafe {
-            csl_sys::tracegen::recursion_poseidon2_wide_generate_preprocessed_trace_koala_bear_kernel(
+            sp1_gpu_sys::tracegen::recursion_poseidon2_wide_generate_preprocessed_trace_koala_bear_kernel(
             )
         }
     }
@@ -87,7 +88,9 @@ pub unsafe trait TracegenRecursionPoseidon2WideKernel<F> {
 
 unsafe impl TracegenRecursionPoseidon2WideKernel<KoalaBear> for TaskScope {
     fn tracegen_recursion_poseidon2_wide_kernel() -> KernelPtr {
-        unsafe { csl_sys::tracegen::recursion_poseidon2_wide_generate_trace_koala_bear_kernel() }
+        unsafe {
+            sp1_gpu_sys::tracegen::recursion_poseidon2_wide_generate_trace_koala_bear_kernel()
+        }
     }
 }
 
@@ -99,7 +102,7 @@ pub unsafe trait TracegenPreprocessedRecursionSelectKernel<F> {
 unsafe impl TracegenPreprocessedRecursionSelectKernel<KoalaBear> for TaskScope {
     fn tracegen_preprocessed_recursion_select_kernel() -> KernelPtr {
         unsafe {
-            csl_sys::tracegen::recursion_select_generate_preprocessed_trace_koala_bear_kernel()
+            sp1_gpu_sys::tracegen::recursion_select_generate_preprocessed_trace_koala_bear_kernel()
         }
     }
 }
@@ -111,7 +114,7 @@ pub unsafe trait TracegenRecursionSelectKernel<F> {
 
 unsafe impl TracegenRecursionSelectKernel<KoalaBear> for TaskScope {
     fn tracegen_recursion_select_kernel() -> KernelPtr {
-        unsafe { csl_sys::tracegen::recursion_select_generate_trace_koala_bear_kernel() }
+        unsafe { sp1_gpu_sys::tracegen::recursion_select_generate_trace_koala_bear_kernel() }
     }
 }
 
@@ -122,7 +125,9 @@ pub unsafe trait TracegenRecursionPrefixSumChecksKernel<F> {
 
 unsafe impl TracegenRecursionPrefixSumChecksKernel<KoalaBear> for TaskScope {
     fn tracegen_recursion_prefix_sum_checks_kernel() -> KernelPtr {
-        unsafe { csl_sys::tracegen::recursion_prefix_sum_checks_generate_trace_koala_bear_kernel() }
+        unsafe {
+            sp1_gpu_sys::tracegen::recursion_prefix_sum_checks_generate_trace_koala_bear_kernel()
+        }
     }
 }
 
@@ -134,7 +139,7 @@ pub unsafe trait TracegenPreprocessedRecursionConvertKernel<F> {
 unsafe impl TracegenPreprocessedRecursionConvertKernel<KoalaBear> for TaskScope {
     fn tracegen_preprocessed_recursion_convert_kernel() -> KernelPtr {
         unsafe {
-            csl_sys::tracegen::recursion_convert_generate_preprocessed_trace_koala_bear_kernel()
+            sp1_gpu_sys::tracegen::recursion_convert_generate_preprocessed_trace_koala_bear_kernel()
         }
     }
 }
@@ -146,7 +151,7 @@ pub unsafe trait TracegenRecursionConvertKernel<F> {
 
 unsafe impl TracegenRecursionConvertKernel<KoalaBear> for TaskScope {
     fn tracegen_recursion_convert_kernel() -> KernelPtr {
-        unsafe { csl_sys::tracegen::recursion_convert_generate_trace_koala_bear_kernel() }
+        unsafe { sp1_gpu_sys::tracegen::recursion_convert_generate_trace_koala_bear_kernel() }
     }
 }
 
@@ -158,7 +163,7 @@ pub unsafe trait TracegenPreprocessedRecursionLinearLayerKernel<F> {
 unsafe impl TracegenPreprocessedRecursionLinearLayerKernel<KoalaBear> for TaskScope {
     fn tracegen_preprocessed_recursion_linear_layer_kernel() -> KernelPtr {
         unsafe {
-            csl_sys::tracegen::recursion_linear_layer_generate_preprocessed_trace_koala_bear_kernel(
+            sp1_gpu_sys::tracegen::recursion_linear_layer_generate_preprocessed_trace_koala_bear_kernel(
             )
         }
     }
@@ -171,7 +176,7 @@ pub unsafe trait TracegenRecursionLinearLayerKernel<F> {
 
 unsafe impl TracegenRecursionLinearLayerKernel<KoalaBear> for TaskScope {
     fn tracegen_recursion_linear_layer_kernel() -> KernelPtr {
-        unsafe { csl_sys::tracegen::recursion_linear_layer_generate_trace_koala_bear_kernel() }
+        unsafe { sp1_gpu_sys::tracegen::recursion_linear_layer_generate_trace_koala_bear_kernel() }
     }
 }
 
@@ -182,7 +187,9 @@ pub unsafe trait TracegenPreprocessedRecursionSBoxKernel<F> {
 
 unsafe impl TracegenPreprocessedRecursionSBoxKernel<KoalaBear> for TaskScope {
     fn tracegen_preprocessed_recursion_sbox_kernel() -> KernelPtr {
-        unsafe { csl_sys::tracegen::recursion_sbox_generate_preprocessed_trace_koala_bear_kernel() }
+        unsafe {
+            sp1_gpu_sys::tracegen::recursion_sbox_generate_preprocessed_trace_koala_bear_kernel()
+        }
     }
 }
 
@@ -193,6 +200,6 @@ pub unsafe trait TracegenRecursionSBoxKernel<F> {
 
 unsafe impl TracegenRecursionSBoxKernel<KoalaBear> for TaskScope {
     fn tracegen_recursion_sbox_kernel() -> KernelPtr {
-        unsafe { csl_sys::tracegen::recursion_sbox_generate_trace_koala_bear_kernel() }
+        unsafe { sp1_gpu_sys::tracegen::recursion_sbox_generate_trace_koala_bear_kernel() }
     }
 }

@@ -4,4 +4,4 @@ add_library(logup_gkr_objs OBJECT
     round.cu
     tracegen.cu
 )
-target_link_libraries(logup_gkr_objs PRIVATE csl_common)
+target_link_libraries(logup_gkr_objs PRIVATE sp1_gpu_common)

@@ -27,5 +27,5 @@ pub use tensor::*;
 pub use tracegen::*;
 
 pub mod sys {
-    pub use csl_sys::*;
+    pub use sp1_gpu_sys::*;
 }

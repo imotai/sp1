@@ -13,12 +13,6 @@ use tokio::join;
 use tokio::sync::Mutex;
 use tracing::{instrument, Instrument};
 
-use csl_cuda::sys::v2_kernels::{
-    count_and_add_kernel, fill_buffer, generate_col_index, generate_start_indices,
-    sum_to_trace_kernel,
-};
-use csl_cuda::{args, DeviceBuffer, DeviceTensor, PinnedBuffer, TaskScope};
-use csl_tracegen::CudaTracegenAir;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -27,14 +21,20 @@ use slop_alloc::{Backend, Buffer, HasBackend, Slice};
 use slop_challenger::IopCtx;
 use slop_jagged::JaggedProverData;
 use slop_multilinear::Mle;
+use sp1_gpu_cudart::sys::v2_kernels::{
+    count_and_add_kernel, fill_buffer, generate_col_index, generate_start_indices,
+    sum_to_trace_kernel,
+};
+use sp1_gpu_cudart::{args, DeviceBuffer, DeviceTensor, PinnedBuffer, TaskScope};
+use sp1_gpu_tracegen::CudaTracegenAir;
 use sp1_hypercube::prover::{ProverPermit, ProverSemaphore};
 
 use sp1_core_executor::ELEMENT_THRESHOLD;
 use sp1_hypercube::{air::MachineAir, Machine};
 use sp1_hypercube::{Chip, ChipStatistics, MachineRecord};
 
-use csl_basefold::CudaStackedPcsProverData;
-use csl_utils::{Felt, JaggedMle, JaggedTraceMle, TraceDenseData, TraceOffset};
+use sp1_gpu_basefold::CudaStackedPcsProverData;
+use sp1_gpu_utils::{Felt, JaggedMle, JaggedTraceMle, TraceDenseData, TraceOffset};
 
 pub mod test_utils;
 
@@ -1008,11 +1008,11 @@ mod tests {
     use slop_algebra::PrimeField32;
     use slop_tensor::Tensor;
 
-    use csl_cuda::{run_in_place, DeviceBuffer, DeviceTensor, TaskScope};
-    use csl_utils::Felt;
     use serial_test::serial;
     use slop_algebra::AbstractField;
     use slop_alloc::Buffer;
+    use sp1_gpu_cudart::{run_in_place, DeviceBuffer, DeviceTensor, TaskScope};
+    use sp1_gpu_utils::Felt;
 
     use crate::{count_and_add, fill_buf};
 

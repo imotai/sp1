@@ -1,10 +1,10 @@
-use csl_cuda::TaskScope;
-use csl_prover::cuda_worker_builder;
 use sp1_core_executor::SP1Context;
 use sp1_cuda::{
     api::{Request, Response},
     client::socket_path,
 };
+use sp1_gpu_cudart::TaskScope;
+use sp1_gpu_prover::cuda_worker_builder;
 use sp1_primitives::Elf;
 use sp1_prover::worker::{SP1LocalNode, SP1LocalNodeBuilder};
 use sp1_prover::SP1VerifyingKey;

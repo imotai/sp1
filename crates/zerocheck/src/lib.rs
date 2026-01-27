@@ -1,22 +1,3 @@
-use csl_air::instruction::Instruction16;
-use csl_air::{air_block::BlockAir, SymbolicProverFolder};
-use csl_cuda::sys::runtime::KernelPtr;
-use csl_cuda::sys::v2_kernels::{
-    jagged_constraint_poly_eval_1024_koala_bear_extension_kernel,
-    jagged_constraint_poly_eval_1024_koala_bear_kernel,
-    jagged_constraint_poly_eval_128_koala_bear_extension_kernel,
-    jagged_constraint_poly_eval_128_koala_bear_kernel,
-    jagged_constraint_poly_eval_256_koala_bear_extension_kernel,
-    jagged_constraint_poly_eval_256_koala_bear_kernel,
-    jagged_constraint_poly_eval_32_koala_bear_extension_kernel,
-    jagged_constraint_poly_eval_32_koala_bear_kernel,
-    jagged_constraint_poly_eval_512_koala_bear_extension_kernel,
-    jagged_constraint_poly_eval_512_koala_bear_kernel,
-    jagged_constraint_poly_eval_64_koala_bear_extension_kernel,
-    jagged_constraint_poly_eval_64_koala_bear_kernel,
-};
-use csl_cuda::{args, DeviceBuffer, DevicePoint, DeviceTensor, TaskScope};
-use csl_utils::{Ext, Felt, JaggedTraceMle};
 use data::JaggedDenseInfo;
 use itertools::Itertools;
 use primitives::{
@@ -34,6 +15,25 @@ use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{Point, VirtualGeq};
 use slop_sumcheck::PartialSumcheckProof;
 use slop_tensor::Tensor;
+use sp1_gpu_air::instruction::Instruction16;
+use sp1_gpu_air::{air_block::BlockAir, SymbolicProverFolder};
+use sp1_gpu_cudart::sys::runtime::KernelPtr;
+use sp1_gpu_cudart::sys::v2_kernels::{
+    jagged_constraint_poly_eval_1024_koala_bear_extension_kernel,
+    jagged_constraint_poly_eval_1024_koala_bear_kernel,
+    jagged_constraint_poly_eval_128_koala_bear_extension_kernel,
+    jagged_constraint_poly_eval_128_koala_bear_kernel,
+    jagged_constraint_poly_eval_256_koala_bear_extension_kernel,
+    jagged_constraint_poly_eval_256_koala_bear_kernel,
+    jagged_constraint_poly_eval_32_koala_bear_extension_kernel,
+    jagged_constraint_poly_eval_32_koala_bear_kernel,
+    jagged_constraint_poly_eval_512_koala_bear_extension_kernel,
+    jagged_constraint_poly_eval_512_koala_bear_kernel,
+    jagged_constraint_poly_eval_64_koala_bear_extension_kernel,
+    jagged_constraint_poly_eval_64_koala_bear_kernel,
+};
+use sp1_gpu_cudart::{args, DeviceBuffer, DevicePoint, DeviceTensor, TaskScope};
+use sp1_gpu_utils::{Ext, Felt, JaggedTraceMle};
 use sp1_hypercube::air::MachineAir;
 use sp1_hypercube::prover::ZerocheckAir;
 use sp1_hypercube::{
@@ -711,7 +711,6 @@ where
 
 #[cfg(test)]
 pub mod tests {
-    use csl_cuda::{run_in_place, run_sync_in_place, PinnedBuffer};
     use itertools::Itertools;
     use rand::Rng;
     use serial_test::serial;
@@ -727,6 +726,7 @@ pub mod tests {
     use slop_multilinear::{full_geq, Mle, MleEval, Point};
     use slop_sumcheck::{partially_verify_sumcheck_proof, PartialSumcheckProof};
     use slop_tensor::Tensor;
+    use sp1_gpu_cudart::{run_in_place, run_sync_in_place, PinnedBuffer};
     use sp1_hypercube::air::{MachineAir, SP1AirBuilder};
     use sp1_hypercube::prover::ZerocheckAir;
     use sp1_hypercube::{
@@ -734,18 +734,18 @@ pub mod tests {
         LogUpEvaluations, ShardOpenedValues, VerifierConstraintFolder,
     };
 
-    use csl_air::codegen_cuda_eval;
+    use sp1_gpu_air::codegen_cuda_eval;
     use std::collections::{BTreeMap, BTreeSet};
     use std::marker::PhantomData;
     use std::ops::Deref;
     use std::sync::Arc;
 
-    use csl_jagged_tracegen::{
+    use sp1_gpu_jagged_tracegen::{
         full_tracegen,
         test_utils::tracegen_setup::{self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT},
         CORE_MAX_TRACE_SIZE,
     };
-    use csl_utils::{Ext, Felt, JaggedTraceMle, TestGC, TraceDenseData, TraceOffset};
+    use sp1_gpu_utils::{Ext, Felt, JaggedTraceMle, TestGC, TraceDenseData, TraceOffset};
 
     use super::primitives::evaluate_jagged_columns;
     use super::{
@@ -754,12 +754,12 @@ pub mod tests {
     };
 
     use core::{borrow::Borrow, mem::size_of};
-    use csl_air::{
+    use sp1_core_executor::{ExecutionRecord, Program};
+    use sp1_derive::AlignedBorrow;
+    use sp1_gpu_air::{
         air_block::BlockAir, symbolic_expr_f::SymbolicExprF, symbolic_var_f::SymbolicVarF,
         SymbolicProverFolder,
     };
-    use sp1_core_executor::{ExecutionRecord, Program};
-    use sp1_derive::AlignedBorrow;
 
     #[derive(Debug)]
     pub enum ZerocheckTestChip {

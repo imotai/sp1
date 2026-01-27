@@ -1,5 +1,5 @@
 [package]
-name = "csl-commit"
+name = "sp1-gpu-commit"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,14 +8,14 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-# cuslop
-csl-cuda = { workspace = true }
-csl-jagged-assist = { workspace = true }
-csl-tracegen = { workspace = true }
-csl-utils = { workspace = true }
-csl-jagged-tracegen = { workspace = true }
-csl-basefold = { workspace = true }
-csl-merkle-tree = { workspace = true }
+# sp1-gpu
+sp1-gpu-cudart = { workspace = true }
+sp1-gpu-jagged-assist = { workspace = true }
+sp1-gpu-tracegen = { workspace = true }
+sp1-gpu-utils = { workspace = true }
+sp1-gpu-jagged-tracegen = { workspace = true }
+sp1-gpu-basefold = { workspace = true }
+sp1-gpu-merkle-tree = { workspace = true }
 
 # slop
 slop-algebra = { workspace = true }
@@ -41,7 +41,7 @@ serial_test = "3.1"
 zstd = "0.13.3"
 sp1-sdk = { workspace = true  }
 sp1-recursion-circuit = { workspace = true }
-csl-prover = { workspace = true }
+sp1-gpu-prover = { workspace = true }
 sp1-recursion-compiler = { workspace = true }
 slop-stacked = { workspace = true }
 sp1-primitives = { workspace = true }

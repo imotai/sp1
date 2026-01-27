@@ -1,10 +1,10 @@
-use csl_cuda::{args, DeviceMle, TaskScope};
-use csl_cuda::{TracegenPreprocessedRecursionSBoxKernel, TracegenRecursionSBoxKernel};
 use slop_air::BaseAir;
 use slop_alloc::mem::CopyError;
 use slop_alloc::Buffer;
 use slop_multilinear::Mle;
 use slop_tensor::Tensor;
+use sp1_gpu_cudart::{args, DeviceMle, TaskScope};
+use sp1_gpu_cudart::{TracegenPreprocessedRecursionSBoxKernel, TracegenRecursionSBoxKernel};
 use sp1_hypercube::air::MachineAir;
 use sp1_recursion_executor::Instruction;
 use sp1_recursion_machine::chips::poseidon2_helper::sbox::Poseidon2SBoxChip;
@@ -50,7 +50,7 @@ impl CudaTracegenAir<F> for Poseidon2SBoxChip {
             // args:
             // T *trace,
             // uintptr_t trace_height,
-            // const csl_sys::Poseidon2SBoxInstr<T> *instructions,
+            // const sp1_gpu_sys::Poseidon2SBoxInstr<T> *instructions,
             // uintptr_t nb_instructions
             let args = args!(trace.as_mut_ptr(), height, instrs_device.as_ptr(), instrs.len());
             scope
@@ -98,7 +98,7 @@ impl CudaTracegenAir<F> for Poseidon2SBoxChip {
             // args:
             // T *trace,
             // uintptr_t trace_height,
-            // const csl_sys::Poseidon2SBoxIo<T> *events,
+            // const sp1_gpu_sys::Poseidon2SBoxIo<T> *events,
             // uintptr_t nb_events
             let args = args!(trace.as_mut_ptr(), height, events_device.as_ptr(), events.len());
             scope
@@ -131,7 +131,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_sbox_generate_preprocessed_trace() {
-        csl_cuda::spawn(|scope| {
+        sp1_gpu_cudart::spawn(|scope| {
             crate::recursion::tests::test_preprocessed_tracegen(
                 Poseidon2SBoxChip,
                 |rng| {
@@ -155,7 +155,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_sbox_generate_main_trace() {
-        csl_cuda::spawn(move |scope| {
+        sp1_gpu_cudart::spawn(move |scope| {
             crate::tests::test_main_tracegen(
                 Poseidon2SBoxChip,
                 |rng| {

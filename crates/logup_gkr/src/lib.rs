@@ -6,12 +6,12 @@ use std::{
     sync::Arc,
 };
 
-use csl_cuda::{DeviceMle, DevicePoint, DeviceTensor, TaskScope};
 use itertools::Itertools;
 use slop_algebra::AbstractField;
 use slop_alloc::HasBackend;
 use slop_challenger::{FieldChallenger, IopCtx, VariableLengthChallenger};
 use slop_multilinear::{Mle, MultilinearPcsChallenger, Point};
+use sp1_gpu_cudart::{DeviceMle, DevicePoint, DeviceTensor, TaskScope};
 use tracing::instrument;
 
 use sp1_hypercube::{
@@ -20,9 +20,9 @@ use sp1_hypercube::{
 };
 
 use crate::tracegen::generate_gkr_circuit;
-use csl_utils::traces::JaggedTraceMle;
-use csl_utils::{Ext, Felt};
-use csl_zerocheck::primitives::round_batch_evaluations;
+use sp1_gpu_utils::traces::JaggedTraceMle;
+use sp1_gpu_utils::{Ext, Felt};
+use sp1_gpu_zerocheck::primitives::round_batch_evaluations;
 mod execution;
 mod interactions;
 mod layer;
@@ -289,19 +289,19 @@ mod tests {
         generate_test_data, get_polys_from_layer, jagged_first_gkr_layer_to_device,
         jagged_gkr_layer_to_device, jagged_gkr_layer_to_host, random_first_layer, GkrTestData,
     };
-    use csl_cuda::{run_sync_in_place, DevicePoint, PinnedBuffer};
-    use csl_jagged_tracegen::{
-        full_tracegen,
-        test_utils::tracegen_setup::{self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT},
-        CORE_MAX_TRACE_SIZE,
-    };
-    use csl_utils::TestGC;
     use itertools::Itertools;
     use serial_test::serial;
     use slop_challenger::{FieldChallenger, IopCtx};
     use slop_futures::queue::WorkerQueue;
     use slop_sumcheck::partially_verify_sumcheck_proof;
     use sp1_core_executor::ExecutionRecord;
+    use sp1_gpu_cudart::{run_sync_in_place, DevicePoint, PinnedBuffer};
+    use sp1_gpu_jagged_tracegen::{
+        full_tracegen,
+        test_utils::tracegen_setup::{self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT},
+        CORE_MAX_TRACE_SIZE,
+    };
+    use sp1_gpu_utils::TestGC;
     use sp1_hypercube::MachineRecord;
     use sp1_hypercube::{prover::ProverSemaphore, ShardVerifier};
     use sp1_primitives::fri_params::core_fri_config;

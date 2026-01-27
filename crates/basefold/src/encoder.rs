@@ -1,18 +1,18 @@
 use std::sync::Arc;
 
-use csl_cuda::TaskScope;
-use csl_merkle_tree::MerkleTree;
-use csl_utils::Felt;
 use slop_challenger::IopCtx;
 use slop_dft::DftOrdering;
+use sp1_gpu_cudart::TaskScope;
+use sp1_gpu_merkle_tree::MerkleTree;
+use sp1_gpu_utils::Felt;
 
-use csl_cuda::{
-    sys::dft::{batch_coset_dft, sppark_init_default_stream},
-    CudaError, DeviceCopy,
-};
 use slop_algebra::{AbstractField, Field};
 use slop_koala_bear::KoalaBear;
 use slop_tensor::{Tensor, TensorView};
+use sp1_gpu_cudart::{
+    sys::dft::{batch_coset_dft, sppark_init_default_stream},
+    CudaError, DeviceCopy,
+};
 
 pub fn encode_batch<'a>(
     dft: SpparkDftKoalaBear,
@@ -156,7 +156,7 @@ mod tests {
     use slop_algebra::AbstractField;
     use slop_dft::{p3::Radix2DitParallel, Dft};
 
-    use csl_cuda::{run_sync_in_place, DeviceTensor};
+    use sp1_gpu_cudart::{run_sync_in_place, DeviceTensor};
 
     use super::*;
 

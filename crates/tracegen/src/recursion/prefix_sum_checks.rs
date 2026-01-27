@@ -1,10 +1,10 @@
-use csl_cuda::TracegenRecursionPrefixSumChecksKernel;
-use csl_cuda::{args, DeviceMle, TaskScope};
 use slop_air::BaseAir;
 use slop_alloc::mem::CopyError;
 use slop_alloc::Buffer;
 use slop_multilinear::Mle;
 use slop_tensor::Tensor;
+use sp1_gpu_cudart::TracegenRecursionPrefixSumChecksKernel;
+use sp1_gpu_cudart::{args, DeviceMle, TaskScope};
 use sp1_hypercube::air::MachineAir;
 use sp1_recursion_machine::chips::prefix_sum_checks::PrefixSumChecksChip;
 
@@ -42,7 +42,7 @@ impl CudaTracegenAir<F> for PrefixSumChecksChip {
             // args:
             // T *trace,
             // uintptr_t trace_height,
-            // const csl_sys::PrefixSumChecksEvent<T> *events,
+            // const sp1_gpu_sys::PrefixSumChecksEvent<T> *events,
             // uintptr_t nb_events
             let args = args!(trace.as_mut_ptr(), height, events_device.as_ptr(), events.len());
             scope
@@ -69,7 +69,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_prefix_sum_checks_generate_main_trace() {
-        csl_cuda::spawn(move |scope| {
+        sp1_gpu_cudart::spawn(move |scope| {
             crate::tests::test_main_tracegen(
                 PrefixSumChecksChip,
                 |rng| PrefixSumChecksEvent {

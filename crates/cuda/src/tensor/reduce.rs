@@ -1,6 +1,9 @@
 use std::ffi::c_void;
 
-use csl_sys::{
+use slop_algebra::extension::BinomialExtensionField;
+use slop_koala_bear::KoalaBear;
+use slop_tensor::{Dimensions, Tensor, TensorViewMut};
+use sp1_gpu_sys::{
     reduce::{
         koala_bear_extension_sum_block_reduce_kernel,
         koala_bear_extension_sum_partial_block_reduce_kernel, koala_bear_sum_block_reduce_kernel,
@@ -8,9 +11,6 @@ use csl_sys::{
     },
     runtime::{Dim3, KernelPtr},
 };
-use slop_algebra::extension::BinomialExtensionField;
-use slop_koala_bear::KoalaBear;
-use slop_tensor::{Dimensions, Tensor, TensorViewMut};
 
 use crate::{args, DeviceCopy, DeviceTensor};
 

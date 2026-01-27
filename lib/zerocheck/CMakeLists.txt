@@ -3,4 +3,4 @@ add_library(zerocheck_objs OBJECT
     zerocheck.cu
     zerocheck_eval.cu
 )
-target_link_libraries(zerocheck_objs PRIVATE csl_common)
+target_link_libraries(zerocheck_objs PRIVATE sp1_gpu_common)

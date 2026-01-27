@@ -1,13 +1,13 @@
 use super::{CudaError, CudaEvent};
-use csl_sys::runtime::{
+use slop_alloc::mem::{CopyDirection, CopyError, DeviceMemory};
+use slop_alloc::{AllocError, Allocator};
+use sp1_gpu_sys::runtime::{
     cuda_event_record, cuda_free_async, cuda_launch_host_function, cuda_malloc_async,
     cuda_mem_copy_device_to_device_async, cuda_mem_copy_device_to_host_async,
     cuda_mem_copy_host_to_device_async, cuda_mem_set_async, cuda_stream_create,
     cuda_stream_destroy, cuda_stream_query, cuda_stream_synchronize, cuda_stream_wait_event,
     CudaStreamHandle, Dim3, KernelPtr, DEFAULT_STREAM,
 };
-use slop_alloc::mem::{CopyDirection, CopyError, DeviceMemory};
-use slop_alloc::{AllocError, Allocator};
 use std::{
     alloc::Layout,
     ffi::c_void,
@@ -75,7 +75,7 @@ impl CudaStream {
         args: &[*mut c_void],
         shared_mem: usize,
     ) -> Result<(), CudaError> {
-        CudaError::result_from_ffi(csl_sys::runtime::cuda_launch_kernel(
+        CudaError::result_from_ffi(sp1_gpu_sys::runtime::cuda_launch_kernel(
             kernel,
             grid_dim.into(),
             block_dim.into(),

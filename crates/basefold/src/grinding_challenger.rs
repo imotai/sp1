@@ -1,9 +1,9 @@
-use csl_challenger::{grind_koala_bear_challenger_on_device, KoalaBearDuplexChallenger};
-use csl_cuda::TaskScope;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{Field, PrimeField, PrimeField31, PrimeField64};
 use slop_challenger::GrindingChallenger;
 use slop_symmetric::CryptographicPermutation;
+use sp1_gpu_challenger::{grind_koala_bear_challenger_on_device, KoalaBearDuplexChallenger};
+use sp1_gpu_cudart::TaskScope;
 
 /// A [`GrindingChallenger`] that can also grind on device.
 pub trait DeviceGrindingChallenger: GrindingChallenger {
@@ -61,7 +61,7 @@ mod tests {
 
     #[test]
     fn test_grinding() {
-        csl_cuda::run_sync_in_place(|t| {
+        sp1_gpu_cudart::run_sync_in_place(|t| {
             for bits in 1..20 {
                 let default_perm = inner_perm();
                 let mut challenger =

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use clap::Parser;
-use csl_perf::{get_program_and_input, telemetry};
-use csl_prover::local_gpu_opts;
+use sp1_gpu_perf::{get_program_and_input, telemetry};
+use sp1_gpu_prover::local_gpu_opts;
 
 use slop_algebra::AbstractField;
 
@@ -169,10 +169,10 @@ async fn main() {
 
     // Initialize the tracer.
     if args.telemetry {
-        let resource = Resource::new(vec![KeyValue::new("service.name", "csl-execute")]);
+        let resource = Resource::new(vec![KeyValue::new("service.name", "sp1-gpu-execute")]);
         telemetry::init(resource);
     } else {
-        csl_tracing::init_tracer();
+        sp1_gpu_tracing::init_tracer();
     }
 
     // Get the program and input.

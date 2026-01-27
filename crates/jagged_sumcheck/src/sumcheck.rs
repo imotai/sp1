@@ -1,4 +1,4 @@
-use csl_cuda::{
+use sp1_gpu_cudart::{
     args,
     sys::v2_kernels::{
         jagged_fix_and_sum, jagged_sum_as_poly,
@@ -18,7 +18,7 @@ use slop_multilinear::Mle;
 use slop_sumcheck::PartialSumcheckProof;
 use slop_tensor::Tensor;
 
-use csl_utils::{DenseData, Ext, Felt, JaggedTraceMle};
+use sp1_gpu_utils::{DenseData, Ext, Felt, JaggedTraceMle};
 
 use super::hadamard::{fix_last_variable, fix_last_variable_and_sum_as_poly};
 
