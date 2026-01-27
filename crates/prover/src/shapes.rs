@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use slop_air::BaseAir;
 use slop_algebra::AbstractField;
 use slop_basefold::FriConfig;
-use sp1_core_executor::{ELEMENT_THRESHOLD, MAX_PROGRAM_SIZE};
+use sp1_core_executor::MAX_PROGRAM_SIZE;
 use sp1_core_machine::{
     bytes::columns::NUM_BYTE_PREPROCESSED_COLS, program::NUM_PROGRAM_PREPROCESSED_COLS,
     range::columns::NUM_RANGE_PREPROCESSED_COLS, riscv::RiscvAir,
@@ -91,6 +91,9 @@ pub enum SP1RecursionProgramShape {
     // The shrink program that verifies the the root of the recursion tree.
     Shrink,
 }
+
+const PADDED_ELEMENT_THRESHOLD: u64 =
+    sp1_core_executor::ELEMENT_THRESHOLD + (1 << CORE_LOG_STACKING_HEIGHT);
 
 #[derive(Debug, Error)]
 pub enum VkBuildError {
@@ -565,7 +568,7 @@ pub async fn build_vk_map<A: ArtifactClient, C: SP1ProverComponents + 'static>(
 }
 
 fn max_main_multiple_for_preprocessed_multiple(preprocessed_multiple: usize) -> usize {
-    (ELEMENT_THRESHOLD - preprocessed_multiple as u64 * (1 << CORE_LOG_STACKING_HEIGHT))
+    (PADDED_ELEMENT_THRESHOLD - preprocessed_multiple as u64 * (1 << CORE_LOG_STACKING_HEIGHT))
         .div_ceil(1 << CORE_LOG_STACKING_HEIGHT as u64) as usize
 }
 
@@ -614,7 +617,8 @@ pub fn normalize_program_parameter_space() -> (usize, usize, usize) {
         + (1 << 17) * NUM_RANGE_PREPROCESSED_COLS
         + (1 << 16) * NUM_BYTE_PREPROCESSED_COLS)
         .div_ceil(1 << CORE_LOG_STACKING_HEIGHT);
-    let max_main_multiple = (ELEMENT_THRESHOLD).div_ceil(1 << CORE_LOG_STACKING_HEIGHT) as usize;
+    let max_main_multiple =
+        (PADDED_ELEMENT_THRESHOLD).div_ceil(1 << CORE_LOG_STACKING_HEIGHT) as usize;
 
     let num_shapes = (0..=max_preprocessed_multiple)
         .map(max_main_multiple_for_preprocessed_multiple)
@@ -658,7 +662,7 @@ pub fn create_test_shape(
         + (1 << 17) * NUM_RANGE_PREPROCESSED_COLS
         + (1 << 16) * NUM_BYTE_PREPROCESSED_COLS)
         .div_ceil(1 << CORE_LOG_STACKING_HEIGHT);
-    let main_multiple = (ELEMENT_THRESHOLD).div_ceil(1 << CORE_LOG_STACKING_HEIGHT) as usize;
+    let main_multiple = (PADDED_ELEMENT_THRESHOLD).div_ceil(1 << CORE_LOG_STACKING_HEIGHT) as usize;
     let num_padding_cols =
         ((1 << CORE_LOG_STACKING_HEIGHT) as usize).div_ceil(1 << CORE_MAX_LOG_ROW_COUNT);
     SP1NormalizeInputShape {
