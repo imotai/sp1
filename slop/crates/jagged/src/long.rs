@@ -1,10 +1,9 @@
-use futures::{future::join_all, prelude::*};
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use slop_stacked::interleave_multilinears_with_fixed_rate;
 use std::sync::Arc;
 
 use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, Field};
-use slop_alloc::{CpuBackend, HasBackend, ToHost};
+use slop_alloc::{CpuBackend, HasBackend};
 use slop_commit::Message;
 use slop_multilinear::{Mle, Point};
 
@@ -37,7 +36,7 @@ impl<F> LongMle<F> {
         Self { components: message, log_stacking_height }
     }
 
-    pub async fn eval_at<EF>(&self, point: &Point<EF>) -> EF
+    pub fn eval_at<EF>(&self, point: &Point<EF>) -> EF
     where
         F: Field,
         EF: AbstractExtensionField<F> + 'static + Send + Sync,
@@ -46,27 +45,21 @@ impl<F> LongMle<F> {
         let (batch_point, stack_point) =
             point.split_at(point.dimension() - self.log_stacking_height as usize);
 
-        let component_evaluations = stream::iter(self.components.iter())
-            .then(|mle| mle.eval_at(&stack_point))
-            .collect::<Vec<_>>()
-            .await;
+        let component_evaluations: Vec<_> =
+            self.components.iter().map(|mle| mle.eval_at(&stack_point)).collect();
 
         // We do the final evaluation in the host since this is supposed to be a small number of
         // variables. For example, this is an evaluation the verifier will have to do when the
         // long MLE arises from interleaving.
-        let evaluations_mle = stream::iter(component_evaluations.into_iter())
-            .then(|evals| async move {
-                let evals = evals.to_host().await.unwrap();
-                stream::iter(evals.into_evaluations().into_buffer().into_vec().into_iter())
-            })
-            .flatten()
-            .collect::<Vec<_>>()
-            .await;
+        let evaluations_mle: Vec<_> = component_evaluations
+            .into_iter()
+            .flat_map(|evals| evals.into_evaluations().into_buffer().into_vec())
+            .collect();
         let evaluations_mle = Mle::from(evaluations_mle);
-        evaluations_mle.eval_at(&batch_point).await[0].clone()
+        evaluations_mle.eval_at(&batch_point)[0].clone()
     }
 
-    pub async fn fix_last_variable<EF>(self, alpha: EF) -> LongMle<EF>
+    pub fn fix_last_variable<EF>(self, alpha: EF) -> LongMle<EF>
     where
         F: Field,
         EF: ExtensionField<F> + Copy,
@@ -80,24 +73,18 @@ impl<F> LongMle<F> {
                 .next_power_of_two()
                 .ilog2();
             let new_components =
-                interleave_multilinears_with_fixed_rate(1, self.components, total_num_of_variables)
-                    .await;
+                interleave_multilinears_with_fixed_rate(1, self.components, total_num_of_variables);
             let restacked_mle =
                 LongMle { components: new_components, log_stacking_height: total_num_of_variables };
-            let components =
-                join_all(restacked_mle.components.iter().map(|mle| mle.fix_last_variable(alpha)))
-                    .await;
+            let components: Vec<_> =
+                restacked_mle.components.iter().map(|mle| mle.fix_last_variable(alpha)).collect();
             return LongMle {
                 components: Message::from(components),
                 log_stacking_height: restacked_mle.log_stacking_height - 1,
             };
         }
-        let components = join_all(
-            self.components
-                .into_iter()
-                .map(|mle| async move { mle.fix_last_variable(alpha).await }),
-        )
-        .await;
+        let components: Vec<_> =
+            self.components.into_iter().map(|mle| mle.fix_last_variable(alpha)).collect();
         LongMle {
             components: Message::from(components),
             log_stacking_height: self.log_stacking_height - 1,
@@ -173,8 +160,8 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_long_mle_evaluation() {
+    #[test]
+    fn test_long_mle_evaluation() {
         let num_variables = 16;
         let log_stacking_height = 8;
         let batch_size = 4;
@@ -184,7 +171,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         let mle = LongMle::<EF>::rand(&mut rng, num_variables, batch_size, log_stacking_height);
         let point = Point::<EF>::rand(&mut rng, num_variables);
-        let long_mle_eval = mle.eval_at(&point).await;
+        let long_mle_eval = mle.eval_at(&point);
 
         let long_mle_as_one = Mle::from(
             mle.components
@@ -192,12 +179,12 @@ mod tests {
                 .flat_map(|mle| mle.guts().transpose().into_buffer().into_vec())
                 .collect::<Vec<_>>(),
         );
-        let long_mle_as_one_eval = long_mle_as_one.eval_at(&point).await[0];
+        let long_mle_as_one_eval = long_mle_as_one.eval_at(&point)[0];
         assert_eq!(long_mle_eval, long_mle_as_one_eval);
     }
 
-    #[tokio::test]
-    async fn test_long_mle_fix_last_variable() {
+    #[test]
+    fn test_long_mle_fix_last_variable() {
         let num_variables = 16;
         let log_stacking_height = 8;
         let batch_size = 4;
@@ -207,11 +194,11 @@ mod tests {
         let mut rng = rand::thread_rng();
         let mle = LongMle::<EF>::rand(&mut rng, num_variables, batch_size, log_stacking_height);
         let point = Point::<EF>::rand(&mut rng, num_variables);
-        let long_mle_eval = mle.eval_at(&point).await;
+        let long_mle_eval = mle.eval_at(&point);
 
         let mut fixed_mle = mle;
         for alpha in point.values().as_slice().iter().rev() {
-            fixed_mle = fixed_mle.fix_last_variable(*alpha).await;
+            fixed_mle = fixed_mle.fix_last_variable(*alpha);
         }
 
         assert_eq!(fixed_mle.num_variables(), 0);

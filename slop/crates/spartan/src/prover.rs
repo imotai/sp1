@@ -83,7 +83,7 @@ where
 
         // Run the first sumcheck
         // TODO: Backend stuff
-        let prodcheck_poly = ProdcheckPoly::<_, CpuBackend>::new(&r, &self.r1cs, &witness).await;
+        let prodcheck_poly = ProdcheckPoly::<_, CpuBackend>::new(&r, &self.r1cs, &witness);
 
         let (prodcheck_proof, component_evals) = reduce_sumcheck_to_evaluation(
             vec![prodcheck_poly],
@@ -91,8 +91,7 @@ where
             vec![EF::zero()],
             1,
             EF::one(),
-        )
-        .await;
+        );
 
         let v_a = component_evals[0][0];
         let v_b = component_evals[0][1];
@@ -114,8 +113,7 @@ where
             [&self.r1cs.a, &self.r1cs.b, &self.r1cs.c].into_iter(),
             &alpha,
             lambda,
-        )
-        .await;
+        );
 
         let (lincheck_proof, matrix_component_evals) = reduce_sumcheck_to_evaluation(
             vec![batched_lincheck_poly],
@@ -123,8 +121,7 @@ where
             vec![v_a + lambda * v_b + lambda * lambda * v_c],
             1,
             lambda,
-        )
-        .await;
+        );
 
         // Get the evalution claims for the sparse matrices
         let beta = lincheck_proof.point_and_eval.0.clone();

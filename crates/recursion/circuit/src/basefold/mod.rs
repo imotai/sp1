@@ -425,8 +425,6 @@ mod tests {
     use crate::{challenger::DuplexChallengerVariable, witness::Witnessable};
 
     use super::*;
-    use futures::prelude::*;
-
     use slop_basefold::BasefoldVerifier;
     use slop_basefold_prover::BasefoldProver;
     use slop_challenger::CanObserve;
@@ -442,8 +440,8 @@ mod tests {
     type F = SP1Field;
     type EF = BinomialExtensionField<SP1Field, 4>;
 
-    #[tokio::test]
-    async fn test_basefold_proof() {
+    #[test]
+    fn test_basefold_proof() {
         type C = InnerConfig;
         type SC = SP1GlobalContext;
 
@@ -478,14 +476,12 @@ mod tests {
         let mut eval_claims = Rounds::new();
         let point = Point::<EF>::rand(&mut rng, num_variables);
         for mles in round_mles.iter() {
-            let (commitment, data) = prover.commit_mles(mles.clone()).await.unwrap();
+            let (commitment, data) = prover.commit_mles(mles.clone()).unwrap();
             challenger.observe(commitment);
             commitments.push(commitment);
             prover_data.push(data);
-            let evaluations = stream::iter(mles.iter())
-                .then(|mle| mle.eval_at(&point))
-                .collect::<Evaluations<_>>()
-                .await;
+            let evaluations =
+                mles.iter().map(|mle| mle.eval_at(&point)).collect::<Evaluations<_>>();
             eval_claims.push(evaluations);
         }
 
@@ -497,7 +493,6 @@ mod tests {
                 prover_data,
                 &mut challenger,
             )
-            .await
             .unwrap();
 
         let mut builder = AsmBuilder::default();
@@ -546,8 +541,8 @@ mod tests {
         executor.run().unwrap();
     }
 
-    #[tokio::test]
-    async fn test_invalid_basefold_proof() {
+    #[test]
+    fn test_invalid_basefold_proof() {
         type C = InnerConfig;
         type SC = SP1GlobalContext;
         type Prover = BasefoldProver<SP1GlobalContext, sp1_hypercube::prover::SP1MerkleTreeProver>;
@@ -581,14 +576,12 @@ mod tests {
         let mut eval_claims = Rounds::new();
         let point = Point::<EF>::rand(&mut rng, num_variables);
         for mles in round_mles.iter() {
-            let (commitment, data) = prover.commit_mles(mles.clone()).await.unwrap();
+            let (commitment, data) = prover.commit_mles(mles.clone()).unwrap();
             challenger.observe(commitment);
             commitments.push(commitment);
             prover_data.push(data);
-            let evaluations = stream::iter(mles.iter())
-                .then(|mle| mle.eval_at(&point))
-                .collect::<Evaluations<_>>()
-                .await;
+            let evaluations =
+                mles.iter().map(|mle| mle.eval_at(&point)).collect::<Evaluations<_>>();
             eval_claims.push(evaluations);
         }
 
@@ -600,7 +593,6 @@ mod tests {
                 prover_data,
                 &mut challenger,
             )
-            .await
             .unwrap();
 
         // Make a new point that is different from the original point.

@@ -2,10 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use slop_utils::log2_ceil_usize;
 use std::{fmt::Debug, iter::once, sync::Arc};
-use tracing::Instrument;
 
 use slop_algebra::AbstractField;
-use slop_alloc::{mem::CopyError, Buffer, CpuBackend, HasBackend, ToHost};
+use slop_alloc::{mem::CopyError, Buffer, CpuBackend, HasBackend};
 use slop_challenger::{FieldChallenger, IopCtx};
 use slop_commit::{Message, Rounds};
 use slop_multilinear::{
@@ -26,6 +25,21 @@ pub type JaggedAssistProver<GC> = JaggedEvalSumcheckProver<
     JaggedAssistSumAsPolyCPUImpl<<GC as IopCtx>::F, <GC as IopCtx>::EF, <GC as IopCtx>::Challenger>,
     CpuBackend,
     <GC as IopCtx>::Challenger,
+>;
+
+/// Result type for `commit_multilinears`.
+pub type CommitMultilinearsResult<GC, C, Proof> = Result<
+    (
+        <GC as IopCtx>::Digest,
+        JaggedProverData<GC, <C as MultilinearPcsProver<GC, Proof>>::ProverData>,
+    ),
+    JaggedProverError<<C as MultilinearPcsProver<GC, Proof>>::ProverError>,
+>;
+
+/// Result type for `prove_trusted_evaluations`.
+pub type ProveTrustedEvaluationsResult<GC, C, Proof> = Result<
+    JaggedPcsProof<GC, Proof>,
+    JaggedProverError<<C as MultilinearPcsProver<GC, Proof>>::ProverError>,
 >;
 
 #[derive(Clone)]
@@ -89,13 +103,10 @@ impl<GC: IopCtx, Proof, C: MultilinearPcsProver<GC, Proof>> JaggedProver<GC, Pro
     /// The jagged polyniomial commitments scheme is able to commit to sparse polynomials having
     /// very few or no real rows.
     /// **Note** the padding values will be ignored and treated as though they are zero.
-    pub async fn commit_multilinears(
+    pub fn commit_multilinears(
         &self,
         multilinears: Vec<PaddedMle<GC::F>>,
-    ) -> Result<
-        (GC::Digest, JaggedProverData<GC, <C as MultilinearPcsProver<GC, Proof>>::ProverData>),
-        JaggedProverError<<C as MultilinearPcsProver<GC, Proof>>::ProverError>,
-    > {
+    ) -> CommitMultilinearsResult<GC, C, Proof> {
         let mut row_counts = multilinears.iter().map(|x| x.num_real_entries()).collect::<Vec<_>>();
         let mut column_counts =
             multilinears.iter().map(|x| x.num_polynomials()).collect::<Vec<_>>();
@@ -118,7 +129,7 @@ impl<GC: IopCtx, Proof, C: MultilinearPcsProver<GC, Proof>> JaggedProver<GC, Pro
             multilinears.into_iter().filter_map(|mle| mle.into_inner()).collect::<Message<_>>();
 
         let (commitment, data, num_added_vals) =
-            self.pcs_prover.commit_multilinear(message).await.unwrap();
+            self.pcs_prover.commit_multilinear(message).unwrap();
 
         let num_added_cols = num_added_vals.div_ceil(1 << self.max_log_row_count).max(1);
 
@@ -148,7 +159,7 @@ impl<GC: IopCtx, Proof, C: MultilinearPcsProver<GC, Proof>> JaggedProver<GC, Pro
         Ok((final_commitment, jagged_prover_data))
     }
 
-    pub async fn prove_trusted_evaluations(
+    pub fn prove_trusted_evaluations(
         &self,
         eval_point: Point<GC::EF>,
         evaluation_claims: Rounds<Evaluations<GC::EF>>,
@@ -156,10 +167,7 @@ impl<GC: IopCtx, Proof, C: MultilinearPcsProver<GC, Proof>> JaggedProver<GC, Pro
             JaggedProverData<GC, <C as MultilinearPcsProver<GC, Proof>>::ProverData>,
         >,
         challenger: &mut GC::Challenger,
-    ) -> Result<
-        JaggedPcsProof<GC, Proof>,
-        JaggedProverError<<C as MultilinearPcsProver<GC, Proof>>::ProverError>,
-    > {
+    ) -> ProveTrustedEvaluationsResult<GC, C, Proof> {
         let num_col_variables = prover_data
             .iter()
             .map(|data| data.column_counts.iter().sum::<usize>())
@@ -234,26 +242,26 @@ impl<GC: IopCtx, Proof, C: MultilinearPcsProver<GC, Proof>> JaggedProver<GC, Pro
             .map(|data| data.pcs_prover_data.interleaved_mles().clone())
             .collect::<Rounds<_>>();
 
-        let sumcheck_poly = jagged_sumcheck_poly(
-            all_mles.clone(),
-            &params,
-            row_data,
-            column_data,
-            self.pcs_prover.log_max_padding_amount(),
-            &z_row_backend,
-            &z_col_backend,
-        )
-        .instrument(tracing::debug_span!("create jagged sumcheck poly"))
-        .await;
+        let sumcheck_poly = {
+            let _span = tracing::debug_span!("create jagged sumcheck poly").entered();
+            jagged_sumcheck_poly(
+                all_mles.clone(),
+                &params,
+                row_data,
+                column_data,
+                self.pcs_prover.log_max_padding_amount(),
+                &z_row_backend,
+                &z_col_backend,
+            )
+        };
 
         // The overall evaluation claim of the sparse polynomial is inferred from the individual
         // table claims.
 
         let column_claims: Mle<GC::EF> = Mle::from_buffer(column_claims);
 
-        let sumcheck_claims = column_claims.eval_at(&z_col_backend).await;
-        let sumcheck_claims_host = sumcheck_claims.to_host().await.unwrap();
-        let sumcheck_claim = sumcheck_claims_host[0];
+        let sumcheck_claims = column_claims.eval_at(&z_col_backend);
+        let sumcheck_claim = sumcheck_claims[0];
 
         let (sumcheck_proof, component_poly_evals) = reduce_sumcheck_to_evaluation(
             vec![sumcheck_poly],
@@ -261,15 +269,13 @@ impl<GC: IopCtx, Proof, C: MultilinearPcsProver<GC, Proof>> JaggedProver<GC, Pro
             vec![sumcheck_claim],
             1,
             GC::EF::one(),
-        )
-        .instrument(tracing::debug_span!("jagged sumcheck"))
-        .await;
+        );
 
         let final_eval_point = sumcheck_proof.point_and_eval.0.clone();
 
-        let jagged_eval_proof = self
-            .jagged_eval_prover
-            .prove_jagged_evaluation(
+        let jagged_eval_proof = {
+            let _span = tracing::debug_span!("jagged evaluation proof").entered();
+            self.jagged_eval_prover.prove_jagged_evaluation(
                 &params,
                 &z_row,
                 &z_col,
@@ -277,8 +283,7 @@ impl<GC: IopCtx, Proof, C: MultilinearPcsProver<GC, Proof>> JaggedProver<GC, Pro
                 challenger,
                 backend,
             )
-            .instrument(tracing::debug_span!("jagged evaluation proof"))
-            .await;
+        };
         let (row_counts, column_counts): (Rounds<_>, Rounds<_>) = prover_data
             .iter()
             .map(|data| {
@@ -292,22 +297,22 @@ impl<GC: IopCtx, Proof, C: MultilinearPcsProver<GC, Proof>> JaggedProver<GC, Pro
         let stacked_prover_data =
             prover_data.into_iter().map(|data| data.pcs_prover_data).collect::<Rounds<_>>();
 
-        let pcs_proof = self
-            .pcs_prover
-            .prove_untrusted_evaluation(
-                final_eval_point,
-                component_poly_evals[0][0],
-                stacked_prover_data,
-                challenger,
-            )
-            .instrument(tracing::debug_span!("Dense PCS evaluation proof"))
-            .await
-            .unwrap();
+        let pcs_proof = {
+            let _span = tracing::debug_span!("Dense PCS evaluation proof").entered();
+            self.pcs_prover
+                .prove_untrusted_evaluation(
+                    final_eval_point,
+                    component_poly_evals[0][0],
+                    stacked_prover_data,
+                    challenger,
+                )
+                .unwrap()
+        };
 
         let row_counts_and_column_counts: Rounds<Vec<(usize, usize)>> = row_counts
             .into_iter()
-            .zip(column_counts.into_iter())
-            .map(|(r, c)| r.into_iter().zip(c.into_iter()).collect())
+            .zip(column_counts)
+            .map(|(r, c)| r.into_iter().zip(c).collect())
             .collect();
 
         Ok(JaggedPcsProof {

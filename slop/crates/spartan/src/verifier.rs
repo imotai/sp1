@@ -101,12 +101,12 @@ where
         let beta = proof.lincheck_proof.point_and_eval.0.clone();
 
         let alpha_eval: Vec<_> =
-            Mle::partial_lagrange(&alpha).await.hypercube_iter().map(|alpha| alpha[0]).collect();
+            Mle::<EF>::partial_lagrange(&alpha).hypercube_iter().map(|alpha| alpha[0]).collect();
 
-        let z_eval: EF = Mle::new(witness.into()).eval_at(&beta).await[0];
-        let a_eval: EF = Mle::new((&alpha_eval[..] * &r1cs.a).into()).eval_at(&beta).await[0];
-        let b_eval: EF = Mle::new((&alpha_eval[..] * &r1cs.b).into()).eval_at(&beta).await[0];
-        let c_eval: EF = Mle::new((&alpha_eval[..] * &r1cs.c).into()).eval_at(&beta).await[0];
+        let z_eval: EF = Mle::new(witness.into()).eval_at(&beta)[0];
+        let a_eval: EF = Mle::new((&alpha_eval[..] * &r1cs.a).into()).eval_at(&beta)[0];
+        let b_eval: EF = Mle::new((&alpha_eval[..] * &r1cs.b).into()).eval_at(&beta)[0];
+        let c_eval: EF = Mle::new((&alpha_eval[..] * &r1cs.c).into()).eval_at(&beta)[0];
 
         if z_eval != proof.z_claim
             || a_eval != proof.a_claim

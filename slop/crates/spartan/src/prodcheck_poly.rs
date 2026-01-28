@@ -25,12 +25,12 @@ impl<EF> ProdcheckPoly<EF>
 where
     EF: Field,
 {
-    pub async fn new<F>(r: &Point<EF>, r1cs: &R1CS<F>, z: &[EF]) -> Self
+    pub fn new<F>(r: &Point<EF>, r1cs: &R1CS<F>, z: &[EF]) -> Self
     where
         F: Field,
         EF: ExtensionField<F>,
     {
-        let eq_r = Mle::partial_lagrange(r).await;
+        let eq_r = Mle::partial_lagrange(r);
         let mut az = &r1cs.a * z;
         let mut bz = &r1cs.b * z;
         let mut cz = &r1cs.c * z;
@@ -55,7 +55,7 @@ impl<EF> ComponentPoly<EF> for ProdcheckPoly<EF>
 where
     EF: Field,
 {
-    async fn get_component_poly_evals(&self) -> Vec<EF> {
+    fn get_component_poly_evals(&self) -> Vec<EF> {
         assert_eq!(self.num_variables(), 0, "Queried before the reduction was finished");
         // The component polys are:
         // 1) The Az poly
@@ -63,9 +63,9 @@ where
         // 3) The Cz poly
 
         vec![
-            self.az.eval_at(&Point::<EF>::new(vec![].into())).await.to_vec()[0],
-            self.bz.eval_at(&Point::<EF>::new(vec![].into())).await.to_vec()[0],
-            self.cz.eval_at(&Point::<EF>::new(vec![].into())).await.to_vec()[0],
+            self.az.eval_at(&Point::<EF>::new(vec![].into())).to_vec()[0],
+            self.bz.eval_at(&Point::<EF>::new(vec![].into())).to_vec()[0],
+            self.cz.eval_at(&Point::<EF>::new(vec![].into())).to_vec()[0],
         ]
     }
 }
@@ -74,16 +74,16 @@ impl<EF> SumcheckPoly<EF> for ProdcheckPoly<EF>
 where
     EF: Field,
 {
-    async fn fix_last_variable(self, alpha: EF) -> Self {
-        let eq_r = self.eq_r.fix_last_variable(alpha).await;
-        let az = self.az.fix_last_variable(alpha).await;
-        let bz = self.bz.fix_last_variable(alpha).await;
-        let cz = self.cz.fix_last_variable(alpha).await;
+    fn fix_last_variable(self, alpha: EF) -> Self {
+        let eq_r = self.eq_r.fix_last_variable(alpha);
+        let az = self.az.fix_last_variable(alpha);
+        let bz = self.bz.fix_last_variable(alpha);
+        let cz = self.cz.fix_last_variable(alpha);
 
         Self { eq_r, az, bz, cz }
     }
 
-    async fn sum_as_poly_in_last_variable(&self, claim: Option<EF>) -> UnivariatePolynomial<EF> {
+    fn sum_as_poly_in_last_variable(&self, claim: Option<EF>) -> UnivariatePolynomial<EF> {
         assert!(claim.is_some());
 
         // The evaluation points we use
@@ -166,20 +166,20 @@ where
 {
     type NextRoundPoly = Self;
 
-    async fn fix_t_variables(self, alpha: EF, t: usize) -> Self::NextRoundPoly {
+    fn fix_t_variables(self, alpha: EF, t: usize) -> Self::NextRoundPoly {
         assert_eq!(t, 1);
 
-        self.fix_last_variable(alpha).await
+        self.fix_last_variable(alpha)
     }
 
-    async fn sum_as_poly_in_last_t_variables(
+    fn sum_as_poly_in_last_t_variables(
         &self,
         claim: Option<EF>,
         t: usize,
     ) -> UnivariatePolynomial<EF> {
         assert_eq!(t, 1);
 
-        self.sum_as_poly_in_last_variable(claim).await
+        self.sum_as_poly_in_last_variable(claim)
     }
 }
 
@@ -202,8 +202,8 @@ mod tests {
     type F = BabyBear;
     type EF = BinomialExtensionField<BabyBear, 4>;
 
-    #[tokio::test]
-    async fn lincheck_sumcheck() {
+    #[test]
+    fn lincheck_sumcheck() {
         let mut rng = rand::thread_rng();
         let default_perm = my_bb_16_perm();
         let mut challenger_prover =
@@ -238,7 +238,7 @@ mod tests {
         let r1cs = r1cs::R1CS { num_public_inputs: 0, a: a.clone(), b: b.clone(), c: c.clone() };
 
         let r = Point::new((0..log_witness_len).map(|_| rng.gen::<EF>()).collect());
-        let lagrange_r = Mle::partial_lagrange(&r).await;
+        let lagrange_r = Mle::<EF>::partial_lagrange(&r);
 
         let az = &a * &z;
         let bz = &b * &z;
@@ -249,7 +249,7 @@ mod tests {
 
         let v = lagrange_r.hypercube_iter().zip(remainder.iter()).map(|(r, rem)| r[0] * *rem).sum();
 
-        let prodcheck_poly = ProdcheckPoly::<_, _>::new(&r, &r1cs, &z).await;
+        let prodcheck_poly = ProdcheckPoly::<_, _>::new(&r, &r1cs, &z);
 
         let (prodcheck_proof, component_evals) = reduce_sumcheck_to_evaluation(
             vec![prodcheck_poly],
@@ -257,8 +257,7 @@ mod tests {
             vec![v],
             1,
             EF::one(),
-        )
-        .await;
+        );
 
         // Check the top level sum
         assert_eq!(
@@ -289,8 +288,8 @@ mod tests {
         );
 
         // Check one claim is the MLE of Az
-        assert_eq!(v_a, Mle::new(az.into()).eval_at(&alpha).await[0]);
-        assert_eq!(v_b, Mle::new(bz.into()).eval_at(&alpha).await[0]);
-        assert_eq!(v_c, Mle::new(cz.into()).eval_at(&alpha).await[0]);
+        assert_eq!(v_a, Mle::new(az.into()).eval_at(&alpha)[0]);
+        assert_eq!(v_b, Mle::new(bz.into()).eval_at(&alpha)[0]);
+        assert_eq!(v_c, Mle::new(cz.into()).eval_at(&alpha)[0]);
     }
 }

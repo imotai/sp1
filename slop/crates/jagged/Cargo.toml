@@ -30,7 +30,6 @@ itertools = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true, features = ["rc"] }
-tokio = { workspace = true, features = ["sync"] }
 thiserror = { workspace = true }
 futures = { workspace = true }
 derive-where = { workspace = true }
@@ -39,4 +38,3 @@ num_cpus = { workspace = true }
 
 [dev-dependencies]
 slop-baby-bear = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }

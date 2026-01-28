@@ -1,4 +1,3 @@
-use futures::future;
 use itertools::Itertools;
 use slop_algebra::{
     interpolate_univariate_polynomial, AbstractField, ExtensionField, Field, UnivariatePolynomial,
@@ -24,21 +23,21 @@ impl<EF> BatchedLincheckPoly<EF>
 where
     EF: Field,
 {
-    pub async fn new<F>(
+    pub fn new<'a, F>(
         z: &[EF],
-        ms: impl IntoIterator<Item = &SparseMatrix<F>>,
+        ms: impl IntoIterator<Item = &'a SparseMatrix<F>>,
         alpha: &Point<EF>,
         lambda: EF,
     ) -> Self
     where
-        F: Field,
+        F: Field + 'a,
         EF: ExtensionField<F>,
     {
         let mut z = z.to_vec();
         pad_vec_to_next_power_of_two(&mut z);
         //assert!(z.len().is_power_of_two());
 
-        let alpha_evals = Mle::partial_lagrange(alpha).await.guts().as_slice().to_vec();
+        let alpha_evals = Mle::<EF>::partial_lagrange(alpha).guts().as_slice().to_vec();
         let ms = ms.into_iter().map(|m| {
             let mut res = &alpha_evals[..] * m;
             pad_vec_to_next_power_of_two(&mut res);
@@ -62,18 +61,17 @@ impl<EF> ComponentPoly<EF> for BatchedLincheckPoly<EF>
 where
     EF: Field,
 {
-    async fn get_component_poly_evals(&self) -> Vec<EF> {
+    fn get_component_poly_evals(&self) -> Vec<EF> {
         assert_eq!(self.num_variables(), 0, "Queried before the reduction was finished");
         // The component polys are:
         // 1) The Ms[alpha] poly
         // 2) The z poly
-        let mut m_vec = future::join_all(
-            self.ms
-                .iter()
-                .map(|m| async { m.eval_at(&Point::<EF>::new(vec![].into())).await.to_vec()[0] }),
-        )
-        .await;
-        m_vec.push(self.z.eval_at(&Point::<EF>::new(vec![].into())).await.to_vec()[0]);
+        let mut m_vec: Vec<_> = self
+            .ms
+            .iter()
+            .map(|m| m.eval_at(&Point::<EF>::new(vec![].into())).to_vec()[0])
+            .collect();
+        m_vec.push(self.z.eval_at(&Point::<EF>::new(vec![].into())).to_vec()[0]);
         m_vec
     }
 }
@@ -82,16 +80,14 @@ impl<EF> SumcheckPoly<EF> for BatchedLincheckPoly<EF>
 where
     EF: Field,
 {
-    async fn fix_last_variable(self, alpha: EF) -> Self {
-        let ms =
-            future::join_all(self.ms.iter().map(|m| async { m.fix_last_variable(alpha).await }))
-                .await;
-        let z = self.z.fix_last_variable(alpha).await;
+    fn fix_last_variable(self, alpha: EF) -> Self {
+        let ms: Vec<_> = self.ms.iter().map(|m| m.fix_last_variable(alpha)).collect();
+        let z = self.z.fix_last_variable(alpha);
 
         Self { ms, z, lambda: self.lambda }
     }
 
-    async fn sum_as_poly_in_last_variable(&self, claim: Option<EF>) -> UnivariatePolynomial<EF> {
+    fn sum_as_poly_in_last_variable(&self, claim: Option<EF>) -> UnivariatePolynomial<EF> {
         assert!(claim.is_some());
 
         // The evaluations points we use
@@ -152,26 +148,25 @@ where
 {
     type NextRoundPoly = Self;
 
-    async fn fix_t_variables(self, alpha: EF, t: usize) -> Self::NextRoundPoly {
+    fn fix_t_variables(self, alpha: EF, t: usize) -> Self::NextRoundPoly {
         assert_eq!(t, 1);
 
-        self.fix_last_variable(alpha).await
+        self.fix_last_variable(alpha)
     }
 
-    async fn sum_as_poly_in_last_t_variables(
+    fn sum_as_poly_in_last_t_variables(
         &self,
         claim: Option<EF>,
         t: usize,
     ) -> UnivariatePolynomial<EF> {
         assert_eq!(t, 1);
 
-        self.sum_as_poly_in_last_variable(claim).await
+        self.sum_as_poly_in_last_variable(claim)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use futures::future;
     use rand::Rng;
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_baby_bear::{
@@ -189,8 +184,8 @@ mod tests {
     type F = BabyBear;
     type EF = BinomialExtensionField<BabyBear, 4>;
 
-    #[tokio::test]
-    async fn lincheck_sumcheck() {
+    #[test]
+    fn lincheck_sumcheck() {
         let mut rng = rand::thread_rng();
         let default_perm = my_bb_16_perm();
         let mut challenger_prover =
@@ -225,11 +220,10 @@ mod tests {
         let alpha = Point::new((0..log_witness_len).map(|_| rng.gen::<EF>()).collect());
         let lambda: EF = rng.gen();
 
-        let m_alphas =
-            future::join_all(ms.iter().map(|m| async {
-                Mle::partial_lagrange(&alpha).await.guts().as_slice() * &m.clone()
-            }))
-            .await;
+        let m_alphas: Vec<_> = ms
+            .iter()
+            .map(|m| Mle::<EF>::partial_lagrange(&alpha).guts().as_slice() * &m.clone())
+            .collect();
         let v = m_alphas
             .iter()
             .map(|m_alpha| m_alpha.iter().zip(&z).map(|(m, z)| *m * *z).sum::<EF>())
@@ -237,7 +231,7 @@ mod tests {
             .map(|(v, lambda)| v * lambda)
             .sum();
 
-        let lincheck_poly = BatchedLincheckPoly::<_, _>::new(&z, &ms, &alpha, lambda).await;
+        let lincheck_poly = BatchedLincheckPoly::<_, _>::new(&z, &ms, &alpha, lambda);
 
         let (lincheck_proof, matrix_component_evals) = reduce_sumcheck_to_evaluation(
             vec![lincheck_poly],
@@ -245,8 +239,7 @@ mod tests {
             vec![v],
             1,
             EF::one(),
-        )
-        .await;
+        );
 
         // Check the top level sum
         assert_eq!(
@@ -275,13 +268,15 @@ mod tests {
         // Check one claim is the MLE of z
         assert_eq!(
             sumcheck_z_eval,
-            Mle::new(z.into()).eval_at(&lincheck_proof.point_and_eval.0).await[0]
+            Mle::new(z.into()).eval_at(&lincheck_proof.point_and_eval.0)[0]
         );
 
-        let m_alpha_eval = future::join_all(m_alphas.iter().map(|m_alpha| async {
-            Mle::new(m_alpha.clone().into()).eval_at(&lincheck_proof.point_and_eval.0).await[0]
-        }))
-        .await;
+        let m_alpha_eval: Vec<_> = m_alphas
+            .iter()
+            .map(|m_alpha| {
+                Mle::new(m_alpha.clone().into()).eval_at(&lincheck_proof.point_and_eval.0)[0]
+            })
+            .collect();
 
         // Check one claim is the MLE of m
         assert_eq!(

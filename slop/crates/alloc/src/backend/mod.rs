@@ -1,7 +1,7 @@
 mod cpu;
 mod io;
 
-use std::{borrow::Cow, fmt::Debug, future::Future, rc::Rc, sync::Arc};
+use std::{borrow::Cow, fmt::Debug, rc::Rc, sync::Arc};
 
 pub use cpu::*;
 pub use io::*;
@@ -17,7 +17,7 @@ use crate::{
 pub unsafe trait Backend:
     Sized + Allocator + DeviceMemory + Clone + Debug + Send + Sync + 'static
 {
-    fn copy_from<B, T>(&self, data: T) -> impl Future<Output = Result<T::Output, CopyError>> + Send
+    fn copy_from<B, T>(&self, data: T) -> Result<T::Output, CopyError>
     where
         B: Backend,
         T: HasBackend + CopyIntoBackend<Self, B>,

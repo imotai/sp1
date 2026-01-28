@@ -22,4 +22,3 @@ futures = { workspace = true }
 rand = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }

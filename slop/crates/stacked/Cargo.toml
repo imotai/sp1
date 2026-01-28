@@ -23,7 +23,6 @@ itertools = { workspace = true }
 thiserror = { workspace = true }
 derive-where = { workspace = true }
 serde = { workspace = true }
-tokio = { workspace = true, features = ["sync"] }
 futures = { workspace = true }
 
 [dev-dependencies]
@@ -34,7 +33,6 @@ slop-challenger = { workspace = true }
 slop-merkle-tree = { workspace = true }
 
 rand = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }
 
 [lints]
 workspace = true

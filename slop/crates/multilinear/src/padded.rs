@@ -1,14 +1,13 @@
 use std::{mem::ManuallyDrop, sync::Arc};
 
-use futures::future::OptionFuture;
 use serde::{Deserialize, Serialize};
-use slop_algebra::{AbstractExtensionField, AbstractField, Field};
-use slop_alloc::{Backend, CpuBackend, HasBackend, ToHost, GLOBAL_CPU_BACKEND};
-use slop_tensor::{AddAssignBackend, Tensor};
+use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, Field};
+use slop_alloc::{Backend, CpuBackend, HasBackend, GLOBAL_CPU_BACKEND};
+use slop_tensor::Tensor;
 
 use crate::{
-    full_geq, HostEvaluationBackend, Mle, MleBaseBackend, MleEval, MleEvaluationBackend,
-    MleFixLastVariableBackend, PartialLagrangeBackend, Point, PointBackend,
+    eval_mle_at_eq, full_geq, mle_fix_last_variable, mle_fix_last_variable_constant_padding,
+    partial_lagrange, zero_evaluations, Mle, MleBaseBackend, MleEval, Point,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +67,7 @@ pub struct PaddedMle<T, A: Backend = CpuBackend> {
     num_variables: u32,
 }
 
+// Generic backend implementation for basic PaddedMle operations
 impl<T: Field, A: MleBaseBackend<T>> PaddedMle<T, A> {
     #[inline]
     pub const fn new(
@@ -78,10 +78,11 @@ impl<T: Field, A: MleBaseBackend<T>> PaddedMle<T, A> {
         Self { inner, num_variables, padding_values }
     }
 
-    pub fn padded(inner: Arc<Mle<T, A>>, num_variables: u32, padding_values: Padding<T, A>) -> Self
-    where
-        A: MleBaseBackend<T>,
-    {
+    pub fn padded(
+        inner: Arc<Mle<T, A>>,
+        num_variables: u32,
+        padding_values: Padding<T, A>,
+    ) -> Self {
         assert!(inner.num_non_zero_entries() <= 1 << num_variables);
         assert_eq!(padding_values.num_polynomials(), inner.num_polynomials());
         Self { inner: Some(inner), num_variables, padding_values }
@@ -91,28 +92,19 @@ impl<T: Field, A: MleBaseBackend<T>> PaddedMle<T, A> {
         Self { inner: None, num_variables, padding_values }
     }
 
-    pub fn with_minimal_padding(inner: Arc<Mle<T, A>>, padding_values: Padding<T, A>) -> Self
-    where
-        A: MleBaseBackend<T>,
-    {
+    pub fn with_minimal_padding(inner: Arc<Mle<T, A>>, padding_values: Padding<T, A>) -> Self {
         let num_padded_variables = inner.num_variables();
         Self::padded(inner, num_padded_variables, padding_values)
     }
 
-    pub fn padded_with_zeros(inner: Arc<Mle<T, A>>, num_variables: u32) -> Self
-    where
-        A: MleBaseBackend<T>,
-    {
+    pub fn padded_with_zeros(inner: Arc<Mle<T, A>>, num_variables: u32) -> Self {
         let num_polys = inner.num_polynomials();
         let backend = inner.backend().clone();
         Self::padded(inner, num_variables, Padding::Constant((T::zero(), num_polys, backend)))
     }
 
-    pub fn zeros_in(num_polynomials: usize, num_variables: u32, backend: &A) -> Self
-    where
-        A: MleBaseBackend<T>,
-    {
-        Self::dummy(num_variables, Padding::Constant((T::zero(), num_polynomials, backend.clone())))
+    pub fn zeros_in(num_polynomials: usize, num_variables: u32, backend: A) -> Self {
+        Self::dummy(num_variables, Padding::Constant((T::zero(), num_polynomials, backend)))
     }
 
     /// Returns the number of variables in the multi-linear polynomial.
@@ -124,87 +116,70 @@ impl<T: Field, A: MleBaseBackend<T>> PaddedMle<T, A> {
         self.inner
     }
 
-    /// Returns the padding value.
-    pub fn padding_values(&self) -> &Padding<T, A> {
-        &self.padding_values
+    pub fn into_padding_values(self) -> Padding<T, A> {
+        self.padding_values
     }
 
     pub fn num_real_entries(&self) -> usize {
         self.inner.as_ref().map(|mle| mle.num_non_zero_entries()).unwrap_or(0)
     }
+}
 
+impl<T: Field> PaddedMle<T, CpuBackend> {
     /// Returns the underlying tensor.
-    pub fn inner(&self) -> &Option<Arc<Mle<T, A>>> {
+    pub fn inner(&self) -> &Option<Arc<Mle<T, CpuBackend>>> {
         &self.inner
     }
 
+    pub fn zeros(num_polynomials: usize, num_variables: u32) -> Self {
+        Self::zeros_in(num_polynomials, num_variables, GLOBAL_CPU_BACKEND)
+    }
+
     #[inline]
-    pub fn num_polynomials(&self) -> usize
-    where
-        A: MleBaseBackend<T>,
-    {
+    pub fn num_polynomials(&self) -> usize {
         self.padding_values.num_polynomials()
     }
 
     #[inline]
-    pub async fn fix_last_variable<EF>(&self, alpha: EF) -> PaddedMle<EF, A>
+    pub fn fix_last_variable<EF>(&self, alpha: EF) -> PaddedMle<EF, CpuBackend>
     where
-        T: AbstractField,
-        EF: AbstractExtensionField<T>,
-        A: MleFixLastVariableBackend<T, EF>
-            + MleBaseBackend<EF>
-            + HostEvaluationBackend<T, T>
-            + HostEvaluationBackend<T, EF>,
+        EF: ExtensionField<T>,
     {
         assert!(self.num_variables > 0);
         match &self.padding_values {
             Padding::Generic(orig_padding_values) => {
-                let backend = orig_padding_values.backend().clone();
                 let new_padding_values: MleEval<EF> = orig_padding_values
-                    .to_host()
-                    .await
-                    .unwrap()
                     .to_vec()
                     .iter()
                     .cloned()
                     .map(EF::from_base)
                     .collect::<Vec<_>>()
                     .into();
-                let padding_values: MleEval<EF, A> =
-                    backend.copy_to(&new_padding_values).await.unwrap();
-                let inner = OptionFuture::from(self.inner.as_ref().map(|mle| async move {
+
+                let inner = self.inner.as_ref().map(|mle| {
                     let guts =
-                        A::mle_fix_last_variable(mle.guts(), alpha, orig_padding_values.clone())
-                            .await;
-                    Mle::<EF, A>::new(guts)
-                }))
-                .await;
-                let inner = inner.map(Arc::new);
+                        mle_fix_last_variable(mle.guts(), alpha, orig_padding_values.clone());
+                    Arc::new(Mle::<EF, CpuBackend>::new(guts))
+                });
                 PaddedMle {
                     inner,
-                    padding_values: Padding::Generic(Arc::new(padding_values)),
+                    padding_values: Padding::Generic(Arc::new(new_padding_values)),
                     num_variables: self.num_variables - 1,
                 }
             }
 
             Padding::Constant((padding_value, _, backend)) => {
-                let inner = OptionFuture::from(self.inner.as_ref().map(|mle| async move {
-                    let guts = A::mle_fix_last_variable_constant_padding(
-                        mle.guts(),
-                        alpha,
-                        *padding_value,
-                    )
-                    .await;
-                    Mle::<EF, A>::new(guts)
-                }))
-                .await;
-                let inner = inner.map(Arc::new);
+                let inner = self.inner.as_ref().map(|mle| {
+                    let guts =
+                        mle_fix_last_variable_constant_padding(mle.guts(), alpha, *padding_value);
+                    Arc::new(Mle::<EF, CpuBackend>::new(guts))
+                });
                 PaddedMle {
                     inner,
                     padding_values: Padding::Constant((
                         EF::from_base(*padding_value),
                         self.num_polynomials(),
-                        backend.clone(),
+                        *backend,
                     )),
                     num_variables: self.num_variables - 1,
                 }
@@ -212,18 +187,13 @@ impl<T: Field, A: MleBaseBackend<T>> PaddedMle<T, A> {
         }
     }
 
-    pub async fn eval_at_eq<ET: AbstractExtensionField<T> + Send + Sync + Eq + 'static>(
+    pub fn eval_at_eq<ET: AbstractExtensionField<T> + Send + Sync + Eq + 'static>(
         &self,
         point: &Point<ET>,
-        eq: &Mle<ET, A>,
-    ) -> MleEval<ET, A>
+        eq: &Mle<ET, CpuBackend>,
+    ) -> MleEval<ET, CpuBackend>
     where
-        A: MleEvaluationBackend<T, ET>
-            + MleBaseBackend<ET>
-            + HostEvaluationBackend<T, T>
-            + HostEvaluationBackend<T, ET>
-            + PointBackend<ET>
-            + AddAssignBackend<ET>,
+        T: Sync + 'static,
     {
         let num_real_entries =
             self.inner.as_ref().map(|mle| mle.num_non_zero_entries()).unwrap_or(0);
@@ -231,9 +201,7 @@ impl<T: Field, A: MleBaseBackend<T>> PaddedMle<T, A> {
             Padding::Generic(orig_padding_values) => {
                 let geq_adjustments: MleEval<ET> = if num_real_entries < 1 << self.num_variables {
                     orig_padding_values
-                        .to_host()
-                        .await
-                        .unwrap()
+                        .to_vec()
                         .into_iter()
                         .map(|x| {
                             full_geq(
@@ -249,14 +217,13 @@ impl<T: Field, A: MleBaseBackend<T>> PaddedMle<T, A> {
                 };
 
                 let final_evals = if let Some(inner) = self.inner.as_ref() {
-                    let point = self.backend().copy_to(point).await.unwrap();
-                    let evals = inner.eval_at(&point).await.to_host().await.unwrap();
+                    let evals = inner.eval_at(point);
                     evals.add_evals(geq_adjustments)
                 } else {
                     geq_adjustments
                 };
 
-                self.backend().copy_to(&final_evals).await.unwrap()
+                final_evals
             }
             Padding::Constant((padding_value, _, _)) => {
                 let geq_adjustment = if *padding_value != T::zero() {
@@ -274,37 +241,34 @@ impl<T: Field, A: MleBaseBackend<T>> PaddedMle<T, A> {
                 };
 
                 let mut evals = if let Some(inner) = self.inner.as_ref() {
-                    inner.eval_at_eq(eq).await
+                    MleEval::new(eval_mle_at_eq(inner.guts(), eq.guts()))
                 } else {
-                    MleEval::zeros_in(self.num_polynomials(), self.backend())
+                    MleEval::new(zero_evaluations(self.num_polynomials()))
                 };
 
                 if *padding_value == T::zero() {
                     return evals;
                 }
 
-                unsafe { A::add_assign(evals.evaluations_mut(), geq_adjustment).await };
+                // Add geq_adjustment to all evaluations
+                for eval in evals.iter_mut() {
+                    *eval += geq_adjustment.clone();
+                }
                 evals
             }
         }
     }
 
-    pub async fn eval_at<ET: AbstractExtensionField<T> + Send + Sync + Eq + 'static>(
+    pub fn eval_at<ET: AbstractExtensionField<T> + Send + Sync + Eq + 'static>(
         &self,
         point: &Point<ET>,
-    ) -> MleEval<ET, A>
+    ) -> MleEval<ET, CpuBackend>
     where
-        A: MleEvaluationBackend<T, ET>
-            + MleBaseBackend<ET>
-            + HostEvaluationBackend<T, T>
-            + HostEvaluationBackend<T, ET>
-            + PointBackend<ET>
-            + PartialLagrangeBackend<ET>
-            + AddAssignBackend<ET>,
+        T: Sync + 'static,
     {
-        let point_a = self.backend().copy_to(point).await.unwrap();
-        let eq = Mle::partial_lagrange(&point_a).await;
-        self.eval_at_eq(point, &eq).await
+        let eq_tensor = partial_lagrange(point);
+        let eq = Mle::new(eq_tensor);
+        self.eval_at_eq(point, &eq)
     }
 
     /// # Safety
@@ -312,20 +276,20 @@ impl<T: Field, A: MleBaseBackend<T>> PaddedMle<T, A> {
     /// The caller must ensure that the lifetime bounds are being respected, as this function
     /// completely breaks the lifetime bound of the padded mle.
     #[inline]
-    pub unsafe fn owned_unchecked_in(&self, storage_allocator: A) -> ManuallyDrop<Self> {
+    pub unsafe fn owned_unchecked(&self) -> ManuallyDrop<Self> {
         let inner = self.inner.as_ref().map(|mle| {
-            let mle = mle.owned_unchecked_in(storage_allocator.clone());
+            let mle = mle.owned_unchecked_in(CpuBackend);
             let mle = ManuallyDrop::into_inner(mle);
             Arc::new(mle)
         });
 
         let padding_values = match &self.padding_values {
             Padding::Constant((value, num_polynomials, _)) => {
-                Padding::Constant((*value, *num_polynomials, storage_allocator))
+                Padding::Constant((*value, *num_polynomials, CpuBackend))
             }
 
             Padding::Generic(eval) => {
-                let evaluations = eval.owned_unchecked_in(storage_allocator);
+                let evaluations = eval.owned_unchecked_in(CpuBackend);
                 let evaluations = ManuallyDrop::into_inner(evaluations);
                 Padding::Generic(Arc::new(evaluations))
             }
@@ -333,15 +297,6 @@ impl<T: Field, A: MleBaseBackend<T>> PaddedMle<T, A> {
 
         let padded_mle = PaddedMle { inner, padding_values, num_variables: self.num_variables };
         ManuallyDrop::new(padded_mle)
-    }
-}
-
-impl<T> PaddedMle<T, CpuBackend> {
-    pub fn zeros(num_polynomials: usize, num_variables: u32) -> Self
-    where
-        T: Field,
-    {
-        Self::zeros_in(num_polynomials, num_variables, &GLOBAL_CPU_BACKEND)
     }
 }
 
@@ -365,8 +320,8 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_padded_eval_at() {
+    #[test]
+    fn test_padded_eval_at() {
         let padded_guts = vec![1, 2, 3, 1, 1, 1, 1, 1]
             .into_iter()
             .map(BabyBear::from_canonical_usize)
@@ -386,18 +341,18 @@ mod tests {
                 Padding::Generic(Arc::new(vec![BabyBear::one()].into())),
             );
             assert_eq!(
-                Into::<Mle<_>>::into(padded_guts.clone()).eval_at(&point).await.to_vec()[0],
-                virtually_padded_mle.eval_at(&point).await.to_vec()[0]
+                Into::<Mle<_>>::into(padded_guts.clone()).eval_at(&point).to_vec()[0],
+                virtually_padded_mle.eval_at(&point).to_vec()[0]
             );
             assert_eq!(
-                Into::<Mle<_>>::into(padded_guts.clone()).eval_at(&point).await.to_vec()[0],
-                other_virtually_padded_mle.eval_at(&point).await.to_vec()[0]
+                Into::<Mle<_>>::into(padded_guts.clone()).eval_at(&point).to_vec()[0],
+                other_virtually_padded_mle.eval_at(&point).to_vec()[0]
             );
         }
     }
 
-    #[tokio::test]
-    async fn test_pure_padded_mle() {
+    #[test]
+    fn test_pure_padded_mle() {
         let mut rng = rand::thread_rng();
         let padded_values = (0..1000).map(|_| rng.gen::<BabyBear>()).collect::<Vec<_>>();
         let padded_values = Arc::new(MleEval::<BabyBear, CpuBackend>::from(padded_values));
@@ -405,12 +360,12 @@ mod tests {
         let padded_mle = PaddedMle::dummy(num_variables, Padding::Generic(padded_values.clone()));
         let point =
             (0..num_variables).map(|_| rand::thread_rng().gen::<BabyBear>()).collect::<Point<_>>();
-        let evals = padded_mle.eval_at(&point).await;
+        let evals = padded_mle.eval_at(&point);
         assert_eq!(evals.to_vec(), padded_values.to_vec());
     }
 
-    #[tokio::test]
-    async fn test_padded_fix_last_variable() {
+    #[test]
+    fn test_padded_fix_last_variable() {
         let padded_guts = vec![1, 2, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
             .into_iter()
             .map(BabyBear::from_canonical_usize)
@@ -433,17 +388,17 @@ mod tests {
 
             for j in 0..4 {
                 let alpha = rand::thread_rng().gen::<BabyBear>();
-                virtual_cursor = virtual_cursor.fix_last_variable(alpha).await;
-                other_virtual_cursor = other_virtual_cursor.fix_last_variable(alpha).await;
-                cursor = cursor.fix_last_variable(alpha).await;
+                virtual_cursor = virtual_cursor.fix_last_variable(alpha);
+                other_virtual_cursor = other_virtual_cursor.fix_last_variable(alpha);
+                cursor = cursor.fix_last_variable(alpha);
                 let beta = (0..(3 - j)).map(|_| rand::thread_rng().gen::<BabyBear>()).collect();
                 assert_eq!(
-                    virtual_cursor.eval_at(&beta).await.to_vec()[0],
-                    cursor.eval_at(&beta).await.to_vec()[0]
+                    virtual_cursor.eval_at(&beta).to_vec()[0],
+                    cursor.eval_at(&beta).to_vec()[0]
                 );
                 assert_eq!(
-                    other_virtual_cursor.eval_at(&beta).await.to_vec()[0],
-                    cursor.eval_at(&beta).await.to_vec()[0]
+                    other_virtual_cursor.eval_at(&beta).to_vec()[0],
+                    cursor.eval_at(&beta).to_vec()[0]
                 );
             }
         }

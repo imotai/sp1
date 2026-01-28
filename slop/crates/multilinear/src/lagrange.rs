@@ -1,43 +1,22 @@
-use std::future::Future;
-
 use slop_algebra::AbstractField;
 use slop_alloc::CpuBackend;
 use slop_tensor::Tensor;
-use tokio::sync::oneshot;
 
-use crate::{Basis, MleBaseBackend, Point};
+use crate::{Basis, Point};
 
-pub trait PartialLagrangeBackend<F: AbstractField>: MleBaseBackend<F> {
-    fn partial_lagrange(
-        point: &Point<F, Self>,
-    ) -> impl Future<Output = Tensor<F, Self>> + Send + Sync;
+/// Computes the partial lagrange polynomial eq(z, -) for a fixed z.
+pub fn partial_lagrange<F: AbstractField>(point: &Point<F, CpuBackend>) -> Tensor<F, CpuBackend> {
+    partial_eq_with_basis(point, Basis::Evaluation)
 }
 
-impl<F: AbstractField + 'static> PartialLagrangeBackend<F> for CpuBackend {
-    async fn partial_lagrange(point: &Point<F, Self>) -> Tensor<F, Self> {
-        let (tx, rx) = oneshot::channel();
-        let point = point.clone();
-        slop_futures::rayon::spawn(move || {
-            let result = partial_lagrange_blocking(&point);
-            tx.send(result).unwrap();
-        });
-        rx.await.unwrap()
-    }
-}
-
-pub async fn monomial_basis_partial_eq<F: AbstractField + 'static>(
+/// Computes the monomial basis partial eq.
+pub fn monomial_basis_partial_eq<F: AbstractField>(
     point: &Point<F, CpuBackend>,
 ) -> Tensor<F, CpuBackend> {
-    let (tx, rx) = oneshot::channel();
-    let point = point.clone();
-    slop_futures::rayon::spawn(move || {
-        let result = monomial_basis_evals_blocking(&point);
-        tx.send(result).unwrap();
-    });
-    rx.await.unwrap()
+    partial_eq_with_basis(point, Basis::Monomial)
 }
 
-pub fn partial_eq_blocking_with_basis<F: AbstractField>(
+pub fn partial_eq_with_basis<F: AbstractField>(
     point: &Point<F, CpuBackend>,
     basis: Basis,
 ) -> Tensor<F, CpuBackend> {
@@ -68,17 +47,29 @@ pub fn partial_eq_blocking_with_basis<F: AbstractField>(
 /// Given `point = [x_1,...,x_n]`, this function computes the 2^m-length vector `v` such that
 /// `v[i] = prod_j ((1-i_j)(1-x_j) + x_j^{i_j})` where `i = (i_1,...,i_n)` is the big-endian binary
 /// representation of the index `i`.
+///
+/// Alias for `partial_lagrange` for backwards compatibility.
 pub fn partial_lagrange_blocking<F: AbstractField>(
     point: &Point<F, CpuBackend>,
 ) -> Tensor<F, CpuBackend> {
-    partial_eq_blocking_with_basis(point, Basis::Evaluation)
+    partial_lagrange(point)
 }
 
 /// Given `point = [x_1,...,x_n]`, this function computes the 2^m-length vector `v` such that
 /// `v[i] = x_1^{i_1} * ... * x_n^{i_n}` where `i = (i_1,...,i_n)` is the big-endian binary
 /// representation of the index `i`.
+///
+/// Alias for `monomial_basis_partial_eq` for backwards compatibility.
 pub fn monomial_basis_evals_blocking<F: AbstractField>(
     point: &Point<F, CpuBackend>,
 ) -> Tensor<F, CpuBackend> {
-    partial_eq_blocking_with_basis(point, Basis::Monomial)
+    monomial_basis_partial_eq(point)
+}
+
+/// Alias for `partial_eq_with_basis` for backwards compatibility.
+pub fn partial_eq_blocking_with_basis<F: AbstractField>(
+    point: &Point<F, CpuBackend>,
+    basis: Basis,
+) -> Tensor<F, CpuBackend> {
+    partial_eq_with_basis(point, basis)
 }

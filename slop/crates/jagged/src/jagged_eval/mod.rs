@@ -9,8 +9,6 @@ pub use sumcheck_eval::*;
 pub use sumcheck_poly::*;
 pub use sumcheck_sum_as_poly::*;
 
-use std::future::Future;
-
 use slop_algebra::{ExtensionField, Field};
 use slop_multilinear::{Point, PointBackend};
 
@@ -29,7 +27,7 @@ pub trait JaggedEvalProver<F: Field, EF: ExtensionField<F>, Challenger>:
         z_trace: &Point<EF>,
         challenger: &mut Challenger,
         backend: Self::A,
-    ) -> impl Future<Output = JaggedSumcheckEvalProof<EF>> + Send + Sync;
+    ) -> JaggedSumcheckEvalProof<EF>;
 }
 
 #[cfg(test)]
@@ -58,8 +56,8 @@ mod tests {
     type EF = BinomialExtensionField<F, 4>;
     type Challenger = DuplexChallenger<BabyBear, Perm, 16, 8>;
 
-    #[tokio::test]
-    async fn test_jagged_eval_sumcheck() {
+    #[test]
+    fn test_jagged_eval_sumcheck() {
         let row_counts = [12, 1, 0, 0, 17, 0];
 
         let mut rng = thread_rng();
@@ -120,8 +118,7 @@ mod tests {
             z_index.clone(),
             prefix_sums.clone(),
             CpuBackend,
-        )
-        .await;
+        );
 
         let default_perm = my_bb_16_perm();
         let mut challenger = Challenger::new(default_perm.clone());
@@ -134,8 +131,7 @@ mod tests {
             expected_sum,
             1,
             &mut sum_values,
-        )
-        .await;
+        );
 
         assert!(sc_proof.claimed_sum == expected_sum);
 

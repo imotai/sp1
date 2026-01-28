@@ -1,4 +1,3 @@
-use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use slop_algebra::{Field, TwoAdicField};
 use slop_alloc::{CpuBackend, ToHost};
@@ -25,7 +24,7 @@ pub struct StackedBasefoldProverData<M, F, TcsProverData> {
     pub interleaved_mles: Message<M>,
 }
 
-impl<F: Field, PD> ToMle<F, CpuBackend> for StackedBasefoldProverData<Mle<F>, F, PD> {
+impl<F: Field, PD> ToMle<F> for StackedBasefoldProverData<Mle<F>, F, PD> {
     fn interleaved_mles(&self) -> Message<Mle<F, CpuBackend>> {
         self.interleaved_mles.clone()
     }
@@ -44,18 +43,20 @@ where
         Self { basefold_prover, log_stacking_height, batch_size, _marker: std::marker::PhantomData }
     }
 
-    pub async fn round_batch_evaluations(
+    pub fn round_batch_evaluations(
         &self,
         stacked_point: &Point<GC::EF>,
         prover_data: &StackedBasefoldProverData<Mle<GC::F>, GC::F, P::ProverData>,
     ) -> Evaluations<GC::EF> {
-        stream::iter(prover_data.interleaved_mles.iter())
-            .then(|mle| mle.eval_at(stacked_point))
+        prover_data
+            .interleaved_mles
+            .iter()
+            .map(|mle| mle.eval_at(stacked_point))
             .collect::<Evaluations<_, _>>()
-            .await
     }
 
-    pub async fn commit_multilinears(
+    #[allow(clippy::type_complexity)]
+    pub fn commit_multilinears(
         &self,
         multilinears: Message<Mle<GC::F>>,
     ) -> Result<
@@ -84,10 +85,9 @@ where
             self.batch_size,
             multilinears,
             self.log_stacking_height,
-        )
-        .await;
+        );
         let (commit, pcs_batch_data) =
-            self.basefold_prover.commit_mles(interleaved_mles.clone()).await?;
+            self.basefold_prover.commit_mles(interleaved_mles.clone())?;
         let prover_data = StackedBasefoldProverData { pcs_batch_data, interleaved_mles };
 
         Ok((commit, prover_data, num_added_vals))
@@ -101,14 +101,14 @@ impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, P: ComputeTcsOpenings<GC, Cp
 
     type ProverError = BasefoldProverError<P::ProverError>;
 
-    async fn commit_multilinear(
+    fn commit_multilinear(
         &self,
         mles: Message<Mle<<GC as IopCtx>::F>>,
     ) -> Result<(<GC as IopCtx>::Digest, Self::ProverData, usize), Self::ProverError> {
-        self.commit_multilinears(mles).await
+        self.commit_multilinears(mles)
     }
 
-    async fn prove_trusted_evaluation(
+    fn prove_trusted_evaluation(
         &self,
         eval_point: Point<<GC as IopCtx>::EF>,
         _evaluation_claim: <GC as IopCtx>::EF,
@@ -117,16 +117,16 @@ impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, P: ComputeTcsOpenings<GC, Cp
     ) -> Result<StackedBasefoldProof<GC>, Self::ProverError> {
         let (_, stack_point) =
             eval_point.split_at(eval_point.dimension() - self.log_stacking_height as usize);
-        let batch_evaluations = stream::iter(prover_data.iter())
-            .then(|data| self.round_batch_evaluations(&stack_point, data))
-            .collect::<Rounds<_>>()
-            .await;
+        let batch_evaluations: Rounds<_> = prover_data
+            .iter()
+            .map(|data| self.round_batch_evaluations(&stack_point, data))
+            .collect();
 
         let mut host_batch_evaluations = Rounds::new();
         for round_evals in batch_evaluations.iter() {
             let mut host_round_evals = vec![];
             for eval in round_evals.iter() {
-                let host_eval = eval.to_host().await.unwrap();
+                let host_eval = eval.to_host().unwrap();
                 host_round_evals.extend(host_eval);
             }
             let host_round_evals = Evaluations::new(vec![host_round_evals.into()]);
@@ -140,16 +140,13 @@ impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, P: ComputeTcsOpenings<GC, Cp
         let (_, stack_point) =
             eval_point.split_at(eval_point.dimension() - self.log_stacking_height as usize);
 
-        let pcs_proof = self
-            .basefold_prover
-            .prove_untrusted_evaluations(
-                stack_point,
-                mle_rounds,
-                batch_evaluations,
-                pcs_prover_data,
-                challenger,
-            )
-            .await?;
+        let pcs_proof = self.basefold_prover.prove_untrusted_evaluations(
+            stack_point,
+            mle_rounds,
+            batch_evaluations,
+            pcs_prover_data,
+            challenger,
+        )?;
 
         let host_batch_evaluations = host_batch_evaluations
             .into_iter()
@@ -181,8 +178,8 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_stacked_prover_with_fixed_rate_interleave() {
+    #[test]
+    fn test_stacked_prover_with_fixed_rate_interleave() {
         let log_stacking_height = 10;
         let batch_size = 10;
 
@@ -242,15 +239,15 @@ mod tests {
         let concat_mle =
             Mle::new(Tensor::from(concat_mle).reshape([1 << total_number_of_variables, 1]));
 
-        let concat_eval_claim = concat_mle.eval_at(&point).await[0];
+        let concat_eval_claim = concat_mle.eval_at(&point)[0];
 
         let (batch_point, stack_point) =
             point.split_at(point.dimension() - log_stacking_height as usize);
         for mles in round_mles.iter() {
-            let (commitment, data, _) = prover.commit_multilinears(mles.clone()).await.unwrap();
+            let (commitment, data, _) = prover.commit_multilinears(mles.clone()).unwrap();
             challenger.observe(commitment);
             commitments.push(commitment);
-            let evaluations = prover.round_batch_evaluations(&stack_point, &data).await;
+            let evaluations = prover.round_batch_evaluations(&stack_point, &data);
             prover_data.push(data);
             batch_evaluations.push(evaluations);
         }
@@ -259,13 +256,12 @@ mod tests {
         let batch_evaluations_mle =
             batch_evaluations.iter().flatten().flatten().cloned().collect::<Mle<_>>();
         // Verify that the climed evaluations matched the interpolated evaluations.
-        let eval_claim = batch_evaluations_mle.eval_at(&batch_point).await[0];
+        let eval_claim = batch_evaluations_mle.eval_at(&batch_point)[0];
 
         assert_eq!(concat_eval_claim, eval_claim);
 
         let proof = prover
             .prove_trusted_evaluation(point.clone(), eval_claim, prover_data, &mut challenger)
-            .await
             .unwrap();
 
         let mut challenger = GC::default_challenger();

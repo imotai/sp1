@@ -1793,7 +1793,6 @@ dependencies = [
  "slop-multilinear",
  "slop-tensor",
  "thiserror 1.0.69",
- "tokio",
 ]
 
 [[package]]
@@ -1891,7 +1890,6 @@ dependencies = [
  "slop-tensor",
  "slop-utils",
  "thiserror 1.0.69",
- "tokio",
  "tracing",
 ]
 
@@ -1944,7 +1942,6 @@ dependencies = [
  "slop-symmetric",
  "slop-tensor",
  "thiserror 1.0.69",
- "tokio",
  "zkhash",
 ]
 
@@ -1965,7 +1962,6 @@ dependencies = [
  "slop-futures",
  "slop-matrix",
  "slop-tensor",
- "tokio",
 ]
 
 [[package]]
@@ -2001,7 +1997,6 @@ dependencies = [
  "slop-multilinear",
  "slop-tensor",
  "thiserror 1.0.69",
- "tokio",
 ]
 
 [[package]]
@@ -2042,7 +2037,6 @@ dependencies = [
  "slop-futures",
  "slop-matrix",
  "thiserror 1.0.69",
- "tokio",
  "transpose",
 ]
 

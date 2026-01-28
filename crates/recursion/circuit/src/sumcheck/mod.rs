@@ -147,8 +147,8 @@ mod tests {
     type C = InnerConfig;
     type EF = BinomialExtensionField<SP1Field, 4>;
 
-    #[tokio::test]
-    async fn test_sumcheck() {
+    #[test]
+    fn test_sumcheck() {
         let mut rng = thread_rng();
 
         let mle = Mle::<SP1Field>::rand(&mut rng, 1, 10);
@@ -165,11 +165,10 @@ mod tests {
             vec![claim],
             1,
             EF::one(),
-        )
-        .await;
+        );
 
         let (point, eval_claim) = sumcheck_proof.point_and_eval.clone();
-        let evaluation = mle.eval_at(&point).await[0];
+        let evaluation = mle.eval_at(&point)[0];
         assert_eq!(evaluation, eval_claim);
 
         let mut builder = Builder::<C>::default();
@@ -190,8 +189,8 @@ mod tests {
         executor.run().unwrap();
     }
 
-    #[tokio::test]
-    async fn test_sumcheck_failure() {
+    #[test]
+    fn test_sumcheck_failure() {
         let mut rng = thread_rng();
 
         let mle = Mle::<SP1Field>::rand(&mut rng, 1, 10);
@@ -208,11 +207,10 @@ mod tests {
             vec![claim],
             1,
             EF::one(),
-        )
-        .await;
+        );
 
         let (point, eval_claim) = sumcheck_proof.point_and_eval.clone();
-        let evaluation = mle.eval_at(&point).await[0];
+        let evaluation = mle.eval_at(&point)[0];
         assert_eq!(evaluation, eval_claim);
 
         // modify the first polynomial to make the sumcheck fail

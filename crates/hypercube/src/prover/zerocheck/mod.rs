@@ -92,7 +92,7 @@ where
     EF: ExtensionField<F> + ExtensionField<K>,
     AirData: Sync + Send,
 {
-    async fn get_component_poly_evals(poly: &ZeroCheckPoly<K, F, EF, AirData>) -> Vec<EF> {
+    fn get_component_poly_evals(poly: &ZeroCheckPoly<K, F, EF, AirData>) -> Vec<EF> {
         assert!(poly.num_variables() == 0);
 
         let prep_columns = poly.preprocessed_columns.as_ref();
@@ -125,24 +125,24 @@ where
     type NextRoundPoly = ZeroCheckPoly<EF, F, EF, A>;
 
     #[inline]
-    async fn fix_t_variables(
+    fn fix_t_variables(
         poly: ZeroCheckPoly<F, F, EF, A>,
         alpha: EF,
         t: usize,
     ) -> Self::NextRoundPoly {
         debug_assert!(t == 1);
-        zerocheck_fix_last_variable(poly, alpha).await
+        zerocheck_fix_last_variable(poly, alpha)
     }
 
     #[inline]
-    async fn sum_as_poly_in_last_t_variables(
+    fn sum_as_poly_in_last_t_variables(
         poly: &ZeroCheckPoly<F, F, EF, A>,
         claim: Option<EF>,
         t: usize,
     ) -> UnivariatePolynomial<EF> {
         debug_assert!(t == 1);
         debug_assert!(poly.num_variables() > 0);
-        zerocheck_sum_as_poly_in_last_variable::<F, F, EF, A, true>(poly, claim).await
+        zerocheck_sum_as_poly_in_last_variable::<F, F, EF, A, true>(poly, claim)
     }
 }
 
@@ -153,20 +153,20 @@ where
     A: ZerocheckAir<F, EF>,
 {
     #[inline]
-    async fn fix_last_variable(
+    fn fix_last_variable(
         poly: ZeroCheckPoly<EF, F, EF, A>,
         alpha: EF,
     ) -> ZeroCheckPoly<EF, F, EF, A> {
-        zerocheck_fix_last_variable(poly, alpha).await
+        zerocheck_fix_last_variable(poly, alpha)
     }
 
     #[inline]
-    async fn sum_as_poly_in_last_variable(
+    fn sum_as_poly_in_last_variable(
         poly: &ZeroCheckPoly<EF, F, EF, A>,
         claim: Option<EF>,
     ) -> UnivariatePolynomial<EF> {
         debug_assert!(poly.num_variables() > 0);
-        zerocheck_sum_as_poly_in_last_variable::<EF, F, EF, A, false>(poly, claim).await
+        zerocheck_sum_as_poly_in_last_variable::<EF, F, EF, A, false>(poly, claim)
     }
 }
 

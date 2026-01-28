@@ -1,5 +1,3 @@
-use std::future::Future;
-
 use slop_algebra::{Field, UnivariatePolynomial};
 use slop_alloc::{Backend, HasBackend};
 
@@ -12,7 +10,7 @@ pub trait ComponentPolyEvalBackend<P, K>: Backend
 where
     P: SumcheckPolyBase + HasBackend<Backend = Self>,
 {
-    fn get_component_poly_evals(poly: &P) -> impl Future<Output = Vec<K>> + Send;
+    fn get_component_poly_evals(poly: &P) -> Vec<K>;
 }
 
 impl<K, P> ComponentPoly<K> for P
@@ -22,8 +20,8 @@ where
     P::Backend: ComponentPolyEvalBackend<P, K>,
 {
     #[inline]
-    async fn get_component_poly_evals(&self) -> Vec<K> {
-        P::Backend::get_component_poly_evals(self).await
+    fn get_component_poly_evals(&self) -> Vec<K> {
+        P::Backend::get_component_poly_evals(self)
     }
 }
 
@@ -37,17 +35,13 @@ where
     P: SumcheckPolyBase + HasBackend<Backend = Self>,
 {
     type NextRoundPoly: SumcheckPoly<K>;
-    fn fix_t_variables(
-        poly: P,
-        alpha: K,
-        t: usize,
-    ) -> impl Future<Output = Self::NextRoundPoly> + Send;
+    fn fix_t_variables(poly: P, alpha: K, t: usize) -> Self::NextRoundPoly;
 
     fn sum_as_poly_in_last_t_variables(
         poly: &P,
         claim: Option<K>,
         t: usize,
-    ) -> impl Future<Output = UnivariatePolynomial<K>> + Send;
+    ) -> UnivariatePolynomial<K>;
 }
 
 impl<K, P> SumcheckPolyFirstRound<K> for P
@@ -58,11 +52,7 @@ where
 {
     type NextRoundPoly = <P::Backend as SumCheckPolyFirstRoundBackend<P, K>>::NextRoundPoly;
     #[inline]
-    fn fix_t_variables(
-        self,
-        alpha: K,
-        t: usize,
-    ) -> impl Future<Output = Self::NextRoundPoly> + Send {
+    fn fix_t_variables(self, alpha: K, t: usize) -> Self::NextRoundPoly {
         P::Backend::fix_t_variables(self, alpha, t)
     }
 
@@ -71,7 +61,7 @@ where
         &self,
         claim: Option<K>,
         t: usize,
-    ) -> impl Future<Output = UnivariatePolynomial<K>> + Send {
+    ) -> UnivariatePolynomial<K> {
         P::Backend::sum_as_poly_in_last_t_variables(self, claim, t)
     }
 }
@@ -84,12 +74,9 @@ where
     K: Field,
     P: SumcheckPolyBase + ComponentPoly<K> + HasBackend<Backend = Self>,
 {
-    fn fix_last_variable(poly: P, alpha: K) -> impl Future<Output = P> + Send;
+    fn fix_last_variable(poly: P, alpha: K) -> P;
 
-    fn sum_as_poly_in_last_variable(
-        poly: &P,
-        claim: Option<K>,
-    ) -> impl Future<Output = UnivariatePolynomial<K>> + Send;
+    fn sum_as_poly_in_last_variable(poly: &P, claim: Option<K>) -> UnivariatePolynomial<K>;
 }
 
 impl<K, P> SumcheckPoly<K> for P
@@ -99,15 +86,12 @@ where
     P::Backend: SumcheckPolyBackend<P, K>,
 {
     #[inline]
-    fn fix_last_variable(self, alpha: K) -> impl Future<Output = Self> + Send {
+    fn fix_last_variable(self, alpha: K) -> Self {
         P::Backend::fix_last_variable(self, alpha)
     }
 
     #[inline]
-    fn sum_as_poly_in_last_variable(
-        &self,
-        claim: Option<K>,
-    ) -> impl Future<Output = UnivariatePolynomial<K>> + Send {
+    fn sum_as_poly_in_last_variable(&self, claim: Option<K>) -> UnivariatePolynomial<K> {
         P::Backend::sum_as_poly_in_last_variable(self, claim)
     }
 }

@@ -10,7 +10,7 @@ use crate::{
     LongMle,
 };
 
-pub(crate) async fn jagged_sumcheck_poly<F: Field, EF: ExtensionField<F>>(
+pub(crate) fn jagged_sumcheck_poly<F: Field, EF: ExtensionField<F>>(
     base: Rounds<Message<Mle<F>>>,
     jagged_params: &JaggedLittlePolynomialProverParams,
     row_data: Rounds<Arc<Vec<usize>>>,
@@ -22,7 +22,7 @@ pub(crate) async fn jagged_sumcheck_poly<F: Field, EF: ExtensionField<F>>(
     let base = base.into_iter().flatten().collect::<Message<Mle<_, _>>>();
     let long_mle = LongMle::from_message(base, log_stacking_height);
     let jaggled_mle =
-        partial_jagged_multilinear(jagged_params, row_data, column_data, z_row, z_col, 1).await;
+        partial_jagged_multilinear(jagged_params, row_data, column_data, z_row, z_col, 1);
 
     let total_num_variables = jaggled_mle.num_variables();
 
@@ -31,8 +31,7 @@ pub(crate) async fn jagged_sumcheck_poly<F: Field, EF: ExtensionField<F>>(
             1,
             long_mle.components().clone(),
             total_num_variables,
-        )
-        .await,
+        ),
         total_num_variables,
     );
 

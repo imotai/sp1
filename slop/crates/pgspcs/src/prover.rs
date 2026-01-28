@@ -40,7 +40,8 @@ where
         Self { multilinear_prover: prover }
     }
 
-    pub async fn commit_sparse_poly(
+    #[allow(clippy::type_complexity)]
+    pub fn commit_sparse_poly(
         &self,
         poly: &SparsePolynomial<GC::F>,
     ) -> Result<(GC::Digest, ProverData<GC, P>), BaseFoldConfigProverError<GC, P>> {
@@ -53,12 +54,12 @@ where
 
         // Commit them as a MLE
         let mles: Message<Mle<_>> = mles.into();
-        let (commitment, prover_data) = self.multilinear_prover.commit_mles(mles.clone()).await?;
+        let (commitment, prover_data) = self.multilinear_prover.commit_mles(mles.clone())?;
 
         Ok((commitment, ProverData { multilinear_prover_data: prover_data, mles }))
     }
 
-    pub async fn prove_evaluation(
+    pub fn prove_evaluation(
         &self,
         poly: &SparsePolynomial<GC::F>,
         eval_point: &Point<GC::EF>,
@@ -69,35 +70,29 @@ where
         let v = poly.eval_at(eval_point);
 
         // Run the sumcheck to reduce sum_b eq(eval_point, index(b)) * val(b) = v
-        let sumcheck_poly = SparsePCSSumcheckPoly::<_, _>::new(eval_point, poly).await;
+        let sumcheck_poly = SparsePCSSumcheckPoly::<_, _>::new(eval_point, poly);
         let (pgspcs_proof, matrix_component_evals) = reduce_sumcheck_to_evaluation(
             vec![sumcheck_poly],
             challenger,
             vec![v],
             1,
             <GC::EF as AbstractField>::one(),
-        )
-        .await;
+        );
 
         // Claim is now reduced to eq(eval_point, index(new_eval_point)) * val(new_eval_point)
         let new_eval_point = pgspcs_proof.point_and_eval.0.clone();
         let new_evaluation_claims = matrix_component_evals[0].clone();
 
         // Prove the evaluations (untrusted because we send them)
-        let pcs_proof = self
-            .multilinear_prover
-            .prove_untrusted_evaluations(
-                new_eval_point,
-                // prover_data.mles = [index_1, ..., index_n, val]
-                Rounds { rounds: vec![prover_data.mles] },
-                // The matrix component_evals already contains the evaluations in the same order
-                Rounds {
-                    rounds: vec![Evaluations::new(vec![new_evaluation_claims.clone().into()])],
-                },
-                Rounds { rounds: vec![prover_data.multilinear_prover_data] },
-                challenger,
-            )
-            .await?;
+        let pcs_proof = self.multilinear_prover.prove_untrusted_evaluations(
+            new_eval_point,
+            // prover_data.mles = [index_1, ..., index_n, val]
+            Rounds { rounds: vec![prover_data.mles] },
+            // The matrix component_evals already contains the evaluations in the same order
+            Rounds { rounds: vec![Evaluations::new(vec![new_evaluation_claims.clone().into()])] },
+            Rounds { rounds: vec![prover_data.multilinear_prover_data] },
+            challenger,
+        )?;
 
         Ok(Proof {
             sparse_sumcheck_proof: pgspcs_proof,
@@ -120,8 +115,8 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_sparse_polynomial_prover() {
+    #[test]
+    fn test_sparse_polynomial_prover() {
         type GC = BabyBearDegree4Duplex;
         type BackendProver = BasefoldProver<GC, Poseidon2BabyBear16Prover>;
         type BackendVerifier = BasefoldVerifier<GC>;
@@ -146,12 +141,10 @@ mod tests {
         let mut challenger = GC::default_challenger();
 
         let sparse_prover = SparsePCSProver::new(basefold_prover);
-        let (commitment, prover_data) = sparse_prover.commit_sparse_poly(&poly).await.unwrap();
+        let (commitment, prover_data) = sparse_prover.commit_sparse_poly(&poly).unwrap();
 
-        let proof = sparse_prover
-            .prove_evaluation(&poly, &alpha, prover_data, &mut challenger)
-            .await
-            .unwrap();
+        let proof =
+            sparse_prover.prove_evaluation(&poly, &alpha, prover_data, &mut challenger).unwrap();
         let evaluation_claim = poly.eval_at(&alpha);
 
         let mut challenger = GC::default_challenger();

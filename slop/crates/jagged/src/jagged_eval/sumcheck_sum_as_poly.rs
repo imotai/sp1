@@ -1,4 +1,4 @@
-use std::{future::Future, marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc};
 
 use itertools::Itertools;
 use rayon::{
@@ -30,7 +30,7 @@ pub trait JaggedAssistSumAsPoly<
         merged_prefix_sums: Arc<Vec<Point<F>>>,
         z_col_eq_vals: Vec<EF>,
         backend: A,
-    ) -> impl Future<Output = Self> + Send + Sync;
+    ) -> Self;
 
     #[allow(clippy::too_many_arguments)]
     /// Compute the sum as a polynomial in the last varaible, storing the result in `sum_values`,
@@ -45,15 +45,13 @@ pub trait JaggedAssistSumAsPoly<
         challenger: &mut DeviceChallenger,
         claim: EF,
         rhos: Point<EF, A>,
-    ) -> impl Future<Output = (EF, Point<EF, A>)> + Send + Sync;
+    ) -> (EF, Point<EF, A>);
 
     /// Fix the last variable of the polynomial, returning a new polynomial with one less variable.
     /// The zeroth coordinate of randomness_point is used for fixing the last variable.
     fn fix_last_variable(
         poly: JaggedEvalSumcheckPoly<F, EF, Challenger, DeviceChallenger, Self, A>,
-    ) -> impl Future<Output = JaggedEvalSumcheckPoly<F, EF, Challenger, DeviceChallenger, Self, A>>
-           + Send
-           + Sync;
+    ) -> JaggedEvalSumcheckPoly<F, EF, Challenger, DeviceChallenger, Self, A>;
 }
 
 #[derive(Debug, Clone, Default)]
@@ -115,7 +113,7 @@ impl<F: Field, EF: ExtensionField<F>, Challenger: FieldChallenger<F> + Send + Sy
     JaggedAssistSumAsPoly<F, EF, CpuBackend, Challenger, Challenger>
     for JaggedAssistSumAsPolyCPUImpl<F, EF, Challenger>
 {
-    async fn new(
+    fn new(
         z_row: Point<EF>,
         z_index: Point<EF>,
         merged_prefix_sums: Arc<Vec<Point<F>>>,
@@ -132,7 +130,7 @@ impl<F: Field, EF: ExtensionField<F>, Challenger: FieldChallenger<F> + Send + Sy
         }
     }
 
-    async fn sum_as_poly_and_sample_into_point(
+    fn sum_as_poly_and_sample_into_point(
         &self,
         round_num: usize,
         z_col_eq_vals: &Buffer<EF>,
@@ -213,7 +211,7 @@ impl<F: Field, EF: ExtensionField<F>, Challenger: FieldChallenger<F> + Send + Sy
         (poly.eval_at_point(alpha), rhos.clone())
     }
 
-    async fn fix_last_variable(
+    fn fix_last_variable(
         poly: JaggedEvalSumcheckPoly<F, EF, Challenger, Challenger, Self, CpuBackend>,
     ) -> JaggedEvalSumcheckPoly<F, EF, Challenger, Challenger, Self, CpuBackend> {
         // Add alpha to the rho point.

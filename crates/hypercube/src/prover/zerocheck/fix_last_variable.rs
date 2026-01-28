@@ -1,12 +1,11 @@
 use std::ops::{Add, Mul};
 
-use futures::future::OptionFuture;
 use slop_algebra::{ExtensionField, Field};
 
 use super::ZeroCheckPoly;
 
 /// This function will set the last variable to `alpha`.
-pub async fn zerocheck_fix_last_variable<
+pub fn zerocheck_fix_last_variable<
     K: Field,
     F: Field,
     EF: ExtensionField<F> + Add<K, Output = EF> + Mul<K, Output = EF> + From<K> + ExtensionField<K>,
@@ -15,11 +14,9 @@ pub async fn zerocheck_fix_last_variable<
     poly: ZeroCheckPoly<K, F, EF, A>,
     alpha: EF,
 ) -> ZeroCheckPoly<EF, F, EF, A> {
-    let preprocessed_columns = OptionFuture::from(
-        poly.preprocessed_columns.as_ref().map(|mle| mle.fix_last_variable(alpha)),
-    )
-    .await;
-    let main_columns = poly.main_columns.fix_last_variable(alpha).await;
+    let preprocessed_columns =
+        poly.preprocessed_columns.as_ref().map(|mle| mle.fix_last_variable(alpha));
+    let main_columns = poly.main_columns.fix_last_variable(alpha);
 
     if poly.main_columns.num_real_entries() == 0 {
         // If the chip is pure padding, it's contribution to sumcheck is just zero, we don't need

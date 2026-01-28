@@ -93,8 +93,8 @@ mod tests {
     type F = SP1Field;
     type EF = BinomialExtensionField<SP1Field, 4>;
 
-    #[tokio::test]
-    async fn test_merkle_proof() {
+    #[test]
+    fn test_merkle_proof() {
         let mut rng = thread_rng();
 
         let height = rng.gen_range(500..2000);
@@ -108,11 +108,11 @@ mod tests {
             .collect::<Message<_>>();
 
         let prover = SP1MerkleTreeProver::default();
-        let (root, data) = prover.commit_tensors(tensors.clone()).await.unwrap();
+        let (root, data) = prover.commit_tensors(tensors.clone()).unwrap();
 
         let indices = (0..num_indices).map(|_| rng.gen_range(0..height)).collect_vec();
-        let proof = prover.prove_openings_at_indices(data, &indices).await.unwrap();
-        let openings = prover.compute_openings_at_indices(tensors, &indices).await;
+        let proof = prover.prove_openings_at_indices(data, &indices).unwrap();
+        let openings = prover.compute_openings_at_indices(tensors, &indices);
         let opening: MerkleTreeOpeningAndProof<SP1GlobalContext> =
             MerkleTreeOpeningAndProof { values: openings, proof };
 
@@ -150,8 +150,8 @@ mod tests {
         executor.run().unwrap();
     }
 
-    #[tokio::test]
-    async fn test_invalid_merkle_proof() {
+    #[test]
+    fn test_invalid_merkle_proof() {
         let mut rng = thread_rng();
 
         let height = rng.gen_range(500..2000);
@@ -165,11 +165,11 @@ mod tests {
             .collect::<Message<_>>();
 
         let prover = SP1MerkleTreeProver::default();
-        let (root, data) = prover.commit_tensors(tensors.clone()).await.unwrap();
+        let (root, data) = prover.commit_tensors(tensors.clone()).unwrap();
 
         let indices = (0..num_indices).map(|_| rng.gen_range(0..height)).collect_vec();
-        let proof = prover.prove_openings_at_indices(data, &indices).await.unwrap();
-        let openings = prover.compute_openings_at_indices(tensors, &indices).await;
+        let proof = prover.prove_openings_at_indices(data, &indices).unwrap();
+        let openings = prover.compute_openings_at_indices(tensors, &indices);
         let opening: MerkleTreeOpeningAndProof<SP1GlobalContext> =
             MerkleTreeOpeningAndProof { values: openings, proof };
 

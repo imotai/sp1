@@ -1,4 +1,3 @@
-use futures::{future::join_all, prelude::*};
 use itertools::Itertools;
 
 use slop_algebra::{rlc_univariate_polynomials, ExtensionField, Field, UnivariatePolynomial};
@@ -11,7 +10,7 @@ use crate::{ComponentPoly, PartialSumcheckProof, SumcheckPoly, SumcheckPolyFirst
 ///
 ///  # Panics
 ///  Will panic if the polynomial has zero variables.
-pub async fn reduce_sumcheck_to_evaluation<
+pub fn reduce_sumcheck_to_evaluation<
     F: Field,
     EF: ExtensionField<F> + Send + Sync,
     Challenger: FieldChallenger<F>,
@@ -40,13 +39,11 @@ pub async fn reduce_sumcheck_to_evaluation<
     // The univariate poly messages.  This will be a rlc of the polys' univariate polys.
     let mut univariate_poly_msgs: Vec<UnivariatePolynomial<EF>> = vec![];
 
-    let mut uni_polys = join_all(
-        polys
-            .iter()
-            .zip(claims.iter())
-            .map(|(poly, claim)| poly.sum_as_poly_in_last_t_variables(Some(*claim), t)),
-    )
-    .await;
+    let mut uni_polys: Vec<_> = polys
+        .iter()
+        .zip(claims.iter())
+        .map(|(poly, claim)| poly.sum_as_poly_in_last_t_variables(Some(*claim), t))
+        .collect();
 
     let mut rlc_uni_poly = rlc_univariate_polynomials(&uni_polys, lambda);
     let coefficients =
@@ -57,20 +54,18 @@ pub async fn reduce_sumcheck_to_evaluation<
 
     let alpha: EF = challenger.sample_ext_element();
     point.insert(0, alpha);
-    let mut polys_cursor =
-        join_all(polys.into_iter().map(|poly| poly.fix_t_variables(alpha, t))).await;
+    let mut polys_cursor: Vec<_> =
+        polys.into_iter().map(|poly| poly.fix_t_variables(alpha, t)).collect();
     // The multi-variate polynomial used at the start of each sumcheck round.
     for _ in t..num_variables as usize {
         // Get the round claims from the last round's univariate poly messages.
         let round_claims = uni_polys.iter().map(|poly| poly.eval_at_point(*point.first().unwrap()));
 
-        uni_polys = join_all(
-            polys_cursor
-                .iter()
-                .zip_eq(round_claims)
-                .map(|(poly, round_claim)| poly.sum_as_poly_in_last_variable(Some(round_claim))),
-        )
-        .await;
+        uni_polys = polys_cursor
+            .iter()
+            .zip_eq(round_claims)
+            .map(|(poly, round_claim)| poly.sum_as_poly_in_last_variable(Some(round_claim)))
+            .collect();
         rlc_uni_poly = rlc_univariate_polynomials(&uni_polys, lambda);
         challenger.observe_constant_length_extension_slice(&rlc_uni_poly.coefficients);
 
@@ -78,17 +73,14 @@ pub async fn reduce_sumcheck_to_evaluation<
 
         let alpha: EF = challenger.sample_ext_element();
         point.insert(0, alpha);
-        polys_cursor =
-            join_all(polys_cursor.into_iter().map(|poly| poly.fix_last_variable(alpha))).await;
+        polys_cursor = polys_cursor.into_iter().map(|poly| poly.fix_last_variable(alpha)).collect();
     }
 
     let evals =
         uni_polys.iter().map(|poly| poly.eval_at_point(*point.first().unwrap())).collect_vec();
 
-    let component_poly_evals = stream::iter(polys_cursor.iter())
-        .then(|poly| poly.get_component_poly_evals())
-        .collect::<Vec<_>>()
-        .await;
+    let component_poly_evals: Vec<_> =
+        polys_cursor.iter().map(|poly| poly.get_component_poly_evals()).collect();
 
     (
         PartialSumcheckProof {

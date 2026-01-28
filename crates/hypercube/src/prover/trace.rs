@@ -1,4 +1,3 @@
-use futures::future::join_all;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use slop_air::BaseAir;
@@ -12,7 +11,7 @@ use tracing::Instrument;
 
 use slop_algebra::Field;
 use slop_alloc::{Backend, CanCopyFrom, CpuBackend, GLOBAL_CPU_BACKEND};
-use slop_multilinear::{Mle, MleBaseBackend, PaddedMle, ZeroEvalBackend};
+use slop_multilinear::{Mle, PaddedMle};
 use slop_tensor::Tensor;
 use tokio::sync::oneshot;
 
@@ -113,16 +112,14 @@ impl<F: Field, A: MachineAir<F>> DefaultTraceGenerator<F, A, CpuBackend> {
     }
 }
 
-impl<F: Field, A: MachineAir<F>, B: Backend> TraceGenerator<F, A, B>
-    for DefaultTraceGenerator<F, A, B>
-where
-    B: CanCopyFrom<Mle<F>, CpuBackend, Output = Mle<F, B>> + MleBaseBackend<F> + ZeroEvalBackend<F>,
+impl<F: Field, A: MachineAir<F>> TraceGenerator<F, A, CpuBackend>
+    for DefaultTraceGenerator<F, A, CpuBackend>
 {
     fn machine(&self) -> &Machine<F, A> {
         &self.machine
     }
 
-    fn allocator(&self) -> &B {
+    fn allocator(&self) -> &CpuBackend {
         &self.trace_allocator
     }
 
@@ -131,7 +128,7 @@ where
         record: A::Record,
         max_log_row_count: usize,
         prover_permits: ProverSemaphore,
-    ) -> MainTraceData<F, A, B> {
+    ) -> MainTraceData<F, A, CpuBackend> {
         let airs = self.machine.chips().to_vec();
         let (tx, rx) = oneshot::channel();
         // Spawn a rayon task to generate the traces on the CPU.
@@ -175,22 +172,23 @@ where
                 let num_polynomials = chip.width();
                 (
                     chip.name().to_string(),
-                    PaddedMle::zeros_in(
-                        num_polynomials,
-                        max_log_row_count as u32,
-                        &self.trace_allocator,
-                    ),
+                    PaddedMle::zeros(num_polynomials, max_log_row_count as u32),
                 )
             })
             .collect::<BTreeMap<_, _>>();
 
         // Copy the real traces to the target backend.
-        let real_traces = join_all(chips_and_traces.into_iter().map(|(chip, trace)| async move {
-            let trace = self.trace_allocator.copy_into(trace).await.unwrap();
-            let mle = Arc::new(trace);
-            (chip.name().to_string(), PaddedMle::padded_with_zeros(mle, max_log_row_count as u32))
-        }))
-        .await;
+        let real_traces = chips_and_traces
+            .into_iter()
+            .map(|(chip, trace)| {
+                let trace = self.trace_allocator.copy_into(trace).unwrap();
+                let mle = Arc::new(trace);
+                (
+                    chip.name().to_string(),
+                    PaddedMle::padded_with_zeros(mle, max_log_row_count as u32),
+                )
+            })
+            .collect::<Vec<_>>();
 
         let mut traces = padded_traces;
 
@@ -208,7 +206,7 @@ where
         program: Arc<A::Program>,
         max_log_row_count: usize,
         setup_permits: ProverSemaphore,
-    ) -> PreprocessedTraceData<F, B> {
+    ) -> PreprocessedTraceData<F, CpuBackend> {
         // Generate the traces on the CPU.
         let airs = self.machine.chips().iter().map(|chip| chip.air.clone()).collect::<Vec<_>>();
         let (tx, rx) = oneshot::channel();
@@ -236,16 +234,15 @@ where
             .await
             .unwrap();
 
-        // Wait for the device to be available.
-        let named_traces =
-            join_all(named_preprocessed_traces.into_iter().map(|(name, trace)| async move {
-                let trace = self.trace_allocator.copy_into(trace).await.unwrap();
+        // Copy the traces to the target backend.
+        let named_traces = named_preprocessed_traces
+            .into_iter()
+            .map(|(name, trace)| {
+                let trace = self.trace_allocator.copy_into(trace).unwrap();
                 let padded_mle =
                     PaddedMle::padded_with_zeros(Arc::new(trace), max_log_row_count as u32);
                 (name, padded_mle)
-            }))
-            .await
-            .into_iter()
+            })
             .collect::<BTreeMap<_, _>>();
 
         let traces = Traces { named_traces };
@@ -259,7 +256,7 @@ where
         record: A::Record,
         max_log_row_count: usize,
         prover_permits: ProverSemaphore,
-    ) -> TraceData<F, A, B> {
+    ) -> TraceData<F, A, CpuBackend> {
         let airs = self.machine.chips().to_vec();
         let (tx, rx) = oneshot::channel();
         // Spawn a rayon task to generate the traces on the CPU.
@@ -303,11 +300,7 @@ where
                 let num_polynomials = chip.width();
                 (
                     chip.name().to_string(),
-                    PaddedMle::zeros_in(
-                        num_polynomials,
-                        max_log_row_count as u32,
-                        &self.trace_allocator,
-                    ),
+                    PaddedMle::zeros(num_polynomials, max_log_row_count as u32),
                 )
             })
             .collect::<BTreeMap<_, _>>();
@@ -320,26 +313,30 @@ where
             .unwrap();
 
         // Copy the preprocessed traces to the target backend.
-        let preprocessed_traces =
-            join_all(named_preprocessed_traces.into_iter().map(|(name, trace)| async move {
-                let trace = self.trace_allocator.copy_into(trace).await.unwrap();
+        let preprocessed_traces = named_preprocessed_traces
+            .into_iter()
+            .map(|(name, trace)| {
+                let trace = self.trace_allocator.copy_into(trace).unwrap();
                 let padded_mle =
                     PaddedMle::padded_with_zeros(Arc::new(trace), max_log_row_count as u32);
                 (name, padded_mle)
-            }))
-            .await
-            .into_iter()
+            })
             .collect::<BTreeMap<_, _>>();
 
         let preprocessed_traces = Traces { named_traces: preprocessed_traces };
 
         // Copy the real traces to the target backend.
-        let real_traces = join_all(chips_and_traces.into_iter().map(|(chip, trace)| async move {
-            let trace = self.trace_allocator.copy_into(trace).await.unwrap();
-            let mle = Arc::new(trace);
-            (chip.name().to_string(), PaddedMle::padded_with_zeros(mle, max_log_row_count as u32))
-        }))
-        .await;
+        let real_traces = chips_and_traces
+            .into_iter()
+            .map(|(chip, trace)| {
+                let trace = self.trace_allocator.copy_into(trace).unwrap();
+                let mle = Arc::new(trace);
+                (
+                    chip.name().to_string(),
+                    PaddedMle::padded_with_zeros(mle, max_log_row_count as u32),
+                )
+            })
+            .collect::<Vec<_>>();
 
         let mut traces = padded_traces;
 

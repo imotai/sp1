@@ -38,7 +38,7 @@ where
         let logup_gkr_trace_generator = LogupGkrCpuTraceGenerator::default();
         let logup_gkr_prover = GkrProverImpl::new(logup_gkr_trace_generator);
 
-        Self { trace_generator, logup_gkr_prover, pcs_prover }
+        Self::from_components(trace_generator, logup_gkr_prover, pcs_prover)
     }
 }
 

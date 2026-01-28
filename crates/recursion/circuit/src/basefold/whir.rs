@@ -687,17 +687,15 @@ mod tests {
         tracing::debug!("claimed: {:?}", claim);
 
         let (commitment, prover_data, _) =
-            prover.commit_multilinear(vec![polynomial].into()).await.unwrap();
+            prover.commit_multilinear(vec![polynomial].into()).unwrap();
 
-        let proof = prover
-            .prove(
-                query_vector,
-                vec![prover_data].into_iter().collect(),
-                claim,
-                &mut challenger_prover,
-                &config,
-            )
-            .await;
+        let proof = prover.prove(
+            query_vector,
+            vec![prover_data].into_iter().collect(),
+            claim,
+            &mut challenger_prover,
+            &config,
+        );
 
         verifier.observe_commitment(&[commitment], &mut challenger_verifier).unwrap();
 

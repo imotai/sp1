@@ -3,22 +3,18 @@ mod synchronize;
 
 use std::fmt::Debug;
 
-use futures::prelude::*;
 pub use p3_challenger::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use slop_algebra::{ExtensionField, Field, PrimeField32};
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 pub use synchronize::*;
 
-pub trait FromChallenger<Challenger: Send + Sync, A: Send + Sync>: Send + Sync + Sized {
-    fn from_challenger(
-        challenger: &Challenger,
-        backend: A,
-    ) -> impl Future<Output = Self> + Send + Sync;
+pub trait FromChallenger<Challenger, A>: Sized {
+    fn from_challenger(challenger: &Challenger, backend: &A) -> Self;
 }
 
-impl<Challenger: Clone + Send + Sync, A: Send + Sync> FromChallenger<Challenger, A> for Challenger {
-    async fn from_challenger(challenger: &Challenger, _backend: A) -> Self {
+impl<Challenger: Clone, A> FromChallenger<Challenger, A> for Challenger {
+    fn from_challenger(challenger: &Challenger, _backend: &A) -> Self {
         challenger.clone()
     }
 }

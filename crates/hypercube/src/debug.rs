@@ -6,13 +6,13 @@ use slop_air::{
     PermutationAirBuilder,
 };
 use slop_algebra::{ExtensionField, Field};
-use slop_alloc::{Backend, CanCopyIntoRef, CpuBackend, ToHost};
+use slop_alloc::CpuBackend;
 use slop_challenger::IopCtx;
 use slop_matrix::{
     dense::{RowMajorMatrix, RowMajorMatrixView},
     Matrix,
 };
-use slop_multilinear::{Mle, MleBaseBackend};
+use slop_multilinear::Mle;
 
 use crate::{
     air::{EmptyMessageBuilder, MachineAir},
@@ -24,24 +24,19 @@ use crate::{
 ///
 /// Note that this does not actually verify the proof.
 #[allow(clippy::too_many_arguments)]
-pub async fn debug_constraints<GC, A, BE>(
+pub fn debug_constraints<GC, A>(
     chip: &Chip<GC::F, A>,
-    preprocessed: Option<&Mle<GC::F, BE>>,
-    main: &Mle<GC::F, BE>,
+    preprocessed: Option<&Mle<GC::F>>,
+    main: &Mle<GC::F>,
     public_values: &[GC::F],
 ) -> Vec<(usize, Vec<usize>, Vec<GC::F>)>
 where
-    BE: Backend + CanCopyIntoRef<Mle<GC::F, BE>, CpuBackend, Output = Mle<GC::F, CpuBackend>>,
     GC: IopCtx,
     A: MachineAir<GC::F> + for<'a> Air<DebugConstraintBuilder<'a, GC::F, GC::EF>>,
 {
-    let host_main = BE::copy_to_dst(&CpuBackend, main).await.unwrap();
-    let main: RowMajorMatrix<GC::F> = host_main.into_guts().try_into().unwrap();
-    let preprocessed: Option<RowMajorMatrix<GC::F>> = if let Some(pre) = preprocessed {
-        Some(pre.to_host().await.unwrap().into_guts().try_into().unwrap())
-    } else {
-        None
-    };
+    let main: RowMajorMatrix<GC::F> = main.clone().into_guts().try_into().unwrap();
+    let preprocessed: Option<RowMajorMatrix<GC::F>> =
+        preprocessed.map(|pre| pre.clone().into_guts().try_into().unwrap());
     let height = main.height();
     if height == 0 {
         return Vec::new();
@@ -85,16 +80,14 @@ where
 
 /// Checks that the constraints of all the given AIRs are satisfied on the proposed witnesses sent
 /// in `main` and `preprocessed`.
-pub async fn debug_constraints_all_chips<GC, A, BE>(
+pub fn debug_constraints_all_chips<GC, A>(
     chips: &[Chip<GC::F, A>],
-    preprocessed: &Traces<GC::F, BE>,
-    main: &Traces<GC::F, BE>,
+    preprocessed: &Traces<GC::F, CpuBackend>,
+    main: &Traces<GC::F, CpuBackend>,
     public_values: &[GC::F],
 ) where
-    BE: Backend + CanCopyIntoRef<Mle<GC::F, BE>, CpuBackend, Output = Mle<GC::F, CpuBackend>>,
     GC: IopCtx,
     A: MachineAir<GC::F> + for<'a> Air<DebugConstraintBuilder<'a, GC::F, GC::EF>>,
-    BE: MleBaseBackend<GC::F>,
 {
     let mut result = BTreeMap::new();
     for chip in chips.iter() {
@@ -106,13 +99,8 @@ pub async fn debug_constraints_all_chips<GC, A, BE>(
             continue;
         }
         let main_trace = maybe_main_trace.unwrap().as_ref();
-        let failed_rows = crate::debug_constraints::<GC, A, BE>(
-            chip,
-            preprocessed_trace,
-            main_trace,
-            public_values,
-        )
-        .await;
+        let failed_rows =
+            crate::debug_constraints::<GC, A>(chip, preprocessed_trace, main_trace, public_values);
         if !failed_rows.is_empty() {
             result.insert(chip.name().to_string(), failed_rows);
         }

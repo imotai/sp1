@@ -77,7 +77,7 @@ impl<
 
     /// A constructor for the jagged eval sumcheck polynomial that takes the minimal amount of input
     /// data.
-    pub async fn new_from_jagged_params(
+    pub fn new_from_jagged_params(
         z_row: Point<EF>,
         z_col: Point<EF>,
         z_index: Point<EF>,
@@ -125,7 +125,7 @@ impl<
         assert!(merged_prefix_sums_len == z_col_eq_vals.len());
 
         let merged_prefix_sums = Arc::new(merged_prefix_sums);
-        let z_col_device = backend.copy_to(&z_col).await.unwrap();
+        let z_col_device = backend.copy_to(&z_col).unwrap();
 
         let half = EF::two().inverse();
         let bp_batch_eval = BPE::new(
@@ -134,11 +134,10 @@ impl<
             merged_prefix_sums.clone(),
             z_col_eq_vals.clone(),
             backend.clone(),
-        )
-        .await;
+        );
 
         let z_col_eq_vals_device: Buffer<EF, A> =
-            backend.copy_into(Buffer::<EF>::from(z_col_eq_vals)).await.unwrap();
+            backend.copy_into(Buffer::<EF>::from(z_col_eq_vals)).unwrap();
 
         let merged_prefix_sums_device = backend
             .copy_into(
@@ -148,12 +147,11 @@ impl<
                     .copied()
                     .collect::<Buffer<F>>(),
             )
-            .await
             .unwrap();
 
         let intermediate_eq_full_evals = vec![EF::one(); merged_prefix_sums_len];
         let intermediate_eq_full_evals_device =
-            backend.copy_into(Buffer::<EF>::from(intermediate_eq_full_evals)).await.unwrap();
+            backend.copy_into(Buffer::<EF>::from(intermediate_eq_full_evals)).unwrap();
 
         Self {
             bp_batch_eval,
@@ -172,11 +170,11 @@ impl<
         self.prefix_sum_dimension
     }
 
-    pub async fn get_component_poly_evals(&self) -> Vec<EF> {
+    pub fn get_component_poly_evals(&self) -> Vec<EF> {
         Vec::new()
     }
 
-    pub async fn sum_as_poly_in_last_t_variables_observe_and_sample(
+    pub fn sum_as_poly_in_last_t_variables_observe_and_sample(
         &mut self,
         claim: Option<EF>,
         sum_values: &mut Buffer<EF, A>,
@@ -184,28 +182,25 @@ impl<
         t: usize,
     ) -> EF {
         assert!(t == 1);
-        self.sum_as_poly_in_last_variable_observe_and_sample(claim, sum_values, challenger).await
+        self.sum_as_poly_in_last_variable_observe_and_sample(claim, sum_values, challenger)
     }
 
-    pub async fn sum_as_poly_in_last_variable_observe_and_sample(
+    pub fn sum_as_poly_in_last_variable_observe_and_sample(
         &mut self,
         claim: Option<EF>,
         sum_values: &mut Buffer<EF, A>,
         challenger: &mut DeviceChallenger,
     ) -> EF {
         let claim = claim.expect("Claim must be provided");
-        let (new_claim, new_point) = self
-            .bp_batch_eval
-            .sum_as_poly_and_sample_into_point(
-                self.round_num,
-                &self.z_col_eq_vals,
-                &self.intermediate_eq_full_evals,
-                sum_values,
-                challenger,
-                claim,
-                self.rho.clone(),
-            )
-            .await;
+        let (new_claim, new_point) = self.bp_batch_eval.sum_as_poly_and_sample_into_point(
+            self.round_num,
+            &self.z_col_eq_vals,
+            &self.intermediate_eq_full_evals,
+            sum_values,
+            challenger,
+            claim,
+            self.rho.clone(),
+        );
         self.rho = new_point;
         new_claim
     }

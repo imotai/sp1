@@ -1,4 +1,3 @@
-use futures::future;
 use slop_algebra::{
     interpolate_univariate_polynomial, AbstractField, ExtensionField, Field, UnivariatePolynomial,
 };
@@ -25,7 +24,7 @@ impl<EF> SparsePCSSumcheckPoly<EF>
 where
     EF: Field,
 {
-    pub async fn new<F>(eval_point: &Point<EF>, sparse_polynomial: &SparsePolynomial<F>) -> Self
+    pub fn new<F>(eval_point: &Point<EF>, sparse_polynomial: &SparsePolynomial<F>) -> Self
     where
         F: Field,
         EF: ExtensionField<F>,
@@ -51,14 +50,13 @@ impl<EF> ComponentPoly<EF> for SparsePCSSumcheckPoly<EF>
 where
     EF: Field,
 {
-    async fn get_component_poly_evals(&self) -> Vec<EF> {
-        let mut index_vec = future::join_all(
-            self.index_mles
-                .iter()
-                .map(|m| async { m.eval_at(&Point::<EF>::new(vec![].into())).await.to_vec()[0] }),
-        )
-        .await;
-        index_vec.push(self.val_mle.eval_at(&Point::<EF>::new(vec![].into())).await.to_vec()[0]);
+    fn get_component_poly_evals(&self) -> Vec<EF> {
+        let mut index_vec: Vec<_> = self
+            .index_mles
+            .iter()
+            .map(|m| m.eval_at(&Point::<EF>::new(vec![].into())).to_vec()[0])
+            .collect();
+        index_vec.push(self.val_mle.eval_at(&Point::<EF>::new(vec![].into())).to_vec()[0]);
         index_vec
     }
 }
@@ -67,17 +65,15 @@ impl<EF> SumcheckPoly<EF> for SparsePCSSumcheckPoly<EF>
 where
     EF: Field,
 {
-    async fn fix_last_variable(self, alpha: EF) -> Self {
-        let index_mles = future::join_all(
-            self.index_mles.iter().map(|m| async { m.fix_last_variable(alpha).await }),
-        )
-        .await;
-        let val_mle = self.val_mle.fix_last_variable(alpha).await;
+    fn fix_last_variable(self, alpha: EF) -> Self {
+        let index_mles: Vec<_> =
+            self.index_mles.iter().map(|m| m.fix_last_variable(alpha)).collect();
+        let val_mle = self.val_mle.fix_last_variable(alpha);
 
         Self { eval_point: self.eval_point, index_mles, val_mle }
     }
 
-    async fn sum_as_poly_in_last_variable(&self, claim: Option<EF>) -> UnivariatePolynomial<EF> {
+    fn sum_as_poly_in_last_variable(&self, claim: Option<EF>) -> UnivariatePolynomial<EF> {
         assert!(claim.is_some());
         let zero = EF::zero();
         let one = EF::one();
@@ -145,26 +141,25 @@ where
 {
     type NextRoundPoly = Self;
 
-    async fn fix_t_variables(self, alpha: EF, t: usize) -> Self::NextRoundPoly {
+    fn fix_t_variables(self, alpha: EF, t: usize) -> Self::NextRoundPoly {
         assert_eq!(t, 1);
 
-        self.fix_last_variable(alpha).await
+        self.fix_last_variable(alpha)
     }
 
-    async fn sum_as_poly_in_last_t_variables(
+    fn sum_as_poly_in_last_t_variables(
         &self,
         claim: Option<EF>,
         t: usize,
     ) -> UnivariatePolynomial<EF> {
         assert_eq!(t, 1);
 
-        self.sum_as_poly_in_last_variable(claim).await
+        self.sum_as_poly_in_last_variable(claim)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use futures::future;
     use rand::Rng;
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_baby_bear::{
@@ -182,8 +177,8 @@ mod tests {
     type F = BabyBear;
     type EF = BinomialExtensionField<BabyBear, 4>;
 
-    #[tokio::test]
-    async fn pgspcs_sumcheck() {
+    #[test]
+    fn pgspcs_sumcheck() {
         let mut rng = rand::thread_rng();
         let default_perm = my_bb_16_perm();
         let mut challenger_prover =
@@ -203,7 +198,7 @@ mod tests {
         let alpha = Point::new((0..num_variables).map(|_| rng.gen::<EF>()).collect());
 
         let v = poly.eval_at(&alpha);
-        let sumcheck_poly = SparsePCSSumcheckPoly::<_, _>::new(&alpha, &poly).await;
+        let sumcheck_poly = SparsePCSSumcheckPoly::<_, _>::new(&alpha, &poly);
 
         let (pgspcs_proof, matrix_component_evals) = reduce_sumcheck_to_evaluation(
             vec![sumcheck_poly],
@@ -211,8 +206,7 @@ mod tests {
             vec![v],
             1,
             EF::one(),
-        )
-        .await;
+        );
 
         // Check the top level sum
         assert_eq!(
@@ -240,13 +234,13 @@ mod tests {
         );
 
         // Check one claim is the MLE of z
-        assert_eq!(val_eval, poly.val_mle::<EF>().eval_at(&pgspcs_proof.point_and_eval.0).await[0]);
+        assert_eq!(val_eval, poly.val_mle::<EF>().eval_at(&pgspcs_proof.point_and_eval.0)[0]);
 
-        let index_alpha_eval =
-            future::join_all(poly.index_mles::<EF>().iter().map(|index_mle| async {
-                index_mle.eval_at(&pgspcs_proof.point_and_eval.0).await[0]
-            }))
-            .await;
+        let index_alpha_eval: Vec<_> = poly
+            .index_mles::<EF>()
+            .iter()
+            .map(|index_mle| index_mle.eval_at(&pgspcs_proof.point_and_eval.0)[0])
+            .collect();
 
         assert_eq!(index_alpha_eval, index_poly_evals);
     }

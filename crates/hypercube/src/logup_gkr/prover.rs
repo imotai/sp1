@@ -1,11 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use futures::future::OptionFuture;
 use slop_algebra::AbstractField;
 use slop_alloc::{CanCopyFromRef, CpuBackend, ToHost};
 use slop_challenger::{CanObserve, FieldChallenger, IopCtx, VariableLengthChallenger};
 use slop_multilinear::{Mle, MultilinearPcsChallenger, Point};
-use tracing::Instrument;
 
 use crate::{
     air::MachineAir, prove_gkr_round, prover::Traces, Chip, ChipEvaluation, LogupGkrCpuCircuit,
@@ -29,7 +27,7 @@ impl<GC: IopCtx, SC: ShardContext<GC>> GkrProverImpl<GC, SC> {
     }
 
     /// TODO
-    pub async fn prove_gkr_circuit(
+    pub fn prove_gkr_circuit(
         &self,
         numerator_value: GC::EF,
         denominator_value: GC::EF,
@@ -44,8 +42,7 @@ impl<GC: IopCtx, SC: ShardContext<GC>> GkrProverImpl<GC, SC> {
         let mut eval_point = eval_point;
         while let Some(layer) = circuit.next_layer() {
             let round_proof =
-                prove_gkr_round(layer, &eval_point, numerator_eval, denominator_eval, challenger)
-                    .await;
+                prove_gkr_round(layer, &eval_point, numerator_eval, denominator_eval, challenger);
             // Observe the prover message.
             challenger.observe_ext_element(round_proof.numerator_0);
             challenger.observe_ext_element(round_proof.numerator_1);
@@ -68,11 +65,11 @@ impl<GC: IopCtx, SC: ShardContext<GC>> GkrProverImpl<GC, SC> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) async fn prove_logup_gkr(
+    pub(crate) fn prove_logup_gkr(
         &self,
         chips: &BTreeSet<Chip<GC::F, SC::Air>>,
-        preprocessed_traces: Traces<GC::F, CpuBackend>,
-        traces: Traces<GC::F, CpuBackend>,
+        preprocessed_traces: &Traces<GC::F, CpuBackend>,
+        traces: &Traces<GC::F, CpuBackend>,
         public_values: Vec<GC::F>,
         alpha: GC::EF,
         beta_seed: Point<GC::EF>,
@@ -93,13 +90,13 @@ impl<GC: IopCtx, SC: ShardContext<GC>> GkrProverImpl<GC, SC> {
 
             for (name, preprocessed_trace) in preprocessed_traces.iter() {
                 let host_preprocessed_trace =
-                    CpuBackend::copy_to_dst(&CpuBackend, preprocessed_trace).await.unwrap();
+                    CpuBackend::copy_to_dst(&CpuBackend, preprocessed_trace).unwrap();
                 host_preprocessed_traces.insert(name.clone(), host_preprocessed_trace);
             }
 
             let mut host_traces = BTreeMap::new();
             for (name, trace) in traces.iter() {
-                let host_trace = CpuBackend::copy_to_dst(&CpuBackend, trace).await.unwrap();
+                let host_trace = CpuBackend::copy_to_dst(&CpuBackend, trace).unwrap();
                 host_traces.insert(name.clone(), host_trace);
             }
 
@@ -118,9 +115,9 @@ impl<GC: IopCtx, SC: ShardContext<GC>> GkrProverImpl<GC, SC> {
         }
 
         // Run the GKR circuit and get the output.
-        let (output, circuit) = self
-            .trace_generator
-            .generate_gkr_circuit(
+        let (output, circuit) = {
+            let _span = tracing::info_span!("generate GKR circuit").entered();
+            self.trace_generator.generate_gkr_circuit(
                 chips,
                 preprocessed_traces.clone(),
                 traces.clone(),
@@ -128,13 +125,12 @@ impl<GC: IopCtx, SC: ShardContext<GC>> GkrProverImpl<GC, SC> {
                 alpha,
                 beta_seed,
             )
-            .instrument(tracing::info_span!("generate GKR circuit"))
-            .await;
+        };
 
         let LogUpGkrOutput { numerator, denominator } = &output;
 
-        let host_numerator = numerator.to_host().await.unwrap();
-        let host_denominator = denominator.to_host().await.unwrap();
+        let host_numerator = numerator.to_host().unwrap();
+        let host_denominator = denominator.to_host().unwrap();
 
         challenger.observe_variable_length_extension_slice(host_numerator.guts().as_slice());
         challenger.observe_variable_length_extension_slice(host_denominator.guts().as_slice());
@@ -147,31 +143,29 @@ impl<GC: IopCtx, SC: ShardContext<GC>> GkrProverImpl<GC, SC> {
         let first_eval_point = challenger.sample_point::<GC::EF>(initial_number_of_variables);
 
         // Follow the GKR protocol layer by layer.
-        let first_point = numerator.backend().copy_to(&first_eval_point).await.unwrap();
-        let first_point_eq = Mle::partial_lagrange(&first_point).await;
-        let first_numerator_eval =
-            numerator.eval_at_eq(&first_point_eq).await.to_host().await.unwrap()[0];
-        let first_denominator_eval =
-            denominator.eval_at_eq(&first_point_eq).await.to_host().await.unwrap()[0];
+        let first_point = numerator.backend().copy_to(&first_eval_point).unwrap();
+        let first_point_eq = Mle::partial_lagrange(&first_point);
+        let first_numerator_eval = numerator.eval_at_eq(&first_point_eq).to_host().unwrap()[0];
+        let first_denominator_eval = denominator.eval_at_eq(&first_point_eq).to_host().unwrap()[0];
 
-        let (eval_point, round_proofs) = self
-            .prove_gkr_circuit(
+        let (eval_point, round_proofs) = {
+            let _span = tracing::info_span!("prove GKR circuit").entered();
+            self.prove_gkr_circuit(
                 first_numerator_eval,
                 first_denominator_eval,
                 first_eval_point,
                 circuit,
                 challenger,
             )
-            .instrument(tracing::info_span!("prove GKR circuit"))
-            .await;
+        };
 
         // Get the evaluations for each chip at the evaluation point of the last round.
         let mut chip_evaluations = BTreeMap::new();
 
         let trace_dimension = traces.values().next().unwrap().num_variables();
         let eval_point = eval_point.last_k(trace_dimension as usize);
-        let eval_point_b = numerator.backend().copy_to(&eval_point).await.unwrap();
-        let eval_point_eq = Mle::partial_lagrange(&eval_point_b).await;
+        let eval_point_b = numerator.backend().copy_to(&eval_point).unwrap();
+        let eval_point_eq = Mle::partial_lagrange(&eval_point_b);
 
         challenger.observe(GC::F::from_canonical_usize(chips.len()));
         for chip in chips.iter() {
@@ -179,16 +173,11 @@ impl<GC: IopCtx, SC: ShardContext<GC>> GkrProverImpl<GC, SC> {
             let main_trace = traces.get(name).unwrap();
             let preprocessed_trace = preprocessed_traces.get(name);
 
-            let main_evaluation = main_trace.eval_at_eq(&eval_point, &eval_point_eq).await;
-            let preprocessed_evaluation = OptionFuture::from(
-                preprocessed_trace.as_ref().map(|t| t.eval_at_eq(&eval_point, &eval_point_eq)),
-            )
-            .await;
-            let main_evaluation = main_evaluation.to_host().await.unwrap();
-            let preprocessed_evaluation = OptionFuture::from(
-                preprocessed_evaluation.as_ref().map(|e| async { e.to_host().await.unwrap() }),
-            )
-            .await;
+            let main_evaluation = main_trace.eval_at_eq(&eval_point, &eval_point_eq);
+            let preprocessed_evaluation =
+                preprocessed_trace.as_ref().map(|t| t.eval_at_eq(&eval_point, &eval_point_eq));
+            let main_evaluation = main_evaluation.to_host().unwrap();
+            let preprocessed_evaluation = preprocessed_evaluation.map(|e| e.to_host().unwrap());
             let openings = ChipEvaluation {
                 main_trace_evaluations: main_evaluation,
                 preprocessed_trace_evaluations: preprocessed_evaluation,

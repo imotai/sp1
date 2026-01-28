@@ -9,7 +9,6 @@ use slop_sumcheck::{
     ComponentPolyEvalBackend, SumCheckPolyFirstRoundBackend, SumcheckPolyBackend, SumcheckPolyBase,
     SumcheckPolyFirstRound,
 };
-use tokio::sync::oneshot;
 
 use crate::LongMle;
 
@@ -47,7 +46,7 @@ where
     F: AbstractField,
     EF: AbstractExtensionField<F>,
 {
-    async fn get_component_poly_evals(poly: &HadamardProduct<F, EF>) -> Vec<EF> {
+    fn get_component_poly_evals(poly: &HadamardProduct<F, EF>) -> Vec<EF> {
         assert_eq!(poly.base.num_components(), 1);
         let base_eval: EF = (*poly.base.first_component_mle().guts()[[0, 0]]).clone().into();
         let ext_eval: EF = (*poly.ext.first_component_mle().guts()[[0, 0]]).clone();
@@ -59,18 +58,18 @@ impl<F> SumcheckPolyBackend<HadamardProduct<F, F>, F> for CpuBackend
 where
     F: Field,
 {
-    async fn fix_last_variable(poly: HadamardProduct<F, F>, alpha: F) -> HadamardProduct<F, F> {
-        let base = poly.base.fix_last_variable(alpha).await;
-        let ext = poly.ext.fix_last_variable(alpha).await;
+    fn fix_last_variable(poly: HadamardProduct<F, F>, alpha: F) -> HadamardProduct<F, F> {
+        let base = poly.base.fix_last_variable(alpha);
+        let ext = poly.ext.fix_last_variable(alpha);
         HadamardProduct { base, ext }
     }
 
     #[inline]
-    async fn sum_as_poly_in_last_variable(
+    fn sum_as_poly_in_last_variable(
         poly: &HadamardProduct<F, F>,
         claim: Option<F>,
     ) -> UnivariatePolynomial<F> {
-        poly.sum_as_poly_in_last_t_variables(claim, 1).await
+        poly.sum_as_poly_in_last_t_variables(claim, 1)
     }
 }
 
@@ -80,18 +79,18 @@ where
     EF: ExtensionField<F>,
 {
     type NextRoundPoly = HadamardProduct<EF, EF>;
-    async fn fix_t_variables(
+    fn fix_t_variables(
         poly: HadamardProduct<F, EF>,
         alpha: EF,
         t: usize,
     ) -> HadamardProduct<EF, EF> {
         assert_eq!(t, 1);
-        let base = poly.base.fix_last_variable(alpha).await;
-        let ext = poly.ext.fix_last_variable(alpha).await;
+        let base = poly.base.fix_last_variable(alpha);
+        let ext = poly.ext.fix_last_variable(alpha);
         HadamardProduct { base, ext }
     }
 
-    async fn sum_as_poly_in_last_t_variables(
+    fn sum_as_poly_in_last_t_variables(
         poly: &HadamardProduct<F, EF>,
         claim: Option<EF>,
         t: usize,
@@ -102,53 +101,49 @@ where
 
         let poly_base = poly.base.first_component_mle().clone();
         let poly_ext = poly.ext.first_component_mle().clone();
-        let (tx, rx) = oneshot::channel();
-        slop_futures::rayon::spawn(move || {
-            // The sumcheck polynomial is a multi-quadratic polynomial, so three evaluations are
-            // needed.
-            let eval_0 = poly_ext
+
+        // The sumcheck polynomial is a multi-quadratic polynomial, so three evaluations are
+        // needed.
+        let eval_0 = poly_ext
+            .guts()
+            .as_slice()
+            .par_iter()
+            .step_by(2)
+            .zip(poly_base.guts().as_slice().par_iter().step_by(2))
+            .map(|(x, y)| *x * *y)
+            .sum();
+
+        let eval_1 = claim.map(|x| x - eval_0).unwrap_or(
+            poly_ext
                 .guts()
                 .as_slice()
                 .par_iter()
+                .skip(1)
                 .step_by(2)
-                .zip(poly_base.guts().as_slice().par_iter().step_by(2))
-                .map(|(x, y)| *x * *y)
-                .sum();
-
-            let eval_1 = claim.map(|x| x - eval_0).unwrap_or(
-                poly_ext
-                    .guts()
-                    .as_slice()
-                    .par_iter()
-                    .skip(1)
-                    .step_by(2)
-                    .zip(poly_base.guts().as_slice().par_iter().skip(1).step_by(2))
-                    .map(|(x, y)| *x * *y)
-                    .sum(),
-            );
-
-            let eval_half: EF = poly_ext
-                .guts()
-                .as_slice()
-                .par_iter()
-                .step_by(2)
-                .zip(poly_ext.guts().as_slice().par_iter().skip(1).step_by(2))
-                .zip(poly_base.guts().as_slice().par_iter().step_by(2))
                 .zip(poly_base.guts().as_slice().par_iter().skip(1).step_by(2))
-                .map(|(((je_0, je_1), mle_0), mle_1)| (*je_0 + *je_1) * (*mle_0 + *mle_1))
-                .sum();
+                .map(|(x, y)| *x * *y)
+                .sum(),
+        );
 
-            let univariate_poly = interpolate_univariate_polynomial(
-                &[
-                    EF::from_canonical_u16(0),
-                    EF::from_canonical_u16(1),
-                    EF::from_canonical_u16(2).inverse(),
-                ],
-                &[eval_0, eval_1, eval_half * EF::from_canonical_u16(4).inverse()],
-            );
-            tx.send(univariate_poly).unwrap();
-        });
-        rx.await.unwrap()
+        let eval_half: EF = poly_ext
+            .guts()
+            .as_slice()
+            .par_iter()
+            .step_by(2)
+            .zip(poly_ext.guts().as_slice().par_iter().skip(1).step_by(2))
+            .zip(poly_base.guts().as_slice().par_iter().step_by(2))
+            .zip(poly_base.guts().as_slice().par_iter().skip(1).step_by(2))
+            .map(|(((je_0, je_1), mle_0), mle_1)| (*je_0 + *je_1) * (*mle_0 + *mle_1))
+            .sum();
+
+        interpolate_univariate_polynomial(
+            &[
+                EF::from_canonical_u16(0),
+                EF::from_canonical_u16(1),
+                EF::from_canonical_u16(2).inverse(),
+            ],
+            &[eval_0, eval_1, eval_half * EF::from_canonical_u16(4).inverse()],
+        )
     }
 }
 
@@ -163,8 +158,8 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_hadamard_product_sumcheck() {
+    #[test]
+    fn test_hadamard_product_sumcheck() {
         let mut rng = thread_rng();
 
         type F = BabyBear;
@@ -200,16 +195,13 @@ mod tests {
             vec![claim],
             1,
             lambda,
-        )
-        .await;
+        );
 
         let point = &proof.point_and_eval.0;
         let [exp_eval_base, exp_eval_ext] = eval_claims.pop().unwrap().try_into().unwrap();
 
-        let eval_ext =
-            product.ext.first_component_mle().eval_at(point).await.to_vec().pop().unwrap();
-        let eval_base =
-            product.base.first_component_mle().eval_at(point).await.to_vec().pop().unwrap();
+        let eval_ext = product.ext.first_component_mle().eval_at(point).to_vec().pop().unwrap();
+        let eval_base = product.base.first_component_mle().eval_at(point).to_vec().pop().unwrap();
 
         assert_eq!(eval_ext, exp_eval_ext);
         assert_eq!(eval_base, exp_eval_base);

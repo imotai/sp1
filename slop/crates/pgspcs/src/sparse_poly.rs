@@ -86,8 +86,8 @@ mod tests {
     type F = BabyBear;
     type EF = BinomialExtensionField<BabyBear, 4>;
 
-    #[tokio::test]
-    async fn test_consistency_with_mle() {
+    #[test]
+    fn test_consistency_with_mle() {
         let mut rng = rand::thread_rng();
 
         let log_sparsity = 8;
@@ -101,6 +101,6 @@ mod tests {
 
         let alpha = Point::new((0..num_variables).map(|_| rng.gen::<EF>()).collect());
 
-        assert_eq!(sparse.eval_at(&alpha), sparse.dense_repr().eval_at(&alpha).await[0])
+        assert_eq!(sparse.eval_at(&alpha), sparse.dense_repr().eval_at(&alpha)[0])
     }
 }

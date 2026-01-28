@@ -1,11 +1,10 @@
 use std::{
     error::Error,
     fmt::Debug,
-    future::Future,
     ops::{Deref, DerefMut},
 };
 
-use crate::{Mle, MleBaseBackend, MleEval, Point};
+use crate::{Mle, MleEval, Point};
 use derive_where::derive_where;
 use serde::{de::DeserializeOwned, Serialize};
 use slop_algebra::{ExtensionField, Field};
@@ -100,8 +99,8 @@ pub trait MultilinearPcsVerifier<GC: IopCtx>: 'static + Send + Sync + Clone {
 }
 
 /// A trait for prover data that can be converted into the original "committed-to" MLEs.
-pub trait ToMle<F: Field, A: MleBaseBackend<F>> {
-    fn interleaved_mles(&self) -> Message<Mle<F, A>>;
+pub trait ToMle<F: Field> {
+    fn interleaved_mles(&self) -> Message<Mle<F, CpuBackend>>;
 }
 
 // A prover trait for proving evaluations of a single multilinear polynomial.
@@ -110,7 +109,7 @@ pub trait MultilinearPcsProver<GC: IopCtx, Proof>: 'static + Send + Sync {
     ///
     /// When committing to a batch of multilinear polynomials, it is often necessary to keep track
     /// of additional information that was produced during the commitment phase.
-    type ProverData: 'static + Send + Sync + Debug + Clone + ToMle<GC::F, CpuBackend>;
+    type ProverData: 'static + Send + Sync + Debug + Clone + ToMle<GC::F>;
 
     /// The error type of the prover.
     type ProverError: Error;
@@ -120,7 +119,7 @@ pub trait MultilinearPcsProver<GC: IopCtx, Proof>: 'static + Send + Sync {
     fn commit_multilinear(
         &self,
         mles: Message<Mle<GC::F>>,
-    ) -> impl Future<Output = Result<(GC::Digest, Self::ProverData, usize), Self::ProverError>> + Send;
+    ) -> Result<(GC::Digest, Self::ProverData, usize), Self::ProverError>;
 
     fn prove_trusted_evaluation(
         &self,
@@ -128,7 +127,7 @@ pub trait MultilinearPcsProver<GC: IopCtx, Proof>: 'static + Send + Sync {
         evaluation_claim: GC::EF,
         prover_data: Rounds<Self::ProverData>,
         challenger: &mut GC::Challenger,
-    ) -> impl Future<Output = Result<Proof, Self::ProverError>> + Send;
+    ) -> Result<Proof, Self::ProverError>;
 
     fn prove_untrusted_evaluation(
         &self,
@@ -136,14 +135,11 @@ pub trait MultilinearPcsProver<GC: IopCtx, Proof>: 'static + Send + Sync {
         evaluation_claim: GC::EF,
         prover_data: Rounds<Self::ProverData>,
         challenger: &mut GC::Challenger,
-    ) -> impl Future<Output = Result<Proof, Self::ProverError>> + Send {
-        async move {
-            // Observe the evaluation claim.
-            challenger.observe_ext_element(evaluation_claim);
+    ) -> Result<Proof, Self::ProverError> {
+        // Observe the evaluation claim.
+        challenger.observe_ext_element(evaluation_claim);
 
-            self.prove_trusted_evaluation(eval_point, evaluation_claim, prover_data, challenger)
-                .await
-        }
+        self.prove_trusted_evaluation(eval_point, evaluation_claim, prover_data, challenger)
     }
 
     fn log_max_padding_amount(&self) -> u32;

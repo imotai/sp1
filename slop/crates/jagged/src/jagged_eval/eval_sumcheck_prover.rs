@@ -13,7 +13,7 @@ use super::{JaggedAssistSumAsPoly, JaggedEvalSumcheckPoly};
 ///
 ///  # Panics
 ///  Will panic if the polynomial has zero variables.
-pub async fn prove_jagged_eval_sumcheck<
+pub fn prove_jagged_eval_sumcheck<
     F: Field,
     EF: ExtensionField<F> + Send + Sync,
     Challenger: FieldChallenger<F> + Send + Sync,
@@ -30,22 +30,23 @@ pub async fn prove_jagged_eval_sumcheck<
     let num_variables = poly.num_variables();
 
     // The first round of sumcheck.
-    let mut round_claim = poly
-        .sum_as_poly_in_last_t_variables_observe_and_sample(Some(claim), sum_values, challenger, t)
-        .await;
+    let mut round_claim = poly.sum_as_poly_in_last_t_variables_observe_and_sample(
+        Some(claim),
+        sum_values,
+        challenger,
+        t,
+    );
 
-    let mut polys_cursor = BPE::fix_last_variable(poly).await;
+    let mut polys_cursor = BPE::fix_last_variable(poly);
 
     for _ in t..num_variables as usize {
-        round_claim = polys_cursor
-            .sum_as_poly_in_last_variable_observe_and_sample(
-                Some(round_claim),
-                sum_values,
-                challenger,
-            )
-            .await;
+        round_claim = polys_cursor.sum_as_poly_in_last_variable_observe_and_sample(
+            Some(round_claim),
+            sum_values,
+            challenger,
+        );
 
-        polys_cursor = BPE::fix_last_variable(polys_cursor).await;
+        polys_cursor = BPE::fix_last_variable(polys_cursor);
     }
 
     // Move the `sum_as_poly` evaluations to the CPU.

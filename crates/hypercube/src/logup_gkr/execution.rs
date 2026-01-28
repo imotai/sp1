@@ -1,11 +1,9 @@
-use futures::prelude::*;
-
 use itertools::Itertools;
 use rayon::prelude::*;
 use slop_algebra::{ExtensionField, Field};
 use slop_alloc::CpuBackend;
 use slop_matrix::dense::RowMajorMatrix;
-use slop_multilinear::{Mle, PaddedMle, Padding, PartialLagrangeBackend, Point};
+use slop_multilinear::{Mle, PaddedMle, Padding, Point};
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{prover::Traces, Interaction};
@@ -38,7 +36,7 @@ pub(crate) fn generate_interaction_vals<F: Field, EF: ExtensionField<F>>(
 
 impl<F: Field, EF: ExtensionField<F>, A> LogupGkrCpuTraceGenerator<F, EF, A> {
     #[allow(clippy::unused_self)]
-    pub(crate) async fn extract_outputs(
+    pub(crate) fn extract_outputs(
         &self,
         last_layer: &LogUpGkrCpuLayer<EF, EF>,
     ) -> LogUpGkrOutput<EF> {
@@ -47,60 +45,52 @@ impl<F: Field, EF: ExtensionField<F>, A> LogupGkrCpuTraceGenerator<F, EF, A> {
         let denominator_0 = last_layer.denominator_0.clone();
         let denominator_1 = last_layer.denominator_1.clone();
 
-        let mut numerator_0_interactions = stream::iter(numerator_0.into_iter())
-            .then(|mle| async move {
-                let n00 = mle.fix_last_variable(EF::zero()).await;
-                let n01 = mle.fix_last_variable(EF::one()).await;
-                let n00_int = n00.eval_at::<EF>(&Point::from(vec![])).await.to_vec();
-                let n01_int = n01.eval_at::<EF>(&Point::from(vec![])).await.to_vec();
-                let n0_int = n00_int.iter().interleave(n01_int.iter()).copied().collect::<Vec<_>>();
-                stream::iter(n0_int)
+        let mut numerator_0_interactions: Vec<EF> = numerator_0
+            .into_iter()
+            .flat_map(|mle| {
+                let n00 = mle.fix_last_variable(EF::zero());
+                let n01 = mle.fix_last_variable(EF::one());
+                let n00_int = n00.eval_at::<EF>(&Point::from(vec![])).to_vec();
+                let n01_int = n01.eval_at::<EF>(&Point::from(vec![])).to_vec();
+                n00_int.iter().interleave(n01_int.iter()).copied().collect::<Vec<_>>()
             })
-            .flatten()
-            .collect::<Vec<_>>()
-            .await;
+            .collect();
         numerator_0_interactions
             .resize(1 << (last_layer.num_interaction_variables + 1), EF::zero());
-        let mut numerator_1_interactions = stream::iter(numerator_1.into_iter())
-            .then(|mle| async move {
-                let n10 = mle.fix_last_variable(EF::zero()).await;
-                let n11 = mle.fix_last_variable(EF::one()).await;
-                let n10_int = n10.eval_at::<EF>(&Point::from(vec![])).await.to_vec();
-                let n11_int = n11.eval_at::<EF>(&Point::from(vec![])).await.to_vec();
-                let n1_int = n10_int.iter().interleave(n11_int.iter()).copied().collect::<Vec<_>>();
-                stream::iter(n1_int)
+        let mut numerator_1_interactions: Vec<EF> = numerator_1
+            .into_iter()
+            .flat_map(|mle| {
+                let n10 = mle.fix_last_variable(EF::zero());
+                let n11 = mle.fix_last_variable(EF::one());
+                let n10_int = n10.eval_at::<EF>(&Point::from(vec![])).to_vec();
+                let n11_int = n11.eval_at::<EF>(&Point::from(vec![])).to_vec();
+                n10_int.iter().interleave(n11_int.iter()).copied().collect::<Vec<_>>()
             })
-            .flatten()
-            .collect::<Vec<_>>()
-            .await;
+            .collect();
         numerator_1_interactions
             .resize(1 << (last_layer.num_interaction_variables + 1), EF::zero());
-        let mut denominator_0_interactions = stream::iter(denominator_0.into_iter())
-            .then(|mle| async move {
-                let d00 = mle.fix_last_variable(EF::zero()).await;
-                let d01 = mle.fix_last_variable(EF::one()).await;
-                let d00_int = d00.eval_at::<EF>(&Point::from(vec![])).await.to_vec();
-                let d01_int = d01.eval_at::<EF>(&Point::from(vec![])).await.to_vec();
-                let d0_int = d00_int.iter().interleave(d01_int.iter()).copied().collect::<Vec<_>>();
-                stream::iter(d0_int)
+        let mut denominator_0_interactions: Vec<EF> = denominator_0
+            .into_iter()
+            .flat_map(|mle| {
+                let d00 = mle.fix_last_variable(EF::zero());
+                let d01 = mle.fix_last_variable(EF::one());
+                let d00_int = d00.eval_at::<EF>(&Point::from(vec![])).to_vec();
+                let d01_int = d01.eval_at::<EF>(&Point::from(vec![])).to_vec();
+                d00_int.iter().interleave(d01_int.iter()).copied().collect::<Vec<_>>()
             })
-            .flatten()
-            .collect::<Vec<_>>()
-            .await;
+            .collect();
         denominator_0_interactions
             .resize(1 << (last_layer.num_interaction_variables + 1), EF::one());
-        let mut denominator_1_interactions = stream::iter(denominator_1.into_iter())
-            .then(|mle| async move {
-                let d10 = mle.fix_last_variable(EF::zero()).await;
-                let d11 = mle.fix_last_variable(EF::one()).await;
-                let d10_int = d10.eval_at::<EF>(&Point::from(vec![])).await.to_vec();
-                let d11_int = d11.eval_at::<EF>(&Point::from(vec![])).await.to_vec();
-                let d1_int = d10_int.iter().interleave(d11_int.iter()).copied().collect::<Vec<_>>();
-                stream::iter(d1_int)
+        let mut denominator_1_interactions: Vec<EF> = denominator_1
+            .into_iter()
+            .flat_map(|mle| {
+                let d10 = mle.fix_last_variable(EF::zero());
+                let d11 = mle.fix_last_variable(EF::one());
+                let d10_int = d10.eval_at::<EF>(&Point::from(vec![])).to_vec();
+                let d11_int = d11.eval_at::<EF>(&Point::from(vec![])).to_vec();
+                d10_int.iter().interleave(d11_int.iter()).copied().collect::<Vec<_>>()
             })
-            .flatten()
-            .collect::<Vec<_>>()
-            .await;
+            .collect();
         denominator_1_interactions
             .resize(1 << (last_layer.num_interaction_variables + 1), EF::one());
 
@@ -118,7 +108,9 @@ impl<F: Field, EF: ExtensionField<F>, A> LogupGkrCpuTraceGenerator<F, EF, A> {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub(crate) async fn generate_first_layer(
+    #[allow(clippy::unused_self)]
+    #[allow(clippy::needless_pass_by_value)]
+    pub(crate) fn generate_first_layer(
         &self,
         interactions: &BTreeMap<String, Vec<(&Interaction<F>, bool)>>,
         main_traces: &Traces<F, CpuBackend>,
@@ -133,7 +125,7 @@ impl<F: Field, EF: ExtensionField<F>, A> LogupGkrCpuTraceGenerator<F, EF, A> {
         let mut denominator_0 = Vec::new();
         let mut numerator_1 = Vec::new();
         let mut denominator_1 = Vec::new();
-        let betas = CpuBackend::partial_lagrange(&beta_seed).await.into_buffer().into_vec();
+        let betas = Mle::partial_lagrange(&beta_seed).guts().as_slice().to_vec();
         let mut total_interactions = 0;
         for (name, interactions) in interactions.iter() {
             let main_trace = main_traces.get(name.as_str()).unwrap().clone();
@@ -238,10 +230,10 @@ impl<F: Field, EF: ExtensionField<F>, A> LogupGkrCpuTraceGenerator<F, EF, A> {
                 num_row_variables,
                 Padding::Constant((EF::one(), num_polys, CpuBackend)),
             );
-            let numer_0 = numer_padded.fix_last_variable(F::zero()).await;
-            let denom_0 = denom_padded.fix_last_variable(EF::zero()).await;
-            let numer_1 = numer_padded.fix_last_variable(F::one()).await;
-            let denom_1 = denom_padded.fix_last_variable(EF::one()).await;
+            let numer_0 = numer_padded.fix_last_variable(F::zero());
+            let denom_0 = denom_padded.fix_last_variable(EF::zero());
+            let numer_1 = numer_padded.fix_last_variable(F::one());
+            let denom_1 = denom_padded.fix_last_variable(EF::one());
             numerator_0.push(numer_0);
             denominator_0.push(denom_0);
             numerator_1.push(numer_1);

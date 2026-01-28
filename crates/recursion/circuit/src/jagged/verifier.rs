@@ -241,7 +241,8 @@ mod tests {
     type C = AsmConfig;
     type Prover = JaggedProver<SP1GlobalContext, SP1PcsProofInner, SP1InnerPcsProver>;
 
-    async fn generate_jagged_proof(
+    #[allow(clippy::type_complexity)]
+    fn generate_jagged_proof(
         jagged_verifier: &JaggedPcsVerifier<GC, JC>,
         round_mles: Rounds<Vec<PaddedMle<F>>>,
         eval_point: Point<EF>,
@@ -257,8 +258,7 @@ mod tests {
         let mut prover_data = Rounds::new();
         let mut commitments = Rounds::new();
         for round in round_mles.iter() {
-            let (commit, data) =
-                jagged_prover.commit_multilinears(round.clone()).await.ok().unwrap();
+            let (commit, data) = jagged_prover.commit_multilinears(round.clone()).ok().unwrap();
             challenger.observe(commit);
             let data_bytes = bincode::serialize(&data).unwrap();
             let data = bincode::deserialize(&data_bytes).unwrap();
@@ -270,7 +270,7 @@ mod tests {
         for round in round_mles.iter() {
             let mut evals = Evaluations::default();
             for mle in round.iter() {
-                let eval = mle.eval_at(&eval_point).await;
+                let eval = mle.eval_at(&eval_point);
                 evals.push(eval);
             }
             evaluation_claims.push(evals);
@@ -283,15 +283,14 @@ mod tests {
                 prover_data,
                 &mut challenger,
             )
-            .await
             .ok()
             .unwrap();
 
         (proof, commitments, evaluation_claims)
     }
 
-    #[tokio::test]
-    async fn test_jagged_verifier() {
+    #[test]
+    fn test_jagged_verifier() {
         setup_logger();
 
         let row_counts_rounds = vec![
@@ -362,7 +361,7 @@ mod tests {
 
         // Generate the jagged proof.
         let (proof, mut commitments, evaluation_claims) =
-            generate_jagged_proof(&jagged_verifier, round_mles, eval_point.clone()).await;
+            generate_jagged_proof(&jagged_verifier, round_mles, eval_point.clone());
 
         let mut challenger = jagged_verifier.challenger();
 

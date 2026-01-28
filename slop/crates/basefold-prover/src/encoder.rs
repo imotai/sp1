@@ -19,29 +19,24 @@ impl<F: TwoAdicField> CpuDftEncoder<F> {
         self.config
     }
 
-    pub(crate) async fn encode_batch<M>(
+    pub(crate) fn encode_batch<M>(
         &self,
         data: Message<M>,
     ) -> Result<Message<RsCodeWord<F>>, Infallible>
     where
         M: OwnedBorrow<Mle<F>>,
     {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        let dft = self.dft.clone();
+        let dft = &self.dft;
         let log_blowup = self.config.log_blowup();
-        let data = data.to_vec();
-        slop_futures::rayon::spawn(move || {
-            let mut results = Vec::with_capacity(data.len());
-            for data in data {
-                let data = data.borrow().guts();
-                assert_eq!(data.sizes().len(), 2, "Expected a 2D tensor");
-                // Perform a DFT along the first axis of the tensor (assumed to be the long
-                // dimension).
-                let dft = dft.dft(data, log_blowup, DftOrdering::BitReversed, 0).unwrap();
-                results.push(Arc::new(RsCodeWord { data: dft }));
-            }
-            tx.send(Message::from(results)).unwrap();
-        });
-        Ok(rx.await.unwrap())
+        let mut results = Vec::with_capacity(data.len());
+        for data in data.iter() {
+            let data = data.borrow().guts();
+            assert_eq!(data.sizes().len(), 2, "Expected a 2D tensor");
+            // Perform a DFT along the first axis of the tensor (assumed to be the long
+            // dimension).
+            let dft_result = dft.dft(data, log_blowup, DftOrdering::BitReversed, 0).unwrap();
+            results.push(Arc::new(RsCodeWord { data: dft_result }));
+        }
+        Ok(Message::from(results))
     }
 }

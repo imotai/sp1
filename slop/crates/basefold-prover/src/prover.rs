@@ -60,7 +60,9 @@ impl<GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>, P: ComputeTcsOpenings<GC, Cp
 
     #[inline]
     pub fn new(verifier: &BasefoldVerifier<GC>) -> Self
-where {
+    where
+        P: Default,
+    {
         let tcs_prover = P::default();
         let encoder =
             CpuDftEncoder { config: verifier.fri_config, dft: Arc::new(Radix2DitParallel) };
@@ -69,7 +71,7 @@ where {
 
     #[inline]
     #[allow(clippy::type_complexity)]
-    pub async fn commit_mles<M>(
+    pub fn commit_mles<M>(
         &self,
         mles: Message<M>,
     ) -> Result<
@@ -81,20 +83,19 @@ where {
     {
         // Encode the guts of the mle via Reed-Solomon encoding.
 
-        let encoded_messages = self.encoder.encode_batch(mles.clone()).await.unwrap();
+        let encoded_messages = self.encoder.encode_batch(mles.clone()).unwrap();
 
         // Commit to the encoded messages.
         let (commitment, tcs_prover_data) = self
             .tcs_prover
             .commit_tensors(encoded_messages.clone())
-            .await
             .map_err(BaseFoldConfigProverError::<GC, P>::TcsCommitError)?;
 
         Ok((commitment, BasefoldProverData { encoded_messages, tcs_prover_data }))
     }
 
     #[inline]
-    pub async fn prove_trusted_mle_evaluations(
+    pub fn prove_trusted_mle_evaluations(
         &self,
         mut eval_point: Point<GC::EF>,
         mle_rounds: Rounds<Message<Mle<GC::F>>>,
@@ -119,9 +120,13 @@ where {
         // Sample a batching challenge and batch the mles and codewords.
         let batching_challenge: GC::EF = challenger.sample_ext_element();
         // Batch the mles and codewords.
-        let (mle_batch, codeword_batch, batched_eval_claim) = fri_prover
-            .batch(batching_challenge, mles, encoded_messages, evaluation_claims, &self.encoder)
-            .await;
+        let (mle_batch, codeword_batch, batched_eval_claim) = fri_prover.batch(
+            batching_challenge,
+            mles,
+            encoded_messages,
+            evaluation_claims,
+            &self.encoder,
+        );
         // From this point on, run the BaseFold protocol on the random linear combination codeword,
         // the random linear combination multilinear, and the random linear combination of the
         // evaluation claims.
@@ -147,7 +152,7 @@ where {
         for _ in 0..eval_point.dimension() {
             // Compute claims for `g(X_0, X_1, ..., X_{d-1}, 0)` and `g(X_0, X_1, ..., X_{d-1}, 1)`.
             let last_coord = eval_point.remove_last_coordinate();
-            let zero_values = current_mle.fixed_at_zero(&eval_point).await;
+            let zero_values = current_mle.fixed_at_zero(&eval_point);
             let zero_val = zero_values[0];
             let one_val = (current_batched_eval_claim - zero_val) / last_coord + zero_val;
             let uni_poly = [zero_val, one_val];
@@ -159,7 +164,6 @@ where {
             // codeword, and folding parameter.
             let (beta, folded_mle, folded_codeword, commitment, leaves, prover_data) = fri_prover
                 .commit_phase_round(current_mle, current_codeword, &self.tcs_prover, challenger)
-                .await
                 .map_err(BasefoldProverError::CommitPhaseError)?;
 
             fri_commitments.push(commitment);
@@ -171,7 +175,7 @@ where {
             current_batched_eval_claim = zero_val + beta * one_val;
         }
 
-        let final_poly = fri_prover.final_poly(current_codeword).await;
+        let final_poly = fri_prover.final_poly(current_codeword);
         challenger.observe_ext_element(final_poly);
 
         let fri_config = self.encoder.config();
@@ -187,11 +191,10 @@ where {
         for prover_data in prover_data {
             let BasefoldProverData { encoded_messages, tcs_prover_data } = prover_data;
             let values =
-                self.tcs_prover.compute_openings_at_indices(encoded_messages, &query_indices).await;
+                self.tcs_prover.compute_openings_at_indices(encoded_messages, &query_indices);
             let proof = self
                 .tcs_prover
                 .prove_openings_at_indices(tcs_prover_data, &query_indices)
-                .await
                 .map_err(BaseFoldConfigProverError::<GC, P>::TcsCommitError)
                 .unwrap();
             let opening = MerkleTreeOpeningAndProof::<GC> { values, proof };
@@ -206,12 +209,11 @@ where {
                 *index >>= 1;
             }
             let leaves: Message<Tensor<GC::F>> = leaves.into();
-            let values = self.tcs_prover.compute_openings_at_indices(leaves, &indices).await;
+            let values = self.tcs_prover.compute_openings_at_indices(leaves, &indices);
 
             let proof = self
                 .tcs_prover
                 .prove_openings_at_indices(data, &indices)
-                .await
                 .map_err(BaseFoldConfigProverError::<GC, P>::TcsCommitError)?;
             let opening = MerkleTreeOpeningAndProof { values, proof };
             query_phase_openings_and_proofs.push(opening);
@@ -227,7 +229,7 @@ where {
         })
     }
 
-    pub async fn prove_untrusted_evaluations(
+    pub fn prove_untrusted_evaluations(
         &self,
         eval_point: Point<GC::EF>,
         mle_rounds: Rounds<Message<Mle<GC::F>>>,
@@ -252,36 +254,36 @@ where {
             prover_data,
             challenger,
         )
-        .await
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use futures::prelude::*;
     use rand::thread_rng;
     use slop_baby_bear::baby_bear_poseidon2::BabyBearDegree4Duplex;
     use slop_basefold::{BasefoldVerifier, FriConfig};
     use slop_challenger::CanObserve;
     use slop_koala_bear::KoalaBearDegree4Duplex;
-    use slop_merkle_tree::{Poseidon2BabyBear16Prover, Poseidon2KoalaBear16Prover};
+    use slop_merkle_tree::{
+        ComputeTcsOpenings, Poseidon2BabyBear16Prover, Poseidon2KoalaBear16Prover,
+    };
     use slop_multilinear::MleEval;
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_baby_bear_basefold_prover() {
-        test_basefold_prover_backend::<BabyBearDegree4Duplex, Poseidon2BabyBear16Prover>().await;
+    #[test]
+    fn test_baby_bear_basefold_prover() {
+        test_basefold_prover_backend::<BabyBearDegree4Duplex, Poseidon2BabyBear16Prover>();
     }
 
-    #[tokio::test]
-    async fn test_koala_bear_basefold_prover() {
-        test_basefold_prover_backend::<KoalaBearDegree4Duplex, Poseidon2KoalaBear16Prover>().await;
+    #[test]
+    fn test_koala_bear_basefold_prover() {
+        test_basefold_prover_backend::<KoalaBearDegree4Duplex, Poseidon2KoalaBear16Prover>();
     }
 
-    async fn test_basefold_prover_backend<
+    fn test_basefold_prover_backend<
         GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>,
-        P: ComputeTcsOpenings<GC, CpuBackend>,
+        P: ComputeTcsOpenings<GC, CpuBackend> + Default,
     >()
     where
         rand::distributions::Standard: rand::distributions::Distribution<GC::F>,
@@ -311,14 +313,12 @@ mod tests {
         let mut eval_claims = Rounds::new();
         let point = Point::<GC::EF>::rand(&mut rng, num_variables);
         for mles in round_mles.iter() {
-            let (commitment, data) = prover.commit_mles(mles.clone()).await.unwrap();
+            let (commitment, data) = prover.commit_mles(mles.clone()).unwrap();
             challenger.observe(commitment);
             commitments.push(commitment);
             prover_data.push(data);
-            let evaluations = stream::iter(mles.iter())
-                .then(|mle| mle.eval_at(&point))
-                .collect::<Evaluations<_>>()
-                .await;
+            let evaluations =
+                mles.iter().map(|mle| mle.eval_at(&point)).collect::<Evaluations<_>>();
             eval_claims.push(evaluations);
         }
 
@@ -330,7 +330,6 @@ mod tests {
                 prover_data,
                 &mut challenger,
             )
-            .await
             .unwrap();
 
         let mut challenger = GC::default_challenger();

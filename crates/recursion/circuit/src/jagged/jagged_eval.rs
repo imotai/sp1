@@ -258,7 +258,7 @@ mod tests {
         }
     }
 
-    async fn sumcheck_jagged_eval(
+    fn sumcheck_jagged_eval(
         prover_params: &JaggedLittlePolynomialProverParams,
         verifier_params: &JaggedLittlePolynomialVerifierParams<F>,
         z_row: &Point<EF>,
@@ -276,16 +276,14 @@ mod tests {
         let default_perm = inner_perm();
         let mut challenger =
             DuplexChallenger::<SP1Field, SP1Perm, 16, 8>::new(default_perm.clone());
-        let jagged_eval_proof = prover
-            .prove_jagged_evaluation(
-                prover_params,
-                z_row,
-                z_col,
-                z_trace,
-                &mut challenger,
-                CpuBackend,
-            )
-            .await;
+        let jagged_eval_proof = prover.prove_jagged_evaluation(
+            prover_params,
+            z_row,
+            z_col,
+            z_trace,
+            &mut challenger,
+            CpuBackend,
+        );
 
         let mut builder = AsmBuilder::default();
         builder.cycle_tracker_v2_enter("sumcheck-jagged-eval");
@@ -336,8 +334,8 @@ mod tests {
         prefix_sum_felts
     }
 
-    #[tokio::test]
-    async fn test_jagged_eval_proof() {
+    #[test]
+    fn test_jagged_eval_proof() {
         setup_logger();
         let row_counts = [12, 1, 2, 1, 17, 0];
 
@@ -380,8 +378,7 @@ mod tests {
             &z_trace,
             expected_result,
             true,
-        )
-        .await;
+        );
 
         // Test the invalid cases.
         let mut z_row_invalid = z_row.clone();
@@ -403,7 +400,6 @@ mod tests {
             &z_trace,
             expected_result,
             false,
-        )
-        .await;
+        );
     }
 }

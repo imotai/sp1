@@ -122,7 +122,7 @@ mod tests {
     use slop_alloc::CpuBackend;
     use slop_challenger::IopCtx;
     use slop_matrix::dense::{RowMajorMatrix, RowMajorMatrixView};
-    use slop_multilinear::{full_geq, Mle, PaddedMle, Padding, Point, VirtualGeq};
+    use slop_multilinear::{full_geq, Mle, MleEval, PaddedMle, Padding, Point, VirtualGeq};
     use slop_sumcheck::{partially_verify_sumcheck_proof, reduce_sumcheck_to_evaluation};
     use slop_uni_stark::get_symbolic_constraints;
     use sp1_hypercube::{
@@ -139,8 +139,8 @@ mod tests {
     type F = sp1_primitives::SP1Field;
     type EF = BinomialExtensionField<F, 4>;
 
-    #[tokio::test]
-    async fn test_zerocheck() {
+    #[test]
+    fn test_zerocheck() {
         setup_logger();
         let mut rng = rand::thread_rng();
         let air = MinimalAddChip::default();
@@ -208,7 +208,7 @@ mod tests {
 
         let zeta = Point::rand(&mut rng, num_variables);
 
-        let gkr_openings = main_trace.eval_at(&zeta).await;
+        let gkr_openings: MleEval<EF> = main_trace.eval_at(&zeta);
 
         let sumcheck_claim = gkr_openings
             .evaluations()
@@ -236,15 +236,14 @@ mod tests {
         let mut challenger = SP1GlobalContext::default_challenger();
 
         let (proof, column_openings) =
-            reduce_sumcheck_to_evaluation(vec![zerocheck_poly], &mut challenger, claims, t, lambda)
-                .await;
+            reduce_sumcheck_to_evaluation(vec![zerocheck_poly], &mut challenger, claims, t, lambda);
 
         let chip_eval_claim = proof.point_and_eval.1;
         let chip_eval_point = proof.point_and_eval.0.clone();
 
         let column_openings = &column_openings[0];
 
-        assert_eq!(column_openings, &main_trace.eval_at(&chip_eval_point).await.to_vec());
+        assert_eq!(column_openings, &main_trace.eval_at(&chip_eval_point).to_vec());
 
         let opening = ChipOpenedValues::<F, EF> {
             preprocessed: AirOpenedValues { local: vec![] },
@@ -290,8 +289,8 @@ mod tests {
         assert_eq!(chip_eval_claim, zerocheck_eq_val * (constraint_eval + openings_batch));
     }
 
-    #[tokio::test]
-    async fn test_debug_constraints() {
+    #[test]
+    fn test_debug_constraints() {
         setup_logger();
         let num_real_entries = 65;
 
@@ -311,17 +310,16 @@ mod tests {
 
         let main_trace: Mle<SP1Field> = Mle::from(virtually_padded_trace);
 
-        debug_constraints::<SP1GlobalContext, MinimalAddChip, _>(
+        debug_constraints::<SP1GlobalContext, _>(
             &Chip::new(MinimalAddChip::default()),
             None,
             &main_trace,
             &[],
-        )
-        .await;
+        );
     }
 
-    #[tokio::test]
-    async fn test_debug_constraints_failing() {
+    #[test]
+    fn test_debug_constraints_failing() {
         setup_logger();
         let num_real_entries = 65;
 
@@ -345,12 +343,11 @@ mod tests {
 
         let main_trace: Mle<SP1Field> = Mle::from(virtually_padded_trace);
 
-        debug_constraints::<SP1GlobalContext, MinimalAddChip, _>(
+        debug_constraints::<SP1GlobalContext, _>(
             &Chip::new(MinimalAddChip::default()),
             None,
             &main_trace,
             &[],
-        )
-        .await;
+        );
     }
 }

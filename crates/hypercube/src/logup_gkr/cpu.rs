@@ -74,7 +74,8 @@ pub struct InteractionLayer<F, EF> {
 
 impl<F: Field, EF: ExtensionField<F>, A: MachineAir<F>> LogupGkrCpuTraceGenerator<F, EF, A> {
     #[allow(unused_variables)]
-    pub(crate) async fn generate_gkr_circuit(
+    #[allow(clippy::needless_pass_by_value)]
+    pub(crate) fn generate_gkr_circuit(
         &self,
         chips: &BTreeSet<Chip<F, A>>,
         preprocessed_traces: Traces<F, CpuBackend>,
@@ -96,9 +97,13 @@ impl<F: Field, EF: ExtensionField<F>, A: MachineAir<F>> LogupGkrCpuTraceGenerato
             })
             .collect::<BTreeMap<_, _>>();
 
-        let first_layer = self
-            .generate_first_layer(&interactions, &traces, &preprocessed_traces, alpha, beta_seed)
-            .await;
+        let first_layer = self.generate_first_layer(
+            &interactions,
+            &traces,
+            &preprocessed_traces,
+            alpha,
+            beta_seed,
+        );
         let num_row_variables = first_layer.num_row_variables;
         // println!("num_row_variables: {:?}", num_row_variables);
         let num_interaction_variables = first_layer.num_interaction_variables;
@@ -119,7 +124,7 @@ impl<F: Field, EF: ExtensionField<F>, A: MachineAir<F>> LogupGkrCpuTraceGenerato
             GkrCircuitLayer::FirstLayer(layer) => unreachable!(),
         };
         assert_eq!(last_layer.num_row_variables, 1);
-        let output = self.extract_outputs(last_layer).await;
+        let output = self.extract_outputs(last_layer);
 
         let circuit_generator = Some(Self::default());
         let circuit = LogupGkrCpuCircuit { layers };
@@ -143,11 +148,7 @@ impl<F: Field, EF: ExtensionField<F>> LogupGkrCpuCircuit<F, EF> {
     }
 }
 
-pub(crate) async fn prove_gkr_round<
-    F: Field,
-    EF: ExtensionField<F>,
-    Challenger: FieldChallenger<F>,
->(
+pub(crate) fn prove_gkr_round<F: Field, EF: ExtensionField<F>, Challenger: FieldChallenger<F>>(
     circuit: GkrCircuitLayer<F, EF>,
     eval_point: &slop_multilinear::Point<EF>,
     numerator_eval: EF,
@@ -160,8 +161,8 @@ pub(crate) async fn prove_gkr_round<
         GkrCircuitLayer::Layer(layer) => {
             let (interaction_point, row_point) =
                 eval_point.split_at(layer.num_interaction_variables);
-            let eq_interaction = Mle::partial_lagrange(&interaction_point).await;
-            let eq_row = Mle::partial_lagrange(&row_point).await;
+            let eq_interaction = Mle::partial_lagrange(&interaction_point);
+            let eq_row = Mle::partial_lagrange(&row_point);
             let sumcheck_poly = LogupRoundPolynomial {
                 layer: PolynomialLayer::CircuitLayer(layer),
                 eq_row: Arc::new(eq_row),
@@ -179,8 +180,7 @@ pub(crate) async fn prove_gkr_round<
                 vec![claim],
                 1,
                 lambda,
-            )
-            .await;
+            );
 
             let openings = openings.pop().unwrap();
             let [numerator_0, denominator_0, numerator_1, denominator_1] =
@@ -190,8 +190,8 @@ pub(crate) async fn prove_gkr_round<
         GkrCircuitLayer::FirstLayer(layer) => {
             let (interaction_point, row_point) =
                 eval_point.split_at(layer.num_interaction_variables);
-            let eq_interaction = Mle::partial_lagrange(&interaction_point).await;
-            let eq_row = Mle::partial_lagrange(&row_point).await;
+            let eq_interaction = Mle::partial_lagrange(&interaction_point);
+            let eq_row = Mle::partial_lagrange(&row_point);
             let sumcheck_poly = LogupRoundPolynomial {
                 layer: PolynomialLayer::CircuitLayer(layer),
                 eq_row: Arc::new(eq_row),
@@ -208,8 +208,7 @@ pub(crate) async fn prove_gkr_round<
                 vec![claim],
                 1,
                 lambda,
-            )
-            .await;
+            );
             let openings = openings.pop().unwrap();
             let [numerator_0, denominator_0, numerator_1, denominator_1] =
                 openings.try_into().unwrap();

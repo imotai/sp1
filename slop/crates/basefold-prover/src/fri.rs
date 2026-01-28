@@ -27,7 +27,8 @@ pub struct MleBatch<F: Field, EF: ExtensionField<F>, A: Backend = CpuBackend> {
 pub struct FriCpuProver<GC, P>(pub PhantomData<(GC, P)>);
 
 impl<GC: IopCtx<F: TwoAdicField>, P: TensorCsProver<GC, CpuBackend>> FriCpuProver<GC, P> {
-    pub(crate) async fn batch<M, Code>(
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn batch<M, Code>(
         &self,
         batching_challenge: GC::EF,
         mles: Message<M>,
@@ -42,54 +43,41 @@ impl<GC: IopCtx<F: TwoAdicField>, P: TensorCsProver<GC, CpuBackend>> FriCpuProve
         let encoder = encoder.clone();
         let num_variables = mles.first().unwrap().as_ref().borrow().num_variables() as usize;
 
-        let (tx, rx) = tokio::sync::oneshot::channel();
+        // Compute all the batch challenge powers.
+        let total_num_polynomials =
+            mles.iter().map(|mle| mle.borrow().num_polynomials()).sum::<usize>();
+        let mut batch_challenge_powers =
+            batching_challenge.powers().take(total_num_polynomials).collect::<Vec<_>>();
 
-        slop_futures::rayon::spawn(move || {
-            // Compute all the batch challenge powers.
-            let total_num_polynomials =
-                mles.iter().map(|mle| mle.borrow().num_polynomials()).sum::<usize>();
-            let mut batch_challenge_powers =
-                batching_challenge.powers().take(total_num_polynomials).collect::<Vec<_>>();
+        // Compute the random linear combination of the MLEs of the columns of the matrices
+        let mut batch_mle = Mle::from(vec![GC::EF::zero(); 1 << num_variables]);
+        for mle in mles.iter() {
+            let mle: &Mle<_, _> = mle.as_ref().borrow();
+            let batch_size = mle.num_polynomials();
+            let mut powers = batch_challenge_powers;
+            batch_challenge_powers = powers.split_off(batch_size);
+            // Batch the mles as an inner product.
+            batch_mle.guts_mut().as_mut_slice().iter_mut().zip_eq(mle.hypercube_iter()).for_each(
+                |(batch, row)| {
+                    let batch_row = powers.iter().zip_eq(row).map(|(a, b)| *a * *b).sum::<GC::EF>();
+                    *batch += batch_row;
+                },
+            );
+        }
 
-            // Compute the random linear combination of the MLEs of the columns of the matrices
-            let num_variables = mles.first().unwrap().as_ref().borrow().num_variables() as usize;
-            let mut batch_mle = Mle::from(vec![GC::EF::zero(); 1 << num_variables]);
-            for mle in mles.iter() {
-                let mle: &Mle<_, _> = mle.as_ref().borrow();
-                let batch_size = mle.num_polynomials();
-                let mut powers = batch_challenge_powers;
-                batch_challenge_powers = powers.split_off(batch_size);
-                // Batch the mles as an inner product.
-                batch_mle
-                    .guts_mut()
-                    .as_mut_slice()
-                    .iter_mut()
-                    .zip_eq(mle.hypercube_iter())
-                    .for_each(|(batch, row)| {
-                        let batch_row =
-                            powers.iter().zip_eq(row).map(|(a, b)| *a * *b).sum::<GC::EF>();
-                        *batch += batch_row;
-                    });
-            }
-
-            let batched_eval_claim = evaluation_claims
-                .iter()
-                .flat_map(|batch_claims| unsafe {
-                    batch_claims.evaluations().storage.copy_into_host_vec()
-                })
-                .zip(batching_challenge.powers())
-                .map(|(eval, batch_power)| eval * batch_power)
-                .sum::<GC::EF>();
-            tx.send((batch_mle, batched_eval_claim)).unwrap();
-        });
-
-        let (batch_mle, batched_eval_claim) = rx.await.unwrap();
+        let batched_eval_claim = evaluation_claims
+            .iter()
+            .flat_map(|batch_claims| unsafe {
+                batch_claims.evaluations().storage.copy_into_host_vec()
+            })
+            .zip(batching_challenge.powers())
+            .map(|(eval, batch_power)| eval * batch_power)
+            .sum::<GC::EF>();
 
         let batch_mle_f = Buffer::from(batch_mle.clone().into_guts().storage.as_slice().to_vec())
             .flatten_to_base::<GC::F>();
         let batch_mle_f = Tensor::from(batch_mle_f).reshape([1 << num_variables, GC::EF::D]);
-        let batch_codeword =
-            encoder.encode_batch(Message::from(Mle::new(batch_mle_f))).await.unwrap();
+        let batch_codeword = encoder.encode_batch(Message::from(Mle::new(batch_mle_f))).unwrap();
         let batch_codeword = (*batch_codeword[0]).clone();
 
         (batch_mle, batch_codeword, batched_eval_claim)
@@ -101,7 +89,8 @@ impl<
         P: TensorCsProver<GC, CpuBackend> + Send + Sync + 'static,
     > FriCpuProver<GC, P>
 {
-    pub(crate) async fn commit_phase_round(
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn commit_phase_round(
         &self,
         current_mle: Mle<GC::EF, CpuBackend>,
         current_codeword: RsCodeWord<GC::F, CpuBackend>,
@@ -121,7 +110,7 @@ impl<
             current_codeword.data.clone().reshape([original_sizes[0] / 2, 2 * original_sizes[1]]),
         );
         let (commit, prover_data) =
-            tcs_prover.commit_tensors(Message::<Tensor<_, _>>::from(leaves.clone())).await?;
+            tcs_prover.commit_tensors(Message::<Tensor<_, _>>::from(leaves.clone()))?;
         // Observe the commitment.
         challenger.observe(commit);
 
@@ -138,12 +127,12 @@ impl<
         let folded_codeword = RsCodeWord::new(folded_code_word_data);
 
         // Fold the mle.
-        let folded_mle = current_mle.fold(beta).await;
+        let folded_mle = current_mle.fold(beta);
 
         Ok((beta, folded_mle, folded_codeword, commit, leaves, prover_data))
     }
 
-    pub(crate) async fn final_poly(&self, final_codeword: RsCodeWord<GC::F, CpuBackend>) -> GC::EF {
+    pub(crate) fn final_poly(&self, final_codeword: RsCodeWord<GC::F, CpuBackend>) -> GC::EF {
         GC::EF::from_base_slice(&final_codeword.data.storage.as_slice()[0..GC::EF::D])
     }
 }

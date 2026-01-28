@@ -10,7 +10,6 @@ use crate::{
     Verifier,
 };
 use derive_where::derive_where;
-use futures::{stream, StreamExt};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use slop_algebra::{AbstractField, ExtensionField, Field};
 use slop_alloc::CpuBackend;
@@ -134,7 +133,7 @@ where
     }
 }
 
-impl<GC: IopCtx, MerkleProver: TensorCsProver<GC, CpuBackend>> ToMle<GC::F, CpuBackend>
+impl<GC: IopCtx, MerkleProver: TensorCsProver<GC, CpuBackend>> ToMle<GC::F>
     for WhirProverData<GC, MerkleProver>
 where
     GC: IopCtx,
@@ -155,7 +154,7 @@ where
         Self { dft, merkle_prover, config, _marker: std::marker::PhantomData }
     }
 
-    pub async fn parse_commitment_data(
+    pub fn parse_commitment_data(
         &self,
         challenger: &mut GC::Challenger,
         config: &WhirProofShape<GC::F>,
@@ -260,7 +259,7 @@ where
         }
     }
 
-    pub async fn prove(
+    pub fn prove(
         &self,
         query_vector: Mle<GC::EF>,
         witness_data: Rounds<WhirProverData<GC, MerkleProver>>,
@@ -270,7 +269,7 @@ where
     ) -> WhirProof<GC> {
         let n_rounds = config.round_parameters.len();
 
-        let witness_data = self.parse_commitment_data(challenger, config, witness_data).await;
+        let witness_data = self.parse_commitment_data(challenger, config, witness_data);
 
         let claim_batching_randomness: GC::EF = challenger.sample_ext_element();
         let claimed_sum: GC::EF = claim_batching_randomness
@@ -292,14 +291,12 @@ where
         );
 
         let (initial_sumcheck_polynomials, mut folding_randomness, mut claimed_sum) =
-            sumcheck_prover
-                .compute_sumcheck_polynomials(
-                    claimed_sum,
-                    num_variables - config.starting_interleaved_log_height,
-                    &config.starting_folding_pow_bits,
-                    challenger,
-                )
-                .await;
+            sumcheck_prover.compute_sumcheck_polynomials(
+                claimed_sum,
+                num_variables - config.starting_interleaved_log_height,
+                &config.starting_folding_pow_bits,
+                challenger,
+            );
 
         let mut generator = config.domain_generator;
         let mut merkle_proofs = Vec::with_capacity(n_rounds);
@@ -336,7 +333,6 @@ where
             let (commitment, prover_data) = self
                 .merkle_prover
                 .commit_tensors(Message::<Tensor<GC::F>>::from(vec![encoding_base.clone()]))
-                .await
                 .unwrap();
 
             // Observe the commitment
@@ -386,34 +382,26 @@ where
             query_proof_of_works
                 .push(challenger.grind(round_params.queries_pow_bits.ceil() as usize));
 
-            let merkle_openings = stream::iter(prev_committed_data.into_iter())
-                .then(|data| {
-                    let value = id_query_indices.clone();
-                    async move {
-                        self.merkle_prover
-                            .compute_openings_at_indices(
-                                Message::<Tensor<_>>::from(vec![data]),
-                                &value,
-                            )
-                            .await
-                    }
+            let merkle_openings: Vec<_> = prev_committed_data
+                .into_iter()
+                .map(|data| {
+                    self.merkle_prover.compute_openings_at_indices(
+                        Message::<Tensor<_>>::from(vec![data]),
+                        &id_query_indices,
+                    )
                 })
-                .collect::<Vec<_>>()
-                .await;
+                .collect();
 
             let num_openings: usize = merkle_openings.iter().map(|o| o.sizes()[1]).sum();
 
             // assert!(num_openings <= 1 << prev_folding_factor);
 
-            let merkle_proof = stream::iter(prev_prover_data.into_iter())
-                .then(|data| {
-                    let value = id_query_indices.clone();
-                    async move {
-                        self.merkle_prover.prove_openings_at_indices(data, &value).await.unwrap()
-                    }
+            let merkle_proof: Vec<_> = prev_prover_data
+                .into_iter()
+                .map(|data| {
+                    self.merkle_prover.prove_openings_at_indices(data, &id_query_indices).unwrap()
                 })
-                .collect::<Vec<_>>()
-                .await;
+                .collect();
             let merkle_proof = merkle_proof
                 .into_iter()
                 .zip(merkle_openings.into_iter())
@@ -463,17 +451,15 @@ where
                     .collect(),
             ]
             .concat();
-            sumcheck_prover.add_equality_polynomials(new_eq_polys, claim_batching_randomness).await;
+            sumcheck_prover.add_equality_polynomials(new_eq_polys, claim_batching_randomness);
 
             let (round_sumcheck_polynomials, round_folding_randomness, round_claimed_sum) =
-                sumcheck_prover
-                    .compute_sumcheck_polynomials(
-                        claimed_sum,
-                        round_params.folding_factor,
-                        &round_params.pow_bits,
-                        challenger,
-                    )
-                    .await;
+                sumcheck_prover.compute_sumcheck_polynomials(
+                    claimed_sum,
+                    round_params.folding_factor,
+                    &round_params.pow_bits,
+                    challenger,
+                );
 
             folding_randomness = round_folding_randomness;
             claimed_sum = round_claimed_sum;
@@ -505,31 +491,25 @@ where
 
         let final_pow = challenger.grind(config.final_pow_bits.ceil() as usize);
 
-        let final_merkle_openings = self
-            .merkle_prover
-            .compute_openings_at_indices(
-                Message::<Tensor<GC::F>>::from(prev_committed_data.into_iter().collect::<Vec<_>>()),
-                &final_id_indices,
-            )
-            .await;
+        let final_merkle_openings = self.merkle_prover.compute_openings_at_indices(
+            Message::<Tensor<GC::F>>::from(prev_committed_data.into_iter().collect::<Vec<_>>()),
+            &final_id_indices,
+        );
 
         assert!(prev_prover_data.len() == 1);
         let final_merkle_proof = self
             .merkle_prover
             .prove_openings_at_indices(prev_prover_data[0].clone(), &final_id_indices)
-            .await
             .unwrap();
         let final_merkle_proof =
             MerkleTreeOpeningAndProof { values: final_merkle_openings, proof: final_merkle_proof };
 
-        let (final_sumcheck_polynomials, _, _) = sumcheck_prover
-            .compute_sumcheck_polynomials(
-                claimed_sum,
-                config.final_poly_log_degree,
-                &config.final_folding_pow_bits,
-                challenger,
-            )
-            .await;
+        let (final_sumcheck_polynomials, _, _) = sumcheck_prover.compute_sumcheck_polynomials(
+            claimed_sum,
+            config.final_poly_log_degree,
+            &config.final_folding_pow_bits,
+            challenger,
+        );
 
         WhirProof {
             config: config.clone(),
@@ -559,7 +539,7 @@ where
 
     type ProverError = Infallible;
 
-    async fn commit_multilinear(
+    fn commit_multilinear(
         &self,
         mles: Message<Mle<<GC as IopCtx>::F>>,
     ) -> Result<(<GC as IopCtx>::Digest, Self::ProverData, usize), Self::ProverError> {
@@ -589,7 +569,7 @@ where
         let encoding = batch_dft(&self.dft, inner_evals.clone(), self.config.starting_log_inv_rate);
 
         let (commitment, prover_data) =
-            self.merkle_prover.commit_tensors(encoding.clone().into()).await.unwrap();
+            self.merkle_prover.commit_tensors(encoding.clone().into()).unwrap();
 
         let witness = WhirProverData {
             commitment_data: prover_data,
@@ -601,7 +581,7 @@ where
         Ok((witness.commitment, witness, added_zeroes))
     }
 
-    async fn prove_trusted_evaluation(
+    fn prove_trusted_evaluation(
         &self,
         eval_point: Point<<GC as IopCtx>::EF>,
         evaluation_claim: <GC as IopCtx>::EF,
@@ -615,15 +595,13 @@ where
             .copied()
             .chain(folding_point.iter().copied())
             .collect::<Point<_>>();
-        Ok(self
-            .prove(
-                Mle::new(partial_lagrange_blocking(&eval_point)),
-                prover_data,
-                evaluation_claim,
-                challenger,
-                &self.config,
-            )
-            .await)
+        Ok(self.prove(
+            Mle::new(partial_lagrange_blocking(&eval_point)),
+            prover_data,
+            evaluation_claim,
+            challenger,
+            &self.config,
+        ))
     }
 
     fn log_max_padding_amount(&self) -> u32 {
@@ -712,10 +690,10 @@ where
                 ),
         }
     }
-    pub async fn fix_last_variable(&self, value: EF) -> Self {
+    pub fn fix_last_variable(&self, value: EF) -> Self {
         match self {
-            KOrEfMle::K(mle) => KOrEfMle::EF(mle.fix_last_variable(value).await),
-            KOrEfMle::EF(mle) => KOrEfMle::EF(mle.fix_last_variable(value).await),
+            KOrEfMle::K(mle) => KOrEfMle::EF(mle.fix_last_variable(value)),
+            KOrEfMle::EF(mle) => KOrEfMle::EF(mle.fix_last_variable(value)),
         }
     }
 }
@@ -758,7 +736,7 @@ where
         SumcheckProver { f_vec: KOrEfMle::K(f_vec), eq_vec: eq_vec.into() }
     }
 
-    async fn add_equality_polynomials(
+    fn add_equality_polynomials(
         &mut self,
         eq_points: Vec<Point<GC::EF>>,
         combination_randomness: GC::EF,
@@ -775,7 +753,8 @@ where
         self.eq_vec = eq_vec.into();
     }
 
-    async fn compute_sumcheck_polynomials(
+    #[allow(clippy::type_complexity)]
+    fn compute_sumcheck_polynomials(
         &mut self,
         mut claimed_sum: GC::EF,
         num_rounds: usize,
@@ -800,8 +779,8 @@ where
             res.push((sumcheck_poly, pow));
             folding_randomness.push(folding_randomness_single);
 
-            self.f_vec = self.f_vec.fix_last_variable(folding_randomness_single).await;
-            self.eq_vec = self.eq_vec.fix_last_variable(folding_randomness_single).await;
+            self.f_vec = self.f_vec.fix_last_variable(folding_randomness_single);
+            self.eq_vec = self.eq_vec.fix_last_variable(folding_randomness_single);
         }
         folding_randomness.reverse();
         let num_added_zeroes = match self.f_vec {
@@ -900,8 +879,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn whir_folding() {
+    #[test]
+    fn whir_folding() {
         const FOLDING_FACTOR: usize = 4;
         let blowup_factor = 2;
 
@@ -923,13 +902,9 @@ mod tests {
 
         let folded_poly = polynomial
             .fix_last_variable(r1)
-            .await
             .fix_last_variable(r2)
-            .await
             .fix_last_variable(r3)
-            .await
-            .fix_last_variable(r4)
-            .await;
+            .fix_last_variable(r4);
 
         let encoding_of_fold =
             batch_dft::<_, F, EF>(&dft, folded_poly.guts().clone(), blowup_factor);
@@ -985,8 +960,8 @@ mod tests {
 
     type GC = KoalaBearDegree4Duplex;
 
-    #[tokio::test]
-    async fn whir_test_sumcheck() {
+    #[test]
+    fn whir_test_sumcheck() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
         let mut challenger_prover = GC::default_challenger();
@@ -1008,14 +983,12 @@ mod tests {
             .map(|(a, b)| b[0] * a[0])
             .sum();
 
-        let (_, folding_randmness, claimed_sum) = sumcheck_prover
-            .compute_sumcheck_polynomials(
-                claim,
-                num_variables,
-                &vec![0.; num_variables],
-                &mut challenger_prover,
-            )
-            .await;
+        let (_, folding_randmness, claimed_sum) = sumcheck_prover.compute_sumcheck_polynomials(
+            claim,
+            num_variables,
+            &vec![0.; num_variables],
+            &mut challenger_prover,
+        );
 
         assert_eq!(
             query_vector.blocking_eval_at(&folding_randmness.clone().into())[0]
@@ -1024,8 +997,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn whir_test_sumcheck_with_eq_modification() {
+    #[test]
+    fn whir_test_sumcheck_with_eq_modification() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
         let mut challenger_prover = GC::default_challenger();
@@ -1050,19 +1023,17 @@ mod tests {
             .sum::<EF>()
             + polynomial.blocking_monomial_basis_eval_at(&z_initial)[0];
 
-        let (_, folding_randomness, claimed_sum) = sumcheck_prover
-            .compute_sumcheck_polynomials(
-                claim,
-                num_variables / 2,
-                &vec![0.; num_variables / 2],
-                &mut challenger_prover,
-            )
-            .await;
+        let (_, folding_randomness, claimed_sum) = sumcheck_prover.compute_sumcheck_polynomials(
+            claim,
+            num_variables / 2,
+            &vec![0.; num_variables / 2],
+            &mut challenger_prover,
+        );
 
         let z_1: Point<EF> = (0..4).map(|_| rng.gen()).collect();
         let combination_randomness: EF = rng.gen();
 
-        sumcheck_prover.add_equality_polynomials(vec![z_1.clone()], combination_randomness).await;
+        sumcheck_prover.add_equality_polynomials(vec![z_1.clone()], combination_randomness);
 
         let f_vec = match &sumcheck_prover.f_vec {
             KOrEfMle::EF(f_vec) => f_vec,
@@ -1070,19 +1041,17 @@ mod tests {
         };
         let f_eval = f_vec.inner().as_ref().unwrap().blocking_monomial_basis_eval_at(&z_1);
 
-        let (_, folding_randomness_2, claimed_sum) = sumcheck_prover
-            .compute_sumcheck_polynomials(
-                claimed_sum + combination_randomness * f_eval[0],
-                2,
-                &[0.; 2],
-                &mut challenger_prover,
-            )
-            .await;
+        let (_, folding_randomness_2, claimed_sum) = sumcheck_prover.compute_sumcheck_polynomials(
+            claimed_sum + combination_randomness * f_eval[0],
+            2,
+            &[0.; 2],
+            &mut challenger_prover,
+        );
 
         let z_2: Point<EF> = (0..2).map(|_| rng.gen()).collect();
         let combination_randomness_2: EF = rng.gen();
 
-        sumcheck_prover.add_equality_polynomials(vec![z_2.clone()], combination_randomness_2).await;
+        sumcheck_prover.add_equality_polynomials(vec![z_2.clone()], combination_randomness_2);
 
         let f_vec = match &sumcheck_prover.f_vec {
             KOrEfMle::EF(f_vec) => f_vec,
@@ -1090,14 +1059,12 @@ mod tests {
         };
         let f_eval = f_vec.inner().as_ref().unwrap().blocking_monomial_basis_eval_at(&z_2);
 
-        let (_, folding_randomness_3, claimed_sum) = sumcheck_prover
-            .compute_sumcheck_polynomials(
-                claimed_sum + combination_randomness_2 * f_eval[0],
-                2,
-                &[0.; 2],
-                &mut challenger_prover,
-            )
-            .await;
+        let (_, folding_randomness_3, claimed_sum) = sumcheck_prover.compute_sumcheck_polynomials(
+            claimed_sum + combination_randomness_2 * f_eval[0],
+            2,
+            &[0.; 2],
+            &mut challenger_prover,
+        );
 
         let full_concatenated: Point<EF> = folding_randomness_3
             .iter()
@@ -1157,10 +1124,10 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[test]
     // Test the relationship between encodings (within the WHIR commit functions) and concatenations
     // of multilinears.
-    async fn test_multi_commit() {
+    fn test_multi_commit() {
         const FOLDING_FACTOR: usize = 3;
         let blowup_factor = 2;
 
@@ -1209,7 +1176,7 @@ mod tests {
 
     // WHIR end-to-end tests.
 
-    async fn whir_test_generic<
+    fn whir_test_generic<
         GC: IopCtx<F: TwoAdicField, EF: TwoAdicField + ExtensionField<GC::F>>,
         MerkleProver: TensorCsProver<GC, CpuBackend> + ComputeTcsOpenings<GC, CpuBackend>,
     >(
@@ -1254,12 +1221,12 @@ mod tests {
             Mle::new(Tensor::from(concat_vec).reshape([1 << num_variables, 1]));
 
         let point = (0..num_variables).map(|_| rng.gen()).collect::<Point<GC::EF>>();
-        let eval_claim = polynomial_concat.eval_at(&point).await[0];
+        let eval_claim = polynomial_concat.eval_at(&point)[0];
 
         let mut prover_datas = Vec::new();
 
         for round in rounds.iter() {
-            let (_, prover_data, _) = prover.commit_multilinear(round.clone()).await.unwrap();
+            let (_, prover_data, _) = prover.commit_multilinear(round.clone()).unwrap();
             challenger_prover.observe(prover_data.commitment);
             prover_datas.push(prover_data);
         }
@@ -1274,7 +1241,6 @@ mod tests {
                 prover_datas.into_iter().collect(),
                 &mut challenger_prover,
             )
-            .await
             .unwrap();
 
         let elapsed = now.elapsed();
@@ -1297,7 +1263,7 @@ mod tests {
             .unwrap();
     }
 
-    async fn whir_test_single_round<
+    fn whir_test_single_round<
         GC: IopCtx<F: TwoAdicField, EF: TwoAdicField + ExtensionField<GC::F>>,
         MerkleProver: TensorCsProver<GC, CpuBackend> + ComputeTcsOpenings<GC, CpuBackend>,
     >(
@@ -1320,11 +1286,10 @@ mod tests {
             config,
             merkle_prover,
             vec![vec![polynomial_1, polynomial_2, polynomial_3].into()].into_iter().collect(),
-        )
-        .await;
+        );
     }
 
-    async fn whir_test_multi_round<
+    fn whir_test_multi_round<
         GC: IopCtx<F: TwoAdicField, EF: TwoAdicField + ExtensionField<GC::F>>,
         MerkleProver: TensorCsProver<GC, CpuBackend> + ComputeTcsOpenings<GC, CpuBackend>,
     >(
@@ -1348,57 +1313,56 @@ mod tests {
             vec![vec![polynomial_1].into(), vec![polynomial_2].into(), vec![polynomial_3].into()]
                 .into_iter()
                 .collect(),
-        )
-        .await;
+        );
     }
 
-    #[tokio::test]
-    async fn whir_test_multi_round_koala_bear() {
+    #[test]
+    fn whir_test_multi_round_koala_bear() {
         let config = WhirProofShape::default_whir_config();
         let merkle_prover: Poseidon2KoalaBear16Prover = FieldMerkleTreeProver::default();
 
-        whir_test_multi_round::<_, _>(config, 16, merkle_prover).await;
+        whir_test_multi_round::<_, _>(config, 16, merkle_prover);
     }
 
-    #[tokio::test]
-    async fn whir_test_e2e_koala_bear() {
+    #[test]
+    fn whir_test_e2e_koala_bear() {
         let config = WhirProofShape::default_whir_config();
         let merkle_prover: Poseidon2KoalaBear16Prover = FieldMerkleTreeProver::default();
-        whir_test_single_round::<_, _>(config, 16, merkle_prover).await;
+        whir_test_single_round::<_, _>(config, 16, merkle_prover);
     }
 
-    #[tokio::test]
+    #[test]
     #[ignore = "test used for benchmarking"]
-    async fn whir_test_realistic_koala_bear() {
+    fn whir_test_realistic_koala_bear() {
         let config = big_beautiful_whir_config::<KoalaBear>();
         let merkle_prover: Poseidon2KoalaBear16Prover = FieldMerkleTreeProver::default();
-        whir_test_single_round::<_, _>(config, 28, merkle_prover).await;
+        whir_test_single_round::<_, _>(config, 28, merkle_prover);
     }
 
-    #[tokio::test]
-    async fn whir_test_e2e_baby_bear() {
+    #[test]
+    fn whir_test_e2e_baby_bear() {
         let config = WhirProofShape::default_whir_config();
         let merkle_prover: Poseidon2BabyBear16Prover = FieldMerkleTreeProver::default();
-        whir_test_single_round::<_, _>(config, 16, merkle_prover).await;
+        whir_test_single_round::<_, _>(config, 16, merkle_prover);
     }
 
-    #[tokio::test]
+    #[test]
     #[ignore = "test used for benchmarking"]
-    async fn whir_test_realistic_baby_bear() {
+    fn whir_test_realistic_baby_bear() {
         let config = WhirProofShape::big_beautiful_whir_config();
         let merkle_prover: Poseidon2BabyBear16Prover = FieldMerkleTreeProver::default();
-        whir_test_single_round::<_, _>(config, 28, merkle_prover).await;
+        whir_test_single_round::<_, _>(config, 28, merkle_prover);
     }
 
-    #[tokio::test]
-    async fn jagged_whir_test_baby_bear() {
+    #[test]
+    fn jagged_whir_test_baby_bear() {
         let config = WhirProofShape::default_whir_config();
         let merkle_prover: Poseidon2BabyBear16Prover = FieldMerkleTreeProver::default();
 
-        test_jagged_whir_generic::<_, _>(config, merkle_prover).await;
+        test_jagged_whir_generic::<_, _>(config, merkle_prover);
     }
 
-    async fn test_jagged_whir_generic<
+    fn test_jagged_whir_generic<
         GC: IopCtx<F: TwoAdicField, EF: TwoAdicField + ExtensionField<GC::F>>,
         MerkleProver: TensorCsProver<GC, CpuBackend> + ComputeTcsOpenings<GC, CpuBackend>,
     >(
@@ -1462,8 +1426,7 @@ mod tests {
         let mut prover_data = Rounds::new();
         let mut commitments = Rounds::new();
         for round in round_mles.iter() {
-            let (commit, data) =
-                jagged_prover.commit_multilinears(round.clone()).await.ok().unwrap();
+            let (commit, data) = jagged_prover.commit_multilinears(round.clone()).ok().unwrap();
             challenger.observe(commit);
             prover_data.push(data);
             commitments.push(commit);
@@ -1473,7 +1436,7 @@ mod tests {
         for round in round_mles.iter() {
             let mut evals = Evaluations::default();
             for mle in round.iter() {
-                let eval = mle.eval_at(&eval_point).await;
+                let eval = mle.eval_at(&eval_point);
                 evals.push(eval);
             }
             evaluation_claims.push(evals);
@@ -1486,7 +1449,6 @@ mod tests {
                 prover_data,
                 &mut challenger,
             )
-            .await
             .ok()
             .unwrap();
 

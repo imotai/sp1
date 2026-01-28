@@ -15,9 +15,9 @@ use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 use slop_tensor::Tensor;
 
 use super::{FieldMerkleTreeDigests, FieldMerkleTreeProver};
-use crate::{ComputeTcsOpeningsSync, MerkleTreeTcsProof, TensorCsProverSync};
+use crate::{ComputeTcsOpenings, MerkleTreeTcsProof, TensorCsProver};
 
-impl<P, PW, GC: IopCtx, const DIGEST_ELEMS: usize> TensorCsProverSync<GC, CpuBackend>
+impl<P, PW, GC: IopCtx, const DIGEST_ELEMS: usize> TensorCsProver<GC, CpuBackend>
     for FieldMerkleTreeProver<P, PW, GC, DIGEST_ELEMS>
 where
     P: PackedField<Scalar = GC::F>,
@@ -34,14 +34,13 @@ where
     PW::Value: Eq + std::fmt::Debug,
     [PW::Value; DIGEST_ELEMS]: Serialize + for<'de> Deserialize<'de>,
 {
-    type ProverErrorSync = Infallible;
-    type ProverDataSync =
-        (FieldMerkleTreeDigests<PW::Value, DIGEST_ELEMS>, GC::Digest, usize, usize);
+    type ProverError = Infallible;
+    type ProverData = (FieldMerkleTreeDigests<PW::Value, DIGEST_ELEMS>, GC::Digest, usize, usize);
 
-    fn commit_tensors_sync<T>(
+    fn commit_tensors<T>(
         &self,
         tensors: Message<T>,
-    ) -> Result<(GC::Digest, Self::ProverDataSync), Self::ProverErrorSync>
+    ) -> Result<(GC::Digest, Self::ProverData), Self::ProverError>
     where
         T: OwnedBorrow<Tensor<GC::F, CpuBackend>>,
     {
@@ -143,11 +142,11 @@ where
         Ok((compressed_root.into(), (digests, root.into(), log_height, total_width)))
     }
 
-    fn prove_openings_at_indices_sync(
+    fn prove_openings_at_indices(
         &self,
-        data: Self::ProverDataSync,
+        data: Self::ProverData,
         indices: &[usize],
-    ) -> Result<MerkleTreeTcsProof<GC::Digest>, Self::ProverErrorSync> {
+    ) -> Result<MerkleTreeTcsProof<GC::Digest>, Self::ProverError> {
         let height = data.0.digest_layers.len() - 1;
         let path_storage = indices
             .iter()
@@ -171,7 +170,7 @@ where
     }
 }
 
-impl<P, PW, GC, const DIGEST_ELEMS: usize> ComputeTcsOpeningsSync<GC, CpuBackend>
+impl<P, PW, GC, const DIGEST_ELEMS: usize> ComputeTcsOpenings<GC, CpuBackend>
     for FieldMerkleTreeProver<P, PW, GC, DIGEST_ELEMS>
 where
     GC: IopCtx,
@@ -189,7 +188,7 @@ where
     PW::Value: Eq + std::fmt::Debug,
     [PW::Value; DIGEST_ELEMS]: Serialize + for<'de> Deserialize<'de>,
 {
-    fn compute_openings_at_indices_sync<T>(
+    fn compute_openings_at_indices<T>(
         &self,
         tensors: Message<T>,
         indices: &[usize],
@@ -253,11 +252,11 @@ mod tests {
             .collect::<Message<_>>();
 
         let prover = Poseidon2BabyBear16Prover::default();
-        let (commitment, data) = prover.commit_tensors_sync(tensors.clone()).unwrap();
+        let (commitment, data) = prover.commit_tensors(tensors.clone()).unwrap();
 
         let indices = (0..num_indices).map(|_| rng.gen_range(0..height)).collect_vec();
-        let proof = prover.prove_openings_at_indices_sync(data, &indices).unwrap();
-        let openings = prover.compute_openings_at_indices_sync(tensors, &indices);
+        let proof = prover.prove_openings_at_indices(data, &indices).unwrap();
+        let openings = prover.compute_openings_at_indices(tensors, &indices);
 
         let tcs = MerkleTreeTcs::<BabyBearDegree4Duplex>::default();
         tcs.verify_tensor_openings(&commitment, &indices, &openings, &proof).unwrap();
@@ -278,11 +277,11 @@ mod tests {
             .collect::<Message<_>>();
 
         let prover = Poseidon2KoalaBear16Prover::default();
-        let (commitment, data) = prover.commit_tensors_sync(tensors.clone()).unwrap();
+        let (commitment, data) = prover.commit_tensors(tensors.clone()).unwrap();
 
         let indices = (0..num_indices).map(|_| rng.gen_range(0..height)).collect_vec();
-        let proof = prover.prove_openings_at_indices_sync(data, &indices).unwrap();
-        let openings = prover.compute_openings_at_indices_sync(tensors, &indices);
+        let proof = prover.prove_openings_at_indices(data, &indices).unwrap();
+        let openings = prover.compute_openings_at_indices(tensors, &indices);
 
         let tcs = MerkleTreeTcs::<KoalaBearDegree4Duplex>::default();
 

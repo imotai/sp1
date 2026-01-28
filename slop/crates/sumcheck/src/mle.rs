@@ -4,18 +4,14 @@ use slop_algebra::{
     interpolate_univariate_polynomial, AbstractField, ExtensionField, Field, UnivariatePolynomial,
 };
 use slop_alloc::CpuBackend;
-use slop_multilinear::{Mle, MleBaseBackend};
+use slop_multilinear::Mle;
 
 use crate::{
     backend::{ComponentPolyEvalBackend, SumcheckPolyBackend},
     SumCheckPolyFirstRoundBackend, SumcheckPolyBase,
 };
 
-impl<F, A> SumcheckPolyBase for Mle<F, A>
-where
-    F: AbstractField,
-    A: MleBaseBackend<F>,
-{
+impl<F: AbstractField> SumcheckPolyBase for Mle<F, CpuBackend> {
     #[inline]
     fn num_variables(&self) -> u32 {
         self.num_variables()
@@ -27,7 +23,7 @@ where
     F: Field,
     EF: ExtensionField<F>,
 {
-    async fn get_component_poly_evals(poly: &Mle<F, CpuBackend>) -> Vec<EF> {
+    fn get_component_poly_evals(poly: &Mle<F, CpuBackend>) -> Vec<EF> {
         let eval: F = *poly.guts()[[0, 0]];
         vec![EF::from_base(eval)]
     }
@@ -37,11 +33,11 @@ impl<F> SumcheckPolyBackend<Mle<F, CpuBackend>, F> for CpuBackend
 where
     F: Field,
 {
-    async fn fix_last_variable(poly: Mle<F, CpuBackend>, alpha: F) -> Mle<F, CpuBackend> {
-        poly.fix_last_variable(alpha).await
+    fn fix_last_variable(poly: Mle<F, CpuBackend>, alpha: F) -> Mle<F, CpuBackend> {
+        poly.fix_last_variable(alpha)
     }
 
-    async fn sum_as_poly_in_last_variable(
+    fn sum_as_poly_in_last_variable(
         poly: &Mle<F, CpuBackend>,
         claim: Option<F>,
     ) -> UnivariatePolynomial<F> {
@@ -69,12 +65,12 @@ where
 {
     type NextRoundPoly = Mle<EF, CpuBackend>;
 
-    async fn fix_t_variables(poly: Mle<F, CpuBackend>, alpha: EF, t: usize) -> Self::NextRoundPoly {
+    fn fix_t_variables(poly: Mle<F, CpuBackend>, alpha: EF, t: usize) -> Self::NextRoundPoly {
         assert_eq!(t, 1);
-        poly.fix_last_variable(alpha).await
+        poly.fix_last_variable(alpha)
     }
 
-    async fn sum_as_poly_in_last_t_variables(
+    fn sum_as_poly_in_last_t_variables(
         poly: &Mle<F, CpuBackend>,
         claim: Option<EF>,
         t: usize,
@@ -106,8 +102,8 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_single_mle_sumcheck() {
+    #[test]
+    fn test_single_mle_sumcheck() {
         let mut rng = thread_rng();
 
         let mle = Mle::<BabyBear, CpuBackend>::rand(&mut rng, 1, 10);
@@ -124,12 +120,11 @@ mod tests {
             vec![claim],
             1,
             EF::one(),
-        )
-        .await;
+        );
 
         // Verify the evaluation claim.
         let (point, eval_claim) = sumcheck_proof.point_and_eval.clone();
-        let evaluation = mle.eval_at(&point).await[0];
+        let evaluation = mle.eval_at(&point)[0];
         assert_eq!(evaluation, eval_claim);
 
         // Verify the proof.

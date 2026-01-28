@@ -1,78 +1,53 @@
-use std::future::Future;
-
 use rayon::prelude::*;
 use slop_algebra::{AbstractExtensionField, AbstractField};
-use slop_alloc::{buffer, Backend, Buffer, CanCopyFromRef, CanCopyIntoRef, CpuBackend};
-use slop_tensor::{Dimensions, Tensor};
+use slop_alloc::{buffer, Buffer, CpuBackend};
+use slop_tensor::{dot_along_dim, Dimensions, Tensor};
 
-use crate::{
-    partial_eq_blocking_with_basis, Basis, MleBaseBackend, MleEval, PartialLagrangeBackend, Point,
-};
+use crate::{partial_eq_with_basis, partial_lagrange, Basis, Point};
 
-pub trait MleEvaluationBackend<F: AbstractField, EF: AbstractExtensionField<F>>:
-    MleBaseBackend<F> + HostEvaluationBackend<F, EF> + ZeroEvalBackend<F> + ZeroEvalBackend<EF>
-{
-    fn eval_mle_at_point(
-        mle: &Tensor<F, Self>,
-        point: &Point<EF, Self>,
-    ) -> impl Future<Output = Tensor<EF, Self>> + Send + Sync;
-
-    fn eval_mle_at_eq(
-        mle: &Tensor<F, Self>,
-        eq: &Tensor<EF, Self>,
-    ) -> impl Future<Output = Tensor<EF, Self>> + Send + Sync;
-}
-
-pub trait HostEvaluationBackend<F: AbstractField, EF: AbstractExtensionField<F>>:
-    CanCopyFromRef<MleEval<EF>, CpuBackend, Output = MleEval<EF, Self>>
-    + CanCopyIntoRef<MleEval<EF, Self>, CpuBackend, Output = MleEval<EF>>
-{
-}
-
-impl<F: AbstractField, EF: AbstractExtensionField<F>, A: Backend> HostEvaluationBackend<F, EF> for A where
-    A: CanCopyFromRef<MleEval<EF>, CpuBackend, Output = MleEval<EF, A>>
-        + CanCopyIntoRef<MleEval<EF, Self>, CpuBackend, Output = MleEval<EF>>
-{
-}
-
-pub trait ZeroEvalBackend<F: AbstractField>: Backend {
-    fn zero_evaluations(&self, num_polynomials: usize) -> Tensor<F, Self>;
-}
-
-impl<F: AbstractField> ZeroEvalBackend<F> for CpuBackend {
-    // This function assumes that `F::zero()` is represented by zeroed out memory.
-    fn zero_evaluations(&self, num_polynomials: usize) -> Tensor<F, Self> {
-        Tensor::zeros_in([num_polynomials], *self)
-    }
-}
-
-impl<F, EF> MleEvaluationBackend<F, EF> for CpuBackend
+/// Evaluates the MLE at a given point.
+pub fn eval_mle_at_point<F, EF>(
+    mle: &Tensor<F, CpuBackend>,
+    point: &Point<EF, CpuBackend>,
+) -> Tensor<EF, CpuBackend>
 where
     F: AbstractField + Sync + 'static,
     EF: AbstractExtensionField<F> + Send + Sync + 'static,
 {
-    async fn eval_mle_at_point(mle: &Tensor<F, Self>, point: &Point<EF, Self>) -> Tensor<EF, Self> {
-        // Comopute the eq(b, point) polynomial.
-        let partial_lagrange = Self::partial_lagrange(point).await;
-        // Evaluate the mle via a dot product with the partial lagrange polynomial.
-        mle.dot(&partial_lagrange, 0).await
-    }
-
-    async fn eval_mle_at_eq(mle: &Tensor<F, Self>, eq: &Tensor<EF, Self>) -> Tensor<EF, Self> {
-        // Evaluate the mle via a dot product with the eq polynomial.
-        mle.dot(eq, 0).await
-    }
+    // Compute the eq(b, point) polynomial.
+    let partial_lagrange = partial_lagrange(point);
+    // Evaluate the mle via a dot product with the partial lagrange polynomial.
+    dot_along_dim(mle, &partial_lagrange, 0)
 }
 
-pub(crate) fn eval_mle_at_point_blocking_with_basis<
-    F: AbstractField + Sync,
-    EF: AbstractExtensionField<F> + Send + Sync,
->(
+/// Evaluates the MLE at a given eq polynomial.
+pub fn eval_mle_at_eq<F, EF>(
+    mle: &Tensor<F, CpuBackend>,
+    eq: &Tensor<EF, CpuBackend>,
+) -> Tensor<EF, CpuBackend>
+where
+    F: AbstractField + Sync + 'static,
+    EF: AbstractExtensionField<F> + Send + Sync + 'static,
+{
+    // Evaluate the mle via a dot product with the eq polynomial.
+    dot_along_dim(mle, eq, 0)
+}
+
+/// Returns a tensor of zero evaluations.
+pub fn zero_evaluations<F: AbstractField>(num_polynomials: usize) -> Tensor<F, CpuBackend> {
+    Tensor::zeros_in([num_polynomials], CpuBackend)
+}
+
+pub fn eval_mle_at_point_with_basis<F, EF>(
     mle: &Tensor<F, CpuBackend>,
     point: &Point<EF, CpuBackend>,
     basis: Basis,
-) -> Tensor<EF, CpuBackend> {
-    let partial_lagrange = partial_eq_blocking_with_basis(point, basis);
+) -> Tensor<EF, CpuBackend>
+where
+    F: AbstractField + Sync,
+    EF: AbstractExtensionField<F> + Send + Sync,
+{
+    let partial_lagrange = partial_eq_with_basis(point, basis);
     let mut sizes = mle.sizes().to_vec();
     sizes.remove(0);
     let dimensions = Dimensions::try_from(sizes).unwrap();
@@ -96,24 +71,52 @@ pub(crate) fn eval_mle_at_point_blocking_with_basis<
     dst
 }
 
-pub(crate) fn eval_mle_at_point_blocking<
-    F: AbstractField + Sync,
-    EF: AbstractExtensionField<F> + Send + Sync,
->(
+/// Alias for `eval_mle_at_point` for backwards compatibility.
+pub fn eval_mle_at_point_blocking<F, EF>(
     mle: &Tensor<F, CpuBackend>,
     point: &Point<EF, CpuBackend>,
-) -> Tensor<EF, CpuBackend> {
-    eval_mle_at_point_blocking_with_basis(mle, point, Basis::Evaluation)
+) -> Tensor<EF, CpuBackend>
+where
+    F: AbstractField + Sync + 'static,
+    EF: AbstractExtensionField<F> + Send + Sync + 'static,
+{
+    eval_mle_at_point(mle, point)
+}
+
+/// Alias for `eval_mle_at_point_with_basis` for backwards compatibility.
+pub fn eval_mle_at_point_blocking_with_basis<F, EF>(
+    mle: &Tensor<F, CpuBackend>,
+    point: &Point<EF, CpuBackend>,
+    basis: Basis,
+) -> Tensor<EF, CpuBackend>
+where
+    F: AbstractField + Sync,
+    EF: AbstractExtensionField<F> + Send + Sync,
+{
+    eval_mle_at_point_with_basis(mle, point, basis)
 }
 
 /// Interpreting the internal vector of `mle` as the monomial-basis coefficients of a multilinear
 /// polynomial, evaluate that multilinear at `point`.
-pub(crate) fn eval_monomial_basis_mle_at_point_blocking<
-    F: AbstractField + Sync,
-    EF: AbstractExtensionField<F> + Send + Sync,
->(
+pub fn eval_monomial_basis_mle_at_point<F, EF>(
     mle: &Tensor<F, CpuBackend>,
     point: &Point<EF, CpuBackend>,
-) -> Tensor<EF, CpuBackend> {
-    eval_mle_at_point_blocking_with_basis(mle, point, Basis::Monomial)
+) -> Tensor<EF, CpuBackend>
+where
+    F: AbstractField + Sync,
+    EF: AbstractExtensionField<F> + Send + Sync,
+{
+    eval_mle_at_point_with_basis(mle, point, Basis::Monomial)
+}
+
+/// Alias for backwards compatibility.
+pub fn eval_monomial_basis_mle_at_point_blocking<F, EF>(
+    mle: &Tensor<F, CpuBackend>,
+    point: &Point<EF, CpuBackend>,
+) -> Tensor<EF, CpuBackend>
+where
+    F: AbstractField + Sync,
+    EF: AbstractExtensionField<F> + Send + Sync,
+{
+    eval_monomial_basis_mle_at_point(mle, point)
 }

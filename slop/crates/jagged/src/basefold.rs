@@ -36,7 +36,7 @@ where
 impl<GC, MerkleProver>
     JaggedProver<GC, StackedBasefoldProof<GC>, StackedPcsProver<MerkleProver, GC>>
 where
-    MerkleProver: ComputeTcsOpenings<GC, CpuBackend>,
+    MerkleProver: ComputeTcsOpenings<GC, CpuBackend> + Default,
     GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>,
 {
     pub fn from_basefold_components(
@@ -64,7 +64,7 @@ impl<MerkleProver, GC> DefaultJaggedProver<GC, StackedPcsVerifier<GC>>
     for StackedPcsProver<MerkleProver, GC>
 where
     GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>,
-    MerkleProver: ComputeTcsOpenings<GC, CpuBackend>,
+    MerkleProver: ComputeTcsOpenings<GC, CpuBackend> + Default,
 {
     fn prover_from_verifier(
         verifier: &JaggedPcsVerifier<GC, StackedPcsVerifier<GC>>,
@@ -88,44 +88,37 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_baby_bear_jagged_basefold() {
-        test_jagged_basefold::<
-            BabyBearDegree4Duplex,
-            StackedPcsProver<Poseidon2BabyBear16Prover, _>,
-        >()
-        .await;
+    #[test]
+    fn test_baby_bear_jagged_basefold() {
+        test_jagged_basefold::<BabyBearDegree4Duplex, StackedPcsProver<Poseidon2BabyBear16Prover, _>>(
+        );
     }
 
-    #[tokio::test]
-    async fn test_koala_bear_jagged_basefold() {
+    #[test]
+    fn test_koala_bear_jagged_basefold() {
         test_jagged_basefold::<
             KoalaBearDegree4Duplex,
             StackedPcsProver<Poseidon2KoalaBear16Prover, _>,
-        >()
-        .await;
+        >();
     }
 
-    #[tokio::test]
-    async fn test_bn254_jagged_basefold() {
+    #[test]
+    fn test_bn254_jagged_basefold() {
         test_jagged_basefold::<
             BNGC<BabyBear, BinomialExtensionField<BabyBear, 4>>,
             StackedPcsProver<BnProver<BabyBear, BinomialExtensionField<BabyBear, 4>>, _>,
-        >()
-        .await;
+        >();
     }
 
-    #[tokio::test]
-    async fn test_bn254_jagged_kb_basefold() {
+    #[test]
+    fn test_bn254_jagged_kb_basefold() {
         test_jagged_basefold::<
             BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>,
             StackedPcsProver<BnProver<KoalaBear, BinomialExtensionField<KoalaBear, 4>>, _>,
-        >()
-        .await;
+        >();
     }
 
-    // #[tokio::test]
-    async fn test_jagged_basefold<
+    fn test_jagged_basefold<
         GC: IopCtx<F: TwoAdicField, EF: TwoAdicField>,
         PcsProver: MultilinearPcsProver<GC, StackedBasefoldProof<GC>>
             + DefaultJaggedProver<GC, StackedPcsVerifier<GC>>,
@@ -185,8 +178,7 @@ mod tests {
         let mut prover_data = Rounds::new();
         let mut commitments = Rounds::new();
         for round in round_mles.iter() {
-            let (commit, data) =
-                jagged_prover.commit_multilinears(round.clone()).await.ok().unwrap();
+            let (commit, data) = jagged_prover.commit_multilinears(round.clone()).ok().unwrap();
             challenger.observe(commit);
             prover_data.push(data);
             commitments.push(commit);
@@ -196,7 +188,7 @@ mod tests {
         for round in round_mles.iter() {
             let mut evals = Evaluations::default();
             for mle in round.iter() {
-                let eval = mle.eval_at(&eval_point).await;
+                let eval = mle.eval_at(&eval_point);
                 evals.push(eval);
             }
             evaluation_claims.push(evals);
@@ -209,7 +201,6 @@ mod tests {
                 prover_data,
                 &mut challenger,
             )
-            .await
             .ok()
             .unwrap();
 

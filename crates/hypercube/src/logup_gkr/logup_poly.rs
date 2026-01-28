@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use futures::{future::join_all, prelude::*};
-
 use rayon::prelude::*;
 use slop_algebra::{
     interpolate_univariate_polynomial, ExtensionField, Field, UnivariatePolynomial,
@@ -44,7 +42,7 @@ impl<F: Field, EF: ExtensionField<F>> SumcheckPolyBase for LogupRoundPolynomial<
 }
 
 impl<K: Field> ComponentPoly<K> for LogupRoundPolynomial<K, K> {
-    async fn get_component_poly_evals(&self) -> Vec<K> {
+    fn get_component_poly_evals(&self) -> Vec<K> {
         match &self.layer {
             PolynomialLayer::InteractionLayer(layer) => {
                 assert!(layer.numerator_0.guts().as_slice().len() == 1);
@@ -60,19 +58,19 @@ impl<K: Field> ComponentPoly<K> for LogupRoundPolynomial<K, K> {
 }
 
 impl<K: Field> SumcheckPoly<K> for LogupRoundPolynomial<K, K> {
-    async fn fix_last_variable(self, alpha: K) -> Self {
-        self.fix_t_variables(alpha, 1).await
+    fn fix_last_variable(self, alpha: K) -> Self {
+        self.fix_t_variables(alpha, 1)
     }
 
-    async fn sum_as_poly_in_last_variable(&self, claim: Option<K>) -> UnivariatePolynomial<K> {
-        self.sum_as_poly_in_last_t_variables(claim, 1).await
+    fn sum_as_poly_in_last_variable(&self, claim: Option<K>) -> UnivariatePolynomial<K> {
+        self.sum_as_poly_in_last_t_variables(claim, 1)
     }
 }
 
 impl<K: ExtensionField<F>, F: Field> SumcheckPolyFirstRound<K> for LogupRoundPolynomial<F, K> {
     type NextRoundPoly = LogupRoundPolynomial<K, K>;
     #[allow(clippy::too_many_lines)]
-    async fn fix_t_variables(mut self, alpha: K, t: usize) -> Self::NextRoundPoly {
+    fn fix_t_variables(mut self, alpha: K, t: usize) -> Self::NextRoundPoly {
         assert!(t == 1);
         // Remove the last coordinate from the point
         let last_coordinate = self.point.remove_last_coordinate();
@@ -81,19 +79,19 @@ impl<K: ExtensionField<F>, F: Field> SumcheckPolyFirstRound<K> for LogupRoundPol
         match self.layer {
             PolynomialLayer::InteractionLayer(layer) => {
                 let numerator_0 =
-                    Arc::new(layer.numerator_0.as_ref().fix_last_variable::<K>(alpha).await);
+                    Arc::new(layer.numerator_0.as_ref().fix_last_variable::<K>(alpha));
                 let denominator_0 =
-                    Arc::new(layer.denominator_0.as_ref().fix_last_variable::<K>(alpha).await);
+                    Arc::new(layer.denominator_0.as_ref().fix_last_variable::<K>(alpha));
                 let numerator_1 =
-                    Arc::new(layer.numerator_1.as_ref().fix_last_variable::<K>(alpha).await);
+                    Arc::new(layer.numerator_1.as_ref().fix_last_variable::<K>(alpha));
                 let denominator_1 =
-                    Arc::new(layer.denominator_1.as_ref().fix_last_variable::<K>(alpha).await);
+                    Arc::new(layer.denominator_1.as_ref().fix_last_variable::<K>(alpha));
 
                 let new_layer =
                     InteractionLayer { numerator_0, denominator_0, numerator_1, denominator_1 };
 
                 let eq_interaction =
-                    Arc::new(self.eq_interaction.as_ref().fix_last_variable(alpha).await);
+                    Arc::new(self.eq_interaction.as_ref().fix_last_variable(alpha));
 
                 LogupRoundPolynomial {
                     layer: PolynomialLayer::InteractionLayer(new_layer),
@@ -107,76 +105,52 @@ impl<K: ExtensionField<F>, F: Field> SumcheckPolyFirstRound<K> for LogupRoundPol
             }
             PolynomialLayer::CircuitLayer(layer) => {
                 if layer.num_row_variables == 1 {
-                    let numerator_0 = join_all(
-                        layer
-                            .numerator_0
-                            .into_iter()
-                            .map(|mle| async move { mle.fix_last_variable(alpha).await }),
-                    )
-                    .await;
-                    let denominator_0 = join_all(
-                        layer
-                            .denominator_0
-                            .into_iter()
-                            .map(|mle| async move { mle.fix_last_variable(alpha).await }),
-                    )
-                    .await;
-                    let numerator_1 = join_all(
-                        layer
-                            .numerator_1
-                            .into_iter()
-                            .map(|mle| async move { mle.fix_last_variable(alpha).await }),
-                    )
-                    .await;
-                    let denominator_1 = join_all(
-                        layer
-                            .denominator_1
-                            .into_iter()
-                            .map(|mle| async move { mle.fix_last_variable(alpha).await }),
-                    )
-                    .await;
+                    let numerator_0: Vec<_> = layer
+                        .numerator_0
+                        .into_iter()
+                        .map(|mle| mle.fix_last_variable(alpha))
+                        .collect();
+                    let denominator_0: Vec<_> = layer
+                        .denominator_0
+                        .into_iter()
+                        .map(|mle| mle.fix_last_variable(alpha))
+                        .collect();
+                    let numerator_1: Vec<_> = layer
+                        .numerator_1
+                        .into_iter()
+                        .map(|mle| mle.fix_last_variable(alpha))
+                        .collect();
+                    let denominator_1: Vec<_> = layer
+                        .denominator_1
+                        .into_iter()
+                        .map(|mle| mle.fix_last_variable(alpha))
+                        .collect();
 
-                    let mut numerator_0_interactions = stream::iter(numerator_0.into_iter())
-                        .then(|mle| async move {
-                            let result = mle.eval_at::<K>(&Point::from(vec![])).await.to_vec();
-                            stream::iter(result)
-                        })
-                        .flatten()
-                        .collect::<Vec<_>>()
-                        .await;
+                    let mut numerator_0_interactions: Vec<_> = numerator_0
+                        .into_iter()
+                        .flat_map(|mle| mle.eval_at::<K>(&Point::from(vec![])).to_vec())
+                        .collect();
                     numerator_0_interactions
                         .resize(1 << layer.num_interaction_variables, K::zero());
 
-                    let mut numerator_1_interactions = stream::iter(numerator_1.into_iter())
-                        .then(|mle| async move {
-                            let result = mle.eval_at::<K>(&Point::from(vec![])).await.to_vec();
-                            stream::iter(result)
-                        })
-                        .flatten()
-                        .collect::<Vec<_>>()
-                        .await;
+                    let mut numerator_1_interactions: Vec<_> = numerator_1
+                        .into_iter()
+                        .flat_map(|mle| mle.eval_at::<K>(&Point::from(vec![])).to_vec())
+                        .collect();
                     numerator_1_interactions
                         .resize(1 << layer.num_interaction_variables, K::zero());
 
-                    let mut denominator_0_interactions = stream::iter(denominator_0.into_iter())
-                        .then(|mle| async move {
-                            let result = mle.eval_at::<K>(&Point::from(vec![])).await.to_vec();
-                            stream::iter(result)
-                        })
-                        .flatten()
-                        .collect::<Vec<_>>()
-                        .await;
+                    let mut denominator_0_interactions: Vec<_> = denominator_0
+                        .into_iter()
+                        .flat_map(|mle| mle.eval_at::<K>(&Point::from(vec![])).to_vec())
+                        .collect();
                     denominator_0_interactions
                         .resize(1 << layer.num_interaction_variables, K::one());
 
-                    let mut denominator_1_interactions = stream::iter(denominator_1.into_iter())
-                        .then(|mle| async move {
-                            let result = mle.eval_at::<K>(&Point::from(vec![])).await.to_vec();
-                            stream::iter(result)
-                        })
-                        .flatten()
-                        .collect::<Vec<_>>()
-                        .await;
+                    let mut denominator_1_interactions: Vec<_> = denominator_1
+                        .into_iter()
+                        .flat_map(|mle| mle.eval_at::<K>(&Point::from(vec![])).to_vec())
+                        .collect();
                     denominator_1_interactions
                         .resize(1 << layer.num_interaction_variables, K::one());
 
@@ -192,7 +166,7 @@ impl<K: ExtensionField<F>, F: Field> SumcheckPolyFirstRound<K> for LogupRoundPol
                         denominator_1: denominator_1_mle,
                     };
 
-                    let eq_row = Arc::new(self.eq_row.as_ref().fix_last_variable(alpha).await);
+                    let eq_row = Arc::new(self.eq_row.as_ref().fix_last_variable(alpha));
 
                     LogupRoundPolynomial {
                         layer: PolynomialLayer::InteractionLayer(new_layer),
@@ -204,39 +178,31 @@ impl<K: ExtensionField<F>, F: Field> SumcheckPolyFirstRound<K> for LogupRoundPol
                         point: self.point,
                     }
                 } else {
-                    let numerator_0 = join_all(
-                        layer
-                            .numerator_0
-                            .into_iter()
-                            .map(|mle| async move { mle.fix_last_variable(alpha).await }),
-                    )
-                    .await;
+                    let numerator_0: Vec<_> = layer
+                        .numerator_0
+                        .into_iter()
+                        .map(|mle| mle.fix_last_variable(alpha))
+                        .collect();
 
-                    let denominator_0 = join_all(
-                        layer
-                            .denominator_0
-                            .into_iter()
-                            .map(|mle| async move { mle.fix_last_variable(alpha).await }),
-                    )
-                    .await;
+                    let denominator_0: Vec<_> = layer
+                        .denominator_0
+                        .into_iter()
+                        .map(|mle| mle.fix_last_variable(alpha))
+                        .collect();
 
-                    let numerator_1 = join_all(
-                        layer
-                            .numerator_1
-                            .into_iter()
-                            .map(|mle| async move { mle.fix_last_variable(alpha).await }),
-                    )
-                    .await;
+                    let numerator_1: Vec<_> = layer
+                        .numerator_1
+                        .into_iter()
+                        .map(|mle| mle.fix_last_variable(alpha))
+                        .collect();
 
-                    let denominator_1 = join_all(
-                        layer
-                            .denominator_1
-                            .into_iter()
-                            .map(|mle| async move { mle.fix_last_variable(alpha).await }),
-                    )
-                    .await;
+                    let denominator_1: Vec<_> = layer
+                        .denominator_1
+                        .into_iter()
+                        .map(|mle| mle.fix_last_variable(alpha))
+                        .collect();
 
-                    let eq_row = Arc::new(self.eq_row.as_ref().fix_last_variable(alpha).await);
+                    let eq_row = Arc::new(self.eq_row.as_ref().fix_last_variable(alpha));
 
                     let new_layer = LogUpGkrCpuLayer {
                         numerator_0,
@@ -262,7 +228,7 @@ impl<K: ExtensionField<F>, F: Field> SumcheckPolyFirstRound<K> for LogupRoundPol
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn sum_as_poly_in_last_t_variables(
+    fn sum_as_poly_in_last_t_variables(
         &self,
         claim: Option<K>,
         t: usize,
@@ -278,77 +244,72 @@ impl<K: ExtensionField<F>, F: Field> SumcheckPolyFirstRound<K> for LogupRoundPol
                 let denominator_1 = layer.denominator_1.clone();
                 let eq_interaction = self.eq_interaction.clone();
                 let lambda = self.lambda;
-                let (eval_0, eval_half, eq_half_sum) = slop_futures::rayon::spawn(move || {
-                    let numerator_eval_0 = numerator_0
-                        .guts()
-                        .as_slice()
-                        .par_iter()
-                        .step_by(2)
-                        .zip_eq(numerator_1.guts().as_slice().par_iter().step_by(2))
-                        .zip_eq(denominator_0.guts().as_slice().par_iter().step_by(2))
-                        .zip_eq(denominator_1.guts().as_slice().par_iter().step_by(2))
-                        .zip_eq(eq_interaction.guts().as_slice().par_iter().step_by(2))
-                        .map(|((((n0, n1), d0), d1), e)| *e * (*d0 * *n1 + *d1 * *n0))
-                        .sum::<K>();
+                let numerator_eval_0 = numerator_0
+                    .guts()
+                    .as_slice()
+                    .par_iter()
+                    .step_by(2)
+                    .zip_eq(numerator_1.guts().as_slice().par_iter().step_by(2))
+                    .zip_eq(denominator_0.guts().as_slice().par_iter().step_by(2))
+                    .zip_eq(denominator_1.guts().as_slice().par_iter().step_by(2))
+                    .zip_eq(eq_interaction.guts().as_slice().par_iter().step_by(2))
+                    .map(|((((n0, n1), d0), d1), e)| *e * (*d0 * *n1 + *d1 * *n0))
+                    .sum::<K>();
 
-                    let numerator_eval_half = numerator_0
-                        .guts()
-                        .as_slice()
-                        .par_chunks(2)
-                        .zip_eq(numerator_1.guts().as_slice().par_chunks(2))
-                        .zip_eq(denominator_0.guts().as_slice().par_chunks(2))
-                        .zip_eq(denominator_1.guts().as_slice().par_chunks(2))
-                        .zip_eq(eq_interaction.guts().as_slice().par_chunks(2))
-                        .map(|((((n0_chunk, n1_chunk), d0_chunk), d1_chunk), e_chunk)| {
-                            let n0_half = n0_chunk[0] + n0_chunk[1];
-                            let n1_half = n1_chunk[0] + n1_chunk[1];
-                            let d0_half = d0_chunk[0] + d0_chunk[1];
-                            let d1_half = d1_chunk[0] + d1_chunk[1];
-                            let e_half = e_chunk[0] + e_chunk[1];
-                            e_half * (d0_half * n1_half + d1_half * n0_half)
-                        })
-                        .sum::<K>();
+                let numerator_eval_half = numerator_0
+                    .guts()
+                    .as_slice()
+                    .par_chunks(2)
+                    .zip_eq(numerator_1.guts().as_slice().par_chunks(2))
+                    .zip_eq(denominator_0.guts().as_slice().par_chunks(2))
+                    .zip_eq(denominator_1.guts().as_slice().par_chunks(2))
+                    .zip_eq(eq_interaction.guts().as_slice().par_chunks(2))
+                    .map(|((((n0_chunk, n1_chunk), d0_chunk), d1_chunk), e_chunk)| {
+                        let n0_half = n0_chunk[0] + n0_chunk[1];
+                        let n1_half = n1_chunk[0] + n1_chunk[1];
+                        let d0_half = d0_chunk[0] + d0_chunk[1];
+                        let d1_half = d1_chunk[0] + d1_chunk[1];
+                        let e_half = e_chunk[0] + e_chunk[1];
+                        e_half * (d0_half * n1_half + d1_half * n0_half)
+                    })
+                    .sum::<K>();
 
-                    let denominator_eval_0 = denominator_0
-                        .guts()
-                        .as_slice()
-                        .par_iter()
-                        .step_by(2)
-                        .zip_eq(denominator_1.guts().as_slice().par_iter().step_by(2))
-                        .zip_eq(eq_interaction.guts().as_slice().par_iter().step_by(2))
-                        .map(|((d0, d1), e)| *e * (*d0 * *d1))
-                        .sum::<K>();
+                let denominator_eval_0 = denominator_0
+                    .guts()
+                    .as_slice()
+                    .par_iter()
+                    .step_by(2)
+                    .zip_eq(denominator_1.guts().as_slice().par_iter().step_by(2))
+                    .zip_eq(eq_interaction.guts().as_slice().par_iter().step_by(2))
+                    .map(|((d0, d1), e)| *e * (*d0 * *d1))
+                    .sum::<K>();
 
-                    let denominator_eval_half = denominator_0
-                        .guts()
-                        .as_slice()
-                        .par_chunks(2)
-                        .zip_eq(denominator_1.guts().as_slice().par_chunks(2))
-                        .zip_eq(eq_interaction.guts().as_slice().par_chunks(2))
-                        .map(|((d0_chunk, d1_chunk), e_chunk)| {
-                            let d0_half = d0_chunk[0] + d0_chunk[1];
-                            let d1_half = d1_chunk[0] + d1_chunk[1];
-                            let e_half = e_chunk[0] + e_chunk[1];
-                            e_half * (d0_half * d1_half)
-                        })
-                        .sum::<K>();
+                let denominator_eval_half = denominator_0
+                    .guts()
+                    .as_slice()
+                    .par_chunks(2)
+                    .zip_eq(denominator_1.guts().as_slice().par_chunks(2))
+                    .zip_eq(eq_interaction.guts().as_slice().par_chunks(2))
+                    .map(|((d0_chunk, d1_chunk), e_chunk)| {
+                        let d0_half = d0_chunk[0] + d0_chunk[1];
+                        let d1_half = d1_chunk[0] + d1_chunk[1];
+                        let e_half = e_chunk[0] + e_chunk[1];
+                        e_half * (d0_half * d1_half)
+                    })
+                    .sum::<K>();
 
-                    let eq_half_sum = eq_interaction
-                        .guts()
-                        .as_slice()
-                        .par_chunks(2)
-                        .map(|e_chunk| e_chunk[0] + e_chunk[1])
-                        .sum::<K>();
+                let eq_half_sum = eq_interaction
+                    .guts()
+                    .as_slice()
+                    .par_chunks(2)
+                    .map(|e_chunk| e_chunk[0] + e_chunk[1])
+                    .sum::<K>();
 
-                    (
-                        lambda * numerator_eval_0 + denominator_eval_0,
-                        lambda * numerator_eval_half + denominator_eval_half,
-                        eq_half_sum,
-                    )
-                })
-                .await
-                .unwrap();
-                (eval_0, eval_half, eq_half_sum)
+                (
+                    lambda * numerator_eval_0 + denominator_eval_0,
+                    lambda * numerator_eval_half + denominator_eval_half,
+                    eq_half_sum,
+                )
             }
             PolynomialLayer::CircuitLayer(layer) => {
                 let numerator_0 = layer.numerator_0.clone();
@@ -362,23 +323,23 @@ impl<K: ExtensionField<F>, F: Field> SumcheckPolyFirstRound<K> for LogupRoundPol
                 let lambda = self.lambda;
 
                 let mut interaction_offset = 0;
-                let (eval_0, eval_half, eq_half_sum) = slop_futures::rayon::spawn(move || {
-                    let mut eval_0 = K::zero();
-                    let mut eval_half = K::zero();
-                    let mut eq_sum = K::zero();
-                    for (numerator_0, numerator_1, denominator_0, denominator_1) in
-                        itertools::izip!(numerator_0, numerator_1, denominator_0, denominator_1)
-                    {
-                        if let Some(inner) = numerator_0.inner() {
-                            assert!(numerator_0.num_variables() > 0);
-                            let numerator_1_inner = numerator_1.inner().as_ref().unwrap();
-                            // println!(
-                            //     "numerator_1_inner.num_variables(): {:?}",
-                            //     numerator_1_inner.num_variables()
-                            // );
-                            let denominator_0_inner = denominator_0.inner().as_ref().unwrap();
-                            let denominator_1_inner = denominator_1.inner().as_ref().unwrap();
-                            let (eval_0_chip, eval_half_chip, eq_sum_chip) = inner
+                let mut eval_0 = K::zero();
+                let mut eval_half = K::zero();
+                let mut eq_sum = K::zero();
+                for (numerator_0, numerator_1, denominator_0, denominator_1) in
+                    itertools::izip!(numerator_0, numerator_1, denominator_0, denominator_1)
+                {
+                    if let Some(inner) = numerator_0.inner() {
+                        assert!(numerator_0.num_variables() > 0);
+                        let numerator_1_inner = numerator_1.inner().as_ref().unwrap();
+                        // println!(
+                        //     "numerator_1_inner.num_variables(): {:?}",
+                        //     numerator_1_inner.num_variables()
+                        // );
+                        let denominator_0_inner = denominator_0.inner().as_ref().unwrap();
+                        let denominator_1_inner = denominator_1.inner().as_ref().unwrap();
+                        let (eval_0_chip, eval_half_chip, eq_sum_chip) =
+                            inner
                                 .guts()
                                 .as_slice()
                                 .par_chunks(2 * numerator_0.num_polynomials())
@@ -544,19 +505,15 @@ impl<K: ExtensionField<F>, F: Field> SumcheckPolyFirstRound<K> for LogupRoundPol
                                         (y_0_acc + y_0, y_half_acc + y_half, eq_sum_acc + eq_sum)
                                     },
                                 );
-                            eval_0 += eval_0_chip;
-                            eval_half += eval_half_chip;
-                            eq_sum += eq_sum_chip;
-                        }
-                        interaction_offset += numerator_0.num_polynomials();
-                        // println!("interaction_offset: {:?}", interaction_offset);
+                        eval_0 += eval_0_chip;
+                        eval_half += eval_half_chip;
+                        eq_sum += eq_sum_chip;
                     }
-                    (eval_0, eval_half, eq_sum)
-                })
-                .await
-                .unwrap();
+                    interaction_offset += numerator_0.num_polynomials();
+                    // println!("interaction_offset: {:?}", interaction_offset);
+                }
 
-                (eval_0, eval_half, eq_half_sum)
+                (eval_0, eval_half, eq_sum)
             }
         };
 
@@ -699,9 +656,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines)]
-    async fn test_logup_poly_fix_last_variable() {
+    fn test_logup_poly_fix_last_variable() {
         let mut rng = thread_rng();
         let interaction_counts = vec![1];
         let num_rows: usize = 4;
@@ -726,8 +683,8 @@ mod tests {
             random_point.split_at(num_interaction_variables as usize);
 
         let lambda = rng.gen::<EF>();
-        let eq_row = Mle::partial_lagrange(&row_point).await;
-        let eq_interaction = Mle::partial_lagrange(&interaction_point).await;
+        let eq_row = Mle::partial_lagrange(&row_point);
+        let eq_interaction = Mle::partial_lagrange(&interaction_point);
 
         let first_polynomial = LogupRoundPolynomial {
             layer: PolynomialLayer::CircuitLayer(layer),
@@ -743,64 +700,40 @@ mod tests {
             panic!("first polynomial is not a circuit layer");
         };
 
-        let mut numerator_0_interactions = stream::iter(layer.numerator_0.iter())
-            .then(|mle| {
-                let row_random_point = row_random_point.clone();
-                async move {
-                    let result = mle.eval_at::<EF>(&row_random_point).await.to_vec();
-                    stream::iter(result)
-                }
-            })
-            .flatten()
-            .collect::<Vec<_>>()
-            .await;
+        let mut numerator_0_interactions: Vec<EF> = layer
+            .numerator_0
+            .iter()
+            .flat_map(|mle| mle.eval_at::<EF>(&row_random_point).to_vec())
+            .collect();
         numerator_0_interactions.resize(1 << layer.num_interaction_variables, EF::zero());
 
-        let mut numerator_1_interactions = stream::iter(layer.numerator_1.iter())
-            .then(|mle| {
-                let row_random_point = row_random_point.clone();
-                async move {
-                    let result = mle.eval_at::<EF>(&row_random_point).await.to_vec();
-                    stream::iter(result)
-                }
-            })
-            .flatten()
-            .collect::<Vec<_>>()
-            .await;
+        let mut numerator_1_interactions: Vec<EF> = layer
+            .numerator_1
+            .iter()
+            .flat_map(|mle| mle.eval_at::<EF>(&row_random_point).to_vec())
+            .collect();
         numerator_1_interactions.resize(1 << layer.num_interaction_variables, EF::zero());
 
-        let mut denominator_0_interactions = stream::iter(layer.denominator_0.iter())
-            .then(|mle| {
-                let row_random_point = row_random_point.clone();
-                async move {
-                    let result = mle.eval_at::<EF>(&row_random_point).await.to_vec();
-                    stream::iter(result)
-                }
-            })
-            .flatten()
-            .collect::<Vec<_>>()
-            .await;
+        let mut denominator_0_interactions: Vec<EF> = layer
+            .denominator_0
+            .iter()
+            .flat_map(|mle| mle.eval_at::<EF>(&row_random_point).to_vec())
+            .collect();
         denominator_0_interactions.resize(1 << layer.num_interaction_variables, EF::one());
 
-        let mut denominator_1_interactions = stream::iter(layer.denominator_1.iter())
-            .then(|mle| {
-                let row_random_point = row_random_point.clone();
-                async move {
-                    let result = mle.eval_at::<EF>(&row_random_point).await.to_vec();
-                    stream::iter(result)
-                }
-            })
-            .flatten()
-            .collect::<Vec<_>>()
-            .await;
+        let mut denominator_1_interactions: Vec<EF> = layer
+            .denominator_1
+            .iter()
+            .flat_map(|mle| mle.eval_at::<EF>(&row_random_point).to_vec())
+            .collect();
         denominator_1_interactions.resize(1 << layer.num_interaction_variables, EF::one());
 
         // Fix last variable until we get to interaction layer
         let mut round_polynomial =
-            first_polynomial.fix_t_variables(*row_random_point.last().unwrap(), 1).await;
+            first_polynomial.fix_t_variables(*row_random_point.last().unwrap(), 1);
 
         for alpha in row_random_point.iter().rev().skip(1) {
-            round_polynomial = round_polynomial.fix_t_variables(*alpha, 1).await;
+            round_polynomial = round_polynomial.fix_t_variables(*alpha, 1);
         }
 
         let PolynomialLayer::InteractionLayer(interaction_layer) = &round_polynomial.layer else {
@@ -834,22 +767,19 @@ mod tests {
         }
 
         // Get the expected evaluations
-        let numerator_0_eval =
-            interaction_layer.numerator_0.eval_at(&interaction_random_point).await[0];
-        let numerator_1_eval =
-            interaction_layer.numerator_1.eval_at(&interaction_random_point).await[0];
+        let numerator_0_eval = interaction_layer.numerator_0.eval_at(&interaction_random_point)[0];
+        let numerator_1_eval = interaction_layer.numerator_1.eval_at(&interaction_random_point)[0];
         let denominator_0_eval =
-            interaction_layer.denominator_0.eval_at(&interaction_random_point).await[0];
+            interaction_layer.denominator_0.eval_at(&interaction_random_point)[0];
         let denominator_1_eval =
-            interaction_layer.denominator_1.eval_at(&interaction_random_point).await[0];
+            interaction_layer.denominator_1.eval_at(&interaction_random_point)[0];
 
         // Proceed with rest of interaction layers.
         for alpha in interaction_random_point.iter().rev() {
-            round_polynomial = round_polynomial.fix_t_variables(*alpha, 1).await;
+            round_polynomial = round_polynomial.fix_t_variables(*alpha, 1);
         }
 
-        let [n0, d0, n1, d1] =
-            round_polynomial.get_component_poly_evals().await.try_into().unwrap();
+        let [n0, d0, n1, d1] = round_polynomial.get_component_poly_evals().try_into().unwrap();
 
         assert_eq!(numerator_0_eval, n0);
         assert_eq!(numerator_1_eval, n1);
@@ -857,9 +787,9 @@ mod tests {
         assert_eq!(denominator_1_eval, d1);
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines)]
-    async fn test_logup_poly_sumcheck_circuit_layer() {
+    fn test_logup_poly_sumcheck_circuit_layer() {
         type GC = sp1_primitives::SP1GlobalContext;
         let mut rng = thread_rng();
 
@@ -883,8 +813,8 @@ mod tests {
         let (interaction_point, row_point) =
             poly_point.split_at(num_interaction_variables as usize);
 
-        let eq_row = Mle::partial_lagrange(&row_point).await;
-        let eq_interaction = Mle::partial_lagrange(&interaction_point).await;
+        let eq_row = Mle::partial_lagrange(&row_point);
+        let eq_interaction = Mle::partial_lagrange(&interaction_point);
 
         let numerator_0 = layer.numerator_0.clone();
         let numerator_1 = layer.numerator_1.clone();
@@ -902,11 +832,11 @@ mod tests {
             point: poly_point.clone(),
         };
 
-        let total_eq = Mle::partial_lagrange(&poly_point).await;
+        let total_eq = Mle::partial_lagrange(&poly_point);
 
         let total_eq_guts = total_eq.guts().as_slice().to_vec().clone();
 
-        let claim = slop_futures::rayon::spawn(move || {
+        let claim = {
             let mut offset = 0;
             let real_claim = numerator_0
                 .iter()
@@ -997,9 +927,7 @@ mod tests {
                 .sum::<EF>();
             let remaining_eq = total_eq_guts.iter().copied().skip(offset).sum::<EF>();
             real_claim + remaining_eq
-        })
-        .await
-        .unwrap();
+        };
 
         let mut challenger = get_challenger();
         let (proof, evals) = reduce_sumcheck_to_evaluation(
@@ -1008,8 +936,7 @@ mod tests {
             vec![claim],
             1,
             EF::one(),
-        )
-        .await;
+        );
 
         let mut challenger = get_challenger();
         partially_verify_sumcheck_proof(
@@ -1041,9 +968,9 @@ mod tests {
         assert_eq!(final_eval, expected_final_eval);
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines)]
-    async fn test_logup_gkr_circuit_transition() {
+    fn test_logup_gkr_circuit_transition() {
         type TraceGenerator = LogupGkrCpuTraceGenerator<SP1Field, EF, ()>;
         let mut rng = thread_rng();
 
@@ -1191,8 +1118,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_logup_gkr_round_prover() {
+    #[test]
+    fn test_logup_gkr_round_prover() {
         type GC = sp1_primitives::SP1GlobalContext;
         type TraceGenerator = LogupGkrCpuTraceGenerator<SP1Field, EF, ()>;
         let get_challenger = move || GC::default_challenger();
@@ -1231,12 +1158,12 @@ mod tests {
             panic!("first layer not correct");
         };
 
-        let output = trace_generator.extract_outputs(first_layer).await;
+        let output = trace_generator.extract_outputs(first_layer);
         assert_eq!(output.numerator.num_variables(), num_interaction_variables + 1);
         assert_eq!(output.denominator.num_variables(), num_interaction_variables + 1);
 
-        let first_numerator_eval = output.numerator.eval_at(&first_eval_point).await[0];
-        let first_denominator_eval = output.denominator.eval_at(&first_eval_point).await[0];
+        let first_numerator_eval = output.numerator.eval_at(&first_eval_point)[0];
+        let first_denominator_eval = output.denominator.eval_at(&first_eval_point)[0];
 
         let mut challenger = get_challenger();
         let mut round_proofs = Vec::new();
@@ -1251,8 +1178,7 @@ mod tests {
                 numerator_eval,
                 denominator_eval,
                 &mut challenger,
-            )
-            .await;
+            );
             // Observe the prover message.
             challenger.observe_ext_element(round_proof.numerator_0);
             challenger.observe_ext_element(round_proof.denominator_0);

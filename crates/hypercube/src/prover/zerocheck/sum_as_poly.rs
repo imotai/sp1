@@ -15,7 +15,6 @@ use slop_algebra::{
 use slop_matrix::dense::RowMajorMatrixView;
 use slop_multilinear::{Mle, PaddedMle};
 use slop_sumcheck::SumcheckPolyBase;
-use tokio::sync::oneshot;
 
 use crate::{air::MachineAir, ConstraintSumcheckFolder};
 use slop_alloc::HasBackend;
@@ -51,11 +50,11 @@ where
     F: Field,
     EF: ExtensionField<F>,
 {
-    pub(crate) async fn sum_as_poly_in_last_variable<K, const IS_FIRST_ROUND: bool>(
+    pub(crate) fn sum_as_poly_in_last_variable<K, const IS_FIRST_ROUND: bool>(
         &self,
-        partial_lagrange: Arc<Mle<EF>>,
-        preprocessed_values: Option<PaddedMle<K>>,
-        main_values: PaddedMle<K>,
+        partial_lagrange: &Mle<EF>,
+        preprocessed_values: Option<&PaddedMle<K>>,
+        main_values: &PaddedMle<K>,
     ) -> (EF, EF, EF)
     where
         K: ExtensionField<F>,
@@ -66,8 +65,7 @@ where
         let public_values = self.public_values.clone();
         let powers_of_alpha = self.powers_of_alpha.clone();
         let gkr_powers = self.gkr_powers.clone();
-        let (tx, rx) = oneshot::channel();
-        tokio::task::spawn_blocking(move || {
+        {
             let num_non_padded_terms = main_values.num_real_entries().div_ceil(2);
             let eq_chunk_size = std::cmp::max(num_non_padded_terms / num_cpus::get(), 1);
             let values_chunk_size = eq_chunk_size * 2;
@@ -75,9 +73,8 @@ where
             let eq_guts = partial_lagrange.guts().as_buffer().as_slice();
 
             let num_main_columns = main_values.num_polynomials();
-            let num_preprocessed_columns = preprocessed_values
-                .as_ref()
-                .map_or(0, slop_multilinear::PaddedMle::num_polynomials);
+            let num_preprocessed_columns =
+                preprocessed_values.map_or(0, slop_multilinear::PaddedMle::num_polynomials);
 
             let main_values = main_values.inner().as_ref().unwrap().guts().as_buffer().as_slice();
             let has_preprocessed_values = preprocessed_values.is_some();
@@ -176,22 +173,18 @@ where
                 })
                 .collect::<Vec<_>>();
 
-            let (y_0, y_2, y_4) = cumul_ys.into_iter().fold(
+            cumul_ys.into_iter().fold(
                 (EF::zero(), EF::zero(), EF::zero()),
                 |(y_0, y_2, y_4), (y_0_i, y_2_i, y_4_i)| (y_0 + y_0_i, y_2 + y_2_i, y_4 + y_4_i),
-            );
-
-            tx.send((y_0, y_2, y_4)).unwrap();
-        });
-
-        rx.await.unwrap()
+            )
+        }
     }
 }
 
 /// This function will calculate the univariate polynomial where all variables other than the last
 /// are summed on the boolean hypercube and the last variable is left as a free variable.
 /// TODO:  Add flexibility to support degree 2 and degree 3 constraint polynomials.
-pub async fn zerocheck_sum_as_poly_in_last_variable<
+pub fn zerocheck_sum_as_poly_in_last_variable<
     K: ExtensionField<F>,
     F: Field,
     EF: ExtensionField<F> + ExtensionField<K> + ExtensionField<F> + AbstractExtensionField<K>,
@@ -217,7 +210,7 @@ where
     let last = *last[0];
 
     // TODO:  Optimization of computing this once per zerocheck sumcheck.
-    let partial_lagrange: Mle<EF> = Mle::partial_lagrange(&rest_point_host).await;
+    let partial_lagrange: Mle<EF> = Mle::partial_lagrange(&rest_point_host);
     let partial_lagrange = Arc::new(partial_lagrange);
 
     // For the first round, we know that at point 0 and 1, the zerocheck polynomial will evaluate to
@@ -232,14 +225,12 @@ where
     let mut xs = Vec::new();
     let mut ys = Vec::new();
 
-    let (mut y_0, mut y_2, mut y_4) = poly
-        .air_data
-        .sum_as_poly_in_last_variable::<K, IS_FIRST_ROUND>(
-            partial_lagrange.clone(),
-            poly.preprocessed_columns.clone(),
-            poly.main_columns.clone(),
-        )
-        .await;
+    let (mut y_0, mut y_2, mut y_4) =
+        poly.air_data.sum_as_poly_in_last_variable::<K, IS_FIRST_ROUND>(
+            partial_lagrange.as_ref(),
+            poly.preprocessed_columns.as_ref(),
+            &poly.main_columns,
+        );
 
     // Add the point 0 and it's eval to the xs and ys.
     let virtual_geq = poly.virtual_geq;

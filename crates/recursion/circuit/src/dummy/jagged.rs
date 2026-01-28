@@ -148,8 +148,8 @@ mod tests {
 
     use crate::dummy::jagged::dummy_pcs_proof;
 
-    #[tokio::test]
-    async fn test_dummy_jagged_proof() {
+    #[test]
+    fn test_dummy_jagged_proof() {
         let row_counts_rounds = vec![vec![1 << 9, 0, 1 << 9], vec![1 << 8]];
         let column_counts_rounds = vec![vec![128, 45, 32], vec![512]];
 
@@ -206,8 +206,7 @@ mod tests {
         let mut prover_data = Rounds::new();
         let mut commitments = Rounds::new();
         for round in round_mles.iter() {
-            let (commit, data) =
-                jagged_prover.commit_multilinears(round.clone()).await.ok().unwrap();
+            let (commit, data) = jagged_prover.commit_multilinears(round.clone()).ok().unwrap();
             challenger.observe(commit);
             let data_bytes = bincode::serialize(&data).unwrap();
             let data = bincode::deserialize(&data_bytes).unwrap();
@@ -219,7 +218,7 @@ mod tests {
         for round in round_mles.iter() {
             let mut evals = Evaluations::default();
             for mle in round.iter() {
-                let eval = mle.eval_at(&eval_point).await;
+                let eval = mle.eval_at(&eval_point);
                 evals.push(eval);
             }
             evaluation_claims.push(evals);
@@ -232,7 +231,6 @@ mod tests {
                 prover_data,
                 &mut challenger,
             )
-            .await
             .ok()
             .unwrap();
 

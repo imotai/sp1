@@ -94,7 +94,7 @@ mod tests {
     use sp1_primitives::SP1Field;
     type F = SP1Field;
 
-    async fn test_round_widths_and_log_heights(
+    fn test_round_widths_and_log_heights(
         round_widths_and_log_heights: &[Vec<(usize, u32)>],
         log_stacking_height: u32,
         batch_size: usize,
@@ -137,10 +137,10 @@ mod tests {
         let (batch_point, stack_point) =
             point.split_at(point.dimension() - log_stacking_height as usize);
         for mles in round_mles.iter() {
-            let (commitment, data, _) = prover.commit_multilinear(mles.clone()).await.unwrap();
+            let (commitment, data, _) = prover.commit_multilinear(mles.clone()).unwrap();
             challenger.observe(commitment);
             commitments.push(commitment);
-            let evaluations = prover.round_batch_evaluations(&stack_point, &data).await;
+            let evaluations = prover.round_batch_evaluations(&stack_point, &data);
             prover_data.push(data);
             batch_evaluations.push(evaluations);
         }
@@ -149,11 +149,10 @@ mod tests {
         let batch_evaluations_mle =
             batch_evaluations.iter().flatten().flatten().cloned().collect::<Mle<_>>();
         // Verify that the climed evaluations matched the interpolated evaluations.
-        let eval_claim = batch_evaluations_mle.eval_at(&batch_point).await[0];
+        let eval_claim = batch_evaluations_mle.eval_at(&batch_point)[0];
 
         let proof = prover
             .prove_untrusted_evaluation(point.clone(), eval_claim, prover_data, &mut challenger)
-            .await
             .unwrap();
 
         let mut builder = AsmBuilder::default();
@@ -207,17 +206,17 @@ mod tests {
         executor.run().unwrap();
     }
 
-    #[tokio::test]
-    async fn test_stacked_pcs_proof() {
+    #[test]
+    fn test_stacked_pcs_proof() {
         setup_logger();
         let round_widths_and_log_heights: Vec<(usize, u32)> =
             vec![(1 << 10, 10), (1 << 4, 11), (496, 11)];
-        test_round_widths_and_log_heights(&[round_widths_and_log_heights], 10, 10).await;
+        test_round_widths_and_log_heights(&[round_widths_and_log_heights], 10, 10);
     }
 
-    #[tokio::test]
+    #[test]
     #[ignore = "should be invoked specifically"]
-    async fn test_stacked_pcs_proof_core_shard() {
+    fn test_stacked_pcs_proof_core_shard() {
         setup_logger();
         let round_widths_and_log_heights = [vec![
             (30, 21),
@@ -230,16 +229,16 @@ mod tests {
             (40, 19),
             (22, 19),
         ]];
-        test_round_widths_and_log_heights(&round_widths_and_log_heights, 21, 1).await;
-        test_round_widths_and_log_heights(&round_widths_and_log_heights, 21, 5).await;
+        test_round_widths_and_log_heights(&round_widths_and_log_heights, 21, 1);
+        test_round_widths_and_log_heights(&round_widths_and_log_heights, 21, 5);
     }
 
-    #[tokio::test]
+    #[test]
     #[ignore = "should be invoked specifically"]
-    async fn test_stacked_pcs_proof_precompile_shard() {
+    fn test_stacked_pcs_proof_precompile_shard() {
         setup_logger();
         let round_widths_and_log_heights = [vec![(4000, 16), (400, 19), (20, 20), (21, 21)]];
-        test_round_widths_and_log_heights(&round_widths_and_log_heights, 21, 1).await;
-        test_round_widths_and_log_heights(&round_widths_and_log_heights, 21, 5).await;
+        test_round_widths_and_log_heights(&round_widths_and_log_heights, 21, 1);
+        test_round_widths_and_log_heights(&round_widths_and_log_heights, 21, 5);
     }
 }

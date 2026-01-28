@@ -181,7 +181,7 @@ where
 {
     type A = A;
 
-    async fn prove_jagged_evaluation(
+    fn prove_jagged_evaluation(
         &self,
         params: &JaggedLittlePolynomialProverParams,
         z_row: &Point<EF>,
@@ -204,8 +204,7 @@ where
             z_trace.clone(),
             params.col_prefix_sums_usize.clone(),
             backend.clone(),
-        )
-        .await;
+        );
 
         // Compute the full eval of the jagged poly.
         let verifier_params = params.clone().into_verifier_params();
@@ -220,9 +219,8 @@ where
 
         let mut device_challenger =
             <DeviceChallenger as FromChallenger<Challenger, A>>::from_challenger(
-                challenger, backend,
-            )
-            .await;
+                challenger, &backend,
+            );
 
         let partial_sumcheck_proof = prove_jagged_eval_sumcheck(
             jagged_eval_sc_poly,
@@ -230,8 +228,7 @@ where
             expected_sum,
             1,
             &mut sum_values,
-        )
-        .await;
+        );
 
         // The CPU challenger needs to observe the polynomial coefficients to sync with the state
         // of the device challenger. This could also be done by copying the device challenger

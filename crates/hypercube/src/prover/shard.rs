@@ -165,8 +165,8 @@ impl<T> PreprocessedData<T> {
     }
 }
 
-/// A prover for the hypercube STARK, given a configuration.
-pub struct ShardProver<
+/// Inner struct containing the actual prover data.
+pub struct ShardProverInner<
     GC: IopCtx,
     SC: ShardContext<GC>,
     C: MultilinearPcsProver<GC, PcsProof<GC, SC>>,
@@ -179,13 +179,64 @@ pub struct ShardProver<
     pub pcs_prover: JaggedProver<GC, PcsProof<GC, SC>, C>,
 }
 
+/// A prover for the hypercube STARK, given a configuration.
+/// Wrapped in Arc for cheap cloning to enable `spawn_blocking`.
+pub struct ShardProver<
+    GC: IopCtx,
+    SC: ShardContext<GC>,
+    C: MultilinearPcsProver<GC, PcsProof<GC, SC>>,
+> {
+    inner: Arc<ShardProverInner<GC, SC, C>>,
+}
+
+// Implement Clone manually to avoid requiring Clone bounds on generic parameters.
+// Arc::clone doesn't need the inner type to be Clone.
+impl<GC: IopCtx, SC: ShardContext<GC>, C: MultilinearPcsProver<GC, PcsProof<GC, SC>>> Clone
+    for ShardProver<GC, SC, C>
+{
+    fn clone(&self) -> Self {
+        Self { inner: Arc::clone(&self.inner) }
+    }
+}
+
+impl<GC: IopCtx, SC: ShardContext<GC>, C: MultilinearPcsProver<GC, PcsProof<GC, SC>>>
+    ShardProver<GC, SC, C>
+{
+    /// Create a new `ShardProver` from its components.
+    pub fn from_components(
+        trace_generator: DefaultTraceGenerator<GC::F, SC::Air, CpuBackend>,
+        logup_gkr_prover: GkrProverImpl<GC, SC>,
+        pcs_prover: JaggedProver<GC, PcsProof<GC, SC>, C>,
+    ) -> Self {
+        Self { inner: Arc::new(ShardProverInner { trace_generator, logup_gkr_prover, pcs_prover }) }
+    }
+
+    /// Access the trace generator.
+    #[must_use]
+    pub fn trace_generator(&self) -> &DefaultTraceGenerator<GC::F, SC::Air, CpuBackend> {
+        &self.inner.trace_generator
+    }
+
+    /// Access the logup GKR prover.
+    #[must_use]
+    pub fn logup_gkr_prover(&self) -> &GkrProverImpl<GC, SC> {
+        &self.inner.logup_gkr_prover
+    }
+
+    /// Access the PCS prover.
+    #[must_use]
+    pub fn pcs_prover(&self) -> &JaggedProver<GC, PcsProof<GC, SC>, C> {
+        &self.inner.pcs_prover
+    }
+}
+
 impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>> AirProver<GC, SC>
     for ShardProver<GC, SC, C>
 {
     type PreprocessedData = ShardProverData<GC, SC, C>;
 
     fn machine(&self) -> &Machine<GC::F, SC::Air> {
-        self.trace_generator.machine()
+        self.inner.trace_generator.machine()
     }
 
     /// Setup a shard, using a verifying key if provided.
@@ -241,6 +292,7 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>> A
 
         // Generate trace.
         let trace_data = self
+            .inner
             .trace_generator
             .generate_traces(program, record, self.max_log_row_count(), prover_permits)
             .instrument(tracing::debug_span!("generate full traces"))
@@ -248,15 +300,15 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>> A
 
         let TraceData { preprocessed_traces, main_trace_data } = trace_data;
 
-        let (pk, vk) = self
-            .setup_from_preprocessed_data_and_traces(
+        let (pk, vk) = {
+            let _span = tracing::debug_span!("setup_from_preprocessed_data_and_traces").entered();
+            self.setup_from_preprocessed_data_and_traces(
                 pc_start,
                 initial_global_cumulative_sum,
                 preprocessed_traces,
                 enable_untrusted_programs,
             )
-            .instrument(tracing::debug_span!("setup_from_preprocessed_data_and_traces"))
-            .await;
+        };
 
         let pk = ProvingKey { vk: vk.clone(), preprocessed_data: pk };
 
@@ -269,10 +321,13 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>> A
 
         let shard_data = ShardData { pk, main_trace_data };
 
-        let (shard_proof, permit) = self
-            .prove_shard_with_data(shard_data, challenger)
-            .instrument(tracing::debug_span!("prove shard with data"))
-            .await;
+        let prover = self.clone();
+        let (shard_proof, permit) = tokio::task::spawn_blocking(move || {
+            let _span = tracing::debug_span!("prove shard with data").entered();
+            prover.prove_shard_with_data(shard_data, challenger)
+        })
+        .await
+        .unwrap();
 
         (vk, shard_proof, permit)
     }
@@ -288,6 +343,7 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>> A
         pk.vk.observe_into(&mut challenger);
         // Generate the traces.
         let main_trace_data = self
+            .inner
             .trace_generator
             .generate_main_traces(record, self.max_log_row_count(), prover_permits)
             .instrument(tracing::debug_span!("generate main traces"))
@@ -295,9 +351,13 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>> A
 
         let shard_data = ShardData { pk, main_trace_data };
 
-        self.prove_shard_with_data(shard_data, challenger)
-            .instrument(tracing::debug_span!("prove shard with data"))
-            .await
+        let prover = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let _span = tracing::debug_span!("prove shard with data").entered();
+            prover.prove_shard_with_data(shard_data, challenger)
+        })
+        .await
+        .unwrap()
     }
 
     async fn preprocessed_table_heights(
@@ -318,28 +378,32 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>>
     ShardProver<GC, SC, C>
 {
     /// Get all the chips in the machine.
+    #[must_use]
     pub fn all_chips(&self) -> &[Chip<GC::F, SC::Air>] {
-        self.trace_generator.machine().chips()
+        self.inner.trace_generator.machine().chips()
     }
 
     /// Get the machine.
+    #[must_use]
     pub fn machine(&self) -> &Machine<GC::F, SC::Air> {
-        self.trace_generator.machine()
+        self.inner.trace_generator.machine()
     }
 
     /// Get the number of public values in the machine.
+    #[must_use]
     pub fn num_pv_elts(&self) -> usize {
-        self.trace_generator.machine().num_pv_elts()
+        self.inner.trace_generator.machine().num_pv_elts()
     }
 
     /// Get the maximum log row count.
     #[inline]
-    pub const fn max_log_row_count(&self) -> usize {
-        self.pcs_prover.max_log_row_count
+    #[must_use]
+    pub fn max_log_row_count(&self) -> usize {
+        self.inner.pcs_prover.max_log_row_count
     }
 
     /// Setup from preprocessed data and traces.
-    pub async fn setup_from_preprocessed_data_and_traces(
+    pub fn setup_from_preprocessed_data_and_traces(
         &self,
         pc_start: [GC::F; 3],
         initial_global_cumulative_sum: SepticDigest<GC::F>,
@@ -350,7 +414,7 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>>
         assert!(!preprocessed_traces.is_empty(), "preprocessed trace cannot be empty");
         let message = preprocessed_traces.values().cloned().collect::<Vec<_>>();
         let (preprocessed_commit, preprocessed_data) =
-            self.pcs_prover.commit_multilinears(message).await.unwrap();
+            self.inner.pcs_prover.commit_multilinears(message).unwrap();
 
         let vk = MachineVerifyingKey {
             pc_start,
@@ -374,20 +438,19 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>>
         let pc_start = program.pc_start();
         let enable_untrusted_programs = program.enable_untrusted_programs();
         let preprocessed_data = self
+            .inner
             .trace_generator
             .generate_preprocessed_traces(program, self.max_log_row_count(), setup_permits)
             .await;
 
         let PreprocessedTraceData { preprocessed_traces, permit } = preprocessed_data;
 
-        let (pk, vk) = self
-            .setup_from_preprocessed_data_and_traces(
-                pc_start,
-                initial_global_cumulative_sum,
-                preprocessed_traces,
-                enable_untrusted_programs,
-            )
-            .await;
+        let (pk, vk) = self.setup_from_preprocessed_data_and_traces(
+            pc_start,
+            initial_global_cumulative_sum,
+            preprocessed_traces,
+            enable_untrusted_programs,
+        );
 
         let pk = ProvingKey { vk: vk.clone(), preprocessed_data: pk };
 
@@ -396,17 +459,19 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>>
         (PreprocessedData { pk, permit }, vk)
     }
 
-    async fn commit_traces(
+    fn commit_traces(
         &self,
         traces: &Traces<GC::F, CpuBackend>,
     ) -> (GC::Digest, JaggedProverData<GC, C::ProverData>) {
         let message = traces.values().cloned().collect::<Vec<_>>();
-        self.pcs_prover.commit_multilinears(message).await.unwrap()
+        self.inner.pcs_prover.commit_multilinears(message).unwrap()
     }
 
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_lines)]
-    async fn zerocheck(
+    #[allow(clippy::type_complexity)]
+    #[allow(clippy::needless_pass_by_value)]
+    fn zerocheck(
         &self,
         chips: &BTreeSet<Chip<GC::F, SC::Air>>,
         preprocessed_traces: Traces<GC::F, CpuBackend>,
@@ -442,11 +507,11 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>>
             let num_real_entries = main_trace.num_real_entries();
 
             let threshold_point =
-                Point::from_usize(num_real_entries, self.pcs_prover.max_log_row_count + 1);
+                Point::from_usize(num_real_entries, self.inner.pcs_prover.max_log_row_count + 1);
             chip_heights.insert(air.name().to_string(), threshold_point);
             let name = air.name();
             let num_variables = main_trace.num_variables();
-            assert_eq!(num_variables, self.pcs_prover.max_log_row_count as u32);
+            assert_eq!(num_variables, self.inner.pcs_prover.max_log_row_count as u32);
 
             let preprocessed_width = air.preprocessed_width();
             let dummy_preprocessed_trace = vec![GC::F::zero(); preprocessed_width];
@@ -513,7 +578,7 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>>
                 main_trace.num_real_entries() as u32,
                 GC::F::one(),
                 GC::F::zero(),
-                self.pcs_prover.max_log_row_count as u32,
+                self.inner.pcs_prover.max_log_row_count as u32,
             );
 
             let zerocheck_poly = ZeroCheckPoly::new(
@@ -540,8 +605,7 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>>
             chip_sumcheck_claims,
             1,
             lambda,
-        )
-        .await;
+        );
 
         let mut point_extended = partial_sumcheck_proof.point_and_eval.0.clone();
         point_extended.add_dimension(GC::EF::zero());
@@ -583,7 +647,7 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>>
 
     /// Generate a proof for a given execution record.
     #[allow(clippy::type_complexity)]
-    pub async fn prove_shard_with_data(
+    pub fn prove_shard_with_data(
         &self,
         data: ShardData<GC, SC, C>,
         mut challenger: GC::Challenger,
@@ -611,8 +675,10 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>>
         challenger.observe_constant_length_slice(&public_values);
 
         // Commit to the traces.
-        let (main_commit, main_data) =
-            self.commit_traces(&traces).instrument(tracing::debug_span!("commit traces")).await;
+        let (main_commit, main_data) = {
+            let _span = tracing::debug_span!("commit traces").entered();
+            self.commit_traces(&traces)
+        };
         // Observe the commitments.
         challenger.observe(main_commit);
         // Observe the number of chips.
@@ -642,19 +708,18 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>>
             .collect::<Point<_>>();
         let _pv_challenge = challenger.sample_ext_element::<GC::EF>();
 
-        let logup_gkr_proof = self
-            .logup_gkr_prover
-            .prove_logup_gkr(
+        let logup_gkr_proof = {
+            let _span = tracing::debug_span!("logup gkr proof").entered();
+            self.inner.logup_gkr_prover.prove_logup_gkr(
                 &shard_chips,
-                pk.preprocessed_data.preprocessed_traces.clone(),
-                traces.clone(),
+                &pk.preprocessed_data.preprocessed_traces,
+                &traces,
                 public_values.clone(),
                 alpha,
                 beta_seed,
                 &mut challenger,
             )
-            .instrument(tracing::debug_span!("logup gkr proof"))
-            .await;
+        };
         // Get the challenge for batching constraints.
         let batching_challenge = challenger.sample_ext_element::<GC::EF>();
         // Get the challenge for batching the evaluations from the GKR proof.
@@ -662,18 +727,18 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>>
 
         #[cfg(sp1_debug_constraints)]
         {
-            crate::debug::debug_constraints_all_chips::<GC, _, _>(
+            crate::debug::debug_constraints_all_chips::<GC, _>(
                 &shard_chips.iter().cloned().collect::<Vec<_>>(),
                 &pk.preprocessed_data.preprocessed_traces,
                 &traces,
                 &public_values,
-            )
-            .await;
+            );
         }
 
         // Generate the zerocheck proof.
-        let (shard_open_values, zerocheck_partial_sumcheck_proof) = self
-            .zerocheck(
+        let (shard_open_values, zerocheck_partial_sumcheck_proof) = {
+            let _span = tracing::debug_span!("zerocheck").entered();
+            self.zerocheck(
                 &shard_chips,
                 pk.preprocessed_data.preprocessed_traces.clone(),
                 traces,
@@ -683,22 +748,20 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>>
                 public_values.clone(),
                 &mut challenger,
             )
-            .instrument(tracing::debug_span!("zerocheck"))
-            .await;
+        };
 
         // Get the evaluation point for the trace polynomials.
         let evaluation_point = zerocheck_partial_sumcheck_proof.point_and_eval.0.clone();
         let mut preprocessed_evaluation_claims: Option<Evaluations<GC::EF, CpuBackend>> = None;
         let mut main_evaluation_claims = Evaluations::new(vec![]);
 
-        let alloc = self.trace_generator.allocator();
+        let alloc = self.inner.trace_generator.allocator();
 
         for (_, open_values) in shard_open_values.chips.iter() {
             let prep_local = &open_values.preprocessed.local;
             let main_local = &open_values.main.local;
             if !prep_local.is_empty() {
-                let preprocessed_evals =
-                    alloc.copy_to(&MleEval::from(prep_local.clone())).await.unwrap();
+                let preprocessed_evals = alloc.copy_to(&MleEval::from(prep_local.clone())).unwrap();
                 if let Some(preprocessed_claims) = preprocessed_evaluation_claims.as_mut() {
                     preprocessed_claims.push(preprocessed_evals);
                 } else {
@@ -706,7 +769,7 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>>
                     preprocessed_evaluation_claims = Some(evals);
                 }
             }
-            let main_evals = alloc.copy_to(&MleEval::from(main_local.clone())).await.unwrap();
+            let main_evals = alloc.copy_to(&MleEval::from(main_local.clone())).unwrap();
             main_evaluation_claims.push(main_evals);
         }
 
@@ -720,17 +783,18 @@ impl<GC: IopCtx, SC: ShardContext<GC>, C: DefaultJaggedProver<GC, SC::Config>>
             .collect::<Rounds<_>>();
 
         // Generate the evaluation proof.
-        let evaluation_proof = self
-            .pcs_prover
-            .prove_trusted_evaluations(
-                evaluation_point,
-                round_evaluation_claims,
-                round_prover_data,
-                &mut challenger,
-            )
-            .instrument(tracing::debug_span!("prove evaluation claims"))
-            .await
-            .unwrap();
+        let evaluation_proof = {
+            let _span = tracing::debug_span!("prove evaluation claims").entered();
+            self.inner
+                .pcs_prover
+                .prove_trusted_evaluations(
+                    evaluation_point,
+                    round_evaluation_claims,
+                    round_prover_data,
+                    &mut challenger,
+                )
+                .unwrap()
+        };
 
         let proof = ShardProof {
             main_commitment: main_commit,

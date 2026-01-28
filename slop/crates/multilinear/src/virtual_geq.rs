@@ -98,8 +98,8 @@ pub mod tests {
 
     type F = BabyBear;
 
-    #[tokio::test]
-    async fn test_virtual_geq() {
+    #[test]
+    fn test_virtual_geq() {
         let num_vars = 4;
         let mut rng = rand::thread_rng();
         for threshold in 0..(1 << num_vars) {
@@ -119,8 +119,8 @@ pub mod tests {
 
             let alpha = rng.gen::<F>();
             let new_geq = geq.fix_last_variable(alpha);
-            let new_lagrange = partial_lagrange.fix_last_variable(alpha).await;
-            let new_partial_geq = Mle::from(partial_geq).fix_last_variable(alpha).await;
+            let new_lagrange: Mle<F> = partial_lagrange.fix_last_variable(alpha);
+            let new_partial_geq: Mle<F> = Mle::from(partial_geq).fix_last_variable(alpha);
             let new_point = Point::<F>::rand(&mut rng, num_vars - 1);
             assert_eq!(
                 new_geq.eval_at(&new_point),
