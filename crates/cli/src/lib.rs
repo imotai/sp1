@@ -5,7 +5,7 @@ use reqwest::Client;
 pub const RUSTUP_TOOLCHAIN_NAME: &str = "succinct";
 
 /// The latest version (github tag) of the toolchain that is supported by our build system.
-pub const LATEST_SUPPORTED_TOOLCHAIN_VERSION_TAG: &str = "succinct-1.8.8-64bit";
+pub const LATEST_SUPPORTED_TOOLCHAIN_VERSION_TAG: &str = "succinct-1.93.0-64bit";
 
 pub const SP1_VERSION_MESSAGE: &str =
     concat!("sp1", " (", env!("VERGEN_GIT_SHA"), " ", env!("VERGEN_BUILD_TIMESTAMP"), ")");
