@@ -441,7 +441,7 @@ async fn device_preprocessed_tracegen<A: CudaTracegenAir<Felt>>(
         })
         .collect::<FuturesUnordered<_>>()
         .filter_map(|(air, maybe_trace)| {
-            ready(maybe_trace.map(|trace| (air.name().to_string(), trace.into_inner())))
+            ready(maybe_trace.map(|trace| (air.name().to_string(), trace.into())))
         });
 
     let named_traces = futures::stream_select!(copied_host_traces, device_traces)
@@ -794,7 +794,7 @@ async fn device_main_tracegen<A: CudaTracegenAir<Felt>>(
                     .instrument(tracing::trace_span!(parent: &outer_span, "device chip tracegen", chip = %air.name()))
                     .await
                     .unwrap();
-                (air.name().to_string(), trace.into_inner())
+                (air.name().to_string(), trace.into())
             }
         })
         .collect::<FuturesUnordered<_>>();

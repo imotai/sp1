@@ -8,7 +8,7 @@ use slop_jagged::{
     unzip_and_prefix_sums, JaggedLittlePolynomialProverParams, JaggedPcsProof, JaggedProverData,
     JaggedProverError, PrefixSumsMaxLogRowCount,
 };
-use slop_multilinear::{Evaluations, Mle, MleEval, MultilinearPcsVerifier, Point};
+use slop_multilinear::{Evaluations, MleEval, MultilinearPcsVerifier, Point};
 use slop_stacked::StackedBasefoldProof;
 use sp1_gpu_air::air_block::BlockAir;
 use sp1_gpu_air::SymbolicProverFolder;
@@ -387,7 +387,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
 
         // todo: remove this assert, it's kinda useless
         assert!(total_preprocessed_size == jagged_trace_mle.dense().preprocessed_offset);
-        let lagrange = Mle::new(device_point.partial_lagrange().into_inner());
+        let lagrange = device_point.partial_lagrange();
 
         let main_virtual_tensor =
             jagged_trace_mle.dense().main_virtual_tensor(log_stacking_height as u32);
@@ -503,17 +503,16 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
 
         // The overall evaluation claim of the sparse polynomial is inferred from the individual
         // table claims.
-        let column_claims: Mle<Ext, TaskScope> = Mle::from_buffer(column_claims);
+        let device_column_claims = DeviceMle::from(column_claims);
 
         // Use the sync GPU evaluation
-        let device_column_claims = DeviceMle::new(column_claims.clone());
         let sumcheck_claims = device_column_claims.eval_at_point(&z_col_device);
         let sumcheck_claims_host = sumcheck_claims.to_host_vec().unwrap();
         let sumcheck_claim = sumcheck_claims_host[0];
 
         // Compute eq polynomials for the jagged sumcheck
-        let eq_z_row = Mle::new(z_row_device.partial_lagrange().into_inner());
-        let eq_z_col = Mle::new(z_col_device.partial_lagrange().into_inner());
+        let eq_z_row = z_row_device.partial_lagrange();
+        let eq_z_col = z_col_device.partial_lagrange();
 
         let sumcheck_poly = generate_jagged_sumcheck_poly(all_mles, eq_z_col, eq_z_row);
 

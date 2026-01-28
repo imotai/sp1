@@ -25,7 +25,7 @@ use sp1_gpu_cudart::{
         },
         runtime::KernelPtr,
     },
-    DeviceBuffer, DeviceTensor, TaskScope,
+    DeviceBuffer, DeviceMle, DeviceTensor, TaskScope,
 };
 use sp1_gpu_merkle_tree::{CudaTcsProver, MerkleTreeProverData, SingleLayerMerkleTreeProverError};
 use sp1_gpu_utils::{Ext, Felt, JaggedTraceMle, TraceDenseData};
@@ -253,10 +253,9 @@ where
         let beta: GC::EF = challenger.sample_ext_element();
 
         // Fold the mle.
-        let folded_mle = {
-            use sp1_gpu_cudart::DeviceMle;
-            let device_mle = DeviceMle::new(current_mle);
-            device_mle.fold(beta).into_inner()
+        let folded_mle: Mle<_, TaskScope> = {
+            let device_mle = DeviceMle::from(current_mle);
+            device_mle.fold(beta).into()
         };
         let folded_num_variables = folded_mle.num_variables();
 
@@ -399,7 +398,7 @@ where
             let last_coord = eval_point.remove_last_coordinate();
             let zero_values = {
                 use sp1_gpu_cudart::DeviceMle;
-                let device_mle = DeviceMle::new(current_mle.clone());
+                let device_mle = DeviceMle::from(current_mle.clone());
                 let evals = device_mle.fixed_at_zero(&eval_point);
                 evals.to_host_vec().unwrap()
             };
@@ -570,22 +569,21 @@ mod tests {
                 .clone()
                 .into_iter()
                 .map(|mle| {
-                    let device_mle = sp1_gpu_cudart::DeviceMle::new(Arc::unwrap_or_clone(mle));
+                    let mle = Arc::unwrap_or_clone(mle);
+                    let guts = mle.into_guts();
+                    let device_mle = sp1_gpu_cudart::DeviceMle::from(guts);
                     device_mle.to_host().unwrap()
                 })
                 .collect();
 
-            let interleaved_message = rt.block_on(interleave_multilinears_with_fixed_rate(
-                32,
-                host_message,
-                LOG_STACKING_HEIGHT,
-            ));
+            let interleaved_message =
+                interleave_multilinears_with_fixed_rate(32, host_message, LOG_STACKING_HEIGHT);
 
             let interleaved_message =
                 interleaved_message.into_iter().map(|x| x.as_ref().clone()).collect::<Message<_>>();
 
             let (old_preprocessed_commitment, old_preprocessed_prover_data) =
-                rt.block_on(old_prover.commit_mles(interleaved_message.clone())).unwrap();
+                old_prover.commit_mles(interleaved_message.clone()).unwrap();
 
             let new_semaphore = ProverSemaphore::new(1);
             let capacity = CORE_MAX_TRACE_SIZE as usize;
@@ -638,21 +636,20 @@ mod tests {
 
             let mut host_message = Vec::new();
             for mle in message.into_iter() {
-                let device_mle = sp1_gpu_cudart::DeviceMle::new(Arc::unwrap_or_clone(mle));
+                let mle = Arc::unwrap_or_clone(mle);
+                let guts = mle.into_guts();
+                let device_mle = sp1_gpu_cudart::DeviceMle::from(guts);
                 let mle_host = device_mle.to_host().unwrap();
                 host_message.push(mle_host);
             }
 
             let host_message = host_message.into_iter().collect::<Message<Mle<Felt, CpuBackend>>>();
 
-            let interleaved_message_2 = rt.block_on(interleave_multilinears_with_fixed_rate(
-                32,
-                host_message,
-                LOG_STACKING_HEIGHT,
-            ));
+            let interleaved_message_2 =
+                interleave_multilinears_with_fixed_rate(32, host_message, LOG_STACKING_HEIGHT);
 
             let (old_main_commitment, old_main_prover_data) =
-                rt.block_on(old_prover.commit_mles(interleaved_message_2.clone())).unwrap();
+                old_prover.commit_mles(interleaved_message_2.clone()).unwrap();
 
             assert_eq!(new_main_commit, old_main_commitment);
 
@@ -663,7 +660,7 @@ mod tests {
             let evaluation_claims_1: Vec<_> = interleaved_message
                 .clone()
                 .into_iter()
-                .map(|mle| rt.block_on(mle.eval_at(&eval_point_host)))
+                .map(|mle| mle.eval_at(&eval_point_host))
                 .collect();
 
             let evaluation_claims_1 = Evaluations { round_evaluations: evaluation_claims_1 };
@@ -671,17 +668,17 @@ mod tests {
             let evaluation_claims_2: Vec<_> = interleaved_message_2
                 .clone()
                 .into_iter()
-                .map(|mle| rt.block_on(mle.eval_at(&eval_point_host)))
+                .map(|mle| mle.eval_at(&eval_point_host))
                 .collect();
 
             let host_evaluation_claims_1: Vec<MleEval<Ext, CpuBackend>> = evaluation_claims_1
                 .round_evaluations
                 .iter()
-                .map(|mle| rt.block_on(mle.to_host()).unwrap())
+                .map(|mle| mle.to_host().unwrap())
                 .collect();
 
             let host_evaluation_claims_2: Vec<MleEval<Ext, CpuBackend>> =
-                evaluation_claims_2.iter().map(|mle| rt.block_on(mle.to_host()).unwrap()).collect();
+                evaluation_claims_2.iter().map(|mle| mle.to_host().unwrap()).collect();
 
             let flattened_evaluation_claims = vec![
                 MleEval::new(
@@ -705,19 +702,15 @@ mod tests {
             scope.synchronize_blocking().unwrap();
             let now = std::time::Instant::now();
 
-            let basefold_proof = rt
-                .block_on(
-                    old_prover.prove_trusted_mle_evaluations(
-                        eval_point_host.clone(),
-                        vec![interleaved_message, interleaved_message_2].into_iter().collect(),
-                        vec![evaluation_claims_1.clone(), evaluation_claims_2.clone()]
-                            .into_iter()
-                            .collect(),
-                        vec![old_preprocessed_prover_data, old_main_prover_data]
-                            .into_iter()
-                            .collect(),
-                        &mut challenger,
-                    ),
+            let basefold_proof = old_prover
+                .prove_trusted_mle_evaluations(
+                    eval_point_host.clone(),
+                    vec![interleaved_message, interleaved_message_2].into_iter().collect(),
+                    vec![evaluation_claims_1.clone(), evaluation_claims_2.clone()]
+                        .into_iter()
+                        .collect(),
+                    vec![old_preprocessed_prover_data, old_main_prover_data].into_iter().collect(),
+                    &mut challenger,
                 )
                 .unwrap();
 
