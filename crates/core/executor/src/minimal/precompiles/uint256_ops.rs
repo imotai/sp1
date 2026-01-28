@@ -1,6 +1,6 @@
 use num::BigUint;
 
-use crate::{events::Uint256Operation, syscalls::SyscallCode};
+use crate::{events::Uint256Operation, SyscallCode};
 use sp1_jit::{
     RiscRegister::{X12, X13, X14, X5},
     SyscallContext,

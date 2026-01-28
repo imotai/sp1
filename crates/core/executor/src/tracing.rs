@@ -13,7 +13,6 @@ use crate::{
         MemoryReadRecord, MemoryRecord, MemoryRecordEnum, MemoryWriteRecord, PrecompileEvent,
         SyscallEvent, UTypeEvent,
     },
-    syscalls::SyscallCode,
     vm::{
         results::{
             AluResult, BranchResult, CycleResult, EcallResult, JumpResult, LoadResult,
@@ -23,7 +22,7 @@ use crate::{
         CoreVM,
     },
     ALUTypeRecord, ExecutionError, ExecutionRecord, ITypeRecord, Instruction, JTypeRecord,
-    MemoryAccessRecord, Opcode, Program, RTypeRecord, Register, SP1CoreOpts,
+    MemoryAccessRecord, Opcode, Program, RTypeRecord, Register, SP1CoreOpts, SyscallCode,
 };
 
 /// A RISC-V VM that uses a [`MinimalTrace`] to create a [`ExecutionRecord`].

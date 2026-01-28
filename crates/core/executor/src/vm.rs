@@ -1,6 +1,5 @@
 use crate::{
     events::{MemoryAccessPosition, MemoryReadRecord, MemoryRecord, MemoryWriteRecord},
-    syscalls::SyscallCode,
     vm::{
         results::{
             AluResult, BranchResult, CycleResult, EcallResult, JumpResult, LoadResult,
@@ -9,7 +8,7 @@ use crate::{
         syscall::{sp1_ecall_handler, SyscallRuntime},
     },
     ExecutionError, Instruction, Opcode, Program, Register, RetainedEventsPreset, SP1CoreOpts,
-    HALT_PC, M64,
+    SyscallCode, CLK_INC as CLK_INC_32, HALT_PC, PC_INC as PC_INC_32,
 };
 use sp1_hypercube::air::{PROOF_NONCE_NUM_WORDS, PV_DIGEST_NUM_WORDS};
 use sp1_jit::{MemReads, MinimalTrace};
@@ -21,10 +20,8 @@ pub(crate) mod results;
 pub(crate) mod shapes;
 pub(crate) mod syscall;
 
-/// The number of cycles that a single instruction takes.
-const CLK_BUMP: u64 = 8;
-/// The number a single instruction increments the program counter by.
-const PC_BUMP: u64 = 4;
+const CLK_INC: u64 = CLK_INC_32 as u64;
+const PC_INC: u64 = PC_INC_32 as u64;
 
 /// A RISC-V VM that uses a [`MinimalTrace`] to oracle memory access.
 pub struct CoreVM<'a> {
@@ -106,8 +103,8 @@ impl<'a> CoreVM<'a> {
             pc: start_pc,
             program,
             mem_reads: trace.mem_reads(),
-            next_pc: start_pc.wrapping_add(PC_BUMP),
-            next_clk: start_clk.wrapping_add(CLK_BUMP),
+            next_pc: start_pc.wrapping_add(PC_INC),
+            next_clk: start_clk.wrapping_add(CLK_INC),
             hint_lens: trace.hint_lens().iter(),
             exit_code: 0,
             retained_syscall_codes,
@@ -133,8 +130,8 @@ impl<'a> CoreVM<'a> {
         self.pc = self.next_pc;
 
         // Reset the next_clk and next_pc to the next cycle.
-        self.next_clk = self.clk.wrapping_add(CLK_BUMP);
-        self.next_pc = self.pc.wrapping_add(PC_BUMP);
+        self.next_clk = self.clk.wrapping_add(CLK_INC);
+        self.next_pc = self.pc.wrapping_add(PC_INC);
         self.global_clk = self.global_clk.wrapping_add(1);
 
         // Check if the program has halted.
@@ -336,14 +333,14 @@ impl<'a> CoreVM<'a> {
             Opcode::MULHSU => ((((b as i64) as i128) * (c as i128)) >> 64) as u64,
             Opcode::DIV => {
                 if c == 0 {
-                    M64
+                    u64::MAX
                 } else {
                     (b as i64).wrapping_div(c as i64) as u64
                 }
             }
             Opcode::DIVU => {
                 if c == 0 {
-                    M64
+                    u64::MAX
                 } else {
                     b / c
                 }
@@ -368,14 +365,14 @@ impl<'a> CoreVM<'a> {
             Opcode::MULW => (Wrapping(b as i32) * Wrapping(c as i32)).0 as i64 as u64,
             Opcode::DIVW => {
                 if c as i32 == 0 {
-                    M64
+                    u64::MAX
                 } else {
                     (b as i32).wrapping_div(c as i32) as i64 as u64
                 }
             }
             Opcode::DIVUW => {
                 if c as i32 == 0 {
-                    M64
+                    u64::MAX
                 } else {
                     ((b as u32 / c as u32) as i32) as i64 as u64
                 }
@@ -773,7 +770,7 @@ impl CoreVM<'_> {
 impl<'a> CoreVM<'a> {
     #[inline]
     #[must_use]
-    /// Get the current clock, this clock is incremented by [`CLK_BUMP`] each cycle.
+    /// Get the current clock, this clock is incremented by [`CLK_INC`] each cycle.
     pub const fn clk(&self) -> u64 {
         self.clk
     }

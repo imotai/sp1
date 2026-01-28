@@ -1,7 +1,7 @@
 use crate::{
     events::{PrecompileEvent, ShaExtendEvent, ShaExtendMemoryRecords},
-    syscalls::SyscallCode,
     vm::syscall::SyscallRuntime,
+    SyscallCode,
 };
 
 pub(crate) fn sha256_extend<'a, RT: SyscallRuntime<'a>>(

@@ -3,8 +3,8 @@ use sp1_primitives::consts::WORD_BYTE_SIZE;
 
 use crate::{
     events::{PrecompileEvent, Uint256MulEvent},
-    syscalls::SyscallCode,
     vm::syscall::SyscallRuntime,
+    SyscallCode,
 };
 
 pub(crate) fn uint256_mul<'a, RT: SyscallRuntime<'a>>(

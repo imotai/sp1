@@ -6,8 +6,8 @@ use typenum::Unsigned;
 
 use crate::{
     events::{Fp2MulEvent, PrecompileEvent},
-    syscalls::SyscallCode,
     vm::syscall::SyscallRuntime,
+    SyscallCode,
 };
 
 pub fn fp2_mul<'a, RT: SyscallRuntime<'a>, P: FpOpField>(

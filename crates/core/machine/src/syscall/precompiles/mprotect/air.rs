@@ -4,8 +4,7 @@ use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::Matrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, PrecompileEvent},
-    syscalls::SyscallCode,
-    ByteOpcode, ExecutionRecord, Program,
+    ByteOpcode, ExecutionRecord, Program, SyscallCode,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::air::{InteractionScope, MachineAir};

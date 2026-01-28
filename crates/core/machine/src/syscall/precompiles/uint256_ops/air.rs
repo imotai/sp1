@@ -10,7 +10,7 @@ use itertools::Itertools;
 use slop_air::{Air, BaseAir};
 use slop_algebra::AbstractField;
 use slop_matrix::Matrix;
-use sp1_core_executor::syscalls::SyscallCode;
+use sp1_core_executor::SyscallCode;
 use sp1_curves::{
     params::{Limbs, NumLimbs, NumWords},
     uint256::U256Field,

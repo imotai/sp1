@@ -8,8 +8,7 @@ use hashbrown::HashMap;
 
 use crate::{
     events::{generate_execution_report, MemInstrEvent, PrecompileEvent, SyscallEvent},
-    syscalls::SyscallCode,
-    ITypeRecord, Opcode,
+    ITypeRecord, Opcode, SyscallCode,
 };
 
 /// This constant is chosen for backwards compatibility with the V4 gas model: with this factor,

@@ -1,7 +1,7 @@
 use crate::events::{EllipticCurveDoubleEvent, PrecompileEvent};
 use sp1_curves::{params::NumWords, CurveType, EllipticCurve};
 
-use crate::{syscalls::SyscallCode, vm::syscall::SyscallRuntime};
+use crate::{vm::syscall::SyscallRuntime, SyscallCode};
 use typenum::Unsigned;
 
 pub(crate) fn weierstrass_double<'a, RT: SyscallRuntime<'a>, E: EllipticCurve>(

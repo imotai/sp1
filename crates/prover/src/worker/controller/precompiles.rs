@@ -3,7 +3,7 @@ use std::sync::Arc;
 use futures::StreamExt;
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
-use sp1_core_executor::{syscalls::SyscallCode, ExecutionRecord, Program, SP1CoreOpts, SplitOpts};
+use sp1_core_executor::{ExecutionRecord, Program, SP1CoreOpts, SplitOpts, SyscallCode};
 use sp1_hypercube::air::ShardRange;
 use sp1_prover_types::{await_scoped_vec, Artifact, ArtifactClient, ArtifactType, TaskStatus};
 use tokio::{sync::mpsc, task::JoinSet};

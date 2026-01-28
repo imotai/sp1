@@ -1,7 +1,7 @@
 use crate::{
     events::{KeccakPermuteEvent, PrecompileEvent},
-    syscalls::SyscallCode,
     vm::syscall::SyscallRuntime,
+    SyscallCode,
 };
 
 pub(crate) const STATE_SIZE: usize = 25;

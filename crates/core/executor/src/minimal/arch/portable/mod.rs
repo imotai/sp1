@@ -16,14 +16,17 @@ use std::{
 use hashbrown::HashMap;
 
 use crate::{
-    minimal::ecall::ecall_handler, syscalls::SyscallCode, Instruction, Opcode, Program, Register,
-    M64,
+    minimal::ecall::ecall_handler, Instruction, Opcode, Program, Register, SyscallCode,
+    CLK_INC as CLK_INC_32, HALT_PC, PC_INC as PC_INC_32,
 };
 
 mod cow;
 use cow::MaybeCowMemory;
 mod trace;
 use trace::TraceChunkBuffer;
+
+const CLK_INC: u64 = CLK_INC_32 as u64;
+const PC_INC: u64 = PC_INC_32 as u64;
 
 /// A minimal trace executor.
 pub struct MinimalExecutor {
@@ -521,8 +524,8 @@ impl MinimalExecutor {
             }
         }
 
-        let mut next_pc = self.pc.wrapping_add(PC_BUMP);
-        let mut next_clk = self.clk.wrapping_add(CLK_BUMP);
+        let mut next_pc = self.pc.wrapping_add(PC_INC);
+        let mut next_clk = self.clk.wrapping_add(CLK_INC);
         if instruction.is_alu_instruction() {
             self.execute_alu(instruction);
         } else if instruction.is_memory_load_instruction() {
@@ -703,14 +706,14 @@ impl MinimalExecutor {
             Opcode::MULHSU => ((((b as i64) as i128) * (c as i128)) >> 64) as u64,
             Opcode::DIV => {
                 if c == 0 {
-                    M64
+                    u64::MAX
                 } else {
                     (b as i64).wrapping_div(c as i64) as u64
                 }
             }
             Opcode::DIVU => {
                 if c == 0 {
-                    M64
+                    u64::MAX
                 } else {
                     b / c
                 }
@@ -735,14 +738,14 @@ impl MinimalExecutor {
             Opcode::MULW => (b as i32).wrapping_mul(c as i32) as i64 as u64,
             Opcode::DIVW => {
                 if c as i32 == 0 {
-                    M64
+                    u64::MAX
                 } else {
                     (b as i32).wrapping_div(c as i32) as i64 as u64
                 }
             }
             Opcode::DIVUW => {
                 if c as i32 == 0 {
-                    M64
+                    u64::MAX
                 } else {
                     ((b as u32 / c as u32) as i32) as i64 as u64
                 }
@@ -787,7 +790,7 @@ impl MinimalExecutor {
                 let base = self.registers[rs1 as usize] as i64;
 
                 let imm_offset_se = sign_extend_imm(imm_offset, 12);
-                self.registers[rd as usize] = self.pc.wrapping_add(PC_BUMP);
+                self.registers[rd as usize] = self.pc.wrapping_add(PC_INC);
                 // Calculate next PC: (rs1 + imm) & ~1
                 *next_pc = (base.wrapping_add(imm_offset_se) as u64) & !1_u64;
             }
@@ -843,8 +846,8 @@ impl MinimalExecutor {
             SyscallCode::EXIT_UNCONSTRAINED => {
                 // The `exit_unconstrained` resets the pc and clk to the values they were at when
                 // the unconstrained block was entered.
-                *next_pc = self.pc.wrapping_add(PC_BUMP);
-                *next_clk = self.clk.wrapping_add(CLK_BUMP + 256);
+                *next_pc = self.pc.wrapping_add(PC_INC);
+                *next_clk = self.clk.wrapping_add(CLK_INC + 256);
             }
             SyscallCode::HALT => {
                 // Explicity set the PC to one, to indicate that the program has halted.
@@ -864,14 +867,6 @@ impl MinimalExecutor {
         mem_value.value
     }
 }
-
-/// The number of cycles that a single instruction takes.
-const CLK_BUMP: u64 = 8;
-/// The number a single instruction increments the program counter by.
-const PC_BUMP: u64 = 4;
-/// The executor uses this PC to determine if the program has halted.
-/// As a PC, it is invalid since it is not a multiple of [`PC_INC`].
-const HALT_PC: u64 = 1;
 
 fn sign_extend_imm(value: u64, bits: u8) -> i64 {
     let shift = 64 - bits;

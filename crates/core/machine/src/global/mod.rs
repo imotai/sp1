@@ -77,8 +77,8 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
     type Program = Program;
 
     fn name(&self) -> &'static str {
-        assert_eq!(GLOBAL_INITIAL_DIGEST_POS_COPY, GLOBAL_INITIAL_DIGEST_POS);
-        assert_eq!(GLOBAL_OFFSET_POS_COPY, GLOBAL_OFFSET_POS);
+        debug_assert_eq!(GLOBAL_INITIAL_DIGEST_POS_COPY, GLOBAL_INITIAL_DIGEST_POS);
+        debug_assert_eq!(GLOBAL_OFFSET_POS_COPY, GLOBAL_OFFSET_POS);
         "Global"
     }
 
@@ -318,10 +318,12 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::io::SP1Stdin;
     use crate::programs::tests::*;
+    use crate::utils::generate_records;
 
     use slop_matrix::dense::RowMajorMatrix;
-    use sp1_core_executor::{ExecutionRecord, Executor, SP1CoreOpts, Trace};
+    use sp1_core_executor::{ExecutionRecord, SP1CoreOpts};
     use sp1_hypercube::air::MachineAir;
     use sp1_primitives::SP1Field;
 
@@ -329,9 +331,16 @@ mod tests {
     #[allow(clippy::uninlined_format_args)]
     fn test_global_generate_trace() {
         let program = simple_program();
-        let mut runtime = Executor::new(Arc::new(program), SP1CoreOpts::default());
-        runtime.run::<Trace>().unwrap();
-        let shard = runtime.record;
+        let (records, _) = generate_records::<SP1Field>(
+            Arc::new(program),
+            SP1Stdin::new(),
+            SP1CoreOpts::default(),
+            [0; 4],
+        )
+        .unwrap();
+
+        // Use the last record which should contain global events
+        let shard = records.into_iter().last().unwrap();
 
         let chip: GlobalChip = GlobalChip;
 

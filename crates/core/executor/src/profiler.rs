@@ -73,10 +73,6 @@ impl Profiler {
         }
     }
 
-    pub(super) fn new(elf_bytes: &[u8], sample_rate: u64) -> Result<Self, ProfilerError> {
-        Ok(Self::from_program(&Program::from(elf_bytes)?, sample_rate))
-    }
-
     pub(super) fn record(&mut self, clk: u64, pc: u64) {
         // We are still in the current function.
         if pc > self.current_function_range.0 && pc <= self.current_function_range.1 {

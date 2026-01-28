@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use slop_basefold::FriConfig;
-use sp1_core_executor::{Executor, Program, SP1Context, SP1CoreOpts, Trace};
+use sp1_core_executor::{MinimalExecutor, Program, SP1Context, SP1CoreOpts};
 use sp1_hypercube::{
     prover::{CpuShardProver, SP1InnerPcsProver, SimpleProver},
     MachineProof, MachineVerifierConfigError, SP1InnerPcs, SP1PcsProofInner, ShardVerifier,
@@ -23,12 +23,15 @@ pub async fn run_test(
     program: Arc<Program>,
     inputs: SP1Stdin,
 ) -> Result<SP1PublicValues, MachineVerifierConfigError<SP1GlobalContext, SP1InnerPcs>> {
-    let mut runtime = Executor::new(program, SP1CoreOpts::default());
-    runtime.write_vecs(&inputs.buffer);
-    runtime.run::<Trace>().unwrap();
-    let public_values = SP1PublicValues::from(&runtime.state.public_values_stream);
+    // Run MinimalExecutor to get public values
+    let mut executor = MinimalExecutor::new(program.clone(), false, None);
+    for buf in &inputs.buffer {
+        executor.with_input(buf);
+    }
+    while executor.execute_chunk().is_some() {}
+    let public_values = SP1PublicValues::from(executor.public_values_stream());
 
-    let _ = run_test_core(runtime, inputs, 21, 22).await?;
+    let _ = run_test_core(program, inputs, 21, 22).await?;
     Ok(public_values)
 }
 
@@ -37,12 +40,15 @@ pub async fn run_test_small_trace(
     program: Arc<Program>,
     inputs: SP1Stdin,
 ) -> Result<SP1PublicValues, MachineVerifierConfigError<SP1GlobalContext, SP1InnerPcs>> {
-    let mut runtime = Executor::new(program, SP1CoreOpts::default());
-    runtime.write_vecs(&inputs.buffer);
-    runtime.run::<Trace>().unwrap();
-    let public_values = SP1PublicValues::from(&runtime.state.public_values_stream);
+    // Run MinimalExecutor to get public values
+    let mut executor = MinimalExecutor::new(program.clone(), false, None);
+    for buf in &inputs.buffer {
+        executor.with_input(buf);
+    }
+    while executor.execute_chunk().is_some() {}
+    let public_values = SP1PublicValues::from(executor.public_values_stream());
 
-    let _ = run_test_core(runtime, inputs, 20, 23).await?;
+    let _ = run_test_core(program, inputs, 20, 23).await?;
     Ok(public_values)
 }
 
@@ -82,7 +88,7 @@ pub async fn run_test_small_trace(
 // }
 
 pub async fn run_test_core(
-    runtime: Executor<'static>,
+    program: Arc<Program>,
     inputs: SP1Stdin,
     log_stacking_height: u32,
     max_log_row_count: usize,
@@ -101,23 +107,15 @@ pub async fn run_test_core(
     );
     let prover = SimpleProver::new(verifier, shard_prover);
 
-    let (pk, vk) = prover
-        .setup(runtime.program.clone())
-        .instrument(tracing::debug_span!("setup").or_current())
-        .await;
+    let (pk, vk) =
+        prover.setup(program.clone()).instrument(tracing::debug_span!("setup").or_current()).await;
     let pk = unsafe { pk.into_inner() };
 
-    let (proof, _) = prove_core(
-        &prover,
-        pk,
-        runtime.program.clone(),
-        inputs,
-        SP1CoreOpts::default(),
-        SP1Context::default(),
-    )
-    .instrument(tracing::debug_span!("prove core"))
-    .await
-    .unwrap();
+    let (proof, _) =
+        prove_core(&prover, pk, program, inputs, SP1CoreOpts::default(), SP1Context::default())
+            .instrument(tracing::debug_span!("prove core"))
+            .await
+            .unwrap();
 
     prover.verify(&vk, &proof)?;
     Ok(proof)

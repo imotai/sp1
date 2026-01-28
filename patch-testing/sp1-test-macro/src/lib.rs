@@ -156,7 +156,7 @@ pub fn sp1_test(attr: TokenStream, item: TokenStream) -> TokenStream {
             let (__macro_internal_public, __macro_internal_execution_report) =
                 ::sp1_sdk::Prover::execute(__macro_internal_client, __MACRO_INTERNAL_ELF, __macro_internal_stdin).await?;
 
-            for syscall in [#(::sp1_core_executor::syscalls::SyscallCode::#syscalls),*] {
+            for syscall in [#(::sp1_core_executor::SyscallCode::#syscalls),*] {
                 assert!(__macro_internal_execution_report.syscall_counts[syscall] > 0, "Syscall {syscall} has not been emitted");
             }
 

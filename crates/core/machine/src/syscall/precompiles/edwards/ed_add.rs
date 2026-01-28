@@ -24,8 +24,7 @@ use sp1_core_executor::{
         ByteLookupEvent, ByteRecord, EllipticCurveAddEvent, FieldOperation, MemoryRecordEnum,
         PrecompileEvent,
     },
-    syscalls::SyscallCode,
-    ExecutionRecord, Program,
+    ExecutionRecord, Program, SyscallCode,
 };
 use sp1_curves::{
     edwards::{ed25519::Ed25519BaseField, EdwardsParameters, WORDS_CURVE_POINT},

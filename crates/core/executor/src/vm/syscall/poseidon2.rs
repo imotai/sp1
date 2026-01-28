@@ -1,7 +1,7 @@
 use crate::{
     events::{Poseidon2PrecompileEvent, PrecompileEvent},
-    syscalls::SyscallCode,
     vm::syscall::SyscallRuntime,
+    SyscallCode,
 };
 
 pub(crate) fn poseidon2<'a, RT: SyscallRuntime<'a>>(

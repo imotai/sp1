@@ -1,6 +1,6 @@
 use sp1_jit::debug::State;
 
-use crate::{syscalls::SyscallCode, Program, Register, HALT_PC};
+use crate::{Program, Register, SyscallCode, HALT_PC};
 
 #[allow(unused)]
 pub fn render_current_instruction(program: &Program, state: &State) -> String {

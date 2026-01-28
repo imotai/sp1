@@ -11,8 +11,7 @@ use sp1_hypercube::{MachineVerifyingKey, SP1PcsProofInner};
 use crate::{
     events::{MemoryEntry, PageProtRecord},
     memory::Memory,
-    syscalls::SyscallCode,
-    SP1RecursionProof,
+    SP1RecursionProof, SyscallCode,
 };
 
 use sp1_primitives::SP1GlobalContext;

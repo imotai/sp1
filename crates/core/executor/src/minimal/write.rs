@@ -123,14 +123,16 @@ pub(crate) unsafe fn write(ctx: &mut impl SyscallContext, arg1: u64, arg2: u64) 
         return None;
     }
 
+    use crate::hook::{bls, fp_ops, hook_ecrecover, hook_ed_decompress, hook_rsa_mul_mod, HookEnv};
+    let env = HookEnv {};
     let hook_return = match fd as u32 {
-        FD_BLS12_381_INVERSE => Some(crate::hooks::bls::hook_bls12_381_inverse(slice)),
-        FD_BLS12_381_SQRT => Some(crate::hooks::bls::hook_bls12_381_sqrt(slice)),
-        FD_FP_INV => Some(crate::hooks::fp_ops::hook_fp_inverse(slice)),
-        FD_FP_SQRT => Some(crate::hooks::fp_ops::hook_fp_sqrt(slice)),
-        FD_ECRECOVER_HOOK => Some(crate::hooks::hook_ecrecover(slice)),
-        FD_EDDECOMPRESS => Some(crate::hooks::hook_ed_decompress(slice)),
-        FD_RSA_MUL_MOD => Some(crate::hooks::hook_rsa_mul_mod(slice)),
+        FD_BLS12_381_INVERSE => Some(bls::hook_bls12_381_inverse(env, slice)),
+        FD_BLS12_381_SQRT => Some(bls::hook_bls12_381_sqrt(env, slice)),
+        FD_FP_INV => Some(fp_ops::hook_fp_inverse(env, slice)),
+        FD_FP_SQRT => Some(fp_ops::hook_fp_sqrt(env, slice)),
+        FD_ECRECOVER_HOOK => Some(hook_ecrecover(env, slice)),
+        FD_EDDECOMPRESS => Some(hook_ed_decompress(env, slice)),
+        FD_RSA_MUL_MOD => Some(hook_rsa_mul_mod(env, slice)),
         _ => {
             tracing::warn!("Unsupported file descriptor: {}", fd);
             None

@@ -21,6 +21,9 @@ use sp1_hypercube::{
 use sp1_primitives::consts::split_page_idx;
 use std::sync::Arc;
 
+/// The maximum number of instructions in a program.
+pub const MAX_PROGRAM_SIZE: usize = 1 << 22;
+
 /// A program that can be executed by the SP1 zkVM.
 ///
 /// Contains a series of instructions along with the initial memory image. It also contains the

@@ -1,9 +1,21 @@
 cfg_if::cfg_if! {
-    // When profiling is enabled, always use the portable executor for accurate instruction-level tracing.
+    // On x86_64 without profiling: use native backend only
     if #[cfg(all(target_arch = "x86_64", target_endian = "little", not(feature = "profiling")))] {
         mod x86_64;
         pub use x86_64::*;
-    } else {
+    }
+    // On x86_64 with profiling: use portable backend, build native only for tests
+    else if #[cfg(all(target_arch = "x86_64", target_endian = "little", feature = "profiling"))] {
+        mod portable;
+        pub use portable::*;
+
+        // Build native backend only for differential testing
+        #[cfg(test)]
+        #[allow(dead_code)]
+        pub mod x86_64;
+    }
+    // On other architectures: use portable backend only
+    else {
         mod portable;
         pub use portable::*;
     }

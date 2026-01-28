@@ -1,7 +1,7 @@
 use crate::{
     events::{PrecompileEvent, Uint256OpsEvent},
-    syscalls::SyscallCode,
     vm::syscall::SyscallRuntime,
+    SyscallCode,
 };
 
 const U256_NUM_WORDS: usize = 4;

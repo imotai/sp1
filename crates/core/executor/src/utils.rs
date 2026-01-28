@@ -3,7 +3,7 @@ use std::{hash::Hash, str::FromStr};
 use hashbrown::HashMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{syscalls::SyscallCode, Instruction, Opcode, Register, RiscvAirId};
+use crate::{Instruction, Opcode, Register, RiscvAirId, SyscallCode};
 
 /// Serialize a `HashMap<u32, V>` as a `Vec<(u32, V)>`.
 pub fn serialize_hashmap_as_vec<K: Eq + Hash + Serialize, V: Serialize, S: Serializer>(

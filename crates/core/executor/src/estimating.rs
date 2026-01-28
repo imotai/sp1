@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use crate::{
     events::{MemoryReadRecord, MemoryWriteRecord},
-    syscalls::SyscallCode,
     vm::{
         gas::ReportGenerator,
         results::{
@@ -15,6 +14,7 @@ use crate::{
         CoreVM,
     },
     ExecutionError, ExecutionReport, Instruction, Opcode, Program, Register, SP1CoreOpts,
+    SyscallCode,
 };
 
 /// A RISC-V VM that uses a [`MinimalTrace`] to create a [`ExecutionReport`].

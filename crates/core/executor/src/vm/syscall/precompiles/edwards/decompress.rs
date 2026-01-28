@@ -3,8 +3,8 @@ use sp1_primitives::consts::words_to_bytes_le;
 
 use crate::{
     events::{EdDecompressEvent, MemoryReadRecord, MemoryWriteRecord, PrecompileEvent},
-    syscalls::SyscallCode,
     vm::syscall::SyscallRuntime,
+    SyscallCode,
 };
 
 pub(crate) fn edwards_decompress<'a, RT: SyscallRuntime<'a>>(

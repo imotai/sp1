@@ -25,12 +25,10 @@ mod context;
 mod cost;
 mod debug;
 mod disassembler;
-pub mod estimator;
+mod errors;
 pub mod events;
-mod executor;
 mod hook;
 mod instruction;
-mod io;
 mod tracing;
 pub use tracing::TracingVM;
 mod vm;
@@ -41,7 +39,6 @@ pub use vm::{
     shapes::{MAXIMUM_CYCLE_AREA, MAXIMUM_PADDING_AREA},
     CoreVM,
 };
-mod hooks;
 mod splicing;
 pub use splicing::{SplicedMinimalTrace, SplicingVM};
 mod estimating;
@@ -62,13 +59,14 @@ mod report;
 mod retain;
 mod state;
 pub mod subproof;
-pub mod syscalls;
+mod syscall_code;
+pub use syscall_code::*;
 mod utils;
 
 pub use air::*;
 pub use context::*;
 pub use cost::*;
-pub use executor::*;
+pub use errors::*;
 pub use hook::*;
 pub use instruction::*;
 // pub use minimal::*;
@@ -83,6 +81,17 @@ pub use state::*;
 pub use utils::*;
 
 pub use sp1_hypercube::SP1RecursionProof;
+
+/// The default increment for the program counter. Is used for all instructions except
+/// for branches and jumps.
+pub const PC_INC: u32 = 4;
+
+/// The default increment for the timestamp.
+pub const CLK_INC: u32 = 8;
+
+/// The executor uses this PC to determine if the program has halted.
+/// As a PC, it is invalid since it is not a multiple of [`PC_INC`].
+pub const HALT_PC: u64 = 1;
 
 /// A module for testing programs.
 #[cfg(test)]

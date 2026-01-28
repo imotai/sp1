@@ -4,8 +4,7 @@ use num::{BigUint, One, Zero};
 use slop_algebra::PrimeField32;
 use sp1_core_executor::{
     events::{ByteRecord, MemoryRecordEnum, PrecompileEvent},
-    syscalls::SyscallCode,
-    ExecutionRecord, Program,
+    ExecutionRecord, Program, SyscallCode,
 };
 use sp1_curves::{params::NumWords, uint256::U256Field};
 use sp1_hypercube::air::MachineAir;

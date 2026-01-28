@@ -963,8 +963,8 @@ pub mod tests {
 
     use slop_air::BaseAir;
     use sp1_core_executor::{
-        cost_and_height_per_syscall, rv64im_costs, syscalls::SyscallCode, Instruction, Opcode,
-        Program, RiscvAirId, MAXIMUM_CYCLE_AREA, MAXIMUM_PADDING_AREA,
+        cost_and_height_per_syscall, rv64im_costs, Instruction, Opcode, Program, RiscvAirId,
+        SyscallCode, MAXIMUM_CYCLE_AREA, MAXIMUM_PADDING_AREA,
     };
     use sp1_hypercube::{air::MachineAir, InteractionBuilder, MachineRecord};
     use sp1_primitives::SP1Field;

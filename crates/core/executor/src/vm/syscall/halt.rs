@@ -1,4 +1,4 @@
-use crate::{syscalls::SyscallCode, vm::syscall::SyscallRuntime, HALT_PC};
+use crate::{vm::syscall::SyscallRuntime, SyscallCode, HALT_PC};
 
 pub(crate) fn halt_syscall<'a, RT: SyscallRuntime<'a>>(
     rt: &mut RT,

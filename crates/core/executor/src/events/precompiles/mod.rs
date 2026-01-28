@@ -11,7 +11,7 @@ mod uint256;
 mod uint256_ops;
 
 use super::{MemoryLocalEvent, PageProtLocalEvent, SyscallEvent};
-use crate::{deserialize_hashmap_as_vec, serialize_hashmap_as_vec, syscalls::SyscallCode};
+use crate::{deserialize_hashmap_as_vec, serialize_hashmap_as_vec, SyscallCode};
 use deepsize2::DeepSizeOf;
 pub use ec::*;
 pub use edwards::*;

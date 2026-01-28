@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::syscalls::SyscallCode;
+use crate::SyscallCode;
 
 /// Allowed presets for collections of events that may be retained instead of deferred.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

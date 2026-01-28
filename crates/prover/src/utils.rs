@@ -9,7 +9,7 @@ use rand::{rngs::OsRng, RngCore};
 
 use itertools::Itertools;
 use slop_symmetric::CryptographicHasher;
-use sp1_core_executor::{Executor, Program, SP1CoreOpts};
+use sp1_core_executor::{MinimalExecutor, Program};
 use sp1_core_machine::io::SP1Stdin;
 use sp1_primitives::{poseidon2_hasher, SP1Field};
 use sp1_recursion_circuit::machine::RootPublicValues;
@@ -71,10 +71,12 @@ impl SP1CoreProofData {
 /// Get the number of cycles for a given program.
 pub fn get_cycles(elf: &[u8], stdin: &SP1Stdin) -> u64 {
     let program = Program::from(elf).unwrap();
-    let mut runtime = Executor::new(Arc::new(program), SP1CoreOpts::default());
-    runtime.write_vecs(&stdin.buffer);
-    runtime.run_fast().unwrap();
-    runtime.state.global_clk
+    let mut executor = MinimalExecutor::new(Arc::new(program), false, None);
+    for buf in &stdin.buffer {
+        executor.with_input(buf);
+    }
+    while executor.execute_chunk().is_some() {}
+    executor.global_clk()
 }
 
 /// Load an ELF file from a given path.

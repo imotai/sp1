@@ -10,8 +10,7 @@ use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::Matrix;
 use sp1_core_executor::{
     events::{ByteRecord, PrecompileEvent},
-    syscalls::SyscallCode,
-    ExecutionRecord, Program,
+    ExecutionRecord, Program, SyscallCode,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::{

@@ -2,8 +2,8 @@ use sp1_curves::{params::NumWords, CurveType, EllipticCurve};
 
 use crate::{
     events::{EllipticCurveAddEvent, PrecompileEvent},
-    syscalls::SyscallCode,
     vm::syscall::SyscallRuntime,
+    SyscallCode,
 };
 use typenum::Unsigned;
 

@@ -2,8 +2,7 @@ use crate::{
     events::{
         MemoryLocalEvent, MemoryReadRecord, MemoryWriteRecord, PrecompileEvent, SyscallEvent,
     },
-    syscalls::SyscallCode,
-    ExecutionRecord,
+    ExecutionRecord, SyscallCode,
 };
 use sp1_curves::{
     edwards::ed25519::Ed25519,

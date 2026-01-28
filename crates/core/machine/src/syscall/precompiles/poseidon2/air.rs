@@ -13,8 +13,7 @@ use slop_matrix::Matrix;
 use slop_maybe_rayon::prelude::ParallelSliceMut;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, MemoryRecordEnum, PrecompileEvent},
-    syscalls::SyscallCode,
-    ExecutionRecord, Program,
+    ExecutionRecord, Program, SyscallCode,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_hypercube::{

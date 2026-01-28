@@ -1,6 +1,6 @@
 use crate::{
-    events::MemoryRecord, syscalls::SyscallCode, vm::shapes::riscv_air_id_from_opcode,
-    CompressedMemory, ExecutionReport, Instruction, Opcode, RiscvAirId,
+    events::MemoryRecord, vm::shapes::riscv_air_id_from_opcode, CompressedMemory, ExecutionReport,
+    Instruction, Opcode, RiscvAirId, SyscallCode,
 };
 use enum_map::EnumMap;
 use hashbrown::{HashMap, HashSet};

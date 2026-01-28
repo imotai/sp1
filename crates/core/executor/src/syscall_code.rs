@@ -1,3 +1,5 @@
+//! Syscall definitions for the SP1 RISC-V zkVM.
+
 use deepsize2::DeepSizeOf;
 use enum_map::Enum;
 use serde::{Deserialize, Serialize};

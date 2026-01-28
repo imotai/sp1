@@ -1,5 +1,5 @@
 use super::SyscallRuntime;
-use crate::syscalls::SyscallCode;
+use crate::SyscallCode;
 
 pub(crate) fn hint_len_syscall<'a, RT: SyscallRuntime<'a>>(
     ctx: &mut RT,

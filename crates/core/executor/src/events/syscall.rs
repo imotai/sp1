@@ -1,7 +1,7 @@
 use deepsize2::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 
-use crate::syscalls::SyscallCode;
+use crate::SyscallCode;
 
 /// Syscall Event.
 ///

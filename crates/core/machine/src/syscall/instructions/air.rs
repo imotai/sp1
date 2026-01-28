@@ -4,7 +4,7 @@ use itertools::Itertools;
 use slop_air::{Air, AirBuilder};
 use slop_algebra::AbstractField;
 use slop_matrix::Matrix;
-use sp1_core_executor::{syscalls::SyscallCode, Opcode, CLK_INC, HALT_PC};
+use sp1_core_executor::{Opcode, SyscallCode, CLK_INC, HALT_PC};
 use sp1_hypercube::{
     air::{
         BaseAirBuilder, InteractionScope, PublicValues, SP1AirBuilder, POSEIDON_NUM_WORDS,

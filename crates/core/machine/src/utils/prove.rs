@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, collections::BTreeMap, fs::File, io, sync::Arc};
+use std::{borrow::Borrow, collections::BTreeMap, io, sync::Arc};
 
 use crate::executor::trace_chunk;
 use crate::riscv::RiscvAir;
@@ -14,12 +14,11 @@ use sp1_hypercube::{
 };
 
 use crate::io::SP1Stdin;
-use sp1_core_executor::{ExecutionState, SP1CoreOpts, SplitOpts};
+use sp1_core_executor::{SP1CoreOpts, SplitOpts};
 
 use sp1_core_executor::{
-    subproof::NoOpSubproofVerifier, CompressedMemory, CycleResult, ExecutionError, ExecutionRecord,
-    ExecutionReport, Executor, MinimalExecutor, Program, SP1Context, SplicedMinimalTrace,
-    SplicingVM,
+    CompressedMemory, CycleResult, ExecutionError, ExecutionRecord, MinimalExecutor, Program,
+    SP1Context, SplicedMinimalTrace, SplicingVM,
 };
 use sp1_jit::MinimalTrace;
 
@@ -208,48 +207,6 @@ fn splice_chunk_sequential(
 
     touched_addresses.extend(compressed_touched.is_set());
     result
-}
-
-pub fn trace_checkpoint(
-    program: Arc<Program>,
-    file: &File,
-    opts: SP1CoreOpts,
-) -> (Box<ExecutionRecord>, ExecutionReport) {
-    let noop = NoOpSubproofVerifier;
-
-    let mut reader = std::io::BufReader::new(file);
-    let state: ExecutionState =
-        bincode::deserialize_from(&mut reader).expect("failed to deserialize state");
-    let mut runtime = Executor::recover(program, state, opts);
-
-    // We already passed the deferred proof verifier when creating checkpoints, so the proofs were
-    // already verified. So here we use a noop verifier to not print any warnings.
-    runtime.subproof_verifier = Some(Arc::new(noop));
-
-    // Execute from the checkpoint.
-    let (mut record, mut done) = runtime.execute_record(true).unwrap();
-    let mut pv = record.public_values;
-
-    // Handle the case where the COMMIT happens across the last two shards.
-    if !done && (pv.commit_syscall == 1 || pv.commit_deferred_syscall == 1) {
-        // We turn off the `print_report` flag to avoid modifying the report.
-        runtime.print_report = false;
-        loop {
-            runtime.record.public_values = pv;
-            let (_, next_pv, is_done) = runtime.execute_state(true).unwrap();
-            pv = next_pv;
-            done = is_done;
-            if done {
-                record.public_values.commit_syscall = 1;
-                record.public_values.commit_deferred_syscall = 1;
-                record.public_values.committed_value_digest = pv.committed_value_digest;
-                record.public_values.deferred_proofs_digest = pv.deferred_proofs_digest;
-                break;
-            }
-        }
-    }
-
-    (record, runtime.report)
 }
 
 #[derive(Error, Debug)]

@@ -12,8 +12,7 @@ use slop_algebra::{AbstractField, PrimeField32};
 use slop_matrix::Matrix;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, FieldOperation, MemoryRecordEnum, PrecompileEvent},
-    syscalls::SyscallCode,
-    ExecutionRecord, Program,
+    ExecutionRecord, Program, SyscallCode,
 };
 use sp1_curves::{
     params::{Limbs, NumLimbs},

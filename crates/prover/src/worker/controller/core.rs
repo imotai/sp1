@@ -5,8 +5,7 @@ use serde::{Deserialize, Serialize};
 use slop_futures::pipeline::Pipeline;
 use sp1_core_executor::{
     events::{MemoryInitializeFinalizeEvent, MemoryRecord},
-    syscalls::SyscallCode,
-    CoreVM, ExecutionError, MinimalExecutor, Program, SP1CoreOpts, UnsafeMemory,
+    CoreVM, ExecutionError, MinimalExecutor, Program, SP1CoreOpts, SyscallCode, UnsafeMemory,
 };
 use sp1_core_machine::{executor::ExecutionOutput, io::SP1Stdin};
 use sp1_hypercube::{

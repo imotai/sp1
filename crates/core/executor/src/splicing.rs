@@ -6,7 +6,6 @@ use sp1_jit::{MemReads, MemValue, MinimalTrace, TraceChunk};
 
 use crate::{
     events::{MemoryReadRecord, MemoryWriteRecord},
-    syscalls::SyscallCode,
     vm::{
         memory::CompressedMemory,
         results::{CycleResult, LoadResult, StoreResult},
@@ -14,7 +13,7 @@ use crate::{
         syscall::SyscallRuntime,
         CoreVM,
     },
-    ExecutionError, Instruction, Opcode, Program, SP1CoreOpts,
+    ExecutionError, Instruction, Opcode, Program, SP1CoreOpts, SyscallCode,
 };
 
 /// A RISC-V VM that uses a [`MinimalTrace`] to create multiple [`SplicedMinimalTrace`]s.

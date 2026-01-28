@@ -29,8 +29,7 @@ use crate::{
         SyscallEvent, UTypeEvent,
     },
     program::Program,
-    syscalls::SyscallCode,
-    ByteOpcode, Instruction, RetainedEventsPreset, RiscvAirId, SplitOpts,
+    ByteOpcode, Instruction, RetainedEventsPreset, RiscvAirId, SplitOpts, SyscallCode,
 };
 
 /// A record of the execution of a program.

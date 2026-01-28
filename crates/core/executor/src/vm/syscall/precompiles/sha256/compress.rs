@@ -1,7 +1,7 @@
 use crate::{
     events::{PrecompileEvent, ShaCompressEvent},
-    syscalls::SyscallCode,
     vm::syscall::SyscallRuntime,
+    SyscallCode,
 };
 
 pub(crate) fn sha256_compress<'a, RT: SyscallRuntime<'a>>(

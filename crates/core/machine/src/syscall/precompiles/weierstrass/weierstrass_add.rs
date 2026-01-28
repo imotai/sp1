@@ -23,8 +23,7 @@ use sp1_core_executor::{
         ByteLookupEvent, ByteRecord, EllipticCurveAddEvent, FieldOperation, MemoryReadRecord,
         MemoryRecordEnum, PrecompileEvent, SyscallEvent,
     },
-    syscalls::SyscallCode,
-    ExecutionRecord, Program,
+    ExecutionRecord, Program, SyscallCode,
 };
 use sp1_curves::{
     params::{FieldParameters, Limbs, NumLimbs, NumWords},

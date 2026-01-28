@@ -6,8 +6,7 @@ use slop_matrix::Matrix;
 use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{ByteLookupEvent, KeccakPermuteEvent, PrecompileEvent, SyscallEvent},
-    syscalls::SyscallCode,
-    ExecutionRecord, Program,
+    ExecutionRecord, Program, SyscallCode,
 };
 use sp1_hypercube::air::MachineAir;
 

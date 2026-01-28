@@ -58,9 +58,7 @@ pub use prover::{ProveRequest, Prover, ProvingKey, SP1ProvingKey, SP1Verificatio
 
 // Re-export the build utilities and executor primitives.
 pub use sp1_build::include_elf;
-pub use sp1_core_executor::{
-    ExecutionReport, Executor, HookEnv, SP1Context, SP1ContextBuilder, StatusCode,
-};
+pub use sp1_core_executor::{ExecutionReport, HookEnv, SP1Context, SP1ContextBuilder, StatusCode};
 
 // Re-export the machine/prover primitives.
 pub use sp1_core_machine::io::SP1Stdin;

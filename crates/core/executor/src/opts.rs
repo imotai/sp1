@@ -1,6 +1,6 @@
 use crate::{
-    cost_and_height_per_syscall, rv64im_costs, syscalls::SyscallCode, utils::trunc_32,
-    RetainedEventsPreset, RiscvAirId, BYTE_NUM_ROWS, RANGE_NUM_ROWS,
+    cost_and_height_per_syscall, rv64im_costs, utils::trunc_32, RetainedEventsPreset, RiscvAirId,
+    SyscallCode, BYTE_NUM_ROWS, RANGE_NUM_ROWS,
 };
 use enum_map::EnumMap;
 use serde::{Deserialize, Serialize};

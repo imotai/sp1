@@ -25,7 +25,6 @@ mod tests {
         sha2_expected_digest_lte_100_times(stdin)
     }
 
-
     #[sp1_test("sha2_v0_10_9", syscalls = [SHA_COMPRESS, SHA_EXTEND], gpu, prove)]
     fn test_sha2_v0_10_9_expected_digest_lte_100_times(
         stdin: &mut sp1_sdk::SP1Stdin,

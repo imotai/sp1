@@ -2,8 +2,8 @@ use enum_map::EnumMap;
 use hashbrown::HashMap;
 
 use crate::{
-    syscalls::SyscallCode, vm::memory::CompressedMemory, Instruction, Opcode, RiscvAirId,
-    ShardingThreshold, BYTE_NUM_ROWS, RANGE_NUM_ROWS,
+    vm::memory::CompressedMemory, Instruction, Opcode, RiscvAirId, ShardingThreshold, SyscallCode,
+    BYTE_NUM_ROWS, RANGE_NUM_ROWS,
 };
 use std::str::FromStr;
 

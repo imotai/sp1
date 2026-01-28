@@ -6,8 +6,7 @@ use rayon::iter::{ParallelBridge, ParallelIterator};
 use slop_algebra::PrimeField32;
 use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, SyscallEvent},
-    syscalls::SyscallCode,
-    ExecutionRecord, Program, RTypeRecord, HALT_PC,
+    ExecutionRecord, Program, RTypeRecord, SyscallCode, HALT_PC,
 };
 use sp1_hypercube::{air::MachineAir, Word};
 use sp1_primitives::consts::u64_to_u16_limbs;
