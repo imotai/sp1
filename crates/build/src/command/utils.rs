@@ -20,8 +20,6 @@ pub(crate) fn get_program_build_args(args: &BuildArgs) -> Vec<String> {
         build_args.push("--ignore-rust-version".to_string());
     }
 
-    build_args.push("-Ztrim-paths".to_string());
-
     for p in &args.packages {
         build_args.push("-p".to_string());
         build_args.push(p.to_string());
