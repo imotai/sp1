@@ -24,7 +24,7 @@ struct CachedProgram {
     vk: SP1VerifyingKey,
 }
 
-/// The server for the cuslop service.
+/// The server for the sp1-gpu service.
 pub struct Server {
     pub cuda_device_id: u32,
 }
@@ -39,7 +39,7 @@ impl Server {
     /// Run the server, indefinitely.
     pub async fn run(self, task_scope: TaskScope) {
         eprintln!(
-            "Running cuslop-server {} with device {}",
+            "Running sp1-gpu-server {} with device {}",
             sp1_primitives::SP1_VERSION,
             self.cuda_device_id
         );

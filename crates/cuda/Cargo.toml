@@ -36,8 +36,5 @@ bytes = { workspace = true }
 [dev-dependencies]
 sp1-core-machine = { workspace = true }
 
-[features]
-native = []
-
 [lints]
 workspace = true

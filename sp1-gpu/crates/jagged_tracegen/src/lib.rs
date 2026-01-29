@@ -987,16 +987,16 @@ fn log_chip_stats<A: CudaTracegenAir<Felt>>(
     traces: &BTreeMap<String, Trace<TaskScope>>,
 ) {
     let mut total_number_of_cells = 0;
-    tracing::info!("Proving shard");
+    tracing::debug!("Proving shard");
     for (chip, trace) in machine.smallest_cluster(chip_set).unwrap().iter().zip_eq(traces.values())
     {
         let height = trace.num_real_entries();
         let stats = ChipStatistics::new(chip, height);
-        tracing::info!("{}", stats);
+        tracing::debug!("{}", stats);
         total_number_of_cells += stats.total_number_of_cells();
     }
 
-    tracing::info!(
+    tracing::debug!(
         "Total number of cells: {}, number of variables: {}",
         total_number_of_cells,
         total_number_of_cells.next_power_of_two().ilog2(),
