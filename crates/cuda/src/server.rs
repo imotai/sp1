@@ -216,5 +216,14 @@ mod native {
     }
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(not(target_arch = "x86_64"))]
+mod native {
+    use crate::CudaClientError;
+    use tokio::process::Child;
+
+    pub(crate) async fn start_server(cuda_id: u32) -> Result<Child, CudaClientError> {
+        panic!("Unsupported architecture for CUDA server: {}", std::env::consts::ARCH);
+    }
+}
+
 pub(crate) use native::start_server;
