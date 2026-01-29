@@ -6653,7 +6653,6 @@ dependencies = [
  "bincode",
  "bytes",
  "reqwest",
- "semver 1.0.27",
  "serde",
  "serde_json",
  "sp1-core-executor",

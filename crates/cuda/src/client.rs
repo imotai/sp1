@@ -127,11 +127,7 @@ impl CudaClientInner {
             return Ok(CudaClient { inner: client });
         }
 
-        // Print a warning if the CUDA version is not found,
-        // panic if the version is too old.
-        crate::check_cuda_version().await;
-
-        // Actually start the server now that we know there isnt one running.
+        // Actually start the server now that we know there isn't one running.
         let child = crate::server::start_server(cuda_id).await?;
 
         // Connect to the server we just started.
