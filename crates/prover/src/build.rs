@@ -2,7 +2,7 @@
 
 use itertools::Itertools;
 use sha2::{Digest, Sha256};
-use slop_algebra::{AbstractField, PrimeField, PrimeField32};
+use slop_algebra::{AbstractField, PrimeField32};
 use slop_bn254::Bn254Fr;
 use sp1_hypercube::{koalabears_to_bn254, MachineVerifyingKey, SP1PcsProofOuter, ShardProof};
 use sp1_primitives::{io::sha256_hash, SP1Field, SP1OuterGlobalContext};
@@ -21,6 +21,7 @@ use sp1_recursion_gnark_ffi::{
     ffi::{build_groth16_bn254, build_plonk_bn254},
     GnarkWitness,
 };
+use sp1_verifier::VK_ROOT_BYTES;
 use std::{
     borrow::Borrow,
     fs::File,
@@ -41,9 +42,7 @@ use {
 
 use crate::{
     components::{CpuSP1ProverComponents, SP1ProverComponents},
-    recursion::RecursionVks,
     utils::words_to_bytes,
-    worker::DEFAULT_MAX_COMPOSE_ARITY,
     SP1_CIRCUIT_VERSION,
 };
 
@@ -213,11 +212,9 @@ pub fn get_groth16_vkey_hash(build_dir: &Path) -> [u8; 32] {
     Sha256::digest(vk_bin_bytes).into()
 }
 
-/// Get the vk root.
+/// Get the vk root as a hex string.
 pub fn get_vk_root() -> String {
-    let root_field = RecursionVks::new(None, DEFAULT_MAX_COMPOSE_ARITY, true).root();
-    let bigint = koalabears_to_bn254(&root_field).as_canonical_biguint();
-    bigint.to_str_radix(16)
+    hex::encode(*VK_ROOT_BYTES)
 }
 
 /// Build the Plonk contracts.

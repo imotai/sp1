@@ -16,7 +16,7 @@ SP1 zkVM context is patched, in order to make use of the
 
 ### Pre-generated verification keys
 
-Verification keys for Groth16 and Plonk are stored in the [`bn254-vk`](./bn254-vk/) directory. These
+Verification keys for Groth16 and Plonk are stored in the [`vk-artifacts`](./vk-artifacts/) directory. These
 vkeys are used to verify all SP1 proofs.
 
 These vkeys are the same as those found locally in

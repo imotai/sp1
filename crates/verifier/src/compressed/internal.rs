@@ -13,7 +13,11 @@ use sp1_primitives::{fri_params::recursion_fri_config, poseidon2_hasher, SP1Fiel
 use sp1_recursion_executor::{RecursionPublicValues, NUM_PV_ELMS_TO_HASH};
 
 use super::CompressedError;
-use crate::{blake3_hash, hash_public_inputs, hash_public_inputs_with_fn};
+use crate::{
+    blake3_hash,
+    compressed::{RECURSION_LOG_STACKING_HEIGHT, RECURSION_MAX_LOG_ROW_COUNT},
+    hash_public_inputs, hash_public_inputs_with_fn,
+};
 
 /// The finite field used for compress proofs.
 type GC = sp1_primitives::SP1GlobalContext;
@@ -24,9 +28,6 @@ type C = sp1_hypercube::SP1PcsProofInner;
 pub const COMPRESS_DEGREE: usize = 3;
 
 pub type CompressAir<SP1Field> = sp1_recursion_machine::RecursionAir<SP1Field, COMPRESS_DEGREE, 2>;
-
-pub const RECURSION_LOG_STACKING_HEIGHT: u32 = 20;
-pub const RECURSION_MAX_LOG_ROW_COUNT: usize = 21;
 
 // // The rest of the functions in this file have been copied from elsewhere with slight
 // modifications.
