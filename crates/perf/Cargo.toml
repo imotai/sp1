@@ -36,7 +36,7 @@ tracing = { workspace = true }
 
 [[bin]]
 name = "sp1-perf"
-path = "src/main.rs"
+path = "src/perf.rs"
 
 [[bin]]
 name = "sp1-perf-executor"
