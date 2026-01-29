@@ -89,6 +89,46 @@ where
     symlink(relpath, link).unwrap();
 }
 
+/// Check if CUDA is available on this system.
+fn detect_cuda() -> bool {
+    // Track rerun-if-env-changed for the explicit override
+    println!("cargo:rerun-if-env-changed=SP1_CUDA_ENABLED");
+
+    // 1. Check explicit SP1_CUDA_ENABLED env var
+    if let Ok(val) = env::var("SP1_CUDA_ENABLED") {
+        match val.to_lowercase().as_str() {
+            "0" | "false" => return false,
+            "1" | "true" => return true,
+            _ => {} // Fall through to auto-detection
+        }
+    }
+
+    // 2. Try running nvcc --version
+    if std::process::Command::new("nvcc")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        return true;
+    }
+
+    // 3. Check CUDA_PATH env var
+    if env::var("CUDA_PATH").is_ok() {
+        return true;
+    }
+
+    // 4. Check common CUDA installation paths
+    if std::path::Path::new("/usr/local/cuda/bin/nvcc").exists() {
+        return true;
+    }
+    if std::path::Path::new("/opt/cuda/bin/nvcc").exists() {
+        return true;
+    }
+
+    false
+}
+
 fn main() {
     // Directives for tracking changes in folders
     println!("cargo:rerun-if-changed=../../include/");
@@ -139,6 +179,12 @@ fn main() {
             return;
         }
         Err(e) => panic!("{e:?}"),
+    }
+
+    // Check if CUDA is available before attempting to build
+    if !detect_cuda() {
+        println!("cargo:warning=CUDA not detected, skipping GPU build");
+        return;
     }
 
     // Build using CMake

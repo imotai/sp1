@@ -1,13 +1,12 @@
-# SP1-GPU Repository Guide
+# SP1-GPU Guide
 
 # Rust best practices
 Make sure to follow Rust best practices when working with this repository. This includes using `cargo fmt` for formatting and `cargo clippy` for linting.
 
-## Repository Overview
+## Crates Overview
+GPU-accelerated cryptographic proving system for SP1 (Succinct's zkVM). It provides CUDA implementations of core proving operations to achieve significant speedups over CPU-only proving.
 
-CUSLOP is a high-performance GPU-accelerated cryptographic proving system for SP1 (Succinct's zkVM). It provides CUDA implementations of core proving operations to achieve significant speedups over CPU-only proving.
-
-### What This Repo Does
+### Functionality
 - **GPU-accelerated proving**: Implements CUDA kernels for computationally intensive operations (NTT, Poseidon2 hashing, Merkle trees, sumcheck, etc.)
 - **SP1 integration**: Works with the SP1 zkVM prover stack via the `slop-*` and `sp1-*` crate dependencies
 - **FFI bridge**: Exposes CUDA functionality to Rust through the `sp1-gpu-sys` crate
@@ -20,7 +19,7 @@ CUSLOP is a high-performance GPU-accelerated cryptographic proving system for SP
 ## Directory Structure
 
 ```
-cuslop/
+sp1-gpu/
 ├── include/           # CUDA headers (.cuh) organized by module
 │   ├── algebra/       # Field arithmetic operations
 │   ├── basefold/      # Basefold polynomial commitment

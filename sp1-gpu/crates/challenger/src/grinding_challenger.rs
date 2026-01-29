@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_types)]
+
 use crate::DuplexChallenger;
 use slop_algebra::PrimeField64;
 use slop_challenger::GrindingChallenger;

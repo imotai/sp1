@@ -721,7 +721,6 @@ pub mod tests {
         CanObserve, CanSample, FieldChallenger, IopCtx, VariableLengthChallenger,
     };
     use slop_futures::queue::WorkerQueue;
-    use slop_koala_bear::KoalaBear;
     use slop_matrix::{dense::RowMajorMatrix, dense::RowMajorMatrixView, Matrix};
     use slop_multilinear::{full_geq, Mle, MleEval, Point};
     use slop_sumcheck::{partially_verify_sumcheck_proof, PartialSumcheckProof};
@@ -735,6 +734,7 @@ pub mod tests {
     };
 
     use sp1_gpu_air::codegen_cuda_eval;
+    use sp1_primitives::SP1Field;
     use std::collections::{BTreeMap, BTreeSet};
     use std::marker::PhantomData;
     use std::ops::Deref;
@@ -1478,7 +1478,7 @@ pub mod tests {
             1 => {
                 let idx = rng.next_u32() % 3;
                 let d = match idx {
-                    0 => Felt::from_canonical_u32(KoalaBear::ORDER_U32 - 1),
+                    0 => Felt::from_canonical_u32(SP1Field::ORDER_U32 - 1),
                     1 => Felt::from_canonical_u32(1),
                     2 => Felt::from_canonical_u32(2),
                     _ => panic!(),
@@ -1609,7 +1609,7 @@ pub mod tests {
         let mut preprocessed_table_index: BTreeMap<_, TraceOffset> = BTreeMap::new();
         let mut main_table_index: BTreeMap<_, TraceOffset> = BTreeMap::new();
 
-        let mut data = vec![KoalaBear::zero(); sum_length as usize];
+        let mut data = vec![SP1Field::zero(); sum_length as usize];
         let mut preprocessed_ptr = 0;
         let mut main_ptr = padded_preprocessed;
         for (i, row) in sizes.iter().enumerate() {
@@ -1974,7 +1974,7 @@ pub mod tests {
                 };
 
                 chip_openings.insert(
-                    <ZerocheckTestChip as sp1_hypercube::air::MachineAir<KoalaBear>>::name(
+                    <ZerocheckTestChip as sp1_hypercube::air::MachineAir<SP1Field>>::name(
                         &chip.air,
                     )
                     .to_string(),

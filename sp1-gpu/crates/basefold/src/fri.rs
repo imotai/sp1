@@ -1,19 +1,16 @@
 use itertools::Itertools;
 use std::{marker::PhantomData, sync::Arc};
 
-use slop_algebra::{
-    extension::BinomialExtensionField, AbstractExtensionField, AbstractField, ExtensionField,
-    TwoAdicField,
-};
+use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, TwoAdicField};
 use slop_alloc::{Buffer, HasBackend};
 use slop_basefold::{BasefoldProof, FriConfig};
 use slop_basefold_prover::{host_fold_even_odd, BasefoldProverError};
 use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, IopCtx};
 use slop_commit::{Message, Rounds};
-use slop_koala_bear::KoalaBear;
 use slop_merkle_tree::MerkleTreeOpeningAndProof;
 use slop_multilinear::{Evaluations, Mle, MleEval, Point};
 use slop_tensor::Tensor;
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 
 use sp1_gpu_cudart::{
     args,
@@ -475,27 +472,25 @@ where
     }
 }
 
-unsafe impl MleBatchKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> for TaskScope {
+unsafe impl MleBatchKernel<SP1Field, SP1ExtensionField> for TaskScope {
     fn batch_mle_kernel() -> KernelPtr {
         unsafe { batch_koala_bear_base_ext_kernel() }
     }
 }
 
-unsafe impl RsCodeWordBatchKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> for TaskScope {
+unsafe impl RsCodeWordBatchKernel<SP1Field, SP1ExtensionField> for TaskScope {
     fn batch_rs_codeword_kernel() -> KernelPtr {
         unsafe { batch_koala_bear_base_ext_kernel_flattened() }
     }
 }
 
-unsafe impl RsCodeWordTransposeKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>>
-    for TaskScope
-{
+unsafe impl RsCodeWordTransposeKernel<SP1Field, SP1ExtensionField> for TaskScope {
     fn transpose_even_odd_kernel() -> KernelPtr {
         unsafe { transpose_even_odd_koala_bear_base_ext_kernel() }
     }
 }
 
-unsafe impl MleFlattenKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> for TaskScope {
+unsafe impl MleFlattenKernel<SP1Field, SP1ExtensionField> for TaskScope {
     fn flatten_to_base_kernel() -> KernelPtr {
         unsafe { flatten_to_base_koala_bear_base_ext_kernel() }
     }
@@ -510,12 +505,11 @@ mod tests {
     use slop_basefold_prover::BasefoldProver;
     use slop_commit::Message;
     use slop_futures::queue::WorkerQueue;
-    use slop_koala_bear::KoalaBearDegree4Duplex;
     use slop_merkle_tree::Poseidon2KoalaBear16Prover;
     use slop_multilinear::Mle;
     use slop_stacked::interleave_multilinears_with_fixed_rate;
     use sp1_gpu_cudart::{run_sync_in_place, DeviceTensor, PinnedBuffer};
-    use sp1_gpu_merkle_tree::{CudaTcsProver, Poseidon2KoalaBear16CudaProver};
+    use sp1_gpu_merkle_tree::{CudaTcsProver, Poseidon2SP1Field16CudaProver};
     use sp1_gpu_tracegen::CudaTraceGenerator;
     use sp1_hypercube::prover::{ProverSemaphore, TraceGenerator};
 
@@ -525,6 +519,7 @@ mod tests {
     use sp1_gpu_jagged_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
     use sp1_gpu_utils::{Ext, Felt, TestGC};
     use sp1_primitives::fri_params::core_fri_config;
+    use sp1_primitives::SP1GlobalContext;
 
     use super::*;
 
@@ -534,14 +529,12 @@ mod tests {
         let (machine, record, program) = rt.block_on(tracegen_setup::setup());
 
         run_sync_in_place(|scope| {
-            let verifier = BasefoldVerifier::<KoalaBearDegree4Duplex>::new(core_fri_config(), 2);
+            let verifier = BasefoldVerifier::<SP1GlobalContext>::new(core_fri_config(), 2);
             let old_prover =
-                BasefoldProver::<KoalaBearDegree4Duplex, Poseidon2KoalaBear16Prover>::new(
-                    &verifier,
-                );
+                BasefoldProver::<SP1GlobalContext, Poseidon2KoalaBear16Prover>::new(&verifier);
 
             let new_cuda_prover = FriCudaProver::<TestGC, _, Felt> {
-                tcs_prover: Poseidon2KoalaBear16CudaProver::new(&scope),
+                tcs_prover: Poseidon2SP1Field16CudaProver::new(&scope),
                 config: verifier.fri_config,
                 log_height: LOG_STACKING_HEIGHT,
                 _marker: PhantomData::<TestGC>,
@@ -697,7 +690,7 @@ mod tests {
 
             let evaluation_claims_2 = Evaluations { round_evaluations: evaluation_claims_2 };
 
-            let mut challenger = KoalaBearDegree4Duplex::default_challenger();
+            let mut challenger = SP1GlobalContext::default_challenger();
 
             scope.synchronize_blocking().unwrap();
             let now = std::time::Instant::now();
@@ -715,9 +708,9 @@ mod tests {
                 .unwrap();
 
             scope.synchronize_blocking().unwrap();
-            println!("Old proof time: {:?}", now.elapsed());
+            tracing::info!("Old proof time: {:?}", now.elapsed());
 
-            let mut challenger = KoalaBearDegree4Duplex::default_challenger();
+            let mut challenger = SP1GlobalContext::default_challenger();
 
             let mut evaluation_claims_1_device = Vec::new();
 
@@ -753,7 +746,7 @@ mod tests {
                 .unwrap();
 
             scope.synchronize_blocking().unwrap();
-            println!("New proof time: {:?}", now.elapsed());
+            tracing::info!("New proof time: {:?}", now.elapsed());
 
             for (i, (a, b)) in basefold_proof
                 .univariate_messages
@@ -788,7 +781,7 @@ mod tests {
                     eval_point_host,
                     &flattened_evaluation_claims,
                     &new_basefold_proof,
-                    &mut KoalaBearDegree4Duplex::default_challenger(),
+                    &mut SP1GlobalContext::default_challenger(),
                 )
                 .unwrap();
         })

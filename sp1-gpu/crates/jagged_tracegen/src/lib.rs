@@ -291,7 +291,7 @@ async fn generate_jagged_traces(
         let remainder = num_added_vals % (1 << max_log_row_count);
         if next_multiple == offset {
             // TODO: this is buggy right now, add another elt to start indices.
-            println!("WARNING: unexpected exact multiple of 2^log_stacking_height");
+            tracing::warn!("WARNING: unexpected exact multiple of 2^log_stacking_height");
             return (next_multiple, cols_so_far, 0, table_index);
         }
         let dst_dense_slice = &mut dense_data[offset..next_multiple];
@@ -1012,6 +1012,7 @@ mod tests {
     use slop_algebra::AbstractField;
     use slop_alloc::Buffer;
     use sp1_gpu_cudart::{run_in_place, DeviceBuffer, DeviceTensor, TaskScope};
+    use sp1_gpu_tracing::init_tracer;
     use sp1_gpu_utils::Felt;
 
     use crate::{count_and_add, fill_buf};
@@ -1060,6 +1061,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_count_and_add() {
+        init_tracer();
+
         let mut rng = StdRng::seed_from_u64(5);
         let len = 1 << 20;
         let mut randoms = Vec::with_capacity(len * 6);
@@ -1094,7 +1097,7 @@ mod tests {
             let final_cnt_host =
                 DeviceTensor::from_raw(cnt_buf).to_host().unwrap().into_buffer().to_vec();
 
-            println!("elapsed time for [1 << 20] x [6] elements: {:?}", t.elapsed());
+            tracing::info!("elapsed time for [1 << 20] x [6] elements: {:?}", t.elapsed());
 
             assert_eq!(cnt, final_cnt_host);
         })

@@ -1,10 +1,10 @@
-use slop_algebra::{extension::BinomialExtensionField, Field};
+use slop_algebra::Field;
 use slop_alloc::Backend;
-use slop_koala_bear::KoalaBear;
 use sp1_gpu_sys::{
     mle::{mle_fold_koala_bear_base_base, mle_fold_koala_bear_ext_ext},
     runtime::KernelPtr,
 };
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 
 use crate::{args, DeviceCopy, DeviceTensor, TaskScope};
 
@@ -56,13 +56,13 @@ where
     }
 }
 
-unsafe impl FoldKernel<KoalaBear> for TaskScope {
+unsafe impl FoldKernel<SP1Field> for TaskScope {
     fn fold_kernel() -> KernelPtr {
         unsafe { mle_fold_koala_bear_base_base() }
     }
 }
 
-unsafe impl FoldKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
+unsafe impl FoldKernel<SP1ExtensionField> for TaskScope {
     fn fold_kernel() -> KernelPtr {
         unsafe { mle_fold_koala_bear_ext_ext() }
     }
@@ -72,15 +72,15 @@ unsafe impl FoldKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
 mod tests {
     use rand::Rng;
     use slop_multilinear::Mle;
+    use sp1_primitives::SP1ExtensionField;
 
-    use super::*;
     use crate::mle::DeviceMle;
 
     #[test]
     fn test_fold_mle() {
         let num_variables = 11;
 
-        type EF = BinomialExtensionField<KoalaBear, 4>;
+        type EF = SP1ExtensionField;
 
         let mut rng = rand::thread_rng();
 

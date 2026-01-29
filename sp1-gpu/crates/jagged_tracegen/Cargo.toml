@@ -45,6 +45,7 @@ sp1-recursion-circuit = { workspace = true }
 sp1-gpu-prover = { workspace = true }
 sp1-recursion-compiler = { workspace = true }
 sp1-gpu-zerocheck = { workspace = true }
+sp1-gpu-tracing = { workspace = true }
 
 [lints]
 workspace = true

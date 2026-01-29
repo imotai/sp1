@@ -7,12 +7,12 @@ use sp1_gpu_merkle_tree::MerkleTree;
 use sp1_gpu_utils::Felt;
 
 use slop_algebra::{AbstractField, Field};
-use slop_koala_bear::KoalaBear;
 use slop_tensor::{Tensor, TensorView};
 use sp1_gpu_cudart::{
     sys::dft::{batch_coset_dft, sppark_init_default_stream},
     CudaError, DeviceCopy,
 };
+use sp1_primitives::SP1Field;
 
 pub fn encode_batch<'a>(
     dft: SpparkDftKoalaBear,
@@ -124,14 +124,14 @@ impl Default for SpparkB31Kernels {
     }
 }
 
-impl SpparkCudaDftSys<KoalaBear> for SpparkB31Kernels {
+impl SpparkCudaDftSys<SP1Field> for SpparkB31Kernels {
     unsafe fn dft_unchecked(
         &self,
-        d_out: *mut KoalaBear,
-        d_in: *mut KoalaBear,
+        d_out: *mut SP1Field,
+        d_in: *mut SP1Field,
         lg_domain_size: u32,
         lg_blowup: u32,
-        shift: KoalaBear,
+        shift: SP1Field,
         batch_size: u32,
         bit_rev_output: bool,
         scope: &TaskScope,
@@ -166,7 +166,7 @@ mod tests {
 
         let log_degrees = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
         let log_blowup = 1;
-        let shift = KoalaBear::generator();
+        let shift = SP1Field::generator();
         let batch_size = 16;
 
         let p3_dft = Radix2DitParallel;
@@ -174,7 +174,7 @@ mod tests {
         for log_d in log_degrees.iter() {
             let d = 1 << log_d;
 
-            let tensor_h = Tensor::<KoalaBear>::rand(&mut rng, [d, batch_size]);
+            let tensor_h = Tensor::<SP1Field>::rand(&mut rng, [d, batch_size]);
 
             let tensor_h_sent = tensor_h.clone();
             let result = run_sync_in_place(|t| {

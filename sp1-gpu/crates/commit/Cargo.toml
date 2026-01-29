@@ -28,6 +28,7 @@ slop-symmetric = { workspace = true }
 slop-merkle-tree = { workspace = true }
 slop-dft = { workspace = true }
 
+
 # sp1
 sp1-hypercube = { workspace = true }
 
@@ -35,11 +36,12 @@ sp1-hypercube = { workspace = true }
 itertools = { workspace = true }
 rand = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 serial_test = "3.1"
 zstd = "0.13.3"
-sp1-sdk = { workspace = true  }
+sp1-sdk = { workspace = true }
 sp1-recursion-circuit = { workspace = true }
 sp1-gpu-prover = { workspace = true }
 sp1-recursion-compiler = { workspace = true }

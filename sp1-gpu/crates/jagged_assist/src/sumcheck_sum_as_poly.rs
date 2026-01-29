@@ -277,11 +277,11 @@ mod tests {
     use slop_algebra::extension::BinomialExtensionField;
     use slop_algebra::AbstractField;
     use slop_alloc::Buffer;
-    use slop_koala_bear::KoalaBear;
     use sp1_gpu_challenger::DuplexChallenger;
     use sp1_gpu_cudart::TaskScope;
+    use sp1_primitives::SP1Field;
 
-    type F = KoalaBear;
+    type F = SP1Field;
     type EF = BinomialExtensionField<F, 4>;
 
     #[test]
@@ -352,7 +352,7 @@ mod tests {
                             0,
                         )
                         .unwrap();
-                    println!("Kernel execution time: {:?}", time.elapsed());
+                    tracing::info!("Kernel execution time: {:?}", time.elapsed());
                 }
                 let intermediate_eq_full_evals_from_device =
                     DeviceBuffer::from_raw(intermediate_eq_full_evals_device).to_host().unwrap();

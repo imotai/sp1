@@ -35,7 +35,7 @@ pub fn local_gpu_opts() -> (SP1CoreOpts, bool) {
         ELEMENT_THRESHOLD - (1 << 21)
     };
 
-    println!("Shard threshold: {shard_threshold}");
+    tracing::debug!("Shard threshold: {shard_threshold}");
     opts.sharding_threshold.element_threshold = shard_threshold;
 
     opts.global_dependencies_opt = true;

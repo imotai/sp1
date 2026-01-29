@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use slop_algebra::{extension::BinomialExtensionField, ExtensionField, Field};
-use slop_koala_bear::KoalaBear;
+use slop_algebra::{ExtensionField, Field};
 use slop_multilinear::MleEval;
 use sp1_gpu_sys::{
     runtime::KernelPtr,
@@ -11,6 +10,7 @@ use sp1_gpu_sys::{
         mle_fix_last_variable_koala_bear_ext_ext_constant_padding,
     },
 };
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 
 use crate::{args, DeviceCopy, DeviceTensor, TaskScope};
 
@@ -123,9 +123,7 @@ impl<F: DeviceCopy + Field> DeviceMle<F> {
     }
 }
 
-unsafe impl MleFixLastVariableKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>>
-    for TaskScope
-{
+unsafe impl MleFixLastVariableKernel<SP1Field, SP1ExtensionField> for TaskScope {
     fn mle_fix_last_variable_kernel() -> KernelPtr {
         unsafe { fix_last_variable_felt_ext_kernel() }
     }
@@ -134,12 +132,7 @@ unsafe impl MleFixLastVariableKernel<KoalaBear, BinomialExtensionField<KoalaBear
     }
 }
 
-unsafe impl
-    MleFixLastVariableKernel<
-        BinomialExtensionField<KoalaBear, 4>,
-        BinomialExtensionField<KoalaBear, 4>,
-    > for TaskScope
-{
+unsafe impl MleFixLastVariableKernel<SP1ExtensionField, SP1ExtensionField> for TaskScope {
     fn mle_fix_last_variable_kernel() -> KernelPtr {
         unsafe { fix_last_variable_ext_ext_kernel() }
     }
@@ -152,11 +145,10 @@ unsafe impl
 #[cfg(test)]
 mod tests {
     use rand::Rng;
-    use slop_algebra::extension::BinomialExtensionField;
     use slop_algebra::AbstractField;
-    use slop_koala_bear::KoalaBear;
     use slop_multilinear::{Mle, Point};
     use slop_tensor::Tensor;
+    use sp1_primitives::{SP1ExtensionField, SP1Field};
 
     use crate::mle::eval::DevicePoint;
     use crate::mle::DeviceMle;
@@ -165,8 +157,8 @@ mod tests {
     fn test_mle_fix_last_variable_constant_padding() {
         let mut rng = rand::thread_rng();
 
-        type F = KoalaBear;
-        type EF = BinomialExtensionField<F, 4>;
+        type F = SP1Field;
+        type EF = SP1ExtensionField;
 
         let mle = Mle::<F>::new(Tensor::rand(&mut rng, [(1 << 16) - 1000, 1]));
         let random_point = Point::<EF>::rand(&mut rng, 15);

@@ -18,6 +18,7 @@ struct Args {
 }
 
 #[tokio::main]
+#[allow(clippy::print_stdout)]
 async fn main() {
     tracing_subscriber::fmt::init();
 

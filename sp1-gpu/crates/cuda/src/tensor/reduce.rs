@@ -1,7 +1,5 @@
 use std::ffi::c_void;
 
-use slop_algebra::extension::BinomialExtensionField;
-use slop_koala_bear::KoalaBear;
 use slop_tensor::{Dimensions, Tensor, TensorViewMut};
 use sp1_gpu_sys::{
     reduce::{
@@ -11,6 +9,7 @@ use sp1_gpu_sys::{
     },
     runtime::{Dim3, KernelPtr},
 };
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 
 use crate::{args, DeviceCopy, DeviceTensor};
 
@@ -211,7 +210,7 @@ where
     }
 }
 
-unsafe impl DeviceSumKernel<KoalaBear> for TaskScope {
+unsafe impl DeviceSumKernel<SP1Field> for TaskScope {
     fn partial_sum_kernel() -> KernelPtr {
         unsafe { koala_bear_sum_partial_block_reduce_kernel() }
     }
@@ -221,7 +220,7 @@ unsafe impl DeviceSumKernel<KoalaBear> for TaskScope {
     }
 }
 
-unsafe impl DeviceSumKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
+unsafe impl DeviceSumKernel<SP1ExtensionField> for TaskScope {
     fn partial_sum_kernel() -> KernelPtr {
         unsafe { koala_bear_extension_sum_partial_block_reduce_kernel() }
     }
@@ -233,9 +232,8 @@ unsafe impl DeviceSumKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope 
 
 #[cfg(test)]
 mod tests {
-    use slop_algebra::extension::BinomialExtensionField;
-    use slop_koala_bear::KoalaBear;
     use slop_tensor::Tensor;
+    use sp1_primitives::{SP1ExtensionField, SP1Field};
 
     use super::DeviceTensor;
 
@@ -245,7 +243,7 @@ mod tests {
         let mut rng = rand::thread_rng();
 
         for size in [10, 100, 1 << 16] {
-            let tensor = Tensor::<KoalaBear>::rand(&mut rng, [num_summands, size]);
+            let tensor = Tensor::<SP1Field>::rand(&mut rng, [num_summands, size]);
 
             let sum_tensor = crate::run_sync_in_place(|t| {
                 let device_tensor = DeviceTensor::from_host(&tensor, &t).unwrap();
@@ -256,7 +254,7 @@ mod tests {
 
             assert_eq!(sum_tensor.sizes(), [num_summands]);
             for i in 0..num_summands {
-                let expected_sum: KoalaBear =
+                let expected_sum: SP1Field =
                     tensor.get(i).unwrap().as_slice().iter().copied().sum();
                 assert_eq!(expected_sum, *sum_tensor[[i]]);
             }
@@ -269,7 +267,7 @@ mod tests {
         let size = 1 << 16;
         let mut rng = rand::thread_rng();
 
-        type EF = BinomialExtensionField<KoalaBear, 4>;
+        type EF = SP1ExtensionField;
 
         let tensor = Tensor::<EF>::rand(&mut rng, [num_summands, size]);
 

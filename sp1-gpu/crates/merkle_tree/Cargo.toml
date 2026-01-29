@@ -25,6 +25,8 @@ slop-merkle-tree = { workspace = true }
 slop-bn254 = { workspace = true }
 slop-symmetric = { workspace = true }
 
+sp1-primitives = { workspace = true }
+
 # sp1
 sp1-hypercube = { workspace = true }
 tokio = { workspace = true }

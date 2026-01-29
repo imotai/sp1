@@ -34,6 +34,7 @@ fn proof_mode_from_string(s: &str) -> ProofMode {
 
 #[tokio::main]
 #[allow(clippy::field_reassign_with_default)]
+#[allow(clippy::print_stdout)]
 async fn main() {
     let args = Args::parse();
 

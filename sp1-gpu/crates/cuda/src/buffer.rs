@@ -122,15 +122,14 @@ impl<T: DeviceCopy> DeviceBuffer<T> {
 #[cfg(test)]
 mod tests {
     use rand::{thread_rng, Rng};
-
-    use slop_koala_bear::KoalaBear;
+    use sp1_primitives::SP1Field;
 
     use super::*;
 
     #[test]
     fn test_copy_buffer_into_backend() {
         let mut rng = thread_rng();
-        let buffer: Vec<KoalaBear> = (0..10000).map(|_| rng.gen::<KoalaBear>()).collect();
+        let buffer: Vec<SP1Field> = (0..10000).map(|_| rng.gen::<SP1Field>()).collect();
 
         let buffer_back = crate::run_sync_in_place(|t| {
             let mut device_buffer = DeviceBuffer::with_capacity_in(buffer.len(), t);

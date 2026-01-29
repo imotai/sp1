@@ -1,6 +1,5 @@
-use slop_algebra::{extension::BinomialExtensionField, ExtensionField, Field};
+use slop_algebra::{ExtensionField, Field};
 use slop_alloc::{mem::CopyError, CpuBackend};
-use slop_koala_bear::KoalaBear;
 use slop_multilinear::{MleBaseBackend, MleEval, Point};
 use slop_tensor::Tensor;
 use sp1_gpu_sys::{
@@ -9,6 +8,7 @@ use sp1_gpu_sys::{
     },
     runtime::KernelPtr,
 };
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 
 use crate::{args, tensor::dot::DotKernel, DeviceCopy, DeviceTensor, TaskScope};
 
@@ -207,19 +207,19 @@ impl<F: Field> MleBaseBackend<F> for TaskScope {
     }
 }
 
-unsafe impl PartialLagrangeKernel<KoalaBear> for TaskScope {
+unsafe impl PartialLagrangeKernel<SP1Field> for TaskScope {
     fn partial_lagrange_kernel() -> KernelPtr {
         unsafe { partial_lagrange_koala_bear() }
     }
 }
 
-unsafe impl PartialLagrangeKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
+unsafe impl PartialLagrangeKernel<SP1ExtensionField> for TaskScope {
     fn partial_lagrange_kernel() -> KernelPtr {
         unsafe { partial_lagrange_koala_bear_extension() }
     }
 }
 
-unsafe impl PartialGeqKernel<KoalaBear> for TaskScope {
+unsafe impl PartialGeqKernel<SP1Field> for TaskScope {
     fn partial_geq_kernel() -> KernelPtr {
         unsafe { partial_geq_koala_bear() }
     }
@@ -227,9 +227,8 @@ unsafe impl PartialGeqKernel<KoalaBear> for TaskScope {
 
 #[cfg(test)]
 mod tests {
-    use slop_algebra::extension::BinomialExtensionField;
-    use slop_koala_bear::KoalaBear;
     use slop_multilinear::{Mle, Point};
+    use sp1_primitives::{SP1ExtensionField, SP1Field};
 
     use super::{DeviceMleEval, DevicePoint};
     use crate::mle::DeviceMle;
@@ -238,8 +237,8 @@ mod tests {
     fn test_mle_eval() {
         let mut rng = rand::thread_rng();
 
-        type F = KoalaBear;
-        type EF = BinomialExtensionField<F, 4>;
+        type F = SP1Field;
+        type EF = SP1ExtensionField;
 
         let mle = Mle::<F>::rand(&mut rng, 100, 16);
         let point = Point::<EF>::rand(&mut rng, 16);

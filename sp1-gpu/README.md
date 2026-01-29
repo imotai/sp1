@@ -1,6 +1,6 @@
-# cuSlop
+# SP1 GPU
 
-A cuda version of slop.
+An implementation of the GPU prover.
 
 ## Compilation
 

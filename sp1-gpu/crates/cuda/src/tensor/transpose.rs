@@ -1,5 +1,3 @@
-use slop_algebra::extension::BinomialExtensionField;
-use slop_koala_bear::KoalaBear;
 use sp1_gpu_sys::{
     runtime::{Dim3, KernelPtr},
     transpose::{
@@ -7,6 +5,7 @@ use sp1_gpu_sys::{
         transpose_kernel_koala_bear_extension, transpose_kernel_u32, transpose_kernel_u32_digest,
     },
 };
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 // TransposeBackend removed - using DeviceTensor methods instead
 
 use crate::{args, DeviceCopy, DeviceTensor, TaskScope};
@@ -74,19 +73,19 @@ unsafe impl DeviceTransposeKernel<[u32; 8]> for TaskScope {
     }
 }
 
-unsafe impl DeviceTransposeKernel<KoalaBear> for TaskScope {
+unsafe impl DeviceTransposeKernel<SP1Field> for TaskScope {
     fn transpose_kernel() -> KernelPtr {
         unsafe { transpose_kernel_koala_bear() }
     }
 }
 
-unsafe impl DeviceTransposeKernel<BinomialExtensionField<KoalaBear, 4>> for TaskScope {
+unsafe impl DeviceTransposeKernel<SP1ExtensionField> for TaskScope {
     fn transpose_kernel() -> KernelPtr {
         unsafe { transpose_kernel_koala_bear_extension() }
     }
 }
 
-unsafe impl DeviceTransposeKernel<[KoalaBear; 8]> for TaskScope {
+unsafe impl DeviceTransposeKernel<[SP1Field; 8]> for TaskScope {
     fn transpose_kernel() -> KernelPtr {
         unsafe { transpose_kernel_koala_bear_digest() }
     }

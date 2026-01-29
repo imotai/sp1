@@ -12,7 +12,6 @@ use rayon::prelude::*;
 use slop_air::BaseAir;
 use slop_algebra::Field;
 use slop_alloc::mem::CopyError;
-use slop_koala_bear::KoalaBear;
 use slop_multilinear::{Mle, PaddedMle};
 use sp1_gpu_cudart::{DeviceMle, DeviceTransposeKernel, TaskScope};
 use sp1_hypercube::prover::{MainTraceData, PreprocessedTraceData, ProverSemaphore, TraceData};
@@ -21,11 +20,13 @@ use sp1_hypercube::{
     prover::{TraceGenerator, Traces},
     Machine,
 };
+
 use sp1_hypercube::{Chip, MachineRecord};
+use sp1_primitives::SP1Field;
 use tracing::{debug_span, instrument, Instrument};
 
 /// We currently only link to KoalaBear-specialized trace generation FFI.
-pub(crate) type F = KoalaBear;
+pub(crate) type F = SP1Field;
 
 /// A trace generator that is GPU accelerated.
 pub struct CudaTraceGenerator<F: Field, A> {
@@ -420,7 +421,7 @@ pub(crate) mod tests {
     ) {
         assert_eq!(gpu_trace.dimensions, trace.dimensions);
 
-        println!("{:?}", trace.dimensions);
+        tracing::info!("{:?}", trace.dimensions);
 
         let mut eventful_mismatched_columns = BTreeSet::new();
         let mut padding_mismatched_columns = BTreeSet::new();
@@ -430,19 +431,26 @@ pub(crate) mod tests {
                 let actual = gpu_trace[[row_idx, col_idx]];
                 let expected = trace[[row_idx, col_idx]];
                 if actual != expected {
-                    println!(
+                    tracing::error!(
                         "mismatch on row {} col {}. actual: {:?} expected: {:?}",
-                        row_idx, col_idx, *actual, *expected
+                        row_idx,
+                        col_idx,
+                        *actual,
+                        *expected
                     );
                     col_mismatches.insert(col_idx);
                 }
             }
             let event = events.get(row_idx);
             if col_mismatches.is_empty() {
-                println!("row {row_idx} matches   . event (assuming events/row = 1): {event:?}");
+                tracing::info!(
+                    "row {row_idx} matches   . event (assuming events/row = 1): {event:?}"
+                );
             } else {
-                println!("row {row_idx} MISMATCHES. event (assuming events/row = 1): {event:?}");
-                println!("mismatched columns: {col_mismatches:?}");
+                tracing::error!(
+                    "row {row_idx} MISMATCHES. event (assuming events/row = 1): {event:?}"
+                );
+                tracing::error!("mismatched columns: {col_mismatches:?}");
             }
             if event.is_some() {
                 eventful_mismatched_columns.extend(col_mismatches);
@@ -450,8 +458,8 @@ pub(crate) mod tests {
                 padding_mismatched_columns.extend(col_mismatches);
             }
         }
-        println!("eventful mismatched columns: {eventful_mismatched_columns:?}");
-        println!("padding mismatched columns: {padding_mismatched_columns:?}");
+        tracing::info!("eventful mismatched columns: {eventful_mismatched_columns:?}");
+        tracing::info!("padding mismatched columns: {padding_mismatched_columns:?}");
 
         assert_eq!(gpu_trace, trace);
     }

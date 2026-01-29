@@ -213,7 +213,7 @@ mod tests {
         all_bit_states, all_memory_states, transition_function, BranchingProgram,
         StateOrFail::{Fail, State},
     };
-    use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
+    use slop_koala_bear::KoalaBearDegree4Duplex;
     use slop_multilinear::Point;
     use slop_tensor::Tensor;
 
@@ -222,9 +222,10 @@ mod tests {
         sys::{jagged::transition_kernel, runtime::KernelPtr},
         DeviceBuffer, DeviceTensor, TaskScope,
     };
+    use sp1_primitives::{SP1ExtensionField, SP1Field};
 
-    type F = KoalaBear;
-    type EF = BinomialExtensionField<F, 4>;
+    type F = SP1Field;
+    type EF = SP1ExtensionField;
 
     pub trait TransitionKernel {
         fn transition_kernel() -> KernelPtr;
@@ -498,7 +499,7 @@ mod tests {
         init_tracer();
         let mut rng = rand::thread_rng();
 
-        type F = KoalaBear;
+        type F = sp1_primitives::SP1Field;
         type EF = BinomialExtensionField<F, 4>;
 
         let num_columns = 1400;
@@ -736,7 +737,7 @@ mod tests {
                     claim,
                 );
 
-                println!("branching program time: {:?}", time.elapsed());
+                tracing::info!("branching program time: {:?}", time.elapsed());
 
                 let alpha_from_device =
                     DeviceBuffer::from_raw(bp_results_device.1).to_host().unwrap().as_slice()[0];

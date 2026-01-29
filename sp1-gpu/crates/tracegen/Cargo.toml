@@ -23,6 +23,7 @@ sp1-core-machine = { workspace = true }
 sp1-recursion-executor = { workspace = true }
 sp1-recursion-machine = { workspace = true }
 sp1-hypercube = { workspace = true }
+sp1-primitives = { workspace = true }
 
 futures = { workspace = true }
 tokio = { workspace = true }

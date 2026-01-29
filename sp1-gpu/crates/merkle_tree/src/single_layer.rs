@@ -1,12 +1,10 @@
 use std::{marker::PhantomData, os::raw::c_void};
 
-use slop_algebra::extension::BinomialExtensionField;
 use slop_algebra::{AbstractField, Field};
 use slop_alloc::CpuBackend;
 use slop_alloc::{mem::CopyError, Buffer, HasBackend};
 use slop_bn254::{bn254_poseidon2_rc3, Bn254Fr, BNGC};
 use slop_challenger::IopCtx;
-use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 use slop_merkle_tree::MerkleTreeTcsProof;
 use slop_symmetric::{CryptographicHasher, PseudoCompressionFunction};
 use slop_tensor::Tensor;
@@ -24,6 +22,7 @@ use sp1_gpu_cudart::{
     },
     CudaError, DeviceTensor, TaskScope,
 };
+use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
 use thiserror::Error;
 
 use crate::{MerkleTree, MerkleTreeHasher};
@@ -265,21 +264,21 @@ where
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Poseidon2KoalaBear16Kernels;
+pub struct Poseidon2SP1Field16Kernels;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Poseidon2Bn254Kernels;
 
-pub type Poseidon2KoalaBear16CudaProver = MerkleTreeSingleLayerProver<
-    KoalaBearDegree4Duplex,
-    KoalaBear,
-    Poseidon2KoalaBear16Kernels,
-    Poseidon2KoalaBear16Hasher,
+pub type Poseidon2SP1Field16CudaProver = MerkleTreeSingleLayerProver<
+    SP1GlobalContext,
+    SP1Field,
+    Poseidon2SP1Field16Kernels,
+    Poseidon2SP1Field16Hasher,
     16,
 >;
 
 pub type Poseidon2Bn254CudaProver = MerkleTreeSingleLayerProver<
-    BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>,
+    BNGC<SP1Field, SP1ExtensionField>,
     Bn254Fr,
     Poseidon2Bn254Kernels,
     Poseidon2Bn254Hasher,
@@ -287,13 +286,13 @@ pub type Poseidon2Bn254CudaProver = MerkleTreeSingleLayerProver<
 >;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Poseidon2KoalaBear16Hasher;
+pub struct Poseidon2SP1Field16Hasher;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Poseidon2Bn254Hasher;
 
-impl Hasher<KoalaBear, 16> for Poseidon2KoalaBear16Hasher {
-    fn hasher() -> MerkleTreeHasher<KoalaBear, CpuBackend, 16> {
+impl Hasher<SP1Field, 16> for Poseidon2SP1Field16Hasher {
+    fn hasher() -> MerkleTreeHasher<SP1Field, CpuBackend, 16> {
         MerkleTreeHasher::default()
     }
 }
@@ -324,7 +323,7 @@ pub fn poseidon2_bn254_3_constants() -> (Vec<Bn254Fr>, Vec<[Bn254Fr; 3]>, Vec<Bn
     (internal_round_constants, external_round_constants, diffusion_matrix_m1)
 }
 
-unsafe impl MerkleTreeSingleLayerKernels<KoalaBearDegree4Duplex> for Poseidon2KoalaBear16Kernels {
+unsafe impl MerkleTreeSingleLayerKernels<SP1GlobalContext> for Poseidon2SP1Field16Kernels {
     #[inline]
     fn leaf_hash_kernel() -> KernelPtr {
         unsafe { leaf_hash_merkle_tree_koala_bear_16_kernel() }
@@ -346,7 +345,7 @@ unsafe impl MerkleTreeSingleLayerKernels<KoalaBearDegree4Duplex> for Poseidon2Ko
     }
 }
 
-unsafe impl MerkleTreeSingleLayerKernels<BNGC<KoalaBear, BinomialExtensionField<KoalaBear, 4>>>
+unsafe impl MerkleTreeSingleLayerKernels<BNGC<SP1Field, SP1ExtensionField>>
     for Poseidon2Bn254Kernels
 {
     #[inline]
@@ -449,7 +448,7 @@ mod tests {
             .await;
             let new_traces = Arc::new(new_traces);
 
-            let tensor_prover = Poseidon2KoalaBear16CudaProver::new(&scope);
+            let tensor_prover = Poseidon2SP1Field16CudaProver::new(&scope);
 
             let (new_preprocessed_commit, new_cuda_prover_data) = tensor_prover
                 .commit_tensors(&new_traces.dense().preprocessed_tensor(LOG_STACKING_HEIGHT))

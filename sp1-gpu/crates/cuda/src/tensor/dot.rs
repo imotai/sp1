@@ -1,5 +1,3 @@
-use slop_algebra::extension::BinomialExtensionField;
-use slop_koala_bear::KoalaBear;
 use slop_tensor::{Tensor, TensorView};
 use sp1_gpu_sys::{
     reduce::{
@@ -11,6 +9,7 @@ use sp1_gpu_sys::{
     },
     runtime::KernelPtr,
 };
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 
 use crate::{args, reduce::partial_sum_reduction_into, DeviceCopy, DeviceTensor, TaskScope};
 
@@ -103,20 +102,7 @@ impl<T: DeviceCopy> DeviceTensor<T> {
     }
 }
 
-// impl<T: DeviceCopy, U: DeviceCopy> DotBackend<T, U> for TaskScope
-// where
-//     TaskScope: DotKernel<T, U>,
-// {
-//     async fn dot_along_dim(
-//         src: &Tensor<T, Self>,
-//         scalars: &Tensor<U, Self>,
-//         dim: usize,
-//     ) -> Tensor<U, Self> {
-//         dot_along_dim_view(src.as_view(), scalars.as_view(), dim)
-//     }
-// }
-
-unsafe impl DotKernel<KoalaBear, KoalaBear> for TaskScope {
+unsafe impl DotKernel<SP1Field, SP1Field> for TaskScope {
     fn partial_dot_kernel_last_dim() -> KernelPtr {
         unsafe { partial_dot_koala_bear_kernel() }
     }
@@ -126,9 +112,7 @@ unsafe impl DotKernel<KoalaBear, KoalaBear> for TaskScope {
     }
 }
 
-unsafe impl DotKernel<BinomialExtensionField<KoalaBear, 4>, BinomialExtensionField<KoalaBear, 4>>
-    for TaskScope
-{
+unsafe impl DotKernel<SP1ExtensionField, SP1ExtensionField> for TaskScope {
     fn partial_dot_kernel_last_dim() -> KernelPtr {
         unsafe { partial_dot_koala_bear_extension_kernel() }
     }
@@ -138,7 +122,7 @@ unsafe impl DotKernel<BinomialExtensionField<KoalaBear, 4>, BinomialExtensionFie
     }
 }
 
-unsafe impl DotKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> for TaskScope {
+unsafe impl DotKernel<SP1Field, SP1ExtensionField> for TaskScope {
     fn partial_dot_kernel_last_dim() -> KernelPtr {
         unsafe { partial_dot_koala_bear_base_extension_kernel() }
     }
@@ -151,13 +135,13 @@ unsafe impl DotKernel<KoalaBear, BinomialExtensionField<KoalaBear, 4>> for TaskS
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use slop_algebra::{extension::BinomialExtensionField, AbstractField};
-    use slop_koala_bear::KoalaBear;
+    use slop_algebra::AbstractField;
     use slop_tensor::Tensor;
+    use sp1_primitives::{SP1ExtensionField, SP1Field};
 
     use super::DeviceTensor;
 
-    type KoalaBearExt = BinomialExtensionField<KoalaBear, 4>;
+    type SP1FieldExt = SP1ExtensionField;
 
     #[test]
     fn test_koala_bear_dot() {
@@ -165,8 +149,8 @@ mod tests {
         let mut rng = rand::thread_rng();
 
         for size in [10, 100, 1 << 16] {
-            let tensor = Tensor::<KoalaBear>::rand(&mut rng, [num_summands, size]);
-            let scalars = Tensor::<KoalaBear>::rand(&mut rng, [size]);
+            let tensor = Tensor::<SP1Field>::rand(&mut rng, [num_summands, size]);
+            let scalars = Tensor::<SP1Field>::rand(&mut rng, [size]);
 
             let inner_product = crate::run_sync_in_place(|t| {
                 let device_tensor = DeviceTensor::from_host(&tensor, &t).unwrap();
@@ -178,7 +162,7 @@ mod tests {
 
             assert_eq!(inner_product.sizes(), [num_summands]);
             for i in 0..num_summands {
-                let expected_inner_product: KoalaBear = tensor
+                let expected_inner_product: SP1Field = tensor
                     .get(i)
                     .unwrap()
                     .as_slice()
@@ -197,7 +181,7 @@ mod tests {
         let num_summands = 100;
         let mut rng = rand::thread_rng();
 
-        type EF = BinomialExtensionField<KoalaBear, 4>;
+        type EF = SP1ExtensionField;
 
         for size in [10, 100, 1 << 16] {
             let tensor = Tensor::<EF>::rand(&mut rng, [num_summands, size]);
@@ -231,8 +215,8 @@ mod tests {
     fn test_koala_bear_base_extension_dot() {
         let mut rng = rand::thread_rng();
 
-        type F = KoalaBear;
-        type EF = BinomialExtensionField<KoalaBear, 4>;
+        type F = SP1Field;
+        type EF = SP1ExtensionField;
 
         for size in [10, 100, 1 << 10, 1 << 12, 1 << 16] {
             for num_summands in [64, 128] {
@@ -246,7 +230,7 @@ mod tests {
                     let time = std::time::Instant::now();
                     let inner_product = device_tensor.dot_along_dim(&device_scalars, 1);
                     t.synchronize_blocking().unwrap();
-                    println!(
+                    tracing::info!(
                         "Dot time for size {}, num_summands: {}, time: {:?}",
                         size,
                         num_summands,
@@ -280,8 +264,8 @@ mod tests {
         let width = 10;
         let height = 1500;
 
-        let host_tensor = Tensor::<KoalaBear>::rand(&mut rng, [width, height]);
-        let host_scalars = Tensor::<KoalaBear>::rand(&mut rng, [width]);
+        let host_tensor = Tensor::<SP1Field>::rand(&mut rng, [width, height]);
+        let host_scalars = Tensor::<SP1Field>::rand(&mut rng, [width]);
 
         let dot = crate::run_sync_in_place(|t| {
             let tensor = DeviceTensor::from_host(&host_tensor, &t).unwrap();
@@ -293,7 +277,7 @@ mod tests {
 
         assert_eq!(dot.sizes(), [height]);
         for i in 0..height {
-            let mut dot_product = KoalaBear::zero();
+            let mut dot_product = SP1Field::zero();
             for j in 0..width {
                 dot_product += *host_scalars[[j]] * *host_tensor[[j, i]];
             }
@@ -308,8 +292,8 @@ mod tests {
         let width = 10;
         let height = 1500;
 
-        let host_tensor = Tensor::<KoalaBear>::rand(&mut rng, [width, height]);
-        let host_scalars = Tensor::<KoalaBearExt>::rand(&mut rng, [width]);
+        let host_tensor = Tensor::<SP1Field>::rand(&mut rng, [width, height]);
+        let host_scalars = Tensor::<SP1FieldExt>::rand(&mut rng, [width]);
 
         let dot = crate::run_sync_in_place(|t| {
             let tensor = DeviceTensor::from_host(&host_tensor, &t).unwrap();
@@ -321,7 +305,7 @@ mod tests {
 
         assert_eq!(dot.sizes(), [height]);
         for i in 0..height {
-            let mut dot_product = KoalaBearExt::zero();
+            let mut dot_product = SP1FieldExt::zero();
             for j in 0..width {
                 dot_product += *host_scalars[[j]] * *host_tensor[[j, i]];
             }
@@ -336,8 +320,8 @@ mod tests {
         let width = 10;
         let height = 1500;
 
-        let host_tensor = Tensor::<KoalaBearExt>::rand(&mut rng, [width, height]);
-        let host_scalars = Tensor::<KoalaBearExt>::rand(&mut rng, [width]);
+        let host_tensor = Tensor::<SP1FieldExt>::rand(&mut rng, [width, height]);
+        let host_scalars = Tensor::<SP1FieldExt>::rand(&mut rng, [width]);
 
         let dot = crate::run_sync_in_place(|t| {
             let tensor = DeviceTensor::from_host(&host_tensor, &t).unwrap();
@@ -349,7 +333,7 @@ mod tests {
 
         assert_eq!(dot.sizes(), [height]);
         for i in 0..height {
-            let mut dot_product = KoalaBearExt::zero();
+            let mut dot_product = SP1FieldExt::zero();
             for j in 0..width {
                 dot_product += *host_scalars[[j]] * *host_tensor[[j, i]];
             }

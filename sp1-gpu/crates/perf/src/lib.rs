@@ -45,7 +45,7 @@ pub fn get_program_and_input(program: String, param: String) -> (Vec<u8>, SP1Std
             return (POSEIDON2_ELF.to_vec(), stdin);
         } else if program_path == "rsp" {
             let mut stdin = SP1Stdin::new();
-            let client_input_path = format!("crates/perf/programs/rsp/input/{param}.bin");
+            let client_input_path = format!("sp1-gpu/crates/perf/programs/rsp/input/{param}.bin");
             let client_input = std::fs::read(client_input_path).unwrap();
             stdin.write_vec(client_input);
             return (RSP_ELF.to_vec(), stdin);

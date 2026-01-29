@@ -4,49 +4,45 @@ use sp1_gpu_air::{air_block::BlockAir, codegen_cuda_eval, SymbolicProverFolder};
 use sp1_gpu_challenger::{DuplexChallenger, MultiField32Challenger};
 use sp1_gpu_cudart::{PinnedBuffer, TaskScope};
 
-use slop_algebra::extension::BinomialExtensionField;
 use slop_basefold::BasefoldVerifier;
 use slop_bn254::Bn254Fr;
 use slop_challenger::IopCtx;
 use slop_futures::queue::WorkerQueue;
-use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
 use sp1_core_machine::riscv::RiscvAir;
 use sp1_gpu_basefold::FriCudaProver;
-use sp1_gpu_merkle_tree::{
-    CudaTcsProver, Poseidon2Bn254CudaProver, Poseidon2KoalaBear16CudaProver,
-};
+use sp1_gpu_merkle_tree::{CudaTcsProver, Poseidon2Bn254CudaProver, Poseidon2SP1Field16CudaProver};
 use sp1_gpu_shard_prover::{CudaShardProver, CudaShardProverComponents};
 use sp1_gpu_tracegen::CudaTracegenAir;
 use sp1_hypercube::{air::MachineAir, prover::ZerocheckAir, SP1InnerPcs, SP1OuterPcs, SP1SC};
-use sp1_primitives::{SP1GlobalContext, SP1OuterGlobalContext};
+use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext, SP1OuterGlobalContext};
 use sp1_prover::{CompressAir, SP1ProverComponents, WrapAir};
 
 pub struct SP1CudaProverComponents;
 
 impl SP1ProverComponents for SP1CudaProverComponents {
-    type CoreProver = CudaShardProver<KoalaBearDegree4Duplex, CudaProverCoreComponents>;
-    type RecursionProver = CudaShardProver<KoalaBearDegree4Duplex, CudaProverRecursionComponents>;
+    type CoreProver = CudaShardProver<SP1GlobalContext, CudaProverCoreComponents>;
+    type RecursionProver = CudaShardProver<SP1GlobalContext, CudaProverRecursionComponents>;
     type WrapProver = CudaShardProver<SP1OuterGlobalContext, CudaProverWrapComponents>;
 }
 
 /// Core prover components for the CUDA prover.
 pub struct CudaProverCoreComponents;
 
-impl CudaShardProverComponents<KoalaBearDegree4Duplex> for CudaProverCoreComponents {
-    type P = Poseidon2KoalaBear16CudaProver;
-    type Air = RiscvAir<KoalaBear>;
+impl CudaShardProverComponents<SP1GlobalContext> for CudaProverCoreComponents {
+    type P = Poseidon2SP1Field16CudaProver;
+    type Air = RiscvAir<SP1Field>;
     type C = SP1InnerPcs;
-    type DeviceChallenger = DuplexChallenger<KoalaBear, TaskScope>;
+    type DeviceChallenger = DuplexChallenger<SP1Field, TaskScope>;
 }
 
 /// Recursion prover components for the CUDA prover.
 pub struct CudaProverRecursionComponents;
 
-impl CudaShardProverComponents<KoalaBearDegree4Duplex> for CudaProverRecursionComponents {
-    type P = Poseidon2KoalaBear16CudaProver;
+impl CudaShardProverComponents<SP1GlobalContext> for CudaProverRecursionComponents {
+    type P = Poseidon2SP1Field16CudaProver;
     type Air = CompressAir<<SP1GlobalContext as IopCtx>::F>;
     type C = SP1InnerPcs;
-    type DeviceChallenger = DuplexChallenger<KoalaBear, TaskScope>;
+    type DeviceChallenger = DuplexChallenger<SP1Field, TaskScope>;
 }
 
 /// Wrap prover components for the CUDA prover.
@@ -56,7 +52,7 @@ impl CudaShardProverComponents<SP1OuterGlobalContext> for CudaProverWrapComponen
     type P = Poseidon2Bn254CudaProver;
     type Air = WrapAir<<SP1OuterGlobalContext as IopCtx>::F>;
     type C = SP1OuterPcs;
-    type DeviceChallenger = MultiField32Challenger<KoalaBear, Bn254Fr, TaskScope>;
+    type DeviceChallenger = MultiField32Challenger<SP1Field, Bn254Fr, TaskScope>;
 }
 
 pub async fn new_cuda_prover<GC, PC>(
@@ -67,7 +63,7 @@ pub async fn new_cuda_prover<GC, PC>(
     scope: TaskScope,
 ) -> CudaShardProver<GC, PC>
 where
-    GC: IopCtx<F = KoalaBear, EF = BinomialExtensionField<KoalaBear, 4>>,
+    GC: IopCtx<F = SP1Field, EF = SP1ExtensionField>,
     PC: CudaShardProverComponents<GC>,
     PC::P: CudaTcsProver<GC>,
     PC::Air: CudaTracegenAir<GC::F>

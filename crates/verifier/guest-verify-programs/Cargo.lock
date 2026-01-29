@@ -856,9 +856,9 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.13.0"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
 dependencies = [
  "either",
 ]
@@ -1722,7 +1722,7 @@ dependencies = [
 name = "slop-algebra"
 version = "6.0.0"
 dependencies = [
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "p3-field 0.1.0",
  "serde",
 ]
@@ -1754,7 +1754,7 @@ name = "slop-basefold"
 version = "6.0.0"
 dependencies = [
  "derive-where",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "serde",
  "slop-algebra",
  "slop-alloc",
@@ -1775,7 +1775,7 @@ name = "slop-basefold-prover"
 version = "6.0.0"
 dependencies = [
  "derive-where",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "rand",
  "serde",
  "slop-algebra",
@@ -1867,7 +1867,7 @@ version = "6.0.0"
 dependencies = [
  "derive-where",
  "futures",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "num_cpus",
  "rand",
  "rayon",
@@ -1926,7 +1926,7 @@ version = "6.0.0"
 dependencies = [
  "derive-where",
  "ff 0.13.1",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "p3-merkle-tree",
  "serde",
  "slop-algebra",
@@ -1984,7 +1984,7 @@ version = "6.0.0"
 dependencies = [
  "derive-where",
  "futures",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "serde",
  "slop-algebra",
  "slop-alloc",
@@ -2004,7 +2004,7 @@ name = "slop-sumcheck"
 version = "6.0.0"
 dependencies = [
  "futures",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "rayon",
  "serde",
  "slop-algebra",
@@ -2028,7 +2028,7 @@ version = "6.0.0"
 dependencies = [
  "arrayvec",
  "derive-where",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "rand",
  "rayon",
  "serde",
@@ -2062,7 +2062,7 @@ version = "6.0.0"
 dependencies = [
  "derive-where",
  "futures",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "rand",
  "rayon",
  "serde",
@@ -2111,7 +2111,7 @@ dependencies = [
  "derive-where",
  "futures",
  "hashbrown",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "num-bigint 0.4.6",
  "num-traits",
  "num_cpus",
@@ -2197,7 +2197,7 @@ dependencies = [
  "blake3",
  "elf",
  "hex",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "lazy_static",
  "num-bigint 0.4.6",
  "serde",
@@ -2218,7 +2218,7 @@ dependencies = [
  "backtrace",
  "cfg-if",
  "hashbrown",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "range-set-blaze",
  "serde",
  "slop-algebra",
@@ -2237,7 +2237,7 @@ dependencies = [
 name = "sp1-recursion-machine"
 version = "6.0.0"
 dependencies = [
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "rand",
  "slop-air",
  "slop-algebra",

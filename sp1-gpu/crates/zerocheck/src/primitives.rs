@@ -387,13 +387,13 @@ mod tests {
     use serial_test::serial;
     use slop_algebra::{extension::BinomialExtensionField, AbstractField};
     use slop_alloc::Buffer;
-    use slop_koala_bear::KoalaBear;
     use slop_multilinear::Mle;
     use slop_multilinear::Point;
     use sp1_gpu_cudart::run_sync_in_place;
     use sp1_gpu_cudart::sys::v2_kernels::jagged_eval_kernel_chunked_felt;
     use sp1_gpu_cudart::{DeviceBuffer, DevicePoint};
     use sp1_hypercube::log2_ceil_usize;
+    use sp1_primitives::SP1Field;
 
     use crate::primitives::{evaluate_jagged_columns, evaluate_jagged_mle_chunked};
     use sp1_gpu_utils::{Ext, Felt};
@@ -473,9 +473,7 @@ mod tests {
     // 2. Randomly generated dense data corresponding to the Mle's.
     // 3. Col Index corresponding to the dense data, for use in a JaggedMle.
     // 4. Start indices for every column, for use in a JaggedMle.
-    fn get_input(
-        sizes: &[(u32, u32)],
-    ) -> (Vec<Mle<KoalaBear>>, Vec<KoalaBear>, Vec<u32>, Vec<u32>) {
+    fn get_input(sizes: &[(u32, u32)]) -> (Vec<Mle<SP1Field>>, Vec<SP1Field>, Vec<u32>, Vec<u32>) {
         let mut rng = StdRng::seed_from_u64(8);
         let sum_length = sizes.iter().map(|(a, b)| a * b).sum::<u32>();
         let mut cols = vec![0; (sum_length / 2) as usize];
@@ -601,7 +599,7 @@ mod tests {
             let evaluation = host_evals[0];
             assert_eq!(evaluation, eval);
 
-            println!("elapsed jagged chunked {elapsed:?}");
+            tracing::info!("elapsed jagged chunked {elapsed:?}");
         })
         .unwrap();
     }
@@ -684,7 +682,7 @@ mod tests {
             t.synchronize_blocking().unwrap();
 
             let elapsed = now.elapsed();
-            println!("time: {elapsed:?}");
+            tracing::info!("time: {elapsed:?}");
         })
         .unwrap();
     }

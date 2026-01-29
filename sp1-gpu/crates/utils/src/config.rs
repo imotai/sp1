@@ -4,14 +4,13 @@
 //! generics in order to avoid complicated trait bounds but remain flexible enough to support
 //! different field and extension element types.
 
-use slop_algebra::extension::BinomialExtensionField;
-use slop_koala_bear::{KoalaBear, KoalaBearDegree4Duplex};
+use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext};
 
 /// The base field element type.
-pub type Felt = KoalaBear;
+pub type Felt = SP1Field;
 
 /// The extension field element type.
-pub type Ext = BinomialExtensionField<KoalaBear, 4>;
+pub type Ext = SP1ExtensionField;
 
 /// The most common GC, used for testing.
-pub type TestGC = KoalaBearDegree4Duplex;
+pub type TestGC = SP1GlobalContext;

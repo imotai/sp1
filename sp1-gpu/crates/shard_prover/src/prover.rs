@@ -9,7 +9,6 @@ use slop_jagged::{
     JaggedProverError, PrefixSumsMaxLogRowCount,
 };
 use slop_multilinear::{Evaluations, MleEval, MultilinearPcsVerifier, Point};
-use slop_stacked::StackedBasefoldProof;
 use sp1_gpu_air::air_block::BlockAir;
 use sp1_gpu_air::SymbolicProverFolder;
 use sp1_gpu_basefold::{CudaStackedPcsProverData, DeviceGrindingChallenger, FriCudaProver};
@@ -26,12 +25,12 @@ use sp1_gpu_utils::{Ext, Felt, JaggedTraceMle};
 use sp1_gpu_zerocheck::zerocheck;
 use sp1_gpu_zerocheck::CudaEvalResult;
 use sp1_hypercube::prover::ZerocheckAir;
-use sp1_hypercube::ShardContextImpl;
 use sp1_hypercube::{
     air::{MachineAir, MachineProgram},
     prover::{AirProver, PreprocessedData, ProverPermit, ProverSemaphore, ProvingKey},
     Machine, MachineVerifyingKey, ShardProof,
 };
+use sp1_hypercube::{SP1PcsProof, ShardContextImpl};
 use std::collections::BTreeMap;
 use std::iter::once;
 use std::{marker::PhantomData, sync::Arc};
@@ -131,7 +130,7 @@ where
     GC::Challenger: slop_challenger::FieldChallenger<
         <GC::Challenger as slop_challenger::GrindingChallenger>::Witness,
     >,
-    StackedBasefoldProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
+    SP1PcsProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
     TaskScope: sp1_gpu_jagged_assist::BranchingProgramKernel<GC::F, GC::EF, PC::DeviceChallenger>,
 {
     type PreprocessedData = Mutex<CudaShardProverData<GC, PC::Air>>;
@@ -433,7 +432,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
         GC::Challenger: slop_challenger::FieldChallenger<
             <GC::Challenger as slop_challenger::GrindingChallenger>::Witness,
         >,
-        StackedBasefoldProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
+        SP1PcsProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
         TaskScope:
             sp1_gpu_jagged_assist::BranchingProgramKernel<GC::F, GC::EF, PC::DeviceChallenger>,
     {
@@ -600,10 +599,8 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
             .map(|round| round.into_iter().flatten().collect::<MleEval<_>>())
             .collect::<Rounds<_>>();
 
-        let stacked_basefold_proof = StackedBasefoldProof {
-            basefold_proof: pcs_proof,
-            batch_evaluations: host_batch_evaluations,
-        };
+        let stacked_basefold_proof =
+            SP1PcsProof { basefold_proof: pcs_proof, batch_evaluations: host_batch_evaluations };
 
         let PrefixSumsMaxLogRowCount { log_m, .. } =
             unzip_and_prefix_sums(&row_counts_and_column_counts);
@@ -641,7 +638,7 @@ impl<GC: IopCtx<F = Felt, EF = Ext>, PC: CudaShardProverComponents<GC>>
         GC::Challenger: slop_challenger::FieldChallenger<
             <GC::Challenger as slop_challenger::GrindingChallenger>::Witness,
         >,
-        StackedBasefoldProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
+        SP1PcsProof<GC>: Into<<PC::C as MultilinearPcsVerifier<GC>>::Proof>,
         TaskScope:
             sp1_gpu_jagged_assist::BranchingProgramKernel<GC::F, GC::EF, PC::DeviceChallenger>,
     {
@@ -803,7 +800,7 @@ mod tests {
         self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT,
     };
     use sp1_gpu_jagged_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
-    use sp1_gpu_merkle_tree::{CudaTcsProver, Poseidon2KoalaBear16CudaProver};
+    use sp1_gpu_merkle_tree::{CudaTcsProver, Poseidon2SP1Field16CudaProver};
     use sp1_gpu_utils::TestGC;
     use sp1_gpu_zerocheck::primitives::round_batch_evaluations;
     use sp1_hypercube::SP1InnerPcs;
@@ -812,7 +809,7 @@ mod tests {
     pub struct TestProverComponentsImpl {}
 
     impl CudaShardProverComponents<TestGC> for TestProverComponentsImpl {
-        type P = Poseidon2KoalaBear16CudaProver;
+        type P = Poseidon2SP1Field16CudaProver;
         type Air = RiscvAir<Felt>;
         type C = SP1InnerPcs;
         type DeviceChallenger = sp1_gpu_challenger::DuplexChallenger<Felt, TaskScope>;
@@ -847,7 +844,7 @@ mod tests {
             let verifier = BasefoldVerifier::<TestGC>::new(core_fri_config(), 2);
 
             let basefold_prover = FriCudaProver::<TestGC, _, Felt>::new(
-                Poseidon2KoalaBear16CudaProver::new(&scope),
+                Poseidon2SP1Field16CudaProver::new(&scope),
                 verifier.fri_config,
                 LOG_STACKING_HEIGHT,
             );

@@ -52,12 +52,11 @@ mod tests {
     use crate::grinding_challenger::DeviceGrindingChallenger;
     use slop_algebra::AbstractField;
     use slop_challenger::{CanObserve, CanSample, GrindingChallenger};
-    use slop_koala_bear::KoalaBear;
     use slop_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
     use sp1_hypercube::inner_perm;
-    use sp1_primitives::SP1DiffusionMatrix;
+    use sp1_primitives::{SP1DiffusionMatrix, SP1Field};
 
-    pub type Perm = Poseidon2<KoalaBear, Poseidon2ExternalMatrixGeneral, SP1DiffusionMatrix, 16, 3>;
+    pub type Perm = Poseidon2<SP1Field, Poseidon2ExternalMatrixGeneral, SP1DiffusionMatrix, 16, 3>;
 
     #[test]
     fn test_grinding() {
@@ -65,21 +64,21 @@ mod tests {
             for bits in 1..20 {
                 let default_perm = inner_perm();
                 let mut challenger =
-                    slop_challenger::DuplexChallenger::<KoalaBear, Perm, 16, 8>::new(default_perm);
+                    slop_challenger::DuplexChallenger::<SP1Field, Perm, 16, 8>::new(default_perm);
 
                 // Observe 7 elements to make the input buffer almost full and trigger duplexing on
-                challenger.observe(KoalaBear::from_canonical_u32(0));
-                challenger.observe(KoalaBear::from_canonical_u32(1));
-                challenger.observe(KoalaBear::from_canonical_u32(2));
-                challenger.observe(KoalaBear::from_canonical_u32(3));
-                challenger.observe(KoalaBear::from_canonical_u32(4));
-                challenger.observe(KoalaBear::from_canonical_u32(5));
-                challenger.observe(KoalaBear::from_canonical_u32(6));
-                challenger.observe(KoalaBear::from_canonical_u32(7));
+                challenger.observe(SP1Field::from_canonical_u32(0));
+                challenger.observe(SP1Field::from_canonical_u32(1));
+                challenger.observe(SP1Field::from_canonical_u32(2));
+                challenger.observe(SP1Field::from_canonical_u32(3));
+                challenger.observe(SP1Field::from_canonical_u32(4));
+                challenger.observe(SP1Field::from_canonical_u32(5));
+                challenger.observe(SP1Field::from_canonical_u32(6));
+                challenger.observe(SP1Field::from_canonical_u32(7));
 
                 // Make another challenger that also samples before grinding (this empties the input buffer).
                 let mut challenger_2 = challenger.clone();
-                let _: KoalaBear = challenger.sample();
+                let _: SP1Field = challenger.sample();
 
                 let mut original_challenger = challenger.clone();
                 let result = challenger.grind_device(bits, &t);

@@ -16,17 +16,18 @@ use slop_air::{
     AirBuilder, AirBuilderWithPublicValues, ExtensionBuilder, PairBuilder, PermutationAirBuilder,
 };
 use slop_algebra::extension::BinomialExtensionField;
-use slop_koala_bear::KoalaBear;
 use slop_matrix::dense::RowMajorMatrixView;
+
 use sp1_core_machine::air::TrivialOperationBuilder;
 use sp1_hypercube::air::EmptyMessageBuilder;
 use sp1_hypercube::{AirOpenedValues, PROOF_MAX_NUM_PVS};
+use sp1_primitives::SP1Field;
 use symbolic_expr_ef::SymbolicExprEF;
 use symbolic_expr_f::SymbolicExprF;
 use symbolic_var_ef::SymbolicVarEF;
 use symbolic_var_f::SymbolicVarF;
 
-pub type F = KoalaBear;
+pub type F = SP1Field;
 
 pub type EF = BinomialExtensionField<F, 4>;
 

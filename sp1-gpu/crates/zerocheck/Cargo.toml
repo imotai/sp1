@@ -31,6 +31,7 @@ slop-futures = { workspace = true }
 sp1-derive = { workspace = true }
 sp1-hypercube = { workspace = true }
 sp1-core-executor = { workspace = true }
+sp1-primitives = { workspace = true }
 
 # misc
 itertools = { workspace = true }

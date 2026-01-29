@@ -56,6 +56,7 @@ slop-poseidon2 = { workspace = true }
 sp1-primitives = { workspace = true }
 futures = { workspace = true }
 slop-futures = { workspace = true }
+tracing = { workspace = true }
 
 [lints]
 workspace = true

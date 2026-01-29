@@ -105,7 +105,7 @@ mod tests {
         self, CORE_MAX_LOG_ROW_COUNT, LOG_STACKING_HEIGHT,
     };
     use sp1_gpu_jagged_tracegen::{full_tracegen, CORE_MAX_TRACE_SIZE};
-    use sp1_gpu_merkle_tree::{CudaTcsProver, Poseidon2KoalaBear16CudaProver};
+    use sp1_gpu_merkle_tree::{CudaTcsProver, Poseidon2SP1Field16CudaProver};
     use sp1_gpu_utils::{Felt, TestGC};
     use sp1_hypercube::prover::{DefaultTraceGenerator, ProverSemaphore, TraceGenerator};
     use sp1_hypercube::{SP1InnerPcs, SP1PcsProofInner};
@@ -137,7 +137,10 @@ mod tests {
                 )
                 .await;
 
-            println!("warmup traces generated: {:?}", old_traces.main_trace_data.shard_chips.len());
+            tracing::info!(
+                "warmup traces generated: {:?}",
+                old_traces.main_trace_data.shard_chips.len()
+            );
 
             let num_rounds = 2;
 
@@ -192,7 +195,7 @@ mod tests {
             )
             .await;
 
-            let tcs_prover = Poseidon2KoalaBear16CudaProver::new(&scope);
+            let tcs_prover = Poseidon2SP1Field16CudaProver::new(&scope);
 
             let basefold_prover = FriCudaProver::<TestGC, _, <TestGC as IopCtx>::F>::new(
                 tcs_prover,

@@ -62,14 +62,6 @@ tokio-blocked = ["dep:tokio-blocked", "tokio/tracing"]
 workspace = true
 
 [[bin]]
-name = "reduce"
-path = "src/bin/reduce.rs"
-
-[[bin]]
-name = "exec"
-path = "src/bin/exec.rs"
-
-[[bin]]
 name = "node"
 path = "src/bin/node.rs"
 
