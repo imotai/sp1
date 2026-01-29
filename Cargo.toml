@@ -70,7 +70,7 @@ members = [
   "sp1-gpu/crates/challenger",
   "sp1-gpu/crates/commit",
   "sp1-gpu/crates/cuda",
-  "sp1-gpu/crates/cuslop",
+  "sp1-gpu/crates/server",
   "sp1-gpu/crates/jagged_assist",
   "sp1-gpu/crates/jagged_sumcheck",
   "sp1-gpu/crates/jagged_tracegen",
@@ -137,7 +137,7 @@ sp1-gpu-logup-gkr = { path = "sp1-gpu/crates/logup_gkr" }
 sp1-gpu-merkle-tree = { path = "sp1-gpu/crates/merkle_tree" }
 sp1-gpu-perf = { path = "sp1-gpu/crates/perf" }
 sp1-gpu-prover = { path = "sp1-gpu/crates/prover_components" }
-sp1-gpu-server = { path = "sp1-gpu/crates/cuslop" }
+sp1-gpu-server = { path = "sp1-gpu/crates/server" }
 sp1-gpu-shard-prover = { path = "sp1-gpu/crates/shard_prover" }
 sp1-gpu-sys = { path = "sp1-gpu/crates/sys" }
 sp1-gpu-tracegen = { path = "sp1-gpu/crates/tracegen" }

@@ -27,7 +27,6 @@ CUDA_ARCHS="89,90" cargo build --release
 
 If `CUDA_ARCHS` is not specified, the build will compile for all supported architectures, which takes significantly longer.
 
-
 ## Cargo profiles
 
 To use a particular profile, pass `--profile <PROFILE-NAME>` to any Cargo command. The `dev`
@@ -45,6 +44,13 @@ When running `sp1-gpu-perf` and comparing results, ensure you are using the same
 settings. The `lto` profile is likely sufficient for this particular use case.
 
 Further reading: [The Cargo Book, "3.5 Profiles," section on LTO](https://doc.rust-lang.org/cargo/reference/profiles.html#lto).
+
+## Building local GPU prover binary from source
+To build the GPU prover binary from source, run the following command from the root of the repository:
+
+```bash
+cargo install --locked --root "$HOME/.sp1" --path sp1-gpu/crates/server/
+```
 
 ## Profiling
 

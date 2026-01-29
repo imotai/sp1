@@ -23,9 +23,9 @@ This is enforced by CI and your PR will fail if the code is not properly formatt
 
 ### Unreleased/experimental versions
 
-cuslop-server (for CUDA proving)
+sp1-gpu-server (for CUDA proving)
 ```sh
-cargo install --locked --root "$HOME/.sp1" --git https://github.com/succinctlabs/cuslop cuslop-server
+cargo install --locked --root "$HOME/.sp1" --path sp1-gpu/crates/server/
 ```
 
 sp1 toolchain
