@@ -2067,6 +2067,7 @@ dependencies = [
  "serde",
  "sha2",
  "slop-algebra",
+ "slop-challenger",
  "slop-primitives",
  "slop-symmetric",
  "sp1-hypercube",

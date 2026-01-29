@@ -5,17 +5,14 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use num_bigint::BigUint;
-use serde::{Deserialize, Serialize};
 use slop_algebra::{AbstractField, PrimeField};
-use slop_challenger::IopCtx;
 use sp1_core_executor::SP1RecursionProof;
 use sp1_core_machine::riscv::MAX_LOG_NUMBER_OF_SHARDS;
 use sp1_hypercube::{
     air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
-    koalabears_to_bn254, verify_merkle_proof, HashableKey, MachineVerifier,
-    MachineVerifierConfigError, MachineVerifierError, MachineVerifyingKey, MerkleProof,
-    SP1InnerPcs, SP1OuterPcs, SP1PcsProofInner, SP1PcsProofOuter, SP1VerifyingKey, SP1WrapProof,
-    PROOF_MAX_NUM_PVS,
+    koalabears_to_bn254, HashableKey, MachineVerifier, MachineVerifierConfigError,
+    MachineVerifierError, MachineVerifyingKey, SP1InnerPcs, SP1OuterPcs, SP1PcsProofInner,
+    SP1PcsProofOuter, SP1VerifyingKey, SP1WrapProof, PROOF_MAX_NUM_PVS,
 };
 use sp1_primitives::{
     io::{blake3_hash, SP1PublicValues},
@@ -26,6 +23,7 @@ use sp1_recursion_executor::RecursionPublicValues;
 use sp1_recursion_gnark_ffi::{
     Groth16Bn254Proof, Groth16Bn254Prover, PlonkBn254Proof, PlonkBn254Prover,
 };
+pub use sp1_verifier::VerifierRecursionVks;
 use sp1_verifier::{Groth16Verifier, PlonkVerifier, GROTH16_VK_BYTES, PLONK_VK_BYTES};
 use std::{borrow::Borrow, str::FromStr};
 use thiserror::Error;
@@ -61,46 +59,6 @@ bn254 proof"
 
 /// The verifying key for the program wrapping an SP1 proof into a SNARK friendly format.
 pub const WRAP_VK_BYTES: &[u8] = include_bytes!("../wrap_vk.bin");
-
-/// The recursion verifying keys used by the SP1 verifier.
-pub const VERIFIER_VK_DATA_BYTES: &[u8] = include_bytes!("../verifier_vks.bin");
-
-#[derive(Clone, Serialize, Debug, PartialEq, Eq, Deserialize)]
-pub struct VerifierRecursionVks {
-    pub root: <SP1GlobalContext as IopCtx>::Digest,
-    pub vk_verification: bool,
-    pub num_keys: usize,
-}
-
-impl Default for VerifierRecursionVks {
-    fn default() -> Self {
-        bincode::deserialize(VERIFIER_VK_DATA_BYTES).unwrap()
-    }
-}
-
-impl VerifierRecursionVks {
-    pub fn vk_verification(&self) -> bool {
-        self.vk_verification
-    }
-    pub fn root(&self) -> <SP1GlobalContext as IopCtx>::Digest {
-        self.root
-    }
-
-    pub fn num_keys(&self) -> usize {
-        self.num_keys
-    }
-
-    pub fn verify(
-        &self,
-        proof: &MerkleProof<SP1GlobalContext>,
-        vk: &MachineVerifyingKey<SP1GlobalContext>,
-    ) -> bool {
-        if !self.vk_verification {
-            return true;
-        }
-        verify_merkle_proof(proof, vk.hash_koalabear(), self.root).is_ok()
-    }
-}
 
 #[derive(Clone)]
 pub struct SP1Verifier {
