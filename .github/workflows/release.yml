@@ -119,10 +119,15 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "^1.22.1"
-          
+
       - name: Check go installation
         run: |
           go version
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "29.4"
 
       - name: Set up git private repo access
         run: |
@@ -234,7 +239,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
-          path: sp1/
 
       - name: Print ref
         run: |
@@ -281,13 +285,12 @@ jobs:
         env:
           PLATFORM_NAME: ${{ matrix.platform }}
           ARCH: ${{ matrix.arch }}
-          # NOTE: SP1UP Relies on the version name being the tag name, 
+          # NOTE: SP1UP Relies on the version name being the tag name,
           # DO NOT CHANGE THIS WITHOUT UPDATING SP1UP TOO.
           VERSION_NAME: ${{ needs.prepare.outputs.tag_name }}
         shell: bash
         run: |
           tar -czvf "sp1_gpu_server_${VERSION_NAME}_${ARCH}.tar.gz" -C ./target/release sp1-gpu-server
-          mv "sp1_gpu_server_${VERSION_NAME}_${ARCH}.tar.gz" ../sp1/
           echo "file_name=sp1_gpu_server_${VERSION_NAME}_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
 
       # Upload the artifacts to the release.
@@ -296,7 +299,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.SP1_RELEASE_TOKEN }}
         run: |
-          cd sp1
           gh release upload ${{ needs.prepare.outputs.tag_name }} ${{ steps.artifacts.outputs.file_name }}
 
   set-latest-release:
