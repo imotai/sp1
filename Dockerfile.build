@@ -14,7 +14,7 @@ COPY . /root/sp1
 WORKDIR /root/sp1
 
 # Make sure go and protoc are installed
-RUN apt-get install -y --no-install-recommends golang protobuf-compiler && apt-get install -y --no-install-recommends gcc
+RUN apt-get install -y --no-install-recommends golang protobuf-compiler libprotobuf-dev && apt-get install -y --no-install-recommends gcc
 
 # Install the succinct toolchain
 RUN cargo run --bin cargo-prove -- prove install-toolchain && rm -rf /root/sp1
