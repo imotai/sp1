@@ -270,6 +270,11 @@ jobs:
         run: |
           go version
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "29.4"
+
       - name: print nvcc version
         run: |
           nvcc --version
