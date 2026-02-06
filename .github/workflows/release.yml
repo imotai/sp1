@@ -96,11 +96,11 @@ jobs:
             svm_target_platform: linux-amd64
             platform: linux
             arch: amd64
-          # - runner: ubuntu-24.04-arm todo fix
-          #   target: aarch64-unknown-linux-musl
-          #   svm_target_platform: linux-aarch64
-          #   platform: linux
-          #   arch: arm64
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            svm_target_platform: linux-aarch64
+            platform: linux
+            arch: arm64
           - runner: macos-latest-large
             target: x86_64-apple-darwin
             svm_target_platform: macosx-amd64
@@ -363,7 +363,7 @@ jobs:
         run: |
           cd sp1up
           chmod +x sp1up
-          bash -x sp1up --token ${{ secrets.GITHUB_TOKEN }}
+          bash -x sp1up --token ${{ secrets.GITHUB_TOKEN }} --version ${{ needs.prepare.outputs.tag_name }}
 
       - name: "Create SP1 project from template"
         run: |
