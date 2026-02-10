@@ -11,8 +11,8 @@ pub(crate) struct WrappedHashToField {
 
 impl WrappedHashToField {
     // Creates a new instance with a domain separator
-    pub(crate) fn new(domain_separator: &[u8]) -> Result<Self, PlonkError> {
-        Ok(Self { domain: domain_separator.to_vec(), to_hash: Vec::new() })
+    pub(crate) fn new(domain_separator: &[u8]) -> Self {
+        Self { domain: domain_separator.to_vec(), to_hash: Vec::new() }
     }
 
     // Hashes the bytes to a field element and returns the byte representation
@@ -30,10 +30,13 @@ impl WrappedHashToField {
         let bytes = 32;
         let l = 16 + bytes;
 
+        // `count == 1` always in this library, so `len_in_bytes == 48`.
         let len_in_bytes = count * l;
-        let pseudo_random_bytes = Self::expand_msg_xmd(msg, dst, len_in_bytes).unwrap();
+        // `pseudo_random_bytes` will be a `Vec<u8>` of length `48`.
+        let pseudo_random_bytes = Self::expand_msg_xmd(msg, dst, len_in_bytes)?;
 
         let mut res = Vec::new();
+        // Since `count == 1`, `l == 48`, and `len(pseudo_random_bytes) == 48`, this doesn't panic.
         for i in 0..count {
             res.push(pseudo_random_bytes[i * l..(i + 1) * l].to_vec());
         }
@@ -44,6 +47,7 @@ impl WrappedHashToField {
     fn expand_msg_xmd(msg: Vec<u8>, dst: Vec<u8>, len: usize) -> Result<Vec<u8>, PlonkError> {
         let mut h = sha2::Sha256::new();
 
+        // `len == 48` in this library always, so `ell == 2`.
         let ell = len.div_ceil(32);
 
         if ell > 255 {
@@ -72,12 +76,15 @@ impl WrappedHashToField {
         h.update([size_domain as u8]);
         let mut b1 = h.finalize_reset();
 
+        // `len == 48`, so this doesn't panic.
         let mut res = vec![0u8; len];
         res[..32].copy_from_slice(&b1);
 
+        // Since `ell == 2`, this iteration is only for `i == 2`.
         for i in 2..=ell {
             h.reset();
             let mut strxor = vec![0u8; 32];
+            // `b0, b1` are both 32 bytes.
             for (j, (b0_byte, b1_byte)) in b0.iter().zip(b1.iter()).enumerate() {
                 strxor[j] = b0_byte ^ b1_byte;
             }
@@ -87,6 +94,7 @@ impl WrappedHashToField {
             h.update([size_domain as u8]);
             b1 = h.finalize_reset();
 
+            // Here, `start = 32`, and `end = 48`, so `res[32..48] = b1[0..16]`.
             let start = 32 * (i - 1);
             let end = core::cmp::min(start + 32, res.len());
             res[start..end].copy_from_slice(&b1[..end - start]);
@@ -109,7 +117,7 @@ impl Hasher for WrappedHashToField {
 
 impl Default for WrappedHashToField {
     fn default() -> Self {
-        Self::new(&[]).unwrap()
+        Self::new(&[])
     }
 }
 

@@ -1,13 +1,9 @@
-use std::{
-    fs::{self, File},
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::{io::Write, path::Path};
 
 use crate::{
-    ffi::{build_plonk_bn254, prove_plonk_bn254, test_plonk_bn254, verify_plonk_bn254},
+    ffi::{prove_plonk_bn254, test_plonk_bn254, verify_plonk_bn254},
     witness::GnarkWitness,
-    PlonkBn254Proof, SP1_CIRCUIT_VERSION,
+    PlonkBn254Proof,
 };
 use anyhow::Result;
 
@@ -54,36 +50,8 @@ impl PlonkBn254Prover {
         );
     }
 
-    /// Builds the PLONK circuit locally.
-    pub fn build<C: Config>(constraints: Vec<Constraint>, witness: Witness<C>, build_dir: PathBuf) {
-        let serialized = serde_json::to_string(&constraints).unwrap();
-
-        // Write constraints.
-        let constraints_path = build_dir.join("constraints.json");
-        let mut file = File::create(constraints_path).unwrap();
-        file.write_all(serialized.as_bytes()).unwrap();
-
-        // Write witness.
-        let witness_path = build_dir.join("plonk_witness.json");
-        let gnark_witness = GnarkWitness::new(witness);
-        let mut file = File::create(witness_path).unwrap();
-        let serialized = serde_json::to_string(&gnark_witness).unwrap();
-        file.write_all(serialized.as_bytes()).unwrap();
-
-        build_plonk_bn254(build_dir.to_str().unwrap());
-
-        // Write the corresponding asset files to the build dir.
-        let sp1_verifier_path = build_dir.join("SP1VerifierPlonk.sol");
-        let vkey_hash = Self::get_vkey_hash(&build_dir);
-        let sp1_verifier_str = include_str!("../assets/SP1VerifierPlonk.txt")
-            .replace("{SP1_CIRCUIT_VERSION}", SP1_CIRCUIT_VERSION)
-            .replace("{VERIFIER_HASH}", format!("0x{}", hex::encode(vkey_hash)).as_str())
-            .replace("{PROOF_SYSTEM}", "Plonk");
-        fs::write(sp1_verifier_path, sp1_verifier_str).unwrap();
-    }
-
     /// Generates a PLONK proof given a witness.
-    pub fn prove<C: Config>(&self, witness: Witness<C>, build_dir: PathBuf) -> PlonkBn254Proof {
+    pub fn prove<C: Config>(&self, witness: Witness<C>, build_dir: &Path) -> PlonkBn254Proof {
         // Write witness.
         let mut witness_file = tempfile::NamedTempFile::new().unwrap();
         let gnark_witness = GnarkWitness::new(witness);
@@ -92,17 +60,21 @@ impl PlonkBn254Prover {
 
         let mut proof =
             prove_plonk_bn254(build_dir.to_str().unwrap(), witness_file.path().to_str().unwrap());
-        proof.plonk_vkey_hash = Self::get_vkey_hash(&build_dir);
+        proof.plonk_vkey_hash = Self::get_vkey_hash(build_dir);
         proof
     }
 
     /// Verify a PLONK proof and verify that the supplied vkey_hash and committed_values_digest
     /// match.
+    #[allow(clippy::too_many_arguments)]
     pub fn verify(
         &self,
         proof: &PlonkBn254Proof,
         vkey_hash: &BigUint,
         committed_values_digest: &BigUint,
+        exit_code: &BigUint,
+        vk_root: &BigUint,
+        proof_nonce: &BigUint,
         build_dir: &Path,
     ) -> Result<()> {
         if proof.plonk_vkey_hash != Self::get_vkey_hash(build_dir) {
@@ -117,8 +89,11 @@ impl PlonkBn254Prover {
             &proof.raw_proof,
             &vkey_hash.to_string(),
             &committed_values_digest.to_string(),
+            &exit_code.to_string(),
+            &vk_root.to_string(),
+            &proof_nonce.to_string(),
         )
-        .map_err(|e| anyhow::anyhow!("failed to verify proof: {}", e))
+        .map_err(|e| anyhow::anyhow!("failed to verify proof: {e}"))
     }
 }
 

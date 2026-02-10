@@ -41,7 +41,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_S3 }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_S3 }}
@@ -55,10 +55,8 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
-          cargo install --locked --force --path .
-          cargo clean
 
       - name: Run sp1-perf
         uses: actions-rs/cargo@v1
@@ -93,7 +91,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_S3 }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_S3 }}
@@ -107,10 +105,8 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
-          cargo install --locked --force --path .
-          cargo clean
 
       - name: Run sp1-perf
         uses: actions-rs/cargo@v1
@@ -145,7 +141,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_S3 }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_S3 }}
@@ -159,10 +155,8 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
-          cargo install --locked --force --path .
-          cargo clean
 
       - name: Run sp1-perf
         uses: actions-rs/cargo@v1

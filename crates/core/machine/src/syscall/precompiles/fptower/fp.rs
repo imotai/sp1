@@ -1,33 +1,37 @@
 use std::{
     borrow::{Borrow, BorrowMut},
     marker::PhantomData,
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 
-use crate::{air::MemoryAirBuilder, operations::field::range::FieldLtCols, utils::zeroed_f_vec};
+use crate::{
+    air::SP1CoreAirBuilder,
+    memory::MemoryAccessColsU8,
+    operations::{field::range::FieldLtCols, AddrAddOperation, SyscallAddrOperation},
+    utils::{limbs_to_words, next_multiple_of_32},
+};
 use generic_array::GenericArray;
 use itertools::Itertools;
 use num::{BigUint, Zero};
-use p3_air::{Air, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use slop_air::{Air, BaseAir};
+use slop_algebra::{AbstractField, PrimeField32};
+use slop_matrix::Matrix;
 use sp1_core_executor::{
-    events::{ByteLookupEvent, ByteRecord, FieldOperation, PrecompileEvent},
-    syscalls::SyscallCode,
-    ExecutionRecord, Program,
+    events::{ByteLookupEvent, ByteRecord, FieldOperation, MemoryRecordEnum, PrecompileEvent},
+    ExecutionRecord, Program, SyscallCode,
 };
 use sp1_curves::{
     params::{Limbs, NumLimbs},
     weierstrass::{FieldType, FpOpField},
 };
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{BaseAirBuilder, InteractionScope, MachineAir, Polynomial, SP1AirBuilder};
-
-use crate::{
-    memory::{value_as_limbs, MemoryReadCols, MemoryWriteCols},
-    operations::field::field_op::FieldOpCols,
-    utils::{limbs_from_prev_access, pad_rows_fixed, words_to_bytes_le_vec},
+use sp1_hypercube::{
+    air::{InteractionScope, MachineAir},
+    Word,
 };
+use sp1_primitives::polynomial::Polynomial;
+
+use crate::{operations::field::field_op::FieldOpCols, utils::words_to_bytes_le_vec};
 
 pub const fn num_fp_cols<P: FpOpField>() -> usize {
     size_of::<FpOpCols<u8, P>>()
@@ -42,15 +46,17 @@ pub struct FpOpChip<P> {
 #[repr(C)]
 pub struct FpOpCols<T, P: FpOpField> {
     pub is_real: T,
-    pub shard: T,
-    pub clk: T,
+    pub clk_high: T,
+    pub clk_low: T,
     pub is_add: T,
     pub is_sub: T,
     pub is_mul: T,
-    pub x_ptr: T,
-    pub y_ptr: T,
-    pub x_access: GenericArray<MemoryWriteCols<T>, P::WordsFieldElement>,
-    pub y_access: GenericArray<MemoryReadCols<T>, P::WordsFieldElement>,
+    pub x_ptr: SyscallAddrOperation<T>,
+    pub y_ptr: SyscallAddrOperation<T>,
+    pub x_addrs: GenericArray<AddrAddOperation<T>, P::WordsFieldElement>,
+    pub y_addrs: GenericArray<AddrAddOperation<T>, P::WordsFieldElement>,
+    pub x_access: GenericArray<MemoryAccessColsU8<T>, P::WordsFieldElement>,
+    pub y_access: GenericArray<MemoryAccessColsU8<T>, P::WordsFieldElement>,
     pub(crate) output: FieldOpCols<T, P>,
     pub(crate) output_range: FieldLtCols<T, P>,
 }
@@ -80,35 +86,61 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
 
     type Program = Program;
 
-    fn name(&self) -> String {
+    fn name(&self) -> &'static str {
         match P::FIELD_TYPE {
-            FieldType::Bn254 => "Bn254FpOpAssign".to_string(),
-            FieldType::Bls12381 => "Bls12381FpOpAssign".to_string(),
+            FieldType::Bn254 => "Bn254FpOpAssign",
+            FieldType::Bls12381 => "Bls12381FpOpAssign",
         }
     }
 
-    fn generate_trace(&self, input: &Self::Record, output: &mut Self::Record) -> RowMajorMatrix<F> {
-        // All the fp events for a given curve are coalesce to the curve's Add operation.  Only
-        // retrieve precompile events for that operation.
-        // TODO:  Fix this.
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = match P::FIELD_TYPE {
+            FieldType::Bn254 => input.get_precompile_events(SyscallCode::BN254_FP_ADD).len(),
+            FieldType::Bls12381 => input.get_precompile_events(SyscallCode::BLS12381_FP_ADD).len(),
+        };
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
+    }
+
+    fn generate_trace_into(
+        &self,
+        input: &ExecutionRecord,
+        output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows = <FpOpChip<P> as MachineAir<F>>::num_rows(self, input).unwrap();
 
         let events = match P::FIELD_TYPE {
-            FieldType::Bn254 => input.get_precompile_events(SyscallCode::BN254_FP_ADD).iter(),
-            FieldType::Bls12381 => input.get_precompile_events(SyscallCode::BLS12381_FP_ADD).iter(),
+            FieldType::Bn254 => input.get_precompile_events(SyscallCode::BN254_FP_ADD),
+            FieldType::Bls12381 => input.get_precompile_events(SyscallCode::BLS12381_FP_ADD),
         };
 
-        let mut rows = Vec::new();
+        let num_event_rows = events.len();
         let mut new_byte_lookup_events = Vec::new();
 
-        for (_, event) in events {
+        unsafe {
+            let padding_start = num_event_rows * num_fp_cols::<P>();
+            let padding_size = (padded_nb_rows - num_event_rows) * num_fp_cols::<P>();
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * num_fp_cols::<P>())
+        };
+
+        values.chunks_exact_mut(num_fp_cols::<P>()).enumerate().for_each(|(idx, row)| {
+            let (_, event) = &events[idx];
             let event = match (P::FIELD_TYPE, event) {
                 (FieldType::Bn254, PrecompileEvent::Bn254Fp(event)) => event,
                 (FieldType::Bls12381, PrecompileEvent::Bls12381Fp(event)) => event,
                 _ => unreachable!(),
             };
 
-            let mut row = zeroed_f_vec(num_fp_cols::<P>());
-            let cols: &mut FpOpCols<F, P> = row.as_mut_slice().borrow_mut();
+            let cols: &mut FpOpCols<F, P> = row.borrow_mut();
 
             let p = BigUint::from_bytes_le(&words_to_bytes_le_vec(&event.x));
             let q = BigUint::from_bytes_le(&words_to_bytes_le_vec(&event.y));
@@ -117,46 +149,43 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
             cols.is_sub = F::from_canonical_u8((event.op == FieldOperation::Sub) as u8);
             cols.is_mul = F::from_canonical_u8((event.op == FieldOperation::Mul) as u8);
             cols.is_real = F::one();
-            cols.shard = F::from_canonical_u32(event.shard);
-            cols.clk = F::from_canonical_u32(event.clk);
-            cols.x_ptr = F::from_canonical_u32(event.x_ptr);
-            cols.y_ptr = F::from_canonical_u32(event.y_ptr);
+
+            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+            cols.x_ptr.populate(&mut new_byte_lookup_events, event.x_ptr, P::NB_LIMBS as u64);
+            cols.y_ptr.populate(&mut new_byte_lookup_events, event.y_ptr, P::NB_LIMBS as u64);
 
             Self::populate_field_ops(&mut new_byte_lookup_events, cols, p, q, event.op);
 
             // Populate the memory access columns.
             for i in 0..cols.y_access.len() {
-                cols.y_access[i].populate(event.y_memory_records[i], &mut new_byte_lookup_events);
+                let record = MemoryRecordEnum::Read(event.y_memory_records[i]);
+                cols.y_access[i].populate(record, &mut new_byte_lookup_events);
+                cols.y_addrs[i].populate(&mut new_byte_lookup_events, event.y_ptr, i as u64 * 8);
             }
             for i in 0..cols.x_access.len() {
-                cols.x_access[i].populate(event.x_memory_records[i], &mut new_byte_lookup_events);
+                let record = MemoryRecordEnum::Write(event.x_memory_records[i]);
+                cols.x_access[i].populate(record, &mut new_byte_lookup_events);
+                cols.x_addrs[i].populate(&mut new_byte_lookup_events, event.x_ptr, i as u64 * 8);
             }
-            rows.push(row);
-        }
+        });
 
         output.add_byte_lookup_events(new_byte_lookup_events);
 
-        pad_rows_fixed(
-            &mut rows,
-            || {
-                let mut row = zeroed_f_vec(num_fp_cols::<P>());
-                let cols: &mut FpOpCols<F, P> = row.as_mut_slice().borrow_mut();
-                let zero = BigUint::zero();
-                cols.is_add = F::from_canonical_u8(1);
-                Self::populate_field_ops(
-                    &mut vec![],
-                    cols,
-                    zero.clone(),
-                    zero,
-                    FieldOperation::Add,
-                );
-                row
-            },
-            input.fixed_log2_rows::<F, _>(self),
-        );
+        for idx in num_event_rows..padded_nb_rows {
+            let row_start = idx * num_fp_cols::<P>();
+            let row = unsafe {
+                core::slice::from_raw_parts_mut(
+                    buffer[row_start..].as_mut_ptr() as *mut F,
+                    num_fp_cols::<P>(),
+                )
+            };
 
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), num_fp_cols::<P>())
+            let cols: &mut FpOpCols<F, P> = row.borrow_mut();
+            let zero = BigUint::zero();
+            cols.is_add = F::from_canonical_u8(1);
+            Self::populate_field_ops(&mut vec![], cols, zero.clone(), zero, FieldOperation::Add);
+        }
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -164,10 +193,10 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
         // check for that operation.
 
         assert!(
-            shard.get_precompile_events(SyscallCode::BN254_FP_SUB).is_empty() &&
-                shard.get_precompile_events(SyscallCode::BN254_FP_MUL).is_empty() &&
-                shard.get_precompile_events(SyscallCode::BLS12381_FP_SUB).is_empty() &&
-                shard.get_precompile_events(SyscallCode::BLS12381_FP_MUL).is_empty()
+            shard.get_precompile_events(SyscallCode::BN254_FP_SUB).is_empty()
+                && shard.get_precompile_events(SyscallCode::BN254_FP_MUL).is_empty()
+                && shard.get_precompile_events(SyscallCode::BLS12381_FP_SUB).is_empty()
+                && shard.get_precompile_events(SyscallCode::BLS12381_FP_MUL).is_empty()
         );
 
         if let Some(shape) = shard.shape.as_ref() {
@@ -183,10 +212,6 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
             }
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl<F, P: FpOpField> BaseAir<F> for FpOpChip<P> {
@@ -197,7 +222,7 @@ impl<F, P: FpOpField> BaseAir<F> for FpOpChip<P> {
 
 impl<AB, P: FpOpField> Air<AB> for FpOpChip<P>
 where
-    AB: SP1AirBuilder,
+    AB: SP1CoreAirBuilder,
     Limbs<AB::Var, <P as NumLimbs>::Limbs>: Copy,
 {
     fn eval(&self, builder: &mut AB) {
@@ -209,12 +234,17 @@ where
         builder.assert_bool(local.is_add);
         builder.assert_bool(local.is_sub);
         builder.assert_bool(local.is_mul);
+        builder.assert_bool(local.is_real);
 
         // Check that only one of them is set.
         builder.assert_eq(local.is_add + local.is_sub + local.is_mul, AB::Expr::one());
 
-        let p = limbs_from_prev_access(&local.x_access);
-        let q = limbs_from_prev_access(&local.y_access);
+        let p_limbs = builder.generate_limbs(&local.x_access, local.is_real.into());
+        let p: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
+            Limbs(p_limbs.try_into().expect("failed to convert limbs"));
+        let q_limbs = builder.generate_limbs(&local.y_access, local.is_real.into());
+        let q: Limbs<AB::Expr, <P as NumLimbs>::Limbs> =
+            Limbs(q_limbs.try_into().expect("failed to convert limbs"));
 
         let modulus_coeffs =
             P::MODULUS.iter().map(|&limbs| AB::Expr::from_canonical_u8(limbs)).collect_vec();
@@ -232,24 +262,60 @@ where
             local.is_real,
         );
 
-        builder
-            .when(local.is_real)
-            .assert_all_eq(local.output.result, value_as_limbs(&local.x_access));
         local.output_range.eval(builder, &local.output.result, &p_modulus, local.is_real);
 
-        builder.eval_memory_access_slice(
-            local.shard,
-            local.clk.into(),
+        let result_words = limbs_to_words::<AB>(local.output.result.0.to_vec());
+
+        let x_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            P::NB_LIMBS as u32,
+            local.x_ptr,
+            local.is_real.into(),
+        );
+        let y_ptr = SyscallAddrOperation::<AB::F>::eval(
+            builder,
+            P::NB_LIMBS as u32,
             local.y_ptr,
-            &local.y_access,
+            local.is_real.into(),
+        );
+
+        // x_addrs[i] = x_ptr + 8 * i
+        for i in 0..local.x_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([x_ptr[0].into(), x_ptr[1].into(), x_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
+                local.x_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        // y_addrs[i] = y_ptr + 8 * i
+        for i in 0..local.y_addrs.len() {
+            AddrAddOperation::<AB::F>::eval(
+                builder,
+                Word([y_ptr[0].into(), y_ptr[1].into(), y_ptr[2].into(), AB::Expr::zero()]),
+                Word::from(8 * i as u64),
+                local.y_addrs[i],
+                local.is_real.into(),
+            );
+        }
+
+        builder.eval_memory_access_slice_read(
+            local.clk_high,
+            local.clk_low,
+            &local.y_addrs.iter().map(|addr| addr.value.map(Into::into)).collect::<Vec<_>>(),
+            &local.y_access.iter().map(|access| access.memory_access).collect::<Vec<_>>(),
             local.is_real,
         );
-        builder.eval_memory_access_slice(
-            local.shard,
-            local.clk + AB::F::from_canonical_u32(1), /* We read p at +1 since p, q could be the
-                                                       * same. */
-            local.x_ptr,
-            &local.x_access,
+
+        // We read p at +1 since p, q could be the same.
+        builder.eval_memory_access_slice_write(
+            local.clk_high,
+            local.clk_low + AB::Expr::one(),
+            &local.x_addrs.iter().map(|addr| addr.value.map(Into::into)).collect::<Vec<_>>(),
+            &local.x_access.iter().map(|access| access.memory_access).collect::<Vec<_>>(),
+            result_words,
             local.is_real,
         );
 
@@ -268,16 +334,16 @@ where
                 AB::F::from_canonical_u32(SyscallCode::BLS12381_FP_MUL.syscall_id()),
             ),
         };
-        let syscall_id_felt = local.is_add * add_syscall_id +
-            local.is_sub * sub_syscall_id +
-            local.is_mul * mul_syscall_id;
+        let syscall_id_felt = local.is_add * add_syscall_id
+            + local.is_sub * sub_syscall_id
+            + local.is_mul * mul_syscall_id;
 
         builder.receive_syscall(
-            local.shard,
-            local.clk,
+            local.clk_high,
+            local.clk_low,
             syscall_id_felt,
-            local.x_ptr,
-            local.y_ptr,
+            x_ptr.map(Into::into),
+            y_ptr.map(Into::into),
             local.is_real,
             InteractionScope::Local,
         );

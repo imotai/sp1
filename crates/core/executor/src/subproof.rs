@@ -1,9 +1,13 @@
 //! Types and methods for subproof verification inside the [`crate::Executor`].
 
-use sp1_stark::{
-    baby_bear_poseidon2::BabyBearPoseidon2, MachineVerificationError, SP1ReduceProof,
-    StarkVerifyingKey,
+use std::sync::Arc;
+
+use sp1_hypercube::{
+    MachineVerifierConfigError, MachineVerifyingKey, SP1InnerPcs, SP1PcsProofInner,
 };
+
+use crate::SP1RecursionProof;
+use sp1_primitives::SP1GlobalContext;
 
 /// Verifier used in runtime when `sp1_zkvm::precompiles::verify::verify_sp1_proof` is called. This
 /// is then used to sanity check that the user passed in the correct proof; the actual constraints
@@ -15,11 +19,11 @@ pub trait SubproofVerifier: Sync + Send {
     /// Verify a deferred proof.
     fn verify_deferred_proof(
         &self,
-        proof: &SP1ReduceProof<BabyBearPoseidon2>,
-        vk: &StarkVerifyingKey<BabyBearPoseidon2>,
-        vk_hash: [u32; 8],
-        committed_value_digest: [u32; 8],
-    ) -> Result<(), MachineVerificationError<BabyBearPoseidon2>>;
+        proof: &SP1RecursionProof<SP1GlobalContext, SP1PcsProofInner>,
+        vk: &MachineVerifyingKey<SP1GlobalContext>,
+        vk_hash: [u64; 4],
+        committed_value_digest: [u64; 4],
+    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, SP1InnerPcs>>;
 }
 
 /// A dummy verifier which does nothing.
@@ -28,11 +32,58 @@ pub struct NoOpSubproofVerifier;
 impl SubproofVerifier for NoOpSubproofVerifier {
     fn verify_deferred_proof(
         &self,
-        _proof: &SP1ReduceProof<BabyBearPoseidon2>,
-        _vk: &StarkVerifyingKey<BabyBearPoseidon2>,
-        _vk_hash: [u32; 8],
-        _committed_value_digest: [u32; 8],
-    ) -> Result<(), MachineVerificationError<BabyBearPoseidon2>> {
+        _proof: &SP1RecursionProof<SP1GlobalContext, SP1PcsProofInner>,
+        _vk: &MachineVerifyingKey<SP1GlobalContext>,
+        _vk_hash: [u64; 4],
+        _committed_value_digest: [u64; 4],
+    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, SP1InnerPcs>> {
         Ok(())
+    }
+}
+
+// Implement subproof verifier for pointer types
+
+impl<V> SubproofVerifier for &'_ V
+where
+    V: SubproofVerifier + ?Sized,
+{
+    fn verify_deferred_proof(
+        &self,
+        proof: &SP1RecursionProof<SP1GlobalContext, SP1PcsProofInner>,
+        vk: &MachineVerifyingKey<SP1GlobalContext>,
+        vk_hash: [u64; 4],
+        committed_value_digest: [u64; 4],
+    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, SP1InnerPcs>> {
+        (*self).verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
+    }
+}
+
+impl<V> SubproofVerifier for Arc<V>
+where
+    V: SubproofVerifier + ?Sized,
+{
+    fn verify_deferred_proof(
+        &self,
+        proof: &SP1RecursionProof<SP1GlobalContext, SP1PcsProofInner>,
+        vk: &MachineVerifyingKey<SP1GlobalContext>,
+        vk_hash: [u64; 4],
+        committed_value_digest: [u64; 4],
+    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, SP1InnerPcs>> {
+        self.as_ref().verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
+    }
+}
+
+impl<V> SubproofVerifier for Box<V>
+where
+    V: SubproofVerifier + ?Sized,
+{
+    fn verify_deferred_proof(
+        &self,
+        proof: &SP1RecursionProof<SP1GlobalContext, SP1PcsProofInner>,
+        vk: &MachineVerifyingKey<SP1GlobalContext>,
+        vk_hash: [u64; 4],
+        committed_value_digest: [u64; 4],
+    ) -> Result<(), MachineVerifierConfigError<SP1GlobalContext, SP1InnerPcs>> {
+        self.as_ref().verify_deferred_proof(proof, vk, vk_hash, committed_value_digest)
     }
 }

@@ -126,6 +126,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::uninlined_format_args)]
     fn test_secp256k_sqrt() {
         let mut rng = thread_rng();
         for _ in 0..10 {

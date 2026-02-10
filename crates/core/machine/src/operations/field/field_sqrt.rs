@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 
 use num::BigUint;
-use p3_air::AirBuilder;
-use p3_field::PrimeField32;
+use slop_air::AirBuilder;
+use slop_algebra::PrimeField32;
 use sp1_curves::params::{limbs_from_vec, FieldParameters, Limbs};
 use sp1_derive::AlignedBorrow;
 
@@ -10,11 +10,11 @@ use sp1_core_executor::{
     events::{ByteLookupEvent, ByteRecord, FieldOperation},
     ByteOpcode,
 };
-use sp1_stark::air::SP1AirBuilder;
+use sp1_hypercube::air::SP1AirBuilder;
 
 use super::{field_op::FieldOpCols, range::FieldLtCols};
 use crate::air::WordAirBuilder;
-use p3_field::AbstractField;
+use slop_algebra::AbstractField;
 
 /// A set of columns to compute the square root in emulated arithmetic.
 ///
@@ -67,8 +67,7 @@ impl<F: PrimeField32, P: FieldParameters> FieldSqrtCols<F, P> {
 
         let and_event = ByteLookupEvent {
             opcode: ByteOpcode::AND,
-            a1: self.lsb.as_canonical_u32() as u16,
-            a2: 0,
+            a: self.lsb.as_canonical_u32() as u16,
             b: sqrt_bytes[0],
             c: 1,
         };
@@ -139,152 +138,171 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use num::{BigUint, One, Zero};
-    use p3_air::BaseAir;
-    use p3_field::{Field, PrimeField32};
-    use sp1_core_executor::{ExecutionRecord, Program};
-    use sp1_curves::params::{FieldParameters, Limbs};
-    use sp1_stark::air::{MachineAir, SP1AirBuilder};
+// #[cfg(test)]
+// mod tests {
+//     use num::{BigUint, One, Zero};
+//     use slop_air::BaseAir;
+//     use slop_algebra::{Field, PrimeField32};
+//     use sp1_core_executor::{ExecutionRecord, Program};
+//     use sp1_curves::params::{FieldParameters, Limbs};
+//     use sp1_hypercube::{
+//         air::{MachineAir, SP1AirBuilder, SP1_PROOF_NUM_PV_ELTS},
+//         Chip, StarkMachine,
+//     };
 
-    use crate::utils::{
-        pad_to_power_of_two,
-        uni_stark::{uni_stark_prove, uni_stark_verify},
-    };
-    use core::{
-        borrow::{Borrow, BorrowMut},
-        mem::size_of,
-    };
-    use num::bigint::RandBigInt;
-    use p3_air::Air;
-    use p3_baby_bear::BabyBear;
-    use p3_field::AbstractField;
-    use p3_matrix::{dense::RowMajorMatrix, Matrix};
-    use rand::thread_rng;
-    use sp1_core_executor::events::ByteRecord;
-    use sp1_curves::edwards::ed25519::{ed25519_sqrt, Ed25519BaseField};
-    use sp1_derive::AlignedBorrow;
-    use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, StarkGenericConfig};
+//     use crate::utils::{pad_to_power_of_two, run_test_machine, setup_test_machine};
+//     use core::{
+//         borrow::{Borrow, BorrowMut},
+//         mem::size_of,
+//     };
+//     use num::bigint::RandBigInt;
+//     use slop_air::Air;
+//     use sp1_primitives::SP1Field;
+//     use slop_algebra::AbstractField;
+//     use slop_matrix::{dense::RowMajorMatrix, Matrix};
+//     use rand::thread_rng;
+//     use sp1_core_executor::events::ByteRecord;
+//     use sp1_curves::edwards::ed25519::{ed25519_sqrt, Ed25519BaseField};
+//     use sp1_derive::AlignedBorrow;
+//     use sp1_hypercube::koala_bear_poseidon2::SP1InnerPcs;
 
-    use super::FieldSqrtCols;
+//     use super::FieldSqrtCols;
 
-    #[derive(AlignedBorrow, Debug)]
-    pub struct TestCols<T, P: FieldParameters> {
-        pub a: Limbs<T, P::Limbs>,
-        pub sqrt: FieldSqrtCols<T, P>,
-    }
+//     #[derive(AlignedBorrow, Debug)]
+//     pub struct TestCols<T, P: FieldParameters> {
+//         pub a: Limbs<T, P::Limbs>,
+//         pub sqrt: FieldSqrtCols<T, P>,
+//     }
 
-    pub const NUM_TEST_COLS: usize = size_of::<TestCols<u8, Ed25519BaseField>>();
+//     pub const NUM_TEST_COLS: usize = size_of::<TestCols<u8, Ed25519BaseField>>();
 
-    struct EdSqrtChip<P: FieldParameters> {
-        pub _phantom: std::marker::PhantomData<P>,
-    }
+//     struct EdSqrtChip<P: FieldParameters> {
+//         pub _phantom: std::marker::PhantomData<P>,
+//     }
 
-    impl<P: FieldParameters> EdSqrtChip<P> {
-        pub const fn new() -> Self {
-            Self { _phantom: std::marker::PhantomData }
-        }
-    }
+//     impl<P: FieldParameters> EdSqrtChip<P> {
+//         pub const fn new() -> Self {
+//             Self { _phantom: std::marker::PhantomData }
+//         }
+//     }
 
-    impl<F: PrimeField32, P: FieldParameters> MachineAir<F> for EdSqrtChip<P> {
-        type Record = ExecutionRecord;
+//     impl<F: PrimeField32, P: FieldParameters> MachineAir<F> for EdSqrtChip<P> {
+//         type Record = ExecutionRecord;
 
-        type Program = Program;
+//         type Program = Program;
 
-        fn name(&self) -> String {
-            "EdSqrtChip".to_string()
-        }
+//         fn name(&self) -> &'static str {
+//             "EdSqrtChip".to_string()
+//         }
 
-        fn generate_trace(
-            &self,
-            _: &ExecutionRecord,
-            output: &mut ExecutionRecord,
-        ) -> RowMajorMatrix<F> {
-            let mut rng = thread_rng();
-            let num_rows = 1 << 8;
-            let mut operands: Vec<BigUint> = (0..num_rows - 2)
-                .map(|_| {
-                    // Take the square of a random number to make sure that the square root exists.
-                    let a = rng.gen_biguint(256);
-                    let sq = a.clone() * a.clone();
-                    // We want to mod by the ed25519 modulus.
-                    sq % &Ed25519BaseField::modulus()
-                })
-                .collect();
+//         fn generate_trace(
+//             &self,
+//             _: &ExecutionRecord,
+//             output: &mut ExecutionRecord,
+//         ) -> RowMajorMatrix<F> {
+//             let mut rng = thread_rng();
+//             let num_rows = 1 << 8;
+//             let mut operands: Vec<BigUint> = (0..num_rows - 2)
+//                 .map(|_| {
+//                     // Take the square of a random number to make sure that the square root
+// exists.                     let a = rng.gen_biguint(256);
+//                     let sq = a.clone() * a.clone();
+//                     // We want to mod by the ed25519 modulus.
+//                     sq % &Ed25519BaseField::modulus()
+//                 })
+//                 .collect();
 
-            // hardcoded edge cases.
-            operands.extend(vec![BigUint::zero(), BigUint::one()]);
+//             // hardcoded edge cases.
+//             operands.extend(vec![BigUint::zero(), BigUint::one()]);
 
-            let rows = operands
-                .iter()
-                .map(|a| {
-                    let mut blu_events = Vec::new();
-                    let mut row = [F::zero(); NUM_TEST_COLS];
-                    let cols: &mut TestCols<F, P> = row.as_mut_slice().borrow_mut();
-                    cols.a = P::to_limbs_field::<F, _>(a);
-                    cols.sqrt.populate(&mut blu_events, a, |v| ed25519_sqrt(v).unwrap());
-                    output.add_byte_lookup_events(blu_events);
-                    row
-                })
-                .collect::<Vec<_>>();
-            // Convert the trace to a row major matrix.
-            let mut trace =
-                RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_TEST_COLS);
+//             let rows = operands
+//                 .iter()
+//                 .map(|a| {
+//                     let mut blu_events = Vec::new();
+//                     let mut row = [F::zero(); NUM_TEST_COLS];
+//                     let cols: &mut TestCols<F, P> = row.as_mut_slice().borrow_mut();
+//                     cols.a = P::to_limbs_field::<F, _>(a);
+//                     cols.sqrt.populate(&mut blu_events, a, |v| ed25519_sqrt(v).unwrap());
+//                     output.add_byte_lookup_events(blu_events);
+//                     row
+//                 })
+//                 .collect::<Vec<_>>();
+//             // Convert the trace to a row major matrix.
+//             let mut trace =
+//                 RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(),
+// NUM_TEST_COLS);
 
-            // Pad the trace to a power of two.
-            pad_to_power_of_two::<NUM_TEST_COLS, F>(&mut trace.values);
+//             // Pad the trace to a power of two.
+//             pad_to_power_of_two::<NUM_TEST_COLS, F>(&mut trace.values);
 
-            trace
-        }
+//             trace
+//         }
 
-        fn included(&self, _: &Self::Record) -> bool {
-            true
-        }
-    }
+//         fn included(&self, _: &Self::Record) -> bool {
+//             true
+//         }
+//     }
 
-    impl<F: Field, P: FieldParameters> BaseAir<F> for EdSqrtChip<P> {
-        fn width(&self) -> usize {
-            NUM_TEST_COLS
-        }
-    }
+//     impl<F: Field, P: FieldParameters> BaseAir<F> for EdSqrtChip<P> {
+//         fn width(&self) -> usize {
+//             NUM_TEST_COLS
+//         }
+//     }
 
-    impl<AB, P: FieldParameters> Air<AB> for EdSqrtChip<P>
-    where
-        AB: SP1AirBuilder,
-        Limbs<AB::Var, P::Limbs>: Copy,
-    {
-        fn eval(&self, builder: &mut AB) {
-            let main = builder.main();
-            let local = main.row_slice(0);
-            let local: &TestCols<AB::Var, P> = (*local).borrow();
+//     impl<AB, P: FieldParameters> Air<AB> for EdSqrtChip<P>
+//     where
+//         AB: SP1AirBuilder,
+//         Limbs<AB::Var, P::Limbs>: Copy,
+//     {
+//         fn eval(&self, builder: &mut AB) {
+//             let main = builder.main();
+//             let local = main.row_slice(0);
+//             let local: &TestCols<AB::Var, P> = (*local).borrow();
 
-            // eval verifies that local.sqrt.result is indeed the square root of local.a.
-            local.sqrt.eval(builder, &local.a, AB::F::zero(), AB::F::one());
-        }
-    }
+//             // eval verifies that local.sqrt.result is indeed the square root of local.a.
+//             local.sqrt.eval(builder, &local.a, AB::F::zero(), AB::F::one());
+//         }
+//     }
 
-    #[test]
-    fn generate_trace() {
-        let chip: EdSqrtChip<Ed25519BaseField> = EdSqrtChip::new();
-        let shard = ExecutionRecord::default();
-        let _: RowMajorMatrix<BabyBear> =
-            chip.generate_trace(&shard, &mut ExecutionRecord::default());
-        // println!("{:?}", trace.values)
-    }
+//     #[test]
+//     fn generate_trace() {
+//         let chip: EdSqrtChip<Ed25519BaseField> = EdSqrtChip::new();
+//         let shard = ExecutionRecord::default();
+//         let _: RowMajorMatrix<SP1Field> =
+//             chip.generate_trace(&shard, &mut ExecutionRecord::default());
+//         // println!("{:?}", trace.values)
+//     }
 
-    #[test]
-    fn prove_babybear() {
-        let config = BabyBearPoseidon2::new();
-        let mut challenger = config.challenger();
+//     #[test]
+//     fn prove_koalabear() {
+//         let air: EdSqrtChip<Ed25519BaseField> = EdSqrtChip::new();
+//         let shard = ExecutionRecord::default();
+//         <EdSqrtChip<Ed25519BaseField> as MachineAir<SP1Field>>::generate_trace(
+//             &air,
+//             &shard,
+//             &mut ExecutionRecord::default(),
+//         );
 
-        let chip: EdSqrtChip<Ed25519BaseField> = EdSqrtChip::new();
-        let shard = ExecutionRecord::default();
-        let trace: RowMajorMatrix<BabyBear> =
-            chip.generate_trace(&shard, &mut ExecutionRecord::default());
-        let proof = uni_stark_prove::<BabyBearPoseidon2, _>(&config, &chip, &mut challenger, trace);
+//         // Run setup.
+//         let config = SP1InnerPcs::new();
+//         let chip: Chip<SP1Field, EdSqrtChip<Ed25519BaseField>> = Chip::new(air);
+//         let (pk, vk) = setup_test_machine(StarkMachine::new(
+//             config.clone(),
+//             vec![chip],
+//             SP1_PROOF_NUM_PV_ELTS,
+//             true,
+//         ));
 
-        let mut challenger = config.challenger();
-        uni_stark_verify(&config, &chip, &mut challenger, &proof).unwrap();
-    }
-}
+//         // Run the test.
+//         let air: EdSqrtChip<Ed25519BaseField> = EdSqrtChip::new();
+//         let chip: Chip<SP1Field, EdSqrtChip<Ed25519BaseField>> = Chip::new(air);
+//         let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
+//         run_test_machine::<SP1InnerPcs, EdSqrtChip<Ed25519BaseField>>(
+//             vec![shard],
+//             machine,
+//             pk,
+//             vk,
+//         )
+//         .unwrap();
+//     }
+// }

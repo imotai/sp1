@@ -1,29 +1,28 @@
 use std::hash::Hash;
 
+use deepsize2::DeepSizeOf;
 use hashbrown::HashMap;
-use p3_field::{Field, PrimeField32};
 use serde::{Deserialize, Serialize};
+use slop_algebra::{Field, PrimeField32};
 
 use crate::{ByteOpcode, Opcode};
 
 /// The number of different byte operations.
-pub const NUM_BYTE_OPS: usize = 9;
+pub const NUM_BYTE_OPS: usize = 6;
 
 /// Byte Lookup Event.
 ///
 /// This object encapsulates the information needed to prove a byte lookup operation. This includes
 /// the shard, opcode, operands, and other relevant information.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DeepSizeOf)]
 pub struct ByteLookupEvent {
     /// The opcode.
     pub opcode: ByteOpcode,
     /// The first operand.
-    pub a1: u16,
+    pub a: u16,
     /// The second operand.
-    pub a2: u8,
-    /// The third operand.
     pub b: u8,
-    /// The fourth operand.
+    /// The third operand.
     pub c: u8,
 }
 
@@ -50,8 +49,7 @@ pub trait ByteRecord {
     fn add_u8_range_check(&mut self, a: u8, b: u8) {
         self.add_byte_lookup_event(ByteLookupEvent {
             opcode: ByteOpcode::U8Range,
-            a1: 0,
-            a2: 0,
+            a: 0,
             b: a,
             c: b,
         });
@@ -59,13 +57,12 @@ pub trait ByteRecord {
 
     /// Adds a `ByteLookupEvent` to verify `a` is indeed u16.
     fn add_u16_range_check(&mut self, a: u16) {
-        self.add_byte_lookup_event(ByteLookupEvent {
-            opcode: ByteOpcode::U16Range,
-            a1: a,
-            a2: 0,
-            b: 0,
-            c: 0,
-        });
+        self.add_byte_lookup_event(ByteLookupEvent { opcode: ByteOpcode::Range, a, b: 16, c: 0 });
+    }
+
+    /// Adds a `ByteLookupEvent` to verify `a` is less than `2^b`.
+    fn add_bit_range_check(&mut self, a: u16, b: u8) {
+        self.add_byte_lookup_event(ByteLookupEvent { opcode: ByteOpcode::Range, a, b, c: 0 });
     }
 
     /// Adds `ByteLookupEvent`s to verify that all the bytes in the input slice are indeed bytes.
@@ -89,10 +86,18 @@ pub trait ByteRecord {
         );
     }
 
-    /// Adds `ByteLookupEvent`s to verify that all the bytes in the input slice are indeed bytes.
+    /// Adds `ByteLookupEvent`s to verify that all the bytes in the input slice are indeed u16s.
     fn add_u16_range_checks(&mut self, ls: &[u16]) {
         for x in ls.iter() {
             self.add_u16_range_check(*x);
+        }
+    }
+
+    /// Adds `ByteLookupEvent`s to verify that all the field elements in the input slice are indeed
+    /// u16 values.
+    fn add_u16_range_checks_field<F: PrimeField32>(&mut self, field_values: &[F]) {
+        for x in field_values.iter() {
+            self.add_u16_range_check(x.as_canonical_u32() as u16);
         }
     }
 
@@ -100,8 +105,7 @@ pub trait ByteRecord {
     fn lookup_or(&mut self, b: u8, c: u8) {
         self.add_byte_lookup_event(ByteLookupEvent {
             opcode: ByteOpcode::OR,
-            a1: (b | c) as u16,
-            a2: 0,
+            a: (b | c) as u16,
             b,
             c,
         });
@@ -111,8 +115,8 @@ pub trait ByteRecord {
 impl ByteLookupEvent {
     /// Creates a new `ByteLookupEvent`.
     #[must_use]
-    pub fn new(opcode: ByteOpcode, a1: u16, a2: u8, b: u8, c: u8) -> Self {
-        Self { opcode, a1, a2, b, c }
+    pub fn new(opcode: ByteOpcode, a: u16, b: u8, c: u8) -> Self {
+        Self { opcode, a, b, c }
     }
 }
 
@@ -151,28 +155,23 @@ impl From<Opcode> for ByteOpcode {
             Opcode::AND => Self::AND,
             Opcode::OR => Self::OR,
             Opcode::XOR => Self::XOR,
-            Opcode::SLL => Self::SLL,
             _ => panic!("Invalid opcode for ByteChip: {value:?}"),
         }
     }
 }
 
 impl ByteOpcode {
-    /// Get all the byte opcodes.
+    /// Get all the byte table opcodes.
     #[must_use]
-    pub fn all() -> Vec<Self> {
+    pub fn byte_table() -> Vec<Self> {
         let opcodes = vec![
             ByteOpcode::AND,
             ByteOpcode::OR,
             ByteOpcode::XOR,
-            ByteOpcode::SLL,
             ByteOpcode::U8Range,
-            ByteOpcode::ShrCarry,
             ByteOpcode::LTU,
             ByteOpcode::MSB,
-            ByteOpcode::U16Range,
         ];
-        debug_assert_eq!(opcodes.len(), NUM_BYTE_OPS);
         opcodes
     }
 

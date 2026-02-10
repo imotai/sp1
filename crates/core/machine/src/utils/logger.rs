@@ -1,5 +1,10 @@
-use std::sync::Once;
+use std::{
+    sync::Once,
+    thread::{sleep, spawn},
+    time::Duration,
+};
 
+use sysinfo::{MemoryRefreshKind, RefreshKind, System};
 use tracing_forest::ForestLayer;
 use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry,
@@ -7,6 +12,7 @@ use tracing_subscriber::{
 
 static INIT: Once = Once::new();
 
+#[allow(clippy::uninlined_format_args)]
 /// A simple logger.
 ///
 /// Set the `RUST_LOG` environment variable to be set to `info` or `debug`.
@@ -15,11 +21,10 @@ pub fn setup_logger() {
         let env_filter = EnvFilter::try_from_default_env()
             .unwrap_or_else(|_| EnvFilter::new("off"))
             .add_directive("hyper=off".parse().unwrap())
-            .add_directive("p3_keccak_air=off".parse().unwrap())
+            .add_directive("slop_keccak_air=off".parse().unwrap())
             .add_directive("p3_fri=off".parse().unwrap())
             .add_directive("p3_dft=off".parse().unwrap())
-            .add_directive("p3_challenger=off".parse().unwrap())
-            .add_directive("sp1_cuda=off".parse().unwrap());
+            .add_directive("p3_challenger=off".parse().unwrap());
 
         // if the RUST_LOGGER environment variable is set, use it to determine which logger to
         // configure (tracing_forest or tracing_subscriber)
@@ -44,5 +49,29 @@ pub fn setup_logger() {
                 panic!("Invalid logger type: {logger_type}");
             }
         };
+
+        // Spawn a thread to warn when used memory is high
+        spawn(|| {
+            let mut sys = System::new_with_specifics(
+                RefreshKind::new().with_memory(MemoryRefreshKind::new().with_ram()),
+            );
+
+            let total_memory = sys.total_memory();
+
+            loop {
+                sleep(Duration::from_secs(10));
+                sys.refresh_memory();
+
+                let used_memory = sys.used_memory();
+                let ratio = used_memory as f64 / total_memory as f64;
+
+                if ratio > 0.8 {
+                    tracing::warn!(
+                        "Memory usage is high: {:.2}%, we recommend using the prover network",
+                        ratio * 100.0
+                    );
+                }
+            }
+        });
     });
 }

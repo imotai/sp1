@@ -6,14 +6,18 @@ publish = false
 
 [dependencies]
 sp1-sdk = { workspace = true }
+tracing = "0.1"
+
 serde_json = { workspace = true }
 tendermint-light-client-verifier = { version = "0.35.0", default-features = false, features = [
   "rust-crypto",
 ] }
 serde_cbor = "0.11.2"
+tokio = { workspace = true }
 
 [build-dependencies]
 sp1-build = { workspace = true }
 
-[features]
-cuda = ["sp1-sdk/cuda"]
+[[bin]]
+name = "core_u64"
+path = "bin/core_u64.rs"

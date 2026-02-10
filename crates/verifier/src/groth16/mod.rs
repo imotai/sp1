@@ -13,7 +13,7 @@ use error::Groth16Error;
 
 use crate::{
     blake3_hash, constants::VK_HASH_PREFIX_LENGTH, decode_sp1_vkey_hash, error::Error,
-    hash_public_inputs, hash_public_inputs_with_fn,
+    hash_public_inputs, hash_public_inputs_with_fn, VK_ROOT_BYTES,
 };
 
 use alloc::vec::Vec;
@@ -36,7 +36,7 @@ impl Groth16Verifier {
     ///
     /// ```ignore
     /// use sp1_sdk::ProverClient;
-    /// let client = ProverClient::new();
+    /// let client = ProverClient::from_env();
     /// let (pk, vk) = client.setup(ELF);
     /// let sp1_vkey_hash = vk.bytes32();
     /// ```
@@ -53,7 +53,40 @@ impl Groth16Verifier {
         sp1_vkey_hash: &str,
         groth16_vk: &[u8],
     ) -> Result<(), Groth16Error> {
-        if proof.len() < VK_HASH_PREFIX_LENGTH {
+        Self::verify_with_exit_code(proof, sp1_public_inputs, sp1_vkey_hash, groth16_vk, [0u8; 32])
+    }
+
+    /// Verifies an SP1 Groth16 proof with an expected exit code. Only use this if you're trying to
+    /// verify a program that panics. Otherwise use [`verify`].
+    ///
+    /// # Arguments
+    ///
+    /// * `proof` - The proof bytes.
+    /// * `public_inputs` - The SP1 public inputs.
+    /// * `sp1_vkey_hash` - The SP1 vkey hash. This is generated in the following manner:
+    ///
+    /// ```ignore
+    /// use sp1_sdk::ProverClient;
+    /// let client = ProverClient::from_env();
+    /// let (pk, vk) = client.setup(ELF);
+    /// let sp1_vkey_hash = vk.bytes32();
+    /// ```
+    /// * `groth16_vk` - The Groth16 verifying key bytes. Usually this will be the
+    ///   [`static@crate::GROTH16_VK_BYTES`] constant, which is the Groth16 verifying key for the
+    ///   current SP1 version.
+    /// * `expected_exit_code` - The expected exit code to verify against.
+    ///
+    /// # Returns
+    ///
+    /// A success [`Result`] if verification succeeds, or a [`Groth16Error`] if verification fails.
+    pub fn verify_with_exit_code(
+        proof: &[u8],
+        sp1_public_inputs: &[u8],
+        sp1_vkey_hash: &str,
+        groth16_vk: &[u8],
+        expected_exit_code: [u8; 32],
+    ) -> Result<(), Groth16Error> {
+        if proof.len() < VK_HASH_PREFIX_LENGTH + 32 + 32 + 32 {
             return Err(Groth16Error::GeneralError(Error::InvalidData));
         }
 
@@ -73,11 +106,37 @@ impl Groth16Verifier {
 
         let sp1_vkey_hash = decode_sp1_vkey_hash(sp1_vkey_hash)?;
 
+        let exit_code: [u8; 32] = proof[VK_HASH_PREFIX_LENGTH..VK_HASH_PREFIX_LENGTH + 32]
+            .try_into()
+            .map_err(|_| Groth16Error::GeneralError(Error::InvalidData))?;
+
+        let vk_root: [u8; 32] = proof[VK_HASH_PREFIX_LENGTH + 32..VK_HASH_PREFIX_LENGTH + 64]
+            .try_into()
+            .map_err(|_| Groth16Error::GeneralError(Error::InvalidData))?;
+
+        let proof_nonce: [u8; 32] = proof[VK_HASH_PREFIX_LENGTH + 64..VK_HASH_PREFIX_LENGTH + 96]
+            .try_into()
+            .map_err(|_| Groth16Error::GeneralError(Error::InvalidData))?;
+
+        if vk_root != *VK_ROOT_BYTES {
+            return Err(Groth16Error::VkeyRootMismatch);
+        }
+
+        if exit_code != expected_exit_code {
+            return Err(Groth16Error::ExitCodeMismatch);
+        }
+
         // It is computationally infeasible to find two distinct inputs, one processed with
         // SHA256 and the other with Blake3, that yield the same hash value.
         if Self::verify_gnark_proof(
-            &proof[VK_HASH_PREFIX_LENGTH..],
-            &[sp1_vkey_hash, hash_public_inputs(sp1_public_inputs)],
+            &proof[VK_HASH_PREFIX_LENGTH + 96..],
+            &[
+                sp1_vkey_hash,
+                hash_public_inputs(sp1_public_inputs),
+                exit_code,
+                vk_root,
+                proof_nonce,
+            ],
             groth16_vk,
         )
         .is_ok()
@@ -86,8 +145,14 @@ impl Groth16Verifier {
         }
 
         Self::verify_gnark_proof(
-            &proof[VK_HASH_PREFIX_LENGTH..],
-            &[sp1_vkey_hash, hash_public_inputs_with_fn(sp1_public_inputs, blake3_hash)],
+            &proof[VK_HASH_PREFIX_LENGTH + 96..],
+            &[
+                sp1_vkey_hash,
+                hash_public_inputs_with_fn(sp1_public_inputs, blake3_hash),
+                exit_code,
+                vk_root,
+                proof_nonce,
+            ],
             groth16_vk,
         )
     }
@@ -121,8 +186,12 @@ impl Groth16Verifier {
         let proof = load_groth16_proof_from_bytes(proof)?;
         let groth16_vk = load_groth16_verifying_key_from_bytes(groth16_vk)?;
 
-        let public_inputs =
-            public_inputs.iter().map(|input| Fr::from_slice(input).unwrap()).collect::<Vec<_>>();
+        let public_inputs = public_inputs
+            .iter()
+            .map(|input| Fr::from_slice(input))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| Groth16Error::GeneralError(crate::groth16::Error::Field(e)))?;
+
         verify_groth16_algebraic(&groth16_vk, &proof, &public_inputs)
     }
 

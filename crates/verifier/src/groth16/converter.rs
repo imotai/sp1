@@ -59,7 +59,7 @@ pub fn decompress_groth16_proof_from_bytes(
 /// The byte slice is represented as 2 uncompressed g1 points, and one uncompressed g2 point,
 /// as outputted from Gnark.
 pub(crate) fn load_groth16_proof_from_bytes(buffer: &[u8]) -> Result<Groth16Proof, Groth16Error> {
-    if buffer.len() < GROTH16_PROOF_LENGTH {
+    if buffer.len() != GROTH16_PROOF_LENGTH {
         return Err(Groth16Error::GeneralError(Error::InvalidData));
     }
     let (ar, bs, krs) = (
@@ -97,6 +97,9 @@ pub(crate) fn load_compressed_groth16_proof_from_bytes(
 pub(crate) fn load_groth16_verifying_key_from_bytes(
     buffer: &[u8],
 ) -> Result<Groth16VerifyingKey, Groth16Error> {
+    if buffer.len() < 292 {
+        return Err(Groth16Error::GeneralError(Error::InvalidData));
+    }
     // We don't need to check each compressed point because the Groth16 vkey is a public constant
     // that doesn't usually change. The party using the Groth16 vkey will usually clearly know
     // how the vkey was generated.
@@ -108,6 +111,9 @@ pub(crate) fn load_groth16_verifying_key_from_bytes(
     let num_k = u32::from_be_bytes([buffer[288], buffer[289], buffer[290], buffer[291]]);
     let mut k = Vec::new();
     let mut offset = 292;
+    if (buffer.len() as u64) < (num_k as u64) * 32 + (offset as u64) {
+        return Err(Groth16Error::GeneralError(Error::InvalidData));
+    }
     for _ in 0..num_k {
         let point = unchecked_compressed_x_to_g1_point(&buffer[offset..offset + 32])?;
         k.push(point);

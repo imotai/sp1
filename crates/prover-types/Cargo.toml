@@ -1,0 +1,36 @@
+[package]
+name = "sp1-prover-types"
+description = "Type definitions for the SP1 prover"
+readme = "../../README.md"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+keywords = { workspace = true }
+categories = { workspace = true }
+
+[dependencies]
+anyhow.workspace = true
+bincode.workspace = true
+hashbrown.workspace = true
+mti.workspace = true
+prost.workspace = true
+serde = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["sync", "rt"] }
+tonic = { version = "0.12.3", features = ["tls"] }
+tracing.workspace = true
+futures-util.workspace = true
+async-scoped.workspace = true
+# enum-map.workspace = true
+
+
+[dev-dependencies]
+
+[build-dependencies]
+tonic-build = "0.12.3"
+chrono = { workspace = true, features = ["clock"] }
+
+[features]
+
+[lints]
+workspace = true

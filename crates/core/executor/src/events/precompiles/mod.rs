@@ -2,26 +2,35 @@ mod ec;
 mod edwards;
 mod fptower;
 mod keccak256_permute;
+mod mprotect;
+mod poseidon2;
 mod sha256_compress;
 mod sha256_extend;
 mod u256x2048_mul;
 mod uint256;
+mod uint256_ops;
 
-use super::{MemoryLocalEvent, SyscallEvent};
-use crate::{deserialize_hashmap_as_vec, serialize_hashmap_as_vec, syscalls::SyscallCode};
+use super::{MemoryLocalEvent, PageProtLocalEvent, SyscallEvent};
+use crate::{deserialize_hashmap_as_vec, serialize_hashmap_as_vec, SyscallCode};
+use deepsize2::DeepSizeOf;
 pub use ec::*;
 pub use edwards::*;
 pub use fptower::*;
 use hashbrown::HashMap;
 pub use keccak256_permute::*;
+pub use mprotect::*;
+pub use poseidon2::*;
 use serde::{Deserialize, Serialize};
 pub use sha256_compress::*;
 pub use sha256_extend::*;
 use strum::{EnumIter, IntoEnumIterator};
 pub use u256x2048_mul::*;
 pub use uint256::*;
+pub use uint256_ops::*;
 
-#[derive(Clone, Debug, Serialize, Deserialize, EnumIter)]
+// TODO: maybe Box one of the events?
+#[allow(clippy::large_enum_variant)]
+#[derive(Clone, Debug, Serialize, Deserialize, EnumIter, DeepSizeOf)]
 /// Precompile event.  There should be one variant for every precompile syscall.
 pub enum PrecompileEvent {
     /// Sha256 extend precompile event.
@@ -72,14 +81,23 @@ pub enum PrecompileEvent {
     Bls12381Fp2Mul(Fp2MulEvent),
     /// Uint256 mul precompile event.
     Uint256Mul(Uint256MulEvent),
+    /// Uint256 ops precompile event.
+    Uint256Ops(Uint256OpsEvent),
     /// U256XU2048 mul precompile event.
     U256xU2048Mul(U256xU2048MulEvent),
+    /// Mprotect precompile event.
+    Mprotect(MProtectEvent),
+    /// POSEIDON2 precompile event.
+    POSEIDON2(Poseidon2PrecompileEvent),
 }
 
 /// Trait to retrieve all the local memory events from a vec of precompile events.
 pub trait PrecompileLocalMemory {
     /// Get an iterator of all the local memory events.
     fn get_local_mem_events(&self) -> impl IntoIterator<Item = &MemoryLocalEvent>;
+
+    /// Get an iterator of all the local page prot events.
+    fn get_local_page_prot_events(&self) -> impl IntoIterator<Item = &PageProtLocalEvent>;
 }
 
 impl PrecompileLocalMemory for Vec<(SyscallEvent, PrecompileEvent)> {
@@ -100,26 +118,29 @@ impl PrecompileLocalMemory for Vec<(SyscallEvent, PrecompileEvent)> {
                 PrecompileEvent::EdDecompress(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
-                PrecompileEvent::Secp256k1Add(e) |
-                PrecompileEvent::Secp256r1Add(e) |
-                PrecompileEvent::EdAdd(e) |
-                PrecompileEvent::Bn254Add(e) |
-                PrecompileEvent::Bls12381Add(e) => {
+                PrecompileEvent::Secp256k1Add(e)
+                | PrecompileEvent::Secp256r1Add(e)
+                | PrecompileEvent::EdAdd(e)
+                | PrecompileEvent::Bn254Add(e)
+                | PrecompileEvent::Bls12381Add(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
-                PrecompileEvent::Secp256k1Double(e) |
-                PrecompileEvent::Secp256r1Double(e) |
-                PrecompileEvent::Bn254Double(e) |
-                PrecompileEvent::Bls12381Double(e) => {
+                PrecompileEvent::Secp256k1Double(e)
+                | PrecompileEvent::Secp256r1Double(e)
+                | PrecompileEvent::Bn254Double(e)
+                | PrecompileEvent::Bls12381Double(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
-                PrecompileEvent::Secp256k1Decompress(e) |
-                PrecompileEvent::Secp256r1Decompress(e) |
-                PrecompileEvent::K256Decompress(e) |
-                PrecompileEvent::Bls12381Decompress(e) => {
+                PrecompileEvent::Secp256k1Decompress(e)
+                | PrecompileEvent::Secp256r1Decompress(e)
+                | PrecompileEvent::K256Decompress(e)
+                | PrecompileEvent::Bls12381Decompress(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
                 PrecompileEvent::Uint256Mul(e) => {
+                    iterators.push(e.local_mem_access.iter());
+                }
+                PrecompileEvent::Uint256Ops(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
                 PrecompileEvent::U256xU2048Mul(e) => {
@@ -134,6 +155,78 @@ impl PrecompileLocalMemory for Vec<(SyscallEvent, PrecompileEvent)> {
                 PrecompileEvent::Bls12381Fp2Mul(e) | PrecompileEvent::Bn254Fp2Mul(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
+                PrecompileEvent::POSEIDON2(e) => {
+                    iterators.push(e.local_mem_access.iter());
+                }
+                PrecompileEvent::Mprotect(_) => {
+                    // Mprotect doesn't have local memory access events
+                }
+            }
+        }
+
+        iterators.into_iter().flatten()
+    }
+
+    fn get_local_page_prot_events(&self) -> impl IntoIterator<Item = &PageProtLocalEvent> {
+        let mut iterators = Vec::new();
+
+        for (_, event) in self.iter() {
+            match event {
+                PrecompileEvent::Mprotect(e) => {
+                    iterators.push(e.local_page_prot_access.iter());
+                }
+                PrecompileEvent::ShaExtend(e) => {
+                    iterators.push(e.local_page_prot_access.iter());
+                }
+                PrecompileEvent::ShaCompress(e) => {
+                    iterators.push(e.local_page_prot_access.iter());
+                }
+                PrecompileEvent::POSEIDON2(e) => {
+                    iterators.push(e.local_page_prot_access.iter());
+                }
+                PrecompileEvent::U256xU2048Mul(e) => {
+                    iterators.push(e.local_page_prot_access.iter());
+                }
+                PrecompileEvent::Uint256Mul(e) => {
+                    iterators.push(e.local_page_prot_access.iter());
+                }
+                PrecompileEvent::Uint256Ops(e) => {
+                    iterators.push(e.local_page_prot_access.iter());
+                }
+                PrecompileEvent::KeccakPermute(e) => {
+                    iterators.push(e.local_page_prot_access.iter());
+                }
+                PrecompileEvent::Bls12381Fp(e) | PrecompileEvent::Bn254Fp(e) => {
+                    iterators.push(e.local_page_prot_access.iter());
+                }
+                PrecompileEvent::Bls12381Fp2AddSub(e) | PrecompileEvent::Bn254Fp2AddSub(e) => {
+                    iterators.push(e.local_page_prot_access.iter());
+                }
+                PrecompileEvent::Bls12381Fp2Mul(e) | PrecompileEvent::Bn254Fp2Mul(e) => {
+                    iterators.push(e.local_page_prot_access.iter());
+                }
+                PrecompileEvent::Secp256k1Add(e)
+                | PrecompileEvent::Secp256r1Add(e)
+                | PrecompileEvent::Bn254Add(e)
+                | PrecompileEvent::Bls12381Add(e)
+                | PrecompileEvent::EdAdd(e) => {
+                    iterators.push(e.local_page_prot_access.iter());
+                }
+                PrecompileEvent::Secp256k1Double(e)
+                | PrecompileEvent::Secp256r1Double(e)
+                | PrecompileEvent::Bn254Double(e)
+                | PrecompileEvent::Bls12381Double(e) => {
+                    iterators.push(e.local_page_prot_access.iter());
+                }
+                PrecompileEvent::Secp256k1Decompress(e)
+                | PrecompileEvent::Secp256r1Decompress(e)
+                | PrecompileEvent::K256Decompress(e)
+                | PrecompileEvent::Bls12381Decompress(e) => {
+                    iterators.push(e.local_page_prot_access.iter());
+                }
+                PrecompileEvent::EdDecompress(e) => {
+                    iterators.push(e.local_page_prot_access.iter());
+                }
             }
         }
 
@@ -142,7 +235,7 @@ impl PrecompileLocalMemory for Vec<(SyscallEvent, PrecompileEvent)> {
 }
 
 /// A record of all the precompile events.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, DeepSizeOf)]
 pub struct PrecompileEvents {
     #[serde(serialize_with = "serialize_hashmap_as_vec")]
     #[serde(deserialize_with = "deserialize_hashmap_as_vec")]
@@ -245,6 +338,17 @@ impl PrecompileEvents {
 
         for (_, events) in self.events.iter() {
             iterators.push(events.get_local_mem_events());
+        }
+
+        iterators.into_iter().flatten()
+    }
+
+    /// Get all the local page prot events from all the precompile events.
+    pub(crate) fn get_local_page_prot_events(&self) -> impl Iterator<Item = &PageProtLocalEvent> {
+        let mut iterators = Vec::new();
+
+        for (_, events) in self.events.iter() {
+            iterators.push(events.get_local_page_prot_events());
         }
 
         iterators.into_iter().flatten()

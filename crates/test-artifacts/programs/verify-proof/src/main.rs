@@ -7,23 +7,16 @@ sp1_zkvm::entrypoint!(main);
 use sha2::{Digest, Sha256};
 use sp1_zkvm::lib::verify::verify_sp1_proof;
 
-fn words_to_bytes(words: &[u32; 8]) -> [u8; 32] {
-    let mut bytes = [0u8; 32];
-    for i in 0..8 {
-        let word_bytes = words[i].to_le_bytes();
-        bytes[i * 4..(i + 1) * 4].copy_from_slice(&word_bytes);
-    }
-    bytes
-}
-
 pub fn main() {
     let vkey = sp1_zkvm::io::read::<[u32; 8]>();
-    println!("Read vkey: {:?}", hex::encode(words_to_bytes(&vkey)));
+    println!("Read vkey: {:?}", hex::encode(bytemuck::cast_slice(&vkey)));
     let inputs = sp1_zkvm::io::read::<Vec<Vec<u8>>>();
     inputs.iter().for_each(|input| {
         // Get expected pv_digest hash: sha256(input)
         let pv_digest = Sha256::digest(input);
-        verify_sp1_proof(&vkey, &pv_digest.into());
+        println!("PV digest len: {}", pv_digest.len());
+        println!("Verifying proof for digest: {:?}", pv_digest);
+        verify_sp1_proof(&vkey, &<[u8; 32]>::try_from(pv_digest).unwrap());
 
         println!("Verified proof for digest: {:?}", hex::encode(pv_digest));
         println!("Verified input: {:?}", hex::encode(input));

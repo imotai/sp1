@@ -60,14 +60,15 @@ pub fn test_weierstrass_add<P: AffinePoint<N> + WeierstrassAffinePoint<N>, const
     // Case 5: Points are negations of each other.
     // Create a point that is the negation of a_point.
     let a_point_le_bytes = a_point.to_le_bytes();
-    let y_biguint = BigUint::from_bytes_le(&a_point_le_bytes[N * 2..]);
+    assert_eq!(a_point_le_bytes.len(), a.len());
+    let y_biguint = BigUint::from_bytes_le(&a_point_le_bytes[a_point_le_bytes.len() / 2..]);
     let modulus_biguint = BigUint::from_bytes_le(modulus);
 
     // Negate y.
     let negated_y_biguint = (&modulus_biguint - &y_biguint) % &modulus_biguint;
 
     // Create a point using the negated y.
-    let mut combined_negation_point_bytes = a_point_le_bytes[..N * 2].to_vec();
+    let mut combined_negation_point_bytes = a_point_le_bytes[..a_point_le_bytes.len() / 2].to_vec();
     combined_negation_point_bytes.extend_from_slice(&negated_y_biguint.to_bytes_le());
     let negation_point = P::from_le_bytes(&combined_negation_point_bytes);
 

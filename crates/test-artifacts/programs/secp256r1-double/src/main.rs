@@ -24,7 +24,7 @@ pub fn main() {
         219, 16, 85, 119, 7,
     ];
 
-    syscall_secp256r1_double(a.as_mut_ptr() as *mut [u32; 16]);
+    syscall_secp256r1_double(a.as_mut_ptr() as *mut [u64; 8]);
 
     assert_eq!(a, b);
 }

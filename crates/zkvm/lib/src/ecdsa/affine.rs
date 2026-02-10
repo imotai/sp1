@@ -6,6 +6,7 @@
 //! Note: When performing curve operations, accelerated crates for SP1 use affine arithmetic instead
 //! of projective arithmetic for performance.
 
+#![allow(deprecated)]
 use super::{
     ECDSACurve, ECDSAPoint, Field, FieldElement, SP1AffinePointTrait, FIELD_BYTES_SIZE_USIZE,
 };

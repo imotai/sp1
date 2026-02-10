@@ -2,11 +2,11 @@
 //!
 //! The `embedded` allocator takes precedence if enabled.
 
-#[cfg(not(feature = "embedded"))]
+#[cfg(feature = "bump")]
 mod bump;
 
-#[cfg(feature = "embedded")]
+#[cfg(not(feature = "bump"))]
 pub mod embedded;
 
-#[cfg(feature = "embedded")]
+#[cfg(not(feature = "bump"))]
 pub use embedded::init;

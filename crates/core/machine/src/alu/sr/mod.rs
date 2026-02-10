@@ -1,81 +1,33 @@
-//! Logical And Arithmetic Right Shift Verification.
-//!
-//! Implements verification for a = b >> c, decomposing the shift into bit and byte components:
-//!
-//! 1. num_bits_to_shift = c % 8: Bit-level shift, achieved by using ShrCarry.
-//! 2. num_bytes_to_shift = c // 8: Byte-level shift, shifting entire bytes or words in b.
-//!
-//! The right shift is verified by reformulating it as (b >> c) = (b >> (num_bytes_to_shift * 8)) >>
-//! num_bits_to_shift.
-//!
-//! The correct leading bits of logical and arithmetic right shifts are verified by sign extending b
-//! to 64 bits.
-//!
-//! c = take the least significant 5 bits of c
-//! num_bytes_to_shift = c // 8
-//! num_bits_to_shift = c % 8
-//!
-//! # Sign extend b to 64 bits if SRA.
-//! if opcode == SRA:
-//!    b = sign_extend_32_bits_to_64_bits(b)
-//! else:
-//!    b = zero_extend_32_bits_to_64_bits(b)
-//!
-//!
-//! # Byte shift. Leave the num_bytes_to_shift most significant bytes of b 0 for simplicity as it
-//! # doesn't affect the correctness of the result.
-//! result = \[0; LONG_WORD_SIZE\]
-//! for i in range(LONG_WORD_SIZE - num_bytes_to_shift):
-//!     result\[i\] = b\[i + num_bytes_to_shift\]
-//!
-//! # Bit shift.
-//! carry_multiplier = 1 << (8 - num_bits_to_shift)
-//! last_carry = 0
-//! for i in reversed(range(LONG_WORD_SIZE)):
-//!     # Shifts a byte to the right and returns both the shifted byte and the bits that carried.
-//!     (shifted_byte\[i\], carry) = shr_carry(result\[i\], num_bits_to_shift)
-//!     result\[i\] = shifted_byte\[i\] + last_carry * carry_multiplier
-//!     last_carry = carry
-//!
-//! # The 4 least significant bytes must match a. The 4 most significant bytes of result may be
-//! # inaccurate.
-//! assert a = result\[0..WORD_SIZE\]
-
-mod utils;
-
 use core::{
     borrow::{Borrow, BorrowMut},
-    mem::size_of,
+    mem::{size_of, MaybeUninit},
 };
 use hashbrown::HashMap;
 use itertools::Itertools;
-use p3_air::{Air, AirBuilder, BaseAir};
-use p3_field::{AbstractField, PrimeField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
+use slop_air::{Air, AirBuilder, BaseAir};
+use slop_algebra::{AbstractField, Field, PrimeField, PrimeField32};
+use slop_matrix::Matrix;
+use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
+    ByteOpcode, ExecutionRecord, Opcode, Program, CLK_INC, PC_INC,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_primitives::consts::WORD_SIZE;
-use sp1_stark::{air::MachineAir, Word};
+use sp1_hypercube::{air::MachineAir, Word};
+use sp1_primitives::consts::{u64_to_u16_limbs, WORD_SIZE};
 
 use crate::{
-    air::SP1CoreAirBuilder,
-    alu::sr::utils::{nb_bits_to_shift, nb_bytes_to_shift},
-    bytes::utils::shr_carry,
-    utils::{next_power_of_two, zeroed_f_vec},
+    adapter::{
+        register::alu_type::{ALUTypeReader, ALUTypeReaderInput},
+        state::{CPUState, CPUStateInput},
+    },
+    air::{SP1CoreAirBuilder, SP1Operation},
+    operations::{U16MSBOperation, U16MSBOperationInput},
+    utils::next_multiple_of_32,
 };
 
 /// The number of main trace columns for `ShiftRightChip`.
 pub const NUM_SHIFT_RIGHT_COLS: usize = size_of::<ShiftRightCols<u8>>();
-
-/// The number of bytes necessary to represent a 64-bit integer.
-const LONG_WORD_SIZE: usize = 2 * WORD_SIZE;
-
-/// The number of bits in a byte.
-const BYTE_SIZE: usize = 8;
 
 /// A chip that implements bitwise operations for the opcodes SRL and SRA.
 #[derive(Default)]
@@ -85,44 +37,47 @@ pub struct ShiftRightChip;
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct ShiftRightCols<T> {
-    /// The program counter.
-    pub pc: T,
+    /// The current shard, timestamp, program counter of the CPU.
+    pub state: CPUState<T>,
+
+    /// The adapter to read program and register information.
+    pub adapter: ALUTypeReader<T>,
 
     /// The output operand.
     pub a: Word<T>,
 
-    /// The first input operand.
-    pub b: Word<T>,
-
-    /// The second input operand.
-    pub c: Word<T>,
-
-    /// Flag indicating whether `a` is not register 0.
-    pub op_a_not_0: T,
-
-    /// A boolean array whose `i`th element indicates whether `num_bits_to_shift = i`.
-    pub shift_by_n_bits: [T; BYTE_SIZE],
-
-    /// A boolean array whose `i`th element indicates whether `num_bytes_to_shift = i`.
-    pub shift_by_n_bytes: [T; WORD_SIZE],
-
-    /// The result of "byte-shifting" the input operand `b` by `num_bytes_to_shift`.
-    pub byte_shift_result: [T; LONG_WORD_SIZE],
-
-    /// The result of "bit-shifting" the byte-shifted input by `num_bits_to_shift`.
-    pub bit_shift_result: [T; LONG_WORD_SIZE],
-
-    /// The carry output of `shrcarry` on each byte of `byte_shift_result`.
-    pub shr_carry_output_carry: [T; LONG_WORD_SIZE],
-
-    /// The shift byte output of `shrcarry` on each byte of `byte_shift_result`.
-    pub shr_carry_output_shifted_byte: [T; LONG_WORD_SIZE],
-
     /// The most significant bit of `b`.
-    pub b_msb: T,
+    pub b_msb: U16MSBOperation<T>,
 
-    /// The least significant byte of `c`. Used to verify `shift_by_n_bits` and `shift_by_n_bytes`.
-    pub c_least_sig_byte: [T; BYTE_SIZE],
+    /// The most significant byte of the result of SRLW/SRAW/SRLIW/SRAIW
+    pub srw_msb: U16MSBOperation<T>,
+
+    /// The bottom 8 bits of `c`.
+    pub c_bits: [T; 6],
+
+    /// SRA msb * v0123
+    pub sra_msb_v0123: T,
+
+    /// v0123
+    pub v_0123: T,
+
+    /// v012
+    pub v_012: T,
+
+    /// v01
+    pub v_01: T,
+
+    /// The lower bits of each limb.
+    pub lower_limb: Word<T>,
+
+    /// The higher bits of each limb.
+    pub higher_limb: Word<T>,
+
+    /// The result of the byte-shift.
+    pub limb_result: [T; WORD_SIZE],
+
+    /// The shift amount.
+    pub shift_u16: [T; 4],
 
     /// If the opcode is SRL.
     pub is_srl: T,
@@ -130,8 +85,14 @@ pub struct ShiftRightCols<T> {
     /// If the opcode is SRA.
     pub is_sra: T,
 
-    /// Selector to know whether this row is enabled.
-    pub is_real: T,
+    /// If the opcode is SRLW.
+    pub is_srlw: T,
+
+    /// If the opcode is SRAW.
+    pub is_sraw: T,
+
+    /// If the opcode is W and immediate.
+    pub is_w_imm: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
@@ -139,21 +100,41 @@ impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "ShiftRight".to_string()
+    fn name(&self) -> &'static str {
+        "ShiftRight"
     }
 
-    fn generate_trace(
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = next_multiple_of_32(
+            input.shift_right_events.len(),
+            input.fixed_log2_rows::<F, _>(self),
+        );
+        Some(nb_rows)
+    }
+
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
-        _: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        _output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         // Generate the trace rows for each event.
         let nb_rows = input.shift_right_events.len();
-        let size_log2 = input.fixed_log2_rows::<F, _>(self);
-        let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
-        let mut values = zeroed_f_vec(padded_nb_rows * NUM_SHIFT_RIGHT_COLS);
+        let padded_nb_rows = <ShiftRightChip as MachineAir<F>>::num_rows(self, input).unwrap();
         let chunk_size = std::cmp::max((nb_rows + 1) / num_cpus::get(), 1);
+
+        unsafe {
+            let padding_start = nb_rows * NUM_SHIFT_RIGHT_COLS;
+            let padding_size = (padded_nb_rows - nb_rows) * NUM_SHIFT_RIGHT_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, padded_nb_rows * NUM_SHIFT_RIGHT_COLS)
+        };
 
         values.chunks_mut(chunk_size * NUM_SHIFT_RIGHT_COLS).enumerate().par_bridge().for_each(
             |(i, rows)| {
@@ -164,17 +145,21 @@ impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
                     if idx < nb_rows {
                         let mut byte_lookup_events = Vec::new();
                         let event = &input.shift_right_events[idx];
-                        self.event_to_row(event, cols, &mut byte_lookup_events);
+                        cols.adapter.populate(&mut byte_lookup_events, event.1);
+                        self.event_to_row(&event.0, cols, &mut byte_lookup_events);
+                        cols.state.populate(&mut byte_lookup_events, event.0.clk, event.0.pc);
+                        cols.is_w_imm = F::from_bool(
+                            (event.0.opcode == Opcode::SRLW || event.0.opcode == Opcode::SRAW)
+                                && event.1.is_imm,
+                        );
                     } else {
-                        cols.shift_by_n_bits[0] = F::one();
-                        cols.shift_by_n_bytes[0] = F::one();
+                        cols.v_01 = F::from_canonical_u32(16);
+                        cols.v_012 = F::from_canonical_u32(256);
+                        cols.v_0123 = F::from_canonical_u32(65536);
                     }
                 });
             },
         );
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, NUM_SHIFT_RIGHT_COLS)
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
@@ -188,7 +173,9 @@ impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_SHIFT_RIGHT_COLS];
                     let cols: &mut ShiftRightCols<F> = row.as_mut_slice().borrow_mut();
-                    self.event_to_row(event, cols, &mut blu);
+                    cols.adapter.populate(&mut blu, event.1);
+                    self.event_to_row(&event.0, cols, &mut blu);
+                    cols.state.populate(&mut blu, event.0.clk, event.0.pc);
                 });
                 blu
             })
@@ -204,10 +191,6 @@ impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
             !shard.shift_right_events.is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl ShiftRightChip {
@@ -218,102 +201,73 @@ impl ShiftRightChip {
         cols: &mut ShiftRightCols<F>,
         blu: &mut impl ByteRecord,
     ) {
-        // Initialize cols with basic operands and flags derived from the current event.
-        {
-            cols.pc = F::from_canonical_u32(event.pc);
-            cols.a = Word::from(event.a);
-            cols.b = Word::from(event.b);
-            cols.c = Word::from(event.c);
-            cols.op_a_not_0 = F::from_bool(!event.op_a_0);
+        let mut b = u64_to_u16_limbs(event.b);
+        let c = u64_to_u16_limbs(event.c)[0];
+        cols.a = Word::from(event.a);
 
-            cols.b_msb = F::from_canonical_u32((event.b >> 31) & 1);
+        cols.is_srl = F::from_bool(event.opcode == Opcode::SRL);
+        cols.is_sra = F::from_bool(event.opcode == Opcode::SRA);
+        cols.is_srlw = F::from_bool(event.opcode == Opcode::SRLW);
+        cols.is_sraw = F::from_bool(event.opcode == Opcode::SRAW);
 
-            cols.is_srl = F::from_bool(event.opcode == Opcode::SRL);
-            cols.is_sra = F::from_bool(event.opcode == Opcode::SRA);
+        for i in 0..6 {
+            cols.c_bits[i] = F::from_canonical_u16((c >> i) & 1);
+        }
+        blu.add_bit_range_check(c >> 6, 10);
 
-            cols.is_real = F::one();
+        cols.v_01 = F::from_canonical_u32(1 << (4 - (c & 3)));
+        cols.v_012 = F::from_canonical_u32(1 << (8 - (c & 7)));
+        cols.v_0123 = F::from_canonical_u32(1 << (16 - (c & 15)));
 
-            for i in 0..BYTE_SIZE {
-                cols.c_least_sig_byte[i] = F::from_canonical_u32((event.c >> i) & 1);
-            }
+        if event.opcode == Opcode::SRA {
+            cols.b_msb.populate_msb(blu, b[3]);
+        } else if event.opcode == Opcode::SRAW {
+            cols.b_msb.populate_msb(blu, b[1]);
+        } else {
+            cols.b_msb.msb = F::zero();
+        }
+        cols.sra_msb_v0123 = cols.b_msb.msb * cols.v_0123;
 
-            // Insert the MSB lookup event.
-            let most_significant_byte = event.b.to_le_bytes()[WORD_SIZE - 1];
-            blu.add_byte_lookup_events(vec![ByteLookupEvent {
-                opcode: ByteOpcode::MSB,
-                a1: ((most_significant_byte >> 7) & 1) as u16,
-                a2: 0,
-                b: most_significant_byte,
-                c: 0,
-            }]);
+        let is_word = event.opcode == Opcode::SRLW || event.opcode == Opcode::SRAW;
+        let not_word = !is_word;
+
+        if is_word {
+            b[2] = 0;
+            b[3] = 0;
+            cols.srw_msb.populate_msb(blu, u64_to_u16_limbs(event.a)[1]);
+        } else {
+            cols.srw_msb.msb = F::zero();
         }
 
-        let num_bytes_to_shift = nb_bytes_to_shift(event.c);
-        let num_bits_to_shift = nb_bits_to_shift(event.c);
-
-        // Byte shifting.
-        let mut byte_shift_result = [0u8; LONG_WORD_SIZE];
-        {
-            for i in 0..WORD_SIZE {
-                cols.shift_by_n_bytes[i] = F::from_bool(num_bytes_to_shift == i);
-            }
-            let sign_extended_b = {
-                if event.opcode == Opcode::SRA {
-                    // Sign extension is necessary only for arithmetic right shift.
-                    ((event.b as i32) as i64).to_le_bytes()
-                } else {
-                    (event.b as u64).to_le_bytes()
-                }
-            };
-
-            for i in 0..LONG_WORD_SIZE {
-                if i + num_bytes_to_shift < LONG_WORD_SIZE {
-                    byte_shift_result[i] = sign_extended_b[i + num_bytes_to_shift];
-                }
-            }
-            cols.byte_shift_result = byte_shift_result.map(F::from_canonical_u8);
+        let bit_shift = (c & 0xF) as u8;
+        for i in 0..WORD_SIZE {
+            let limb = b[i] as u32;
+            let lower_limb = (limb & ((1 << bit_shift) - 1)) as u16;
+            let higher_limb = (limb >> bit_shift) as u16;
+            cols.lower_limb[i] = F::from_canonical_u16(lower_limb);
+            cols.higher_limb[i] = F::from_canonical_u16(higher_limb);
+            blu.add_bit_range_check(lower_limb, bit_shift);
+            blu.add_bit_range_check(higher_limb, 16 - bit_shift);
         }
 
-        // Bit shifting.
-        {
-            for i in 0..BYTE_SIZE {
-                cols.shift_by_n_bits[i] = F::from_bool(num_bits_to_shift == i);
+        for i in 0..WORD_SIZE {
+            cols.limb_result[i] = cols.higher_limb[i];
+            if i != WORD_SIZE - 1 {
+                cols.limb_result[i] +=
+                    cols.lower_limb[i + 1] * F::from_canonical_u32(1 << (16 - bit_shift));
             }
-            let carry_multiplier = 1 << (8 - num_bits_to_shift);
-            let mut last_carry = 0u32;
-            let mut bit_shift_result = [0u8; LONG_WORD_SIZE];
-            let mut shr_carry_output_carry = [0u8; LONG_WORD_SIZE];
-            let mut shr_carry_output_shifted_byte = [0u8; LONG_WORD_SIZE];
-            for i in (0..LONG_WORD_SIZE).rev() {
-                let (shift, carry) = shr_carry(byte_shift_result[i], num_bits_to_shift as u8);
-
-                let byte_event = ByteLookupEvent {
-                    opcode: ByteOpcode::ShrCarry,
-                    a1: shift as u16,
-                    a2: carry,
-                    b: byte_shift_result[i],
-                    c: num_bits_to_shift as u8,
-                };
-                blu.add_byte_lookup_event(byte_event);
-
-                shr_carry_output_carry[i] = carry;
-                shr_carry_output_shifted_byte[i] = shift;
-                bit_shift_result[i] = ((shift as u32 + last_carry * carry_multiplier) & 0xff) as u8;
-                last_carry = carry as u32;
-            }
-            cols.bit_shift_result = bit_shift_result.map(F::from_canonical_u8);
-            cols.shr_carry_output_carry = shr_carry_output_carry.map(F::from_canonical_u8);
-            cols.shr_carry_output_shifted_byte =
-                shr_carry_output_shifted_byte.map(F::from_canonical_u8);
-            for i in 0..WORD_SIZE {
-                debug_assert_eq!(cols.a[i], cols.bit_shift_result[i].clone());
-            }
-            // Range checks.
-            blu.add_u8_range_checks(&byte_shift_result);
-            blu.add_u8_range_checks(&bit_shift_result);
-            blu.add_u8_range_checks(&shr_carry_output_carry);
-            blu.add_u8_range_checks(&shr_carry_output_shifted_byte);
         }
+
+        let shift_amount = ((c >> 4) & 1) + 2 * ((c >> 5) & 1) * (not_word as u16);
+
+        let mut shift = [0u16; 4];
+        for i in 0..4 {
+            if i == shift_amount as usize {
+                shift[i] = 1;
+            }
+        }
+
+        cols.shift_u16 = shift.map(|x| F::from_canonical_u16(x));
     }
 }
 
@@ -331,372 +285,468 @@ where
         let main = builder.main();
         let local = main.row_slice(0);
         let local: &ShiftRightCols<AB::Var> = (*local).borrow();
-        let zero: AB::Expr = AB::F::zero().into();
-        let one: AB::Expr = AB::F::one().into();
 
-        // Check that the MSB of most_significant_byte matches local.b_msb using lookup.
-        {
-            let byte = local.b[WORD_SIZE - 1];
-            let opcode = AB::F::from_canonical_u32(ByteOpcode::MSB as u32);
-            let msb = local.b_msb;
-            builder.send_byte(opcode, msb, byte, zero.clone(), local.is_real);
-        }
+        let is_real = local.is_srl + local.is_sra + local.is_srlw + local.is_sraw;
 
-        // Calculate the number of bits and bytes to shift by from c.
-        {
-            // The sum of c_least_sig_byte[i] * 2^i must match c[0].
-            let mut c_byte_sum = AB::Expr::zero();
-            for i in 0..BYTE_SIZE {
-                let val: AB::Expr = AB::F::from_canonical_u32(1 << i).into();
-                c_byte_sum = c_byte_sum.clone() + val * local.c_least_sig_byte[i];
-            }
-            builder.assert_eq(c_byte_sum, local.c[0]);
-
-            // Number of bits to shift.
-
-            // The 3-bit number represented by the 3 least significant bits of c equals the number
-            // of bits to shift.
-            let mut num_bits_to_shift = AB::Expr::zero();
-            for i in 0..3 {
-                num_bits_to_shift = num_bits_to_shift.clone() +
-                    local.c_least_sig_byte[i] * AB::F::from_canonical_u32(1 << i);
-            }
-            for i in 0..BYTE_SIZE {
-                builder
-                    .when(local.shift_by_n_bits[i])
-                    .assert_eq(num_bits_to_shift.clone(), AB::F::from_canonical_usize(i));
-            }
-
-            // Exactly one of the shift_by_n_bits must be 1.
-            builder.assert_eq(
-                local.shift_by_n_bits.iter().fold(zero.clone(), |acc, &x| acc + x),
-                one.clone(),
-            );
-
-            // The 2-bit number represented by the 3rd and 4th least significant bits of c is the
-            // number of bytes to shift.
-            let num_bytes_to_shift = local.c_least_sig_byte[3] +
-                local.c_least_sig_byte[4] * AB::F::from_canonical_u32(2);
-
-            // If shift_by_n_bytes[i] = 1, then i = num_bytes_to_shift.
-            for i in 0..WORD_SIZE {
-                builder
-                    .when(local.shift_by_n_bytes[i])
-                    .assert_eq(num_bytes_to_shift.clone(), AB::F::from_canonical_usize(i));
-            }
-
-            // Exactly one of the shift_by_n_bytes must be 1.
-            builder.assert_eq(
-                local.shift_by_n_bytes.iter().fold(zero.clone(), |acc, &x| acc + x),
-                one.clone(),
-            );
-        }
-
-        // Byte shift the sign-extended b.
-        {
-            // The leading bytes of b should be 0xff if b's MSB is 1 & opcode = SRA, 0 otherwise.
-            let leading_byte = local.is_sra * local.b_msb * AB::Expr::from_canonical_u8(0xff);
-            let mut sign_extended_b: Vec<AB::Expr> = vec![];
-            for i in 0..WORD_SIZE {
-                sign_extended_b.push(local.b[i].into());
-            }
-            for _ in 0..WORD_SIZE {
-                sign_extended_b.push(leading_byte.clone());
-            }
-
-            // Shift the bytes of sign_extended_b by num_bytes_to_shift.
-            for num_bytes_to_shift in 0..WORD_SIZE {
-                for i in 0..(LONG_WORD_SIZE - num_bytes_to_shift) {
-                    builder.when(local.shift_by_n_bytes[num_bytes_to_shift]).assert_eq(
-                        local.byte_shift_result[i],
-                        sign_extended_b[i + num_bytes_to_shift].clone(),
-                    );
-                }
-            }
-        }
-
-        // Bit shift the byte_shift_result using ShrCarry, and compare the result to a.
-        {
-            // The carry multiplier is 2^(8 - num_bits_to_shift).
-            let mut carry_multiplier = AB::Expr::from_canonical_u8(0);
-            for i in 0..BYTE_SIZE {
-                carry_multiplier = carry_multiplier.clone() +
-                    AB::Expr::from_canonical_u32(1u32 << (8 - i)) * local.shift_by_n_bits[i];
-            }
-
-            // The 3-bit number represented by the 3 least significant bits of c equals the number
-            // of bits to shift.
-            let mut num_bits_to_shift = AB::Expr::zero();
-            for i in 0..3 {
-                num_bits_to_shift = num_bits_to_shift.clone() +
-                    local.c_least_sig_byte[i] * AB::F::from_canonical_u32(1 << i);
-            }
-
-            // Calculate ShrCarry.
-            for i in (0..LONG_WORD_SIZE).rev() {
-                builder.send_byte_pair(
-                    AB::F::from_canonical_u32(ByteOpcode::ShrCarry as u32),
-                    local.shr_carry_output_shifted_byte[i],
-                    local.shr_carry_output_carry[i],
-                    local.byte_shift_result[i],
-                    num_bits_to_shift.clone(),
-                    local.is_real,
-                );
-            }
-
-            // Use the results of ShrCarry to calculate the bit shift result.
-            for i in (0..LONG_WORD_SIZE).rev() {
-                let mut v: AB::Expr = local.shr_carry_output_shifted_byte[i].into();
-                if i + 1 < LONG_WORD_SIZE {
-                    v = v.clone() + local.shr_carry_output_carry[i + 1] * carry_multiplier.clone();
-                }
-                builder.assert_eq(v, local.bit_shift_result[i]);
-            }
-        }
-
-        // The 4 least significant bytes must match a. The 4 most significant bytes of result may be
-        // inaccurate.
-        // This check is only done when `op_a_not_0 == 1`.
-        {
-            for i in 0..WORD_SIZE {
-                builder.when(local.op_a_not_0).assert_eq(local.a[i], local.bit_shift_result[i]);
-            }
-        }
-
-        // Check that the flags are indeed boolean.
-        {
-            let flags = [local.is_srl, local.is_sra, local.is_real, local.b_msb];
-            for flag in flags.iter() {
-                builder.assert_bool(*flag);
-            }
-            for shift_by_n_byte in local.shift_by_n_bytes.iter() {
-                builder.assert_bool(*shift_by_n_byte);
-            }
-            for shift_by_n_bit in local.shift_by_n_bits.iter() {
-                builder.assert_bool(*shift_by_n_bit);
-            }
-            for bit in local.c_least_sig_byte.iter() {
-                builder.assert_bool(*bit);
-            }
-        }
-
-        // Range check bytes.
-        {
-            let long_words = [
-                local.byte_shift_result,
-                local.bit_shift_result,
-                local.shr_carry_output_carry,
-                local.shr_carry_output_shifted_byte,
-            ];
-
-            for long_word in long_words.iter() {
-                builder.slice_range_check_u8(long_word, local.is_real);
-            }
-        }
-
-        // SAFETY: All selectors `is_srl`, `is_sra` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real = is_srl + is_sra` is
-        // boolean. All interactions are done with multiplicity `is_real`.
+        // SAFETY: All selectors `is_srl`, `is_sra`, `is_srlw`, `is_sraw` are checked to be boolean.
+        // Each "real" row has exactly one selector turned on, as `is_real`, their sum, is boolean.
+        // All interactions are done with multiplicity `is_real`.
         // Therefore, the `opcode` matches the corresponding opcode.
 
         // Check that the operation flags are boolean.
         builder.assert_bool(local.is_srl);
         builder.assert_bool(local.is_sra);
-        builder.assert_bool(local.is_real);
+        builder.assert_bool(local.is_srlw);
+        builder.assert_bool(local.is_sraw);
+        builder.assert_bool(is_real.clone());
 
-        // Check that is_real is the sum of the two operation flags.
-        builder.assert_eq(local.is_srl + local.is_sra, local.is_real);
+        let one = AB::Expr::one();
 
-        // Receive the arguments.
-        // SAFETY: This checks the following.
-        // - `next_pc = pc + 4`
-        // - `num_extra_cycles = 0`
-        // - `op_a_val` is constrained by the chip when `op_a_not_0 == 1`
-        // - `op_a_not_0` is correct, due to the sent `op_a_0` being equal to `1 - op_a_not_0`
-        // - `op_a_immutable = 0`
-        // - `is_memory = 0`
-        // - `is_syscall = 0`
-        // - `is_halt = 0`
-        builder.receive_instruction(
+        let is_word = local.is_srlw + local.is_sraw;
+        let not_word = local.is_srl + local.is_sra;
+
+        let opcode = local.is_srl * AB::F::from_canonical_u32(Opcode::SRL as u32)
+            + local.is_sra * AB::F::from_canonical_u32(Opcode::SRA as u32)
+            + local.is_srlw * AB::F::from_canonical_u32(Opcode::SRLW as u32)
+            + local.is_sraw * AB::F::from_canonical_u32(Opcode::SRAW as u32);
+
+        // Compute instruction field constants for each opcode
+        let funct3 = local.is_srl * AB::Expr::from_canonical_u8(Opcode::SRL.funct3().unwrap())
+            + local.is_sra * AB::Expr::from_canonical_u8(Opcode::SRA.funct3().unwrap())
+            + local.is_srlw * AB::Expr::from_canonical_u8(Opcode::SRLW.funct3().unwrap())
+            + local.is_sraw * AB::Expr::from_canonical_u8(Opcode::SRAW.funct3().unwrap());
+        let funct7 = local.is_srl * AB::Expr::from_canonical_u8(Opcode::SRL.funct7().unwrap_or(0))
+            + local.is_sra * AB::Expr::from_canonical_u8(Opcode::SRA.funct7().unwrap())
+            + local.is_srlw * AB::Expr::from_canonical_u8(Opcode::SRLW.funct7().unwrap_or(0))
+            + local.is_sraw * AB::Expr::from_canonical_u8(Opcode::SRAW.funct7().unwrap());
+
+        let (srl_base, srl_imm) = Opcode::SRL.base_opcode();
+        let srl_imm = srl_imm.expect("SRL immediate opcode not found");
+        let (sra_base, sra_imm) = Opcode::SRA.base_opcode();
+        let sra_imm = sra_imm.expect("SRA immediate opcode not found");
+        let (srlw_base, srlw_imm) = Opcode::SRLW.base_opcode();
+        let srlw_imm = srlw_imm.expect("SRLW immediate opcode not found");
+        let (sraw_base, sraw_imm) = Opcode::SRAW.base_opcode();
+        let sraw_imm = sraw_imm.expect("SRAW immediate opcode not found");
+
+        let imm_base_difference = srl_base.checked_sub(srl_imm).unwrap();
+        assert_eq!(imm_base_difference, sra_base.checked_sub(sra_imm).unwrap());
+        assert_eq!(imm_base_difference, srlw_base.checked_sub(srlw_imm).unwrap());
+        assert_eq!(imm_base_difference, sraw_base.checked_sub(sraw_imm).unwrap());
+
+        let srl_base_expr = AB::Expr::from_canonical_u32(srl_base);
+        let sra_base_expr = AB::Expr::from_canonical_u32(sra_base);
+        let srlw_base_expr = AB::Expr::from_canonical_u32(srlw_base);
+        let sraw_base_expr = AB::Expr::from_canonical_u32(sraw_base);
+
+        let calculated_base_opcode = local.is_srl * srl_base_expr
+            + local.is_sra * sra_base_expr
+            + local.is_srlw * srlw_base_expr
+            + local.is_sraw * sraw_base_expr
+            - AB::Expr::from_canonical_u32(imm_base_difference) * local.adapter.imm_c;
+
+        let srl_instr_type = Opcode::SRL.instruction_type().0 as u32;
+        let srl_instr_type_imm =
+            Opcode::SRL.instruction_type().1.expect("SRL immediate instruction type not found")
+                as u32;
+        let sra_instr_type = Opcode::SRA.instruction_type().0 as u32;
+        let sra_instr_type_imm =
+            Opcode::SRA.instruction_type().1.expect("SRA immediate instruction type not found")
+                as u32;
+        let srlw_instr_type = Opcode::SRLW.instruction_type().0 as u32;
+        let srlw_instr_type_imm =
+            Opcode::SRLW.instruction_type().1.expect("SRLW immediate instruction type not found")
+                as u32;
+        let sraw_instr_type = Opcode::SRAW.instruction_type().0 as u32;
+        let sraw_instr_type_imm =
+            Opcode::SRAW.instruction_type().1.expect("SRAW immediate instruction type not found")
+                as u32;
+
+        let instr_type_difference = srl_instr_type.checked_sub(srl_instr_type_imm).unwrap();
+        let sra_instr_type_difference = sra_instr_type.checked_sub(sra_instr_type_imm).unwrap();
+        let srlw_instr_type_difference = srlw_instr_type.checked_sub(srlw_instr_type_imm).unwrap();
+        let sraw_instr_type_difference = sraw_instr_type.checked_sub(sraw_instr_type_imm).unwrap();
+        let w_instr_imm_adjustment = srl_instr_type_imm.checked_sub(srlw_instr_type_imm).unwrap();
+
+        assert_eq!(instr_type_difference, sra_instr_type_difference);
+        assert_eq!(srlw_instr_type_difference, instr_type_difference + w_instr_imm_adjustment);
+        assert_eq!(sraw_instr_type_difference, instr_type_difference + w_instr_imm_adjustment);
+
+        builder.assert_eq(local.is_w_imm, (local.is_srlw + local.is_sraw) * local.adapter.imm_c);
+
+        let calculated_instr_type = local.is_srl * AB::Expr::from_canonical_u32(srl_instr_type)
+            + local.is_sra * AB::Expr::from_canonical_u32(sra_instr_type)
+            + local.is_srlw * AB::Expr::from_canonical_u32(srlw_instr_type)
+            + local.is_sraw * AB::Expr::from_canonical_u32(sraw_instr_type)
+            - (AB::Expr::from_canonical_u32(instr_type_difference) * local.adapter.imm_c
+                + AB::Expr::from_canonical_u32(w_instr_imm_adjustment) * local.is_w_imm);
+
+        // Check that `local.c_bits` are the 6 lowest bits of `c`.
+        for i in 0..6 {
+            builder.assert_bool(local.c_bits[i]);
+        }
+        let mut c_lower_bits = AB::Expr::zero();
+        let mut bit_shift = AB::Expr::zero();
+        for i in 0..6 {
+            c_lower_bits = c_lower_bits + local.c_bits[i] * AB::F::from_canonical_u32(1 << i);
+            if i == 3 {
+                bit_shift = c_lower_bits.clone();
+            }
+        }
+        let inverse_64 = AB::F::from_canonical_u32(64).inverse();
+        builder.send_byte(
+            AB::F::from_canonical_u32(ByteOpcode::Range as u32),
+            (local.adapter.c()[0] - c_lower_bits) * inverse_64,
+            AB::Expr::from_canonical_u32(10),
             AB::Expr::zero(),
-            AB::Expr::zero(),
-            local.pc,
-            local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-            AB::Expr::zero(),
-            local.is_srl * AB::F::from_canonical_u32(Opcode::SRL as u32) +
-                local.is_sra * AB::F::from_canonical_u32(Opcode::SRA as u32),
-            local.a,
-            local.b,
-            local.c,
-            AB::Expr::one() - local.op_a_not_0,
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            local.is_real,
+            is_real.clone(),
         );
 
-        builder.when(local.op_a_not_0).assert_one(local.is_real);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #![allow(clippy::print_stdout)]
-
-    use std::borrow::BorrowMut;
-
-    use crate::{
-        alu::ShiftRightCols,
-        io::SP1Stdin,
-        riscv::RiscvAir,
-        utils::{run_malicious_test, uni_stark_prove as prove, uni_stark_verify as verify},
-    };
-    use p3_baby_bear::BabyBear;
-    use p3_matrix::dense::RowMajorMatrix;
-    use rand::{thread_rng, Rng};
-    use sp1_core_executor::{
-        events::{AluEvent, MemoryRecordEnum},
-        ExecutionRecord, Instruction, Opcode, Program,
-    };
-    use sp1_stark::{
-        air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
-        MachineProver, StarkGenericConfig, Val,
-    };
-
-    use super::ShiftRightChip;
-
-    #[test]
-    fn generate_trace() {
-        let mut shard = ExecutionRecord::default();
-        shard.shift_right_events = vec![AluEvent::new(0, Opcode::SRL, 6, 12, 1, false)];
-        let chip = ShiftRightChip::default();
-        let trace: RowMajorMatrix<BabyBear> =
-            chip.generate_trace(&shard, &mut ExecutionRecord::default());
-        println!("{:?}", trace.values)
-    }
-
-    #[test]
-    fn prove_babybear() {
-        let config = BabyBearPoseidon2::new();
-        let mut challenger = config.challenger();
-
-        let shifts = vec![
-            (Opcode::SRL, 0xffff8000, 0xffff8000, 0),
-            (Opcode::SRL, 0x7fffc000, 0xffff8000, 1),
-            (Opcode::SRL, 0x01ffff00, 0xffff8000, 7),
-            (Opcode::SRL, 0x0003fffe, 0xffff8000, 14),
-            (Opcode::SRL, 0x0001ffff, 0xffff8001, 15),
-            (Opcode::SRL, 0xffffffff, 0xffffffff, 0),
-            (Opcode::SRL, 0x7fffffff, 0xffffffff, 1),
-            (Opcode::SRL, 0x01ffffff, 0xffffffff, 7),
-            (Opcode::SRL, 0x0003ffff, 0xffffffff, 14),
-            (Opcode::SRL, 0x00000001, 0xffffffff, 31),
-            (Opcode::SRL, 0x21212121, 0x21212121, 0),
-            (Opcode::SRL, 0x10909090, 0x21212121, 1),
-            (Opcode::SRL, 0x00424242, 0x21212121, 7),
-            (Opcode::SRL, 0x00008484, 0x21212121, 14),
-            (Opcode::SRL, 0x00000000, 0x21212121, 31),
-            (Opcode::SRL, 0x21212121, 0x21212121, 0xffffffe0),
-            (Opcode::SRL, 0x10909090, 0x21212121, 0xffffffe1),
-            (Opcode::SRL, 0x00424242, 0x21212121, 0xffffffe7),
-            (Opcode::SRL, 0x00008484, 0x21212121, 0xffffffee),
-            (Opcode::SRL, 0x00000000, 0x21212121, 0xffffffff),
-            (Opcode::SRA, 0x00000000, 0x00000000, 0),
-            (Opcode::SRA, 0xc0000000, 0x80000000, 1),
-            (Opcode::SRA, 0xff000000, 0x80000000, 7),
-            (Opcode::SRA, 0xfffe0000, 0x80000000, 14),
-            (Opcode::SRA, 0xffffffff, 0x80000001, 31),
-            (Opcode::SRA, 0x7fffffff, 0x7fffffff, 0),
-            (Opcode::SRA, 0x3fffffff, 0x7fffffff, 1),
-            (Opcode::SRA, 0x00ffffff, 0x7fffffff, 7),
-            (Opcode::SRA, 0x0001ffff, 0x7fffffff, 14),
-            (Opcode::SRA, 0x00000000, 0x7fffffff, 31),
-            (Opcode::SRA, 0x81818181, 0x81818181, 0),
-            (Opcode::SRA, 0xc0c0c0c0, 0x81818181, 1),
-            (Opcode::SRA, 0xff030303, 0x81818181, 7),
-            (Opcode::SRA, 0xfffe0606, 0x81818181, 14),
-            (Opcode::SRA, 0xffffffff, 0x81818181, 31),
-        ];
-        let mut shift_events: Vec<AluEvent> = Vec::new();
-        for t in shifts.iter() {
-            shift_events.push(AluEvent::new(0, t.0, t.1, t.2, t.3, false));
+        // Check that `shift_u16` represents the boolean flag for the u16 limb shifts.
+        for i in 0..WORD_SIZE {
+            builder.when(local.shift_u16[i]).assert_eq(
+                local.c_bits[4] + local.c_bits[5] * AB::F::from_canonical_u32(2) * not_word.clone(),
+                AB::Expr::from_canonical_u32(i as u32),
+            );
+            builder.assert_bool(local.shift_u16[i]);
         }
-        let mut shard = ExecutionRecord::default();
-        shard.shift_right_events = shift_events;
-        let chip = ShiftRightChip::default();
-        let trace: RowMajorMatrix<BabyBear> =
-            chip.generate_trace(&shard, &mut ExecutionRecord::default());
-        let proof = prove::<BabyBearPoseidon2, _>(&config, &chip, &mut challenger, trace);
 
-        let mut challenger = config.challenger();
-        verify(&config, &chip, &mut challenger, &proof).unwrap();
-    }
+        builder.when(is_real.clone()).assert_eq(
+            local.shift_u16[0] + local.shift_u16[1] + local.shift_u16[2] + local.shift_u16[3],
+            AB::Expr::from_canonical_u32(1),
+        );
 
-    #[test]
-    fn test_malicious_sr() {
-        const NUM_TESTS: usize = 5;
+        let two = AB::F::from_canonical_u32(2);
+        let three = AB::F::from_canonical_u32(3);
+        let fifteen = AB::F::from_canonical_u32(15);
+        let two_fifty_five = AB::F::from_canonical_u32(255);
+        builder.assert_eq(
+            local.v_01,
+            (((one.clone() - local.c_bits[0]) + one.clone()) * two)
+                * ((one.clone() - local.c_bits[1]) * three + one.clone()),
+        );
+        builder.assert_eq(
+            local.v_012,
+            local.v_01 * ((one.clone() - local.c_bits[2]) * fifteen + one.clone()),
+        );
+        builder.assert_eq(
+            local.v_0123,
+            local.v_012 * ((one.clone() - local.c_bits[3]) * two_fifty_five + one.clone()),
+        );
 
-        for opcode in [Opcode::SRL, Opcode::SRA] {
-            for _ in 0..NUM_TESTS {
-                let (correct_op_a, op_b, op_c) = if opcode == Opcode::SRL {
-                    let op_b = thread_rng().gen_range(0..u32::MAX);
-                    let op_c = thread_rng().gen_range(0..u32::MAX);
-                    (op_b >> (op_c & 0x1F), op_b, op_c)
-                } else if opcode == Opcode::SRA {
-                    let op_b = thread_rng().gen_range(0..i32::MAX);
-                    let op_c = thread_rng().gen_range(0..u32::MAX);
-                    ((op_b >> (op_c & 0x1F)) as u32, op_b as u32, op_c)
-                } else {
-                    unreachable!()
-                };
-
-                let op_a = thread_rng().gen_range(0..u32::MAX);
-                assert!(op_a != correct_op_a);
-
-                let instructions = vec![
-                    Instruction::new(opcode, 5, op_b, op_c, true, true),
-                    Instruction::new(Opcode::ADD, 10, 0, 0, false, false),
-                ];
-
-                let program = Program::new(instructions, 0, 0);
-                let stdin = SP1Stdin::new();
-
-                type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
-
-                let malicious_trace_pv_generator = move |prover: &P,
-                                                         record: &mut ExecutionRecord|
-                      -> Vec<(
-                    String,
-                    RowMajorMatrix<Val<BabyBearPoseidon2>>,
-                )> {
-                    let mut malicious_record = record.clone();
-                    malicious_record.cpu_events[0].a = op_a as u32;
-                    if let Some(MemoryRecordEnum::Write(write_record)) =
-                        malicious_record.cpu_events[0].a_record.as_mut()
-                    {
-                        write_record.value = op_a as u32;
-                    }
-                    let mut traces = prover.generate_traces(&malicious_record);
-                    let shift_right_chip_name = chip_name!(ShiftRightChip, BabyBear);
-                    for (name, trace) in traces.iter_mut() {
-                        if *name == shift_right_chip_name {
-                            let first_row = trace.row_mut(0);
-                            let first_row: &mut ShiftRightCols<BabyBear> = first_row.borrow_mut();
-                            first_row.a = op_a.into();
-                        }
-                    }
-                    traces
-                };
-
-                let result =
-                    run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-                let shift_right_chip_name = chip_name!(ShiftRightChip, BabyBear);
-                assert!(
-                    result.is_err() &&
-                        result.unwrap_err().is_constraints_failing(&shift_right_chip_name)
+        for i in 0..WORD_SIZE {
+            let limb = local.adapter.b()[i];
+            // Check that `lower_limb < 2^(bit_shift)`
+            builder.send_byte(
+                AB::F::from_canonical_u32(ByteOpcode::Range as u32),
+                local.lower_limb[i],
+                bit_shift.clone(),
+                AB::Expr::zero(),
+                is_real.clone(),
+            );
+            // Check that `higher_limb < 2^(16 - bit_shift)`
+            builder.send_byte(
+                AB::F::from_canonical_u32(ByteOpcode::Range as u32),
+                local.higher_limb[i],
+                AB::Expr::from_canonical_u32(16) - bit_shift.clone(),
+                AB::Expr::zero(),
+                is_real.clone(),
+            );
+            // Check that `limb == higher_limb * 2^bit_shift + lower_limb`
+            // Multiply `2^(16 - bit_shift)` to the equation to avoid populating `2^(bit_shift)`.
+            // This is possible, since `2^(16 - bit_shift)` is not zero.
+            // When it's a word operation, use `0` in the place of the limb for the top two limbs.
+            if i < WORD_SIZE / 2 {
+                builder.assert_eq(
+                    limb * local.v_0123,
+                    local.higher_limb[i] * AB::Expr::from_canonical_u32(1 << 16)
+                        + local.lower_limb[i] * local.v_0123,
+                );
+            } else {
+                builder.assert_eq(
+                    limb * local.v_0123 * not_word.clone(),
+                    local.higher_limb[i] * AB::Expr::from_canonical_u32(1 << 16)
+                        + local.lower_limb[i] * local.v_0123,
                 );
             }
         }
+
+        // Compute the limb result based on the lower limbs and higher limbs.
+        for i in 0..WORD_SIZE {
+            let mut limb_result = local.higher_limb[i].into();
+            if i != WORD_SIZE - 1 {
+                limb_result = limb_result.clone() + local.lower_limb[i + 1] * local.v_0123;
+            }
+            builder.assert_eq(local.limb_result[i], limb_result);
+        }
+
+        // TODO(gzgz): they don't need casts because `U16MSBOperation` doesn't have a `eval`
+        // function.
+        <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
+            builder,
+            U16MSBOperationInput::<AB>::new(
+                local.adapter.b().0[3].into(),
+                local.b_msb,
+                local.is_sra.into(),
+            ),
+        );
+        <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
+            builder,
+            U16MSBOperationInput::<AB>::new(
+                local.adapter.b().0[1].into(),
+                local.b_msb,
+                local.is_sraw.into(),
+            ),
+        );
+        builder.when(local.is_srl + local.is_srlw).assert_zero(local.b_msb.msb);
+        builder.assert_eq(local.sra_msb_v0123, local.b_msb.msb * local.v_0123);
+
+        <U16MSBOperation<AB::F> as SP1Operation<AB>>::eval(
+            builder,
+            U16MSBOperationInput::<AB>::new(local.a.0[1].into(), local.srw_msb, is_word.clone()),
+        );
+        builder.when_not(is_word.clone()).assert_zero(local.srw_msb.msb);
+
+        let base = AB::F::from_canonical_u32(1 << 16);
+        let base_minus_one = AB::F::from_canonical_u16(u16::MAX);
+
+        // Perform the limb shift for the case where the opcode is SRL/SRA.
+        for i in 0..WORD_SIZE {
+            for j in 0..(WORD_SIZE - 1 - i) {
+                builder
+                    .when(not_word.clone())
+                    .when(local.shift_u16[i])
+                    .assert_eq(local.a[j], local.limb_result[i + j]);
+            }
+
+            builder.when(not_word.clone()).when(local.shift_u16[i]).assert_eq(
+                local.a[WORD_SIZE - 1 - i],
+                local.limb_result[WORD_SIZE - 1] + (local.b_msb.msb * base - local.sra_msb_v0123),
+            );
+
+            for j in (WORD_SIZE - i)..WORD_SIZE {
+                builder
+                    .when(not_word.clone())
+                    .when(local.shift_u16[i])
+                    .assert_eq(local.a[j], local.b_msb.msb * base_minus_one);
+            }
+        }
+
+        // Perform the limb shift for the case where the opcode is SRLW/SRAW.
+        builder
+            .when(is_word.clone())
+            .when(local.shift_u16[0])
+            .assert_eq(local.a[0], local.limb_result[0]);
+        builder.when(is_word.clone()).when(local.shift_u16[0]).assert_eq(
+            local.a[1],
+            local.limb_result[1] + (local.b_msb.msb * base - local.sra_msb_v0123),
+        );
+        builder.when(is_word.clone()).when(local.shift_u16[1]).assert_eq(
+            local.a[0],
+            local.limb_result[1] + (local.b_msb.msb * base - local.sra_msb_v0123),
+        );
+        builder
+            .when(is_word.clone())
+            .when(local.shift_u16[1])
+            .assert_eq(local.a[1], local.b_msb.msb * base_minus_one);
+
+        for i in WORD_SIZE / 2..WORD_SIZE {
+            builder.when(is_word.clone()).assert_eq(local.a[i], local.srw_msb.msb * base_minus_one);
+        }
+
+        // Constrain the CPU state.
+        // The program counter and timestamp increment by `4` and `8`.
+        <CPUState<AB::F> as SP1Operation<AB>>::eval(
+            builder,
+            CPUStateInput {
+                cols: local.state,
+                next_pc: [
+                    local.state.pc[0] + AB::F::from_canonical_u32(PC_INC),
+                    local.state.pc[1].into(),
+                    local.state.pc[2].into(),
+                ],
+                clk_increment: AB::Expr::from_canonical_u32(CLK_INC),
+                is_real: is_real.clone(),
+            },
+        );
+
+        // Constrain the program and register reads.
+        let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
+            local.state.clk_high::<AB>(),
+            local.state.clk_low::<AB>(),
+            local.state.pc,
+            opcode,
+            [calculated_instr_type, calculated_base_opcode, funct3, funct7],
+            local.a.map(|x| x.into()),
+            local.adapter,
+            is_real,
+        );
+        ALUTypeReader::<AB::F>::eval(builder, alu_reader_input);
     }
 }
+
+// #[cfg(test)]
+// mod tests {
+//     #![allow(clippy::print_stdout)]
+
+//     use std::borrow::BorrowMut;
+
+//     use crate::{
+//         alu::ShiftRightCols,
+//         io::SP1Stdin,
+//         riscv::RiscvAir,
+//         utils::{run_malicious_test, run_test_machine, setup_test_machine},
+//     };
+//     use sp1_primitives::SP1Field;
+//     use slop_matrix::dense::RowMajorMatrix;
+//     use rand::{thread_rng, Rng};
+//     use sp1_core_executor::{
+//         events::{AluEvent, MemoryRecordEnum},
+//         ExecutionRecord, Instruction, Opcode, Program,
+//     };
+//     use sp1_hypercube::{
+//         air::{MachineAir, SP1_PROOF_NUM_PV_ELTS},
+//         koala_bear_poseidon2::SP1InnerPcs,
+//         chip_name, Chip, CpuProver, MachineProver, StarkMachine, Val,
+//     };
+
+//     use super::ShiftRightChip;
+
+//     #[test]
+//     fn generate_trace() {
+//         let mut shard = ExecutionRecord::default();
+//         shard.shift_right_events = vec![AluEvent::new(0, Opcode::SRL, 6, 12, 1, false)];
+//         let chip = ShiftRightChip::default();
+//         let trace: RowMajorMatrix<SP1Field> =
+//             chip.generate_trace(&shard, &mut ExecutionRecord::default());
+//         println!("{:?}", trace.values)
+//     }
+
+//     #[test]
+//     fn prove_koalabear() {
+//         let shifts = vec![
+//             (Opcode::SRL, 0xffff8000, 0xffff8000, 0),
+//             (Opcode::SRL, 0x7fffc000, 0xffff8000, 1),
+//             (Opcode::SRL, 0x01ffff00, 0xffff8000, 7),
+//             (Opcode::SRL, 0x0003fffe, 0xffff8000, 14),
+//             (Opcode::SRL, 0x0001ffff, 0xffff8001, 15),
+//             (Opcode::SRL, 0xffffffff, 0xffffffff, 0),
+//             (Opcode::SRL, 0x7fffffff, 0xffffffff, 1),
+//             (Opcode::SRL, 0x01ffffff, 0xffffffff, 7),
+//             (Opcode::SRL, 0x0003ffff, 0xffffffff, 14),
+//             (Opcode::SRL, 0x00000001, 0xffffffff, 31),
+//             (Opcode::SRL, 0x21212121, 0x21212121, 0),
+//             (Opcode::SRL, 0x10909090, 0x21212121, 1),
+//             (Opcode::SRL, 0x00424242, 0x21212121, 7),
+//             (Opcode::SRL, 0x00008484, 0x21212121, 14),
+//             (Opcode::SRL, 0x00000000, 0x21212121, 31),
+//             (Opcode::SRL, 0x21212121, 0x21212121, 0xffffffe0),
+//             (Opcode::SRL, 0x10909090, 0x21212121, 0xffffffe1),
+//             (Opcode::SRL, 0x00424242, 0x21212121, 0xffffffe7),
+//             (Opcode::SRL, 0x00008484, 0x21212121, 0xffffffee),
+//             (Opcode::SRL, 0x00000000, 0x21212121, 0xffffffff),
+//             (Opcode::SRA, 0x00000000, 0x00000000, 0),
+//             (Opcode::SRA, 0xc0000000, 0x80000000, 1),
+//             (Opcode::SRA, 0xff000000, 0x80000000, 7),
+//             (Opcode::SRA, 0xfffe0000, 0x80000000, 14),
+//             (Opcode::SRA, 0xffffffff, 0x80000001, 31),
+//             (Opcode::SRA, 0x7fffffff, 0x7fffffff, 0),
+//             (Opcode::SRA, 0x3fffffff, 0x7fffffff, 1),
+//             (Opcode::SRA, 0x00ffffff, 0x7fffffff, 7),
+//             (Opcode::SRA, 0x0001ffff, 0x7fffffff, 14),
+//             (Opcode::SRA, 0x00000000, 0x7fffffff, 31),
+//             (Opcode::SRA, 0x81818181, 0x81818181, 0),
+//             (Opcode::SRA, 0xc0c0c0c0, 0x81818181, 1),
+//             (Opcode::SRA, 0xff030303, 0x81818181, 7),
+//             (Opcode::SRA, 0xfffe0606, 0x81818181, 14),
+//             (Opcode::SRA, 0xffffffff, 0x81818181, 31),
+//         ];
+//         let mut shift_events: Vec<AluEvent> = Vec::new();
+//         for t in shifts.iter() {
+//             shift_events.push(AluEvent::new(0, t.0, t.1, t.2, t.3, false));
+//         }
+//         let mut shard = ExecutionRecord::default();
+//         shard.shift_right_events = shift_events;
+
+//         // Run setup.
+//         let air = ShiftRightChip::default();
+//         let config = SP1InnerPcs::new();
+//         let chip = Chip::new(air);
+//         let (pk, vk) = setup_test_machine(StarkMachine::new(
+//             config.clone(),
+//             vec![chip],
+//             SP1_PROOF_NUM_PV_ELTS,
+//             true,
+//         ));
+
+//         // Run the test.
+//         let air = ShiftRightChip::default();
+//         let chip: Chip<SP1Field, ShiftRightChip> = Chip::new(air);
+//         let machine = StarkMachine::new(config.clone(), vec![chip], SP1_PROOF_NUM_PV_ELTS, true);
+//         run_test_machine::<SP1InnerPcs, ShiftRightChip>(vec![shard], machine, pk, vk)
+//             .unwrap();
+//     }
+
+//     #[test]
+//     fn test_malicious_sr() {
+//         const NUM_TESTS: usize = 5;
+
+//         for opcode in [Opcode::SRL, Opcode::SRA] {
+//             for _ in 0..NUM_TESTS {
+//                 let (correct_op_a, op_b, op_c) = if opcode == Opcode::SRL {
+//                     let op_b = thread_rng().gen_range(0..u32::MAX);
+//                     let op_c = thread_rng().gen_range(0..u32::MAX);
+//                     (op_b >> (op_c & 0x1F), op_b, op_c)
+//                 } else if opcode == Opcode::SRA {
+//                     let op_b = thread_rng().gen_range(0..i32::MAX);
+//                     let op_c = thread_rng().gen_range(0..u32::MAX);
+//                     ((op_b >> (op_c & 0x1F)) as u32, op_b as u32, op_c)
+//                 } else {
+//                     unreachable!()
+//                 };
+
+//                 let op_a = thread_rng().gen_range(0..u32::MAX);
+//                 assert!(op_a != correct_op_a);
+
+//                 let instructions = vec![
+//                     Instruction::new(opcode, 5, op_b, op_c, true, true),
+//                     Instruction::new(Opcode::ADD, 10, 0, 0, false, false),
+//                 ];
+
+//                 let program = Program::new(instructions, 0, 0);
+//                 let stdin = SP1Stdin::new();
+
+//                 type P = CpuProver<SP1InnerPcs, RiscvAir<SP1Field>>;
+
+//                 let malicious_trace_pv_generator = move |prover: &P,
+//                                                          record: &mut ExecutionRecord|
+//                       -> Vec<(
+//                     String,
+//                     RowMajorMatrix<Val<SP1InnerPcs>>,
+//                 )> {
+//                     let mut malicious_record = record.clone();
+//                     malicious_record.cpu_events[0].a = op_a as u32;
+//                     if let Some(MemoryRecordEnum::Write(mut write_record)) =
+//                         malicious_record.cpu_events[0].a_record
+//                     {
+//                         write_record.value = op_a as u32;
+//                     }
+//                     let mut traces = prover.generate_traces(&malicious_record);
+//                     let shift_right_chip_name = chip_name!(ShiftRightChip, SP1Field);
+//                     for (name, trace) in traces.iter_mut() {
+//                         if *name == shift_right_chip_name {
+//                             let first_row = trace.row_mut(0);
+//                             let first_row: &mut ShiftRightCols<SP1Field> =
+// first_row.borrow_mut();                             first_row.a = op_a.into();
+//                         }
+//                     }
+//                     traces
+//                 };
+
+//                 let result =
+//                     run_malicious_test::<P>(program, stdin,
+// Box::new(malicious_trace_pv_generator));                 assert!(result.is_err() &&
+// result.unwrap_err().is_constraints_failing());             }
+//         }
+//     }
+// }

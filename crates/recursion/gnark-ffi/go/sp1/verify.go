@@ -9,10 +9,10 @@ import (
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/backend/plonk"
 	"github.com/consensys/gnark/frontend"
-	"github.com/succinctlabs/sp1-recursion-gnark/sp1/babybear"
+	"github.com/succinctlabs/sp1-recursion-gnark/sp1/koalabear"
 )
 
-func VerifyPlonk(verifyCmdDataDir string, verifyCmdProof string, verifyCmdVkeyHash string, verifyCmdCommittedValuesDigest string) error {
+func VerifyPlonk(verifyCmdDataDir string, verifyCmdProof string, verifyCmdVkeyHash string, verifyCmdCommittedValuesDigest string, verifyCmdExitCode string, verifyCmdVkRoot string, verifyCmdProofNonce string) error {
 	// Sanity check the required arguments have been provided.
 	if verifyCmdDataDir == "" {
 		panic("--data is required")
@@ -36,13 +36,36 @@ func VerifyPlonk(verifyCmdDataDir string, verifyCmdProof string, verifyCmdVkeyHa
 	vk := plonk.NewVerifyingKey(ecc.BN254)
 	vk.ReadFrom(vkFile)
 
+	if len(verifyCmdVkeyHash) > 100 {
+		panic("vkey hash string is too long")
+	}
+
+	if len(verifyCmdCommittedValuesDigest) > 100 {
+		panic("committed values digest string is too long")
+	}
+
+	if len(verifyCmdExitCode) > 100 {
+		panic("exit code string is too long")
+	}
+
+	if len(verifyCmdVkRoot) > 100 {
+		panic("vkey root string is too long")
+	}
+
+	if len(verifyCmdProofNonce) > 100 {
+		panic("proof nonce string is too long")
+	}
+
 	// Compute the public witness.
 	circuit := Circuit{
-		Vars:                 []frontend.Variable{},
-		Felts:                []babybear.Variable{},
-		Exts:                 []babybear.ExtensionVariable{},
-		VkeyHash:             verifyCmdVkeyHash,
+		Vars:                  []frontend.Variable{},
+		Felts:                 []koalabear.Variable{},
+		Exts:                  []koalabear.ExtensionVariable{},
+		VkeyHash:              verifyCmdVkeyHash,
 		CommittedValuesDigest: verifyCmdCommittedValuesDigest,
+		ExitCode:              verifyCmdExitCode,
+		VkRoot:                verifyCmdVkRoot,
+		ProofNonce:            verifyCmdProofNonce,
 	}
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
 	if err != nil {
@@ -58,7 +81,7 @@ func VerifyPlonk(verifyCmdDataDir string, verifyCmdProof string, verifyCmdVkeyHa
 	return err
 }
 
-func VerifyGroth16(verifyCmdDataDir string, verifyCmdProof string, verifyCmdVkeyHash string, verifyCmdCommittedValuesDigest string) error {
+func VerifyGroth16(verifyCmdDataDir string, verifyCmdProof string, verifyCmdVkeyHash string, verifyCmdCommittedValuesDigest string, verifyCmdExitCode string, verifyCmdVkRoot string, verifyCmdProofNonce string) error {
 	// Sanity check the required arguments have been provided.
 	if verifyCmdDataDir == "" {
 		panic("--data is required")
@@ -82,13 +105,36 @@ func VerifyGroth16(verifyCmdDataDir string, verifyCmdProof string, verifyCmdVkey
 	vk := groth16.NewVerifyingKey(ecc.BN254)
 	vk.ReadFrom(vkFile)
 
+	if len(verifyCmdVkeyHash) > 100 {
+		panic("vkey hash string is too long")
+	}
+
+	if len(verifyCmdCommittedValuesDigest) > 100 {
+		panic("committed values digest string is too long")
+	}
+
+	if len(verifyCmdExitCode) > 100 {
+		panic("exit code string is too long")
+	}
+
+	if len(verifyCmdVkRoot) > 100 {
+		panic("vkey root string is too long")
+	}
+
+	if len(verifyCmdProofNonce) > 100 {
+		panic("proof nonce string is too long")
+	}
+
 	// Compute the public witness.
 	circuit := Circuit{
-		Vars:                 []frontend.Variable{},
-		Felts:                []babybear.Variable{},
-		Exts:                 []babybear.ExtensionVariable{},
-		VkeyHash:             verifyCmdVkeyHash,
+		Vars:                  []frontend.Variable{},
+		Felts:                 []koalabear.Variable{},
+		Exts:                  []koalabear.ExtensionVariable{},
+		VkeyHash:              verifyCmdVkeyHash,
 		CommittedValuesDigest: verifyCmdCommittedValuesDigest,
+		ExitCode:              verifyCmdExitCode,
+		VkRoot:                verifyCmdVkRoot,
+		ProofNonce:            verifyCmdProofNonce,
 	}
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
 	if err != nil {

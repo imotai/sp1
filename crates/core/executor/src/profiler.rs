@@ -1,15 +1,14 @@
+use crate::Program;
 use gecko_profile::{Frame, ProfileBuilder, StringIndex, ThreadBuilder};
-use goblin::elf::{sym::STT_FUNC, Elf};
+use hashbrown::HashMap;
 use indicatif::{ProgressBar, ProgressStyle};
-use rustc_demangle::demangle;
-use std::collections::HashMap;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProfilerError {
     #[error("Failed to read ELF file {}", .0)]
     Io(#[from] std::io::Error),
     #[error("Failed to parse ELF file {}", .0)]
-    Elf(#[from] goblin::error::Error),
+    Elf(#[from] eyre::Error),
     #[error("Failed to serialize samples {}", .0)]
     Serde(#[from] serde_json::Error),
 }
@@ -42,40 +41,25 @@ struct Sample {
 }
 
 impl Profiler {
-    pub(super) fn new(elf_bytes: &[u8], sample_rate: u64) -> Result<Self, ProfilerError> {
-        let elf = Elf::parse(elf_bytes)?;
-
+    pub(super) fn from_program(program: &Program, sample_rate: u64) -> Self {
         let mut start_lookup = HashMap::new();
         let mut function_ranges = Vec::new();
         let mut builder = ThreadBuilder::new(1, 0, std::time::Instant::now(), false, false);
 
-        // We need to extract all the functions from the ELF file
-        // and their corresponding PC ranges.
         let mut main_idx = None;
-        for sym in &elf.syms {
-            // check if its a function
-            if sym.st_type() == STT_FUNC {
-                let name = elf.strtab.get_at(sym.st_name).unwrap_or("");
-                let demangled_name = demangle(name);
-                let size = sym.st_size;
-                let start_address = sym.st_value;
-                let end_address = start_address + size - 4;
-
-                // Now that we have the name let's immediately intern it so we only need to copy
-                // around a usize
-                let demangled_name = demangled_name.to_string();
-                let string_idx = builder.intern_string(&demangled_name);
-                if main_idx.is_none() && demangled_name == "main" {
-                    main_idx = Some(string_idx);
-                }
-
-                let start_idx = function_ranges.len();
-                function_ranges.push((start_address, end_address, Frame::Label(string_idx)));
-                start_lookup.insert(start_address, start_idx);
+        for (demangled_name, start_address, size) in &program.function_symbols {
+            let end_address = start_address + size - 4;
+            let string_idx = builder.intern_string(demangled_name);
+            if main_idx.is_none() && demangled_name == "main" {
+                main_idx = Some(string_idx);
             }
+
+            let start_idx = function_ranges.len();
+            function_ranges.push((*start_address, end_address, Frame::Label(string_idx)));
+            start_lookup.insert(*start_address, start_idx);
         }
 
-        Ok(Self {
+        Self {
             builder,
             main_idx,
             sample_rate,
@@ -86,7 +70,7 @@ impl Profiler {
             function_stack_indices: Vec::new(),
             function_stack_ranges: Vec::new(),
             current_function_range: (0, 0),
-        })
+        }
     }
 
     pub(super) fn record(&mut self, clk: u64, pc: u64) {
