@@ -1,4 +1,6 @@
 #![allow(clippy::items_after_statements)]
+#![allow(unknown_lints)]
+#![allow(clippy::manual_checked_ops)]
 
 use sp1_jit::{
     debug::{self, DebugState},
