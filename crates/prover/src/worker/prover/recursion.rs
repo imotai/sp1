@@ -10,8 +10,8 @@ use crate::{
     shapes::SP1RecursionProofShape,
     verify::WRAP_VK_BYTES,
     worker::{
-        CommonProverInput, ProverMetrics, RangeProofs, RawTaskRequest, TaskContext, TaskError,
-        TaskMetadata, WrapAirProverInit,
+        CommonProverInput, DeferredInputs, ProverMetrics, RangeProofs, RawTaskRequest, TaskContext,
+        TaskError, TaskMetadata, WrapAirProverInit,
     },
     RecursionSC, SP1CircuitWitness, SP1ProverComponents,
 };
@@ -864,22 +864,30 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
         common_input: &CommonProverInput,
         proof: &ShardProof<SP1GlobalContext, SP1PcsProofInner>,
         is_complete: bool,
+        is_precompile: bool,
     ) -> SP1NormalizeWitnessValues<SP1GlobalContext, SP1PcsProofInner> {
         // Use the final deferred digest from common_input for reconstruct_deferred_digest.
         // This is needed because:
-        // - For core shards: deferred_proofs_digest equals common_input.deferred_digest
-        // - For precompile shards: deferred_proofs_digest is 0 (they don't witness deferred proofs),
-        //   but we need reconstruct_deferred_digest to be the final value to chain correctly
-        //   with deferred proofs in the compress tree.
-        let reconstruct_deferred_digest =
-            common_input.deferred_digest.map(SP1Field::from_canonical_u32);
+        // - For core and global memory shards: deferred_proofs_digest equals
+        //   common_input.deferred_digest and the number of deferred proofs accumulated so far is
+        //   the total number of deferred proofs.
+        // - For precompile shards: they are ordered first in the deferred tree so their number
+        //   of accumulated deferred proofs is 0 and deferred_proofs_digest is the initial digest
+        let (num_deferred_proofs, reconstruct_deferred_digest) = if is_precompile {
+            (SP1Field::zero(), DeferredInputs::initial_deferred_digest())
+        } else {
+            (
+                SP1Field::from_canonical_usize(common_input.num_deferred_proofs),
+                common_input.deferred_digest.map(SP1Field::from_canonical_u32),
+            )
+        };
         SP1NormalizeWitnessValues {
             vk: common_input.vk.vk.clone(),
             shard_proofs: vec![proof.clone()],
             is_complete,
             vk_root: self.recursion_vk_root(),
             reconstruct_deferred_digest,
-            num_deferred_proofs: SP1Field::from_canonical_usize(common_input.num_deferred_proofs),
+            num_deferred_proofs,
         }
     }
 

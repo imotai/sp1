@@ -37,7 +37,7 @@ dependencies = [
  "rustc-hash",
  "serde",
  "sha3",
- "tiny-keccak 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tiny-keccak 2.0.2 (git+https://github.com/sp1-patches/tiny-keccak?tag=patch-2.0.2-sp1-6.0.0-rc.1)",
 ]
 
 [[package]]
@@ -1624,7 +1624,7 @@ name = "keccak256-test"
 version = "1.1.0"
 dependencies = [
  "sp1-zkvm",
- "tiny-keccak 2.0.2 (git+https://github.com/sp1-patches/tiny-keccak?branch=patch-v2.0.2)",
+ "tiny-keccak 2.0.2 (git+https://github.com/sp1-patches/tiny-keccak?tag=patch-2.0.2-sp1-6.0.0-rc.1)",
 ]
 
 [[package]]
@@ -3236,10 +3236,11 @@ dependencies = [
 [[package]]
 name = "tiny-keccak"
 version = "2.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c9d3793400a45f954c52e73d068316d76b6f4e36977e3fcebb13a2721e80237"
+source = "git+https://github.com/sp1-patches/tiny-keccak?tag=patch-2.0.2-sp1-6.0.0-rc.1#a6e1d98252df58107cb5441780b087ec033ac09f"
 dependencies = [
+ "cfg-if",
  "crunchy",
+ "sp1-lib 6.0.0-rc.1",
 ]
 
 [[package]]
@@ -3382,6 +3383,7 @@ dependencies = [
  "hex",
  "sha2 0.10.9",
  "sp1-zkvm",
+ "tiny-keccak 2.0.2 (git+https://github.com/sp1-patches/tiny-keccak?tag=patch-2.0.2-sp1-6.0.0-rc.1)",
 ]
 
 [[package]]

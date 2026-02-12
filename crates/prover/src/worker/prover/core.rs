@@ -239,7 +239,7 @@ where
         };
 
         let span = tracing::debug_span!("into_record");
-        let (program, mut record, deferred_record) = tokio::task::spawn_blocking({
+        let (program, mut record, deferred_record, is_precompile) = tokio::task::spawn_blocking({
             let artifact_client = self.artifact_client.clone();
             let opts = self.opts.clone();
             move || {
@@ -249,7 +249,7 @@ where
                         TaskError::Fatal(anyhow::anyhow!("failed to disassemble program: {}", e))
                     })?;
                     let program = Arc::new(program);
-                    let (record, deferred_record) = match record {
+                    let (record, deferred_record, is_precompile) = match record {
                         TraceData::Core(chunk_bytes) => {
                             let chunk: TraceChunk =
                                 bincode::deserialize(&chunk_bytes).map_err(|e| {
@@ -286,7 +286,7 @@ where
 
                             let deferred_record = record.defer(&opts.retained_events_presets);
 
-                            (record, Some(deferred_record))
+                            (record, Some(deferred_record), false)
                         }
                         TraceData::Memory(shard) => {
                             tracing::debug!("global memory shard");
@@ -340,7 +340,7 @@ where
                             record.public_values.last_finalize_page_idx = last_finalize_page_idx;
 
                             record.finalize_public_values::<SP1Field>(false);
-                            (record, None)
+                            (record, None, false)
                         }
                         TraceData::Precompile(artifacts, code) => {
                             tracing::debug!("precompile events: code {}", code);
@@ -411,11 +411,11 @@ where
                                 program.enable_untrusted_programs,
                             );
 
-                            (main_record, None)
+                            (main_record, None, true)
                         }
                     };
 
-                    Ok::<_, TaskError>((program, record, deferred_record))
+                    Ok::<_, TaskError>((program, record, deferred_record, is_precompile))
                 }
             }
         })
@@ -553,7 +553,12 @@ where
                 })?
                 .await
                 .map_err(|e| TaskError::Fatal(e.into()))?;
-            let input = self.recursion_prover.get_normalize_witness(&common_input, &proof, false);
+            let input = self.recursion_prover.get_normalize_witness(
+                &common_input,
+                &proof,
+                false,
+                is_precompile,
+            );
             let witness = SP1CircuitWitness::Core(input);
             self.recursion_prover
                 .submit_prove_shard(recursion_program, witness, output, metrics.clone())
