@@ -34,8 +34,8 @@ pub struct DeferredInputs {
 impl DeferredInputs {
     pub fn new(
         deferred_proofs: impl IntoIterator<Item = SP1RecursionProof<SP1GlobalContext, SP1PcsProofInner>>,
-        initial_deferred_digest: [SP1Field; DIGEST_SIZE],
     ) -> Self {
+        let initial_deferred_digest = Self::initial_deferred_digest();
         // Prepare the inputs for the deferred proofs recursive verification.
         let mut deferred_digest = initial_deferred_digest;
         let mut deferred_inputs = Vec::new();
@@ -56,6 +56,10 @@ impl DeferredInputs {
             deferred_digest = hash_deferred_proofs(deferred_digest, &[proof]);
         }
         DeferredInputs { inputs: deferred_inputs, deferred_digest }
+    }
+
+    pub fn initial_deferred_digest() -> [SP1Field; DIGEST_SIZE] {
+        [SP1Field::zero(); DIGEST_SIZE]
     }
 
     pub fn num_deferred_proofs(&self) -> usize {

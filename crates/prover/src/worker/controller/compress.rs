@@ -363,7 +363,7 @@ impl CompressTree {
                     core_proof_map.lock().unwrap().insert(proof_data.task_id, proof);
                     num_core_proofs += 1;
                 }
-                tracing::info!(
+                tracing::debug!(
                     "All core proofs received: number of core proofs: {:?}",
                     num_core_proofs
                 );
@@ -379,14 +379,14 @@ impl CompressTree {
         loop {
             tokio::select! {
                 Some(num_proofs) = num_core_proofs_rx.recv() => {
-                    tracing::info!("Number of core proofs completed: {:?}", num_proofs);
+                    tracing::debug!("Number of core proofs completed: {:?}", num_proofs);
                     num_core_proofs = Some(num_proofs);
                     // If all core proofs have been completed, set the full range to the max range
                     // and send the last core proof to the proof queue.
                     if num_core_proofs_completed == num_proofs {
-                        tracing::info!("All core proofs completed: {:?}", num_proofs);
+                        tracing::debug!("All core proofs completed: {:?}", num_proofs);
                         full_range = Some(max_range.clone().into());
-                        tracing::info!("Setting full range to: {:?}", full_range);
+                        tracing::debug!("Setting full range to: {:?}", full_range);
                         // Send the last core proof to the proof queue if it hasn't been sent yet
                         // by the core proof event stream receive task below.
                         if let Some(proof) = last_core_proof.take() {
@@ -452,7 +452,7 @@ impl CompressTree {
                             self.insert(proofs);
                         }
                     } else {
-                        tracing::info!("No neighboring range found, adding proof to tree");
+                        tracing::debug!("No neighboring range found, adding proof to tree");
                         // If there is no neighboring range, add the proof to the tree.
                         let mut queue = VecDeque::with_capacity(self.batch_size);
                         let range = proof.shard_range;
