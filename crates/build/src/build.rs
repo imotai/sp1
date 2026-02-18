@@ -6,7 +6,7 @@ use cargo_metadata::camino::Utf8PathBuf;
 use crate::{
     command::{docker::create_docker_command, local::create_local_command, utils::execute_command},
     utils::{cargo_rerun_if_changed, current_datetime},
-    BuildArgs, WarningLevel, BUILD_TARGET, HELPER_TARGET_SUBDIR,
+    BuildArgs, WarningLevel, DEFAULT_TARGET, HELPER_TARGET_SUBDIR,
 };
 
 /// Build a program with the specified [`BuildArgs`]. The `program_dir` is specified as an argument
@@ -72,6 +72,8 @@ pub fn execute_build_program(
 
             std::fs::copy(&elf_path, &output_path)?;
         }
+    } else if args.elf_name.is_some() {
+        println!("cargo:warning=ELF name is set but --output-directory is not used, the ELF will be place in the `target/` directory");
     }
 
     print_elf_paths_cargo_directives(&target_elf_paths);
@@ -79,6 +81,7 @@ pub fn execute_build_program(
     Ok(target_elf_paths)
 }
 
+#[allow(clippy::uninlined_format_args)]
 /// Internal helper function to build the program with or without arguments.
 pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
     // Get the root package name and metadata.
@@ -159,7 +162,7 @@ pub fn generate_elf_paths(
                         .iter()
                         .find(|p| p.name == *wanted_package)
                         .ok_or_else(|| {
-                            anyhow::anyhow!("cannot find package named {}", wanted_package)
+                            anyhow::anyhow!("cannot find package named {wanted_package}")
                         })
                         .map(|p| p.id.clone())
                 })
@@ -176,7 +179,7 @@ pub fn generate_elf_paths(
             .packages
             .iter()
             .find(|p| p.id == program_crate)
-            .ok_or_else(|| anyhow::anyhow!("cannot find package for {}", program_crate))?;
+            .ok_or_else(|| anyhow::anyhow!("cannot find package for {program_crate}"))?;
 
         for bin_target in program.targets.iter().filter(|t| {
             t.kind.contains(&"bin".to_owned()) && t.crate_types.contains(&"bin".to_owned())
@@ -193,7 +196,7 @@ pub fn generate_elf_paths(
                 Some(args) if args.docker => elf_path.join("docker"),
                 _ => elf_path,
             };
-            let elf_path = elf_path.join(BUILD_TARGET).join("release").join(&bin_target.name);
+            let elf_path = elf_path.join(DEFAULT_TARGET).join("release").join(&bin_target.name);
 
             target_elf_paths.push((bin_target.name.to_owned(), elf_path));
         }
@@ -202,9 +205,12 @@ pub fn generate_elf_paths(
     Ok(target_elf_paths)
 }
 
+#[allow(clippy::uninlined_format_args)]
 /// Prints cargo directives setting relevant `SP1_ELF_` environment variables.
 fn print_elf_paths_cargo_directives(target_elf_paths: &[(String, Utf8PathBuf)]) {
     for (target_name, elf_path) in target_elf_paths.iter() {
-        println!("cargo:rustc-env=SP1_ELF_{target_name}={elf_path}");
+        let elf_path_str = elf_path.to_string();
+
+        println!("cargo:rustc-env=SP1_ELF_{target_name}={elf_path_str}");
     }
 }

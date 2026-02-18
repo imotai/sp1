@@ -5,9 +5,10 @@ pub use air::*;
 #[cfg(test)]
 mod tests {
 
+    use std::sync::Arc;
+
     use sp1_core_executor::Program;
     use sp1_curves::{params::FieldParameters, uint256::U256Field, utils::biguint_from_limbs};
-    use sp1_stark::CpuProver;
     use test_artifacts::UINT256_MUL_ELF;
 
     use crate::{
@@ -15,11 +16,11 @@ mod tests {
         utils::{self, run_test},
     };
 
-    #[test]
-    fn test_uint256_mul() {
+    #[tokio::test]
+    async fn test_uint256_mul() {
         utils::setup_logger();
-        let program = Program::from(UINT256_MUL_ELF).unwrap();
-        run_test::<CpuProver<_, _>>(program, SP1Stdin::new()).unwrap();
+        let program = Arc::new(Program::from(&UINT256_MUL_ELF).unwrap());
+        run_test(program, SP1Stdin::new()).await.unwrap();
     }
 
     #[test]

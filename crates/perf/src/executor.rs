@@ -1,103 +1,228 @@
-use std::time::{Duration, Instant};
+use std::sync::Arc;
 
 use clap::Parser;
-use p3_baby_bear::BabyBear;
-use sp1_core_executor::{Executor, ExecutorMode, Program};
-use sp1_core_machine::shape::CoreShapeConfig;
-use sp1_sdk::{self, SP1Stdin};
-use sp1_stark::SP1ProverOpts;
 
-#[derive(Parser, Clone)]
-#[command(about = "Evaluate the performance of SP1 on programs.")]
-struct PerfArgs {
-    /// The program to evaluate.
-    #[arg(short, long)]
+use slop_algebra::AbstractField;
+use sp1_core_executor::SP1CoreOpts;
+use sp1_core_machine::io::SP1Stdin;
+use sp1_hypercube::{septic_digest::SepticDigest, MachineVerifyingKey};
+use sp1_primitives::{Elf, SP1Field};
+use sp1_prover::{
+    worker::{
+        CommonProverInput, ProofId, RequesterId, SP1CoreExecutor, SplicingEngine, SplicingWorker,
+        TaskContext, TrivialWorkerClient,
+    },
+    SP1VerifyingKey,
+};
+use sp1_prover_types::{network_base_types::ProofMode, ArtifactClient, InMemoryArtifactClient};
+use sp1_sdk::{setup_logger, MockProver, Prover};
+use tokio::sync::mpsc;
+
+#[derive(Parser, Debug, Clone)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(long, default_value = "local-fibonacci")]
     pub program: String,
-
-    /// The input to the program being evaluated.
-    #[arg(short, long)]
-    pub stdin: String,
-
-    /// The executor mode to use.
-    #[arg(short, long)]
-    pub executor_mode: ExecutorMode,
+    #[arg(long, default_value = "")]
+    pub param: String,
+    #[arg(long, default_value = "10")]
+    pub splice_workers: usize,
+    #[arg(long, default_value = "10")]
+    pub splice_buffer: usize,
+    #[arg(long, default_value = "2")]
+    pub send_workers: usize,
+    #[arg(long, default_value = "2")]
+    pub send_buffer_size: usize,
+    #[arg(long, default_value = None)]
+    pub chunk_size: Option<u64>,
+    #[arg(long, default_value = "10")]
+    pub task_capacity: usize,
+    #[arg(long, default_value = "false")]
+    pub telemetry: bool,
+    #[arg(long, default_value = "gas")]
+    pub mode: String,
+    #[arg(long, default_value = None)]
+    pub cycle_limit: Option<u64>,
 }
 
-#[derive(Default, Debug, Clone)]
-#[allow(dead_code)]
-struct PerfResult {
-    pub cycles: u64,
-    pub execution_duration: Duration,
-    pub prove_core_duration: Duration,
-    pub verify_core_duration: Duration,
-    pub compress_duration: Duration,
-    pub verify_compressed_duration: Duration,
-    pub shrink_duration: Duration,
-    pub verify_shrink_duration: Duration,
-    pub wrap_duration: Duration,
-    pub verify_wrap_duration: Duration,
+// Executes a program similarly to the cluster controller.
+async fn execute_node(args: Args, elf: Vec<u8>, stdin: SP1Stdin) {
+    // Initialize the artifact and worker clients
+    let artifact_client = InMemoryArtifactClient::new();
+    let worker_client = TrivialWorkerClient::new(args.task_capacity, artifact_client.clone());
+
+    let splicing_workers = (0..args.splice_workers)
+        .map(|_| {
+            SplicingWorker::new(
+                artifact_client.clone(),
+                worker_client.clone(),
+                args.send_workers,
+                args.send_buffer_size,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let splicing_engine = Arc::new(SplicingEngine::new(splicing_workers, args.splice_buffer));
+
+    let proof_id = ProofId::new("bench_pure_execution");
+    let parent_id = None;
+    let parent_context = None;
+    let requester_id = RequesterId::new("bench_pure_execution");
+
+    let dummy_vk = MachineVerifyingKey {
+        pc_start: [SP1Field::zero(); 3],
+        initial_global_cumulative_sum: SepticDigest::zero(),
+        preprocessed_commit: [SP1Field::zero(); 8],
+        enable_untrusted_programs: SP1Field::zero(),
+    };
+    let dummy_vk = SP1VerifyingKey { vk: dummy_vk };
+
+    let common_input = CommonProverInput {
+        vk: dummy_vk,
+        deferred_digest: [0; 8],
+        mode: ProofMode::Core,
+        num_deferred_proofs: 0,
+        nonce: [0; 4],
+    };
+    let common_input_artifact =
+        artifact_client.create_artifact().expect("failed to create artifact");
+    artifact_client
+        .upload(&common_input_artifact, common_input)
+        .await
+        .expect("failed to upload common input");
+
+    let (sender, mut receiver) = mpsc::unbounded_channel();
+
+    let elf_artifact = artifact_client.create_artifact().expect("failed to create artifact");
+    let elf_bytes = elf.to_vec();
+    artifact_client.upload(&elf_artifact, elf_bytes).await.expect("failed to upload elf");
+
+    let stdin = Arc::new(stdin);
+
+    let mut opts = SP1CoreOpts::default();
+    if let Some(chunk_size) = args.chunk_size {
+        opts.minimal_trace_chunk_threshold = chunk_size;
+    }
+    let task_context = TaskContext { proof_id, parent_id, parent_context, requester_id };
+    let global_memory_buffer_size = 2 * args.splice_workers;
+    let executor = SP1CoreExecutor::new(
+        splicing_engine,
+        global_memory_buffer_size,
+        elf_artifact,
+        stdin,
+        common_input_artifact,
+        opts,
+        0,
+        task_context,
+        sender,
+        artifact_client,
+        worker_client,
+        None,
+        args.cycle_limit,
+    );
+
+    let counter_handle = tokio::task::spawn(async move {
+        let mut shard_counter = 0;
+        while receiver.recv().await.is_some() {
+            shard_counter += 1;
+        }
+        println!("num shards: {shard_counter}");
+    });
+
+    // Execute and see the result
+    let time = tokio::time::Instant::now();
+    let result = executor.execute().await.expect("failed to execute");
+    let time = time.elapsed();
+    println!(
+        "cycles: {}, execution time: {:?}, mhz: {}",
+        result.cycles,
+        time,
+        result.cycles as f64 / (time.as_secs_f64() * 1_000_000.0)
+    );
+
+    // Make sure the counter is finished before exiting
+    counter_handle.await.expect("counter task panicked");
 }
 
-pub fn time_operation<T, F: FnOnce() -> T>(operation: F) -> (T, std::time::Duration) {
-    let start = Instant::now();
-    let result = operation();
-    let duration = start.elapsed();
-    (result, duration)
+// Executes a program while measuring gas and prints the gas report.
+async fn execute_gas(elf: Vec<u8>, stdin: SP1Stdin) {
+    let prover = MockProver::new().await;
+
+    let now = std::time::Instant::now();
+    let (_, report) = prover
+        .execute(Elf::from(elf), stdin)
+        .calculate_gas(true)
+        .deferred_proof_verification(false)
+        .await
+        .unwrap();
+    let time = now.elapsed();
+    println!("gas report: {}", report);
+    println!("time: {:?}", time);
+    println!(
+        "mhz: {}",
+        report.total_instruction_count() as f64 / (time.as_secs_f64() * 1_000_000.0)
+    );
 }
 
-fn main() {
-    sp1_sdk::utils::setup_logger();
-    let args = PerfArgs::parse();
-
-    let elf = std::fs::read(args.program).expect("failed to read program");
-    let stdin = std::fs::read(args.stdin).expect("failed to read stdin");
-    let stdin: SP1Stdin = bincode::deserialize(&stdin).expect("failed to deserialize stdin");
-
-    let opts = SP1ProverOpts::auto();
-
-    let mut program = Program::from(&elf).expect("failed to parse program");
-    let shape_config = CoreShapeConfig::<BabyBear>::default();
-    shape_config.fix_preprocessed_shape(&mut program).unwrap();
-    let maximal_shapes = shape_config
-        .maximal_core_shapes(opts.core_opts.shard_size.ilog2() as usize)
-        .into_iter()
-        .collect::<_>();
-
-    let mut executor = Executor::new(program, opts.core_opts);
-    executor.maximal_shapes = Some(maximal_shapes);
-    executor.write_vecs(&stdin.buffer);
-    for (proof, vkey) in stdin.proofs.iter() {
-        executor.write_proof(proof.clone(), vkey.clone());
+pub fn get_program_and_input(program: String, param: String) -> (Vec<u8>, SP1Stdin) {
+    // Otherwise, assume it's a program from the s3 bucket.
+    // Download files from S3
+    let s3_path = program;
+    let output = std::process::Command::new("aws")
+        .args(["s3", "cp", &format!("s3://sp1-testing-suite/{s3_path}/program.bin"), "program.bin"])
+        .output()
+        .unwrap();
+    if !output.status.success() {
+        panic!("failed to download program.bin");
+    }
+    let output = if param.is_empty() {
+        std::process::Command::new("aws")
+            .args(["s3", "cp", &format!("s3://sp1-testing-suite/{s3_path}/stdin.bin"), "stdin.bin"])
+            .output()
+            .unwrap()
+    } else {
+        std::process::Command::new("aws")
+            .args([
+                "s3",
+                "cp",
+                &format!("s3://sp1-testing-suite/{s3_path}/input/{param}.bin"),
+                "stdin.bin",
+            ])
+            .output()
+            .unwrap()
+    };
+    if !output.status.success() {
+        panic!("failed to download stdin.bin");
     }
 
-    match args.executor_mode {
-        ExecutorMode::Simple => {
-            let (_, execution_duration) = time_operation(|| executor.run_fast());
-            println!("Simple mode:");
-            println!("cycles: {}", executor.state.global_clk);
-            println!(
-                "MHZ: {}",
-                executor.state.global_clk as f64 / 1_000_000.0 / execution_duration.as_secs_f64()
-            );
-        }
-        ExecutorMode::Checkpoint => {
-            let (_, execution_duration) = time_operation(|| executor.run_checkpoint(true));
-            println!("Checkpoint mode:");
-            println!("cycles: {}", executor.state.global_clk);
-            println!(
-                "MHZ: {}",
-                executor.state.global_clk as f64 / 1_000_000.0 / execution_duration.as_secs_f64()
-            );
-        }
-        ExecutorMode::Trace => {
-            let (_, execution_duration) = time_operation(|| executor.run());
-            println!("Trace mode:");
-            println!("cycles: {}", executor.state.global_clk);
-            println!(
-                "MHZ: {}",
-                executor.state.global_clk as f64 / 1_000_000.0 / execution_duration.as_secs_f64()
-            );
-        }
-        ExecutorMode::ShapeCollection => unimplemented!(),
+    let program_path = "program.bin";
+    let stdin_path = "stdin.bin";
+    let program = std::fs::read(program_path).unwrap();
+    let stdin = std::fs::read(stdin_path).unwrap();
+    let stdin: SP1Stdin = bincode::deserialize(&stdin).unwrap();
+
+    // remove the files
+    std::fs::remove_file(program_path).unwrap();
+    std::fs::remove_file(stdin_path).unwrap();
+
+    (program, stdin)
+}
+
+#[tokio::main]
+#[allow(clippy::field_reassign_with_default)]
+async fn main() {
+    let args = Args::parse();
+    let args_clone = args.clone();
+
+    // Initialize the logger.
+    setup_logger();
+
+    // Get the program and input.
+    let (elf, stdin) = get_program_and_input(args.program, args.param);
+
+    match args.mode.as_str() {
+        "node" => execute_node(args_clone, elf, stdin).await,
+        "gas" => execute_gas(elf, stdin).await,
+        _ => panic!("invalid mode"),
     }
 }

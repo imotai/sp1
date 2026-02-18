@@ -1,32 +1,27 @@
-use p3_field::{ExtensionField, PrimeField, PrimeField32, TwoAdicField};
+use slop_algebra::PrimeField;
 
 mod arithmetic;
 mod bits;
 mod builder;
-mod collections;
-mod fold;
 mod instructions;
 mod iter;
-mod poseidon;
-mod ptr;
 mod symbolic;
 mod types;
 mod utils;
 mod var;
 
-pub use arithmetic::*;
+pub(crate) use arithmetic::*;
 pub use builder::*;
-pub use collections::*;
-pub use fold::*;
 pub use instructions::*;
 pub use iter::*;
-pub use ptr::*;
 pub use symbolic::*;
 pub use types::*;
 pub use var::*;
 
-pub trait Config: Clone + Default {
+pub trait Config: Clone + Default + std::fmt::Debug {
     type N: PrimeField;
-    type F: PrimeField32 + TwoAdicField;
-    type EF: ExtensionField<Self::F> + TwoAdicField;
+
+    // This function is called on the initialization of the builder.
+    // Currently, this is used to save Poseidon2 round constants for `WrapConfig`.
+    fn initialize(_: &mut Builder<Self>) {}
 }

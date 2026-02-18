@@ -90,7 +90,9 @@ impl AttrOption {
 impl Parse for AttrOptions {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         if input.is_empty() {
-            return Err(input.error("No attribute options provided, expected at least an ELF name."));
+            return Err(
+                input.error("No attribute options provided, expected at least an ELF name.")
+            );
         }
 
         let mut options = AttrOptions::new();

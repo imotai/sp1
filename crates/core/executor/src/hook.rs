@@ -7,8 +7,6 @@ use sp1_curves::{
     edwards::ed25519::ed25519_sqrt, params::FieldParameters, BigUint, Integer, One, Zero,
 };
 
-use crate::Executor;
-
 /// A runtime hook, wrapped in a smart pointer.
 pub type BoxedHook<'a> = Arc<RwLock<dyn Hook + Send + Sync + 'a>>;
 
@@ -103,10 +101,10 @@ impl Debug for HookRegistry<'_> {
 }
 
 /// Environment that a hook may read from.
-pub struct HookEnv<'a, 'b: 'a> {
-    /// The runtime.
-    pub runtime: &'a Executor<'b>,
-}
+///
+/// Note: This struct is currently empty but exists for backwards compatibility
+/// and potential future extensions.
+pub struct HookEnv {}
 
 /// The hook for the `ecrecover` patches.
 ///
@@ -148,17 +146,16 @@ mod ecrecover {
 
     pub(super) fn handle_secp256k1(r: [u8; 32], alpha: [u8; 32], r_y_is_odd: bool) -> Vec<Vec<u8>> {
         use k256::{
-            elliptic_curve::ff::PrimeField, FieldBytes as K256FieldBytes,
-            FieldElement as K256FieldElement, Scalar as K256Scalar,
+            elliptic_curve::ff::PrimeField, FieldElement as K256FieldElement, Scalar as K256Scalar,
         };
 
-        let r = K256FieldElement::from_bytes(K256FieldBytes::from_slice(&r)).unwrap();
+        let r = K256FieldElement::from_bytes(&r.into()).unwrap();
         debug_assert!(!bool::from(r.is_zero()), "r should not be zero");
 
-        let alpha = K256FieldElement::from_bytes(K256FieldBytes::from_slice(&alpha)).unwrap();
+        let alpha = K256FieldElement::from_bytes(&alpha.into()).unwrap();
         assert!(!bool::from(alpha.is_zero()), "alpha should not be zero");
 
-        // nomralize the y-coordinate always to be consistent.
+        // Normalize the y-coordinate always to be consistent.
         if let Some(mut y_coord) = alpha.sqrt().into_option().map(|y| y.normalize()) {
             let r = K256Scalar::from_repr(r.to_bytes()).unwrap();
             let r_inv = r.invert().expect("Non zero r scalar");
@@ -170,7 +167,7 @@ mod ecrecover {
 
             vec![vec![1], y_coord.to_bytes().to_vec(), r_inv.to_bytes().to_vec()]
         } else {
-            let nqr_field = K256FieldElement::from_bytes(K256FieldBytes::from_slice(&NQR)).unwrap();
+            let nqr_field = K256FieldElement::from_bytes(&NQR.into()).unwrap();
             let qr = alpha * nqr_field;
             let root = qr.sqrt().expect("if alpha is not a square, then qr should be a square");
 
@@ -180,14 +177,13 @@ mod ecrecover {
 
     pub(super) fn handle_secp256r1(r: [u8; 32], alpha: [u8; 32], r_y_is_odd: bool) -> Vec<Vec<u8>> {
         use p256::{
-            elliptic_curve::ff::PrimeField, FieldBytes as P256FieldBytes,
-            FieldElement as P256FieldElement, Scalar as P256Scalar,
+            elliptic_curve::ff::PrimeField, FieldElement as P256FieldElement, Scalar as P256Scalar,
         };
 
-        let r = P256FieldElement::from_bytes(P256FieldBytes::from_slice(&r)).unwrap();
+        let r = P256FieldElement::from_bytes(&r.into()).unwrap();
         debug_assert!(!bool::from(r.is_zero()), "r should not be zero");
 
-        let alpha = P256FieldElement::from_bytes(P256FieldBytes::from_slice(&alpha)).unwrap();
+        let alpha = P256FieldElement::from_bytes(&alpha.into()).unwrap();
         debug_assert!(!bool::from(alpha.is_zero()), "alpha should not be zero");
 
         if let Some(mut y_coord) = alpha.sqrt().into_option() {
@@ -200,7 +196,7 @@ mod ecrecover {
 
             vec![vec![1], y_coord.to_bytes().to_vec(), r_inv.to_bytes().to_vec()]
         } else {
-            let nqr_field = P256FieldElement::from_bytes(P256FieldBytes::from_slice(&NQR)).unwrap();
+            let nqr_field = P256FieldElement::from_bytes(&NQR.into()).unwrap();
             let qr = alpha * nqr_field;
             let root = qr.sqrt().expect("if alpha is not a square, then qr should be a square");
 
@@ -209,7 +205,8 @@ mod ecrecover {
     }
 }
 
-mod fp_ops {
+/// Field operation hooks for computing inverses and square roots.
+pub mod fp_ops {
     use super::{pad_to_be, BigUint, HookEnv, One, Zero};
 
     /// Compute the inverse of a field element.
@@ -227,6 +224,7 @@ mod fp_ops {
     /// # Panics:
     /// - If the buffer length is not valid.
     /// - If the element is zero.
+    #[must_use]
     pub fn hook_fp_inverse(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
         let len: usize = u32::from_be_bytes(buf[0..4].try_into().unwrap()) as usize;
 
@@ -270,6 +268,7 @@ mod fp_ops {
     /// - If the element is not less than the modulus.
     /// - If the nqr is not less than the modulus.
     /// - If the element is zero.
+    #[must_use]
     pub fn hook_fp_sqrt(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
         let len: usize = u32::from_be_bytes(buf[0..4].try_into().unwrap()) as usize;
 
@@ -511,7 +510,8 @@ pub fn hook_ed_decompress(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
     }
 }
 
-mod bls {
+/// BLS12-381 field operation hooks.
+pub mod bls {
     use super::{pad_to_be, BigUint, HookEnv};
     use sp1_curves::{params::FieldParameters, weierstrass::bls12_381::Bls12381BaseField, Zero};
 
@@ -533,6 +533,7 @@ mod bls {
     ///   vec![sqrt(fe)]  ]`.
     /// - If the field element (fe) is not a quadratic residue, this function returns `vec![vec![0],
     ///   vec![sqrt(``NQR_BLS12_381`` * fe)]]`.
+    #[must_use]
     pub fn hook_bls12_381_sqrt(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
         let field_element = BigUint::from_bytes_be(&buf[..48]);
 
@@ -573,6 +574,7 @@ mod bls {
     /// Given a field element, in big endian, this function computes the inverse.
     ///
     /// This functions will panic if the additive identity is passed in.
+    #[must_use]
     pub fn hook_bls12_381_inverse(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
         let field_element = BigUint::from_bytes_be(&buf[..48]);
 
@@ -603,176 +605,24 @@ mod bls {
 /// These values must be constrained by the zkVM for correctness.
 #[must_use]
 pub fn hook_rsa_mul_mod(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
-    assert_eq!(
-        buf.len(),
-        256 + 256 + 256,
-        "rsa_mul_mod input should have length 256 + 256 + 256, this is a bug."
+    assert!(
+        buf.len() == 256 * 3 || buf.len() == 384 * 3 || buf.len() == 512 * 3,
+        "rsa_mul_mod input should have length key_size * 3, this is a bug."
     );
 
-    let prod: &[u8; 512] = buf[..512].try_into().unwrap();
-    let m: &[u8; 256] = buf[512..].try_into().unwrap();
-
-    let prod = BigUint::from_bytes_le(prod);
-    let m = BigUint::from_bytes_le(m);
+    let len = buf.len() / 3;
+    let prod = BigUint::from_bytes_le(&buf[..2 * len]);
+    let m = BigUint::from_bytes_le(&buf[2 * len..]);
 
     let (q, rem) = prod.div_rem(&m);
 
     let mut rem = rem.to_bytes_le();
-    rem.resize(256, 0);
+    rem.resize(len, 0);
 
     let mut q = q.to_bytes_le();
-    q.resize(256, 0);
+    q.resize(len, 0);
 
     vec![rem, q]
-}
-
-pub(crate) mod deprecated_hooks {
-    use super::HookEnv;
-    use sp1_curves::{
-        k256::{
-            ecdsa::{RecoveryId, Signature, VerifyingKey},
-            elliptic_curve::ops::Invert,
-        },
-        p256::ecdsa::Signature as p256Signature,
-    };
-
-    /// Recovers the public key from the signature and message hash using the k256 crate.
-    ///
-    /// # Arguments
-    ///
-    /// * `env` - The environment in which the hook is invoked.
-    /// * `buf` - The buffer containing the signature and message hash.
-    ///     - The signature is 65 bytes, the first 64 bytes are the signature and the last byte is
-    ///       the recovery ID.
-    ///     - The message hash is 32 bytes.
-    ///
-    /// The result is returned as a pair of bytes, where the first 32 bytes are the X coordinate
-    /// and the second 32 bytes are the Y coordinate of the decompressed point.
-    ///
-    /// WARNING: This function is used to recover the public key outside of the zkVM context. These
-    /// values must be constrained by the zkVM for correctness.
-    #[must_use]
-    pub fn hook_ecrecover(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
-        assert_eq!(buf.len(), 65 + 32, "ecrecover input should have length 65 + 32");
-        let (sig, msg_hash) = buf.split_at(65);
-        let sig: &[u8; 65] = sig.try_into().unwrap();
-        let msg_hash: &[u8; 32] = msg_hash.try_into().unwrap();
-
-        let mut recovery_id = sig[64];
-        let mut sig = Signature::from_slice(&sig[..64]).unwrap();
-
-        if let Some(sig_normalized) = sig.normalize_s() {
-            sig = sig_normalized;
-            recovery_id ^= 1;
-        }
-        let recid = RecoveryId::from_byte(recovery_id).expect("Computed recovery ID is invalid!");
-
-        let recovered_key = VerifyingKey::recover_from_prehash(&msg_hash[..], &sig, recid).unwrap();
-        let bytes = recovered_key.to_sec1_bytes();
-
-        let (_, s) = sig.split_scalars();
-        let s_inverse = s.invert();
-
-        vec![bytes.to_vec(), s_inverse.to_bytes().to_vec()]
-    }
-
-    /// Recovers s inverse from the signature using the secp256r1 crate.
-    ///
-    /// # Arguments
-    ///
-    /// * `env` - The environment in which the hook is invoked.
-    /// * `buf` - The buffer containing the signature.
-    ///     - The signature is 64 bytes.
-    ///
-    /// The result is a single 32 byte vector containing s inverse.
-    #[must_use]
-    pub fn hook_r1_ecrecover(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
-        assert_eq!(buf.len(), 64, "ecrecover input should have length 64");
-        let sig: &[u8; 64] = buf.try_into().unwrap();
-        let sig = p256Signature::from_slice(sig).unwrap();
-
-        let (_, s) = sig.split_scalars();
-        let s_inverse = s.invert();
-
-        vec![s_inverse.to_bytes().to_vec()]
-    }
-
-    /// Recovers the public key from the signature and message hash using the k256 crate.
-    ///
-    /// # Arguments
-    ///
-    /// * `env` - The environment in which the hook is invoked.
-    /// * `buf` - The buffer containing the signature and message hash.
-    ///     - The signature is 65 bytes, the first 64 bytes are the signature and the last byte is
-    ///       the recovery ID.
-    ///     - The message hash is 32 bytes.
-    ///
-    /// The result is returned as a status and a pair of bytes, where the first 32 bytes are the X
-    /// coordinate and the second 32 bytes are the Y coordinate of the decompressed point.
-    ///
-    /// A status of 0 indicates that the public key could not be recovered.
-    ///
-    /// WARNING: This function is used to recover the public key outside of the zkVM context. These
-    /// values must be constrained by the zkVM for correctness.
-    #[must_use]
-    pub fn hook_ecrecover_v2(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
-        assert_eq!(
-            buf.len(),
-            65 + 32,
-            "ecrecover input should have length 65 + 32, this is a bug."
-        );
-        let (sig, msg_hash) = buf.split_at(65);
-        let sig: &[u8; 65] = sig.try_into().unwrap();
-        let msg_hash: &[u8; 32] = msg_hash.try_into().unwrap();
-
-        let mut recovery_id = sig[64];
-        let mut sig = Signature::from_slice(&sig[..64]).unwrap();
-
-        if let Some(sig_normalized) = sig.normalize_s() {
-            sig = sig_normalized;
-            recovery_id ^= 1;
-        }
-        let recid = RecoveryId::from_byte(recovery_id)
-            .expect("Computed recovery ID is invalid, this is a bug.");
-
-        // Attempting to recvover the public key has failed, write a 0 to indicate to the caller.
-        let Ok(recovered_key) = VerifyingKey::recover_from_prehash(&msg_hash[..], &sig, recid)
-        else {
-            return vec![vec![0]];
-        };
-
-        let bytes = recovered_key.to_sec1_bytes();
-
-        let (_, s) = sig.split_scalars();
-        let s_inverse = s.invert();
-
-        vec![vec![1], bytes.to_vec(), s_inverse.to_bytes().to_vec()]
-    }
-
-    /// Checks if a compressed Edwards point can be decompressed.
-    ///
-    /// # Arguments
-    /// * `env` - The environment in which the hook is invoked.
-    /// * `buf` - The buffer containing the compressed Edwards point.
-    ///    - The compressed Edwards point is 32 bytes.
-    ///    - The high bit of the last byte is the sign bit.
-    ///
-    /// The result is either `0` if the point cannot be decompressed, or `1` if it can.
-    ///
-    /// WARNING: This function merely hints at the validity of the compressed point. These values
-    /// must be constrained by the zkVM for correctness.
-    #[must_use]
-    pub fn hook_ed_decompress(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
-        let Ok(point) = sp1_curves::curve25519_dalek::CompressedEdwardsY::from_slice(buf) else {
-            return vec![vec![0]];
-        };
-
-        if sp1_curves::edwards::ed25519::decompress(&point).is_some() {
-            vec![vec![1]]
-        } else {
-            vec![vec![0]]
-        }
-    }
 }
 
 /// Pads a big uint to the given length in big endian.

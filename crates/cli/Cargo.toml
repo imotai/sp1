@@ -10,37 +10,29 @@ keywords = { workspace = true }
 categories = { workspace = true }
 
 [build-dependencies]
-vergen = { version = "8", default-features = false, features = [
-  "build",
-  "git",
-  "git2",
-] }
+vergen = { workspace = true, features = ["build", "git", "git2"] }
 
 [dependencies]
 
-anyhow = { version = "1.0.83", features = ["backtrace"] }
-clap = { version = "4.5.9", features = ["derive", "env"] }
-sp1-build = { workspace = true }
-sp1-sdk = { workspace = true }
-sp1-core-machine = { workspace = true, default-features = true }
-reqwest = { version = "0.12.4", features = [
-  "stream",
-  "json",
-  "rustls-tls",
-], default-features = false }
-indicatif = "0.17.8"
-tokio = { version = "1", features = ["full"] }
-dirs = "5.0"
-rand = "0.8"
+anyhow = { workspace = true, features = ["backtrace"] }
+clap = { workspace = true, features = ["derive", "env"] }
+sp1-build = { workspace = true, optional = true }
+sp1-sdk = { workspace = true, optional = true }
+reqwest = { workspace = true, features = ["stream", "json", "rustls-tls"] }
+tokio = { workspace = true, features = ["full"] }
+dirs = { workspace = true }
+rand = { workspace = true }
 serde_json = { workspace = true }
-yansi = "1.0.1"
-hex = "0.4.3"
-anstyle = "1.0.8"
-target-lexicon = "0.12.15"
-rustc-demangle = "0.1.18"
-goblin = "0.8"
-regex = "1.5.4"
-prettytable-rs = "0.10"
-textwrap = "0.16.0"
-ctrlc = "3.4.2"
-cargo_metadata = "0.18.1"
+yansi = { workspace = true }
+target-lexicon = { workspace = true }
+cargo_metadata = { workspace = true }
+indicatif = { workspace = true }
+futures = { workspace = true }
+
+[features]
+default = ["full"]
+full = ["dep:sp1-build", "dep:sp1-sdk"]
+
+[[bin]]
+name = "cargo-prove"
+path = "src/bin/cargo-prove.rs"

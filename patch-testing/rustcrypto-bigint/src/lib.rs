@@ -10,14 +10,12 @@ pub fn test_bigint_mul_mod_special(
     let mut unpatched_results: Vec<Vec<u8>> = Vec::new();
 
     while unpatched_results.len() < times as usize {
-        let a_bytes = rand::random::<[u32; 8]>();
-        let b_bytes = rand::random::<[u32; 8]>();
+        let a_bytes_64 = rand::random::<[u64; 4]>();
+        let b_bytes_64 = rand::random::<[u64; 4]>();
 
-        stdin.write(&a_bytes.to_vec());
-        stdin.write(&b_bytes.to_vec());
+        stdin.write(&a_bytes_64);
+        stdin.write(&b_bytes_64);
 
-        let a_bytes_64 = unsafe { std::mem::transmute::<[u32; 8], [u64; 4]>(a_bytes) };
-        let b_bytes_64 = unsafe { std::mem::transmute::<[u32; 8], [u64; 4]>(b_bytes) };
         let a = Uint::<4>::from_words(a_bytes_64);
         let b = Uint::<4>::from_words(b_bytes_64);
 

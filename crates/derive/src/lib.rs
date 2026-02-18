@@ -30,6 +30,11 @@ use syn::{
     parse_macro_input, parse_quote, Data, DeriveInput, GenericParam, ItemFn, WherePredicate,
 };
 
+mod input_expr;
+mod input_params;
+mod into_shape;
+mod sp1_operation_builder;
+
 #[proc_macro_derive(AlignedBorrow)]
 pub fn aligned_borrow_derive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
@@ -92,7 +97,7 @@ pub fn aligned_borrow_derive(input: TokenStream) -> TokenStream {
 
 #[proc_macro_derive(
     MachineAir,
-    attributes(sp1_core_path, execution_record_path, program_path, builder_path, eval_trait_bound)
+    attributes(execution_record_path, program_path, builder_path, eval_trait_bound)
 )]
 pub fn machine_air_derive(input: TokenStream) -> TokenStream {
     let ast: syn::DeriveInput = syn::parse(input).unwrap();
@@ -124,19 +129,19 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
             let width_arms = variants.iter().map(|(variant_name, field)| {
                 let field_ty = &field.ty;
                 quote! {
-                    #name::#variant_name(x) => <#field_ty as p3_air::BaseAir<F>>::width(x)
+                    #name::#variant_name(x) => <#field_ty as slop_air::BaseAir<F>>::width(x)
                 }
             });
 
             let base_air = quote! {
-                impl #impl_generics p3_air::BaseAir<F> for #name #ty_generics #where_clause {
+                impl #impl_generics slop_air::BaseAir<F> for #name #ty_generics #where_clause {
                     fn width(&self) -> usize {
                         match self {
                             #(#width_arms,)*
                         }
                     }
 
-                    fn preprocessed_trace(&self) -> Option<p3_matrix::dense::RowMajorMatrix<F>> {
+                    fn preprocessed_trace(&self) -> Option<slop_matrix::dense::RowMajorMatrix<F>> {
                         unreachable!("A machine air should use the preprocessed trace from the `MachineAir` trait")
                     }
                 }
@@ -145,66 +150,80 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
             let name_arms = variants.iter().map(|(variant_name, field)| {
                 let field_ty = &field.ty;
                 quote! {
-                    #name::#variant_name(x) => <#field_ty as sp1_stark::air::MachineAir<F>>::name(x)
+                    #name::#variant_name(x) => <#field_ty as sp1_hypercube::air::MachineAir<F>>::name(x)
+                }
+            });
+
+            let preprocessed_num_rows_arms = variants.iter().map(|(variant_name, field)| {
+                let field_ty = &field.ty;
+                quote! {
+                    #name::#variant_name(x) => <#field_ty as sp1_hypercube::air::MachineAir<F>>::preprocessed_num_rows(x, program)
                 }
             });
 
             let preprocessed_width_arms = variants.iter().map(|(variant_name, field)| {
                 let field_ty = &field.ty;
                 quote! {
-                    #name::#variant_name(x) => <#field_ty as sp1_stark::air::MachineAir<F>>::preprocessed_width(x)
+                    #name::#variant_name(x) => <#field_ty as sp1_hypercube::air::MachineAir<F>>::preprocessed_width(x)
                 }
             });
 
             let generate_preprocessed_trace_arms = variants.iter().map(|(variant_name, field)| {
                 let field_ty = &field.ty;
                 quote! {
-                    #name::#variant_name(x) => <#field_ty as sp1_stark::air::MachineAir<F>>::generate_preprocessed_trace(x, program)
+                    #name::#variant_name(x) => <#field_ty as sp1_hypercube::air::MachineAir<F>>::generate_preprocessed_trace(x, program)
+                }
+            });
+
+            let generate_preprocessed_trace_into_arms = variants.iter().map(|(variant_name, field)| {
+                let field_ty = &field.ty;
+                quote! {
+                    #name::#variant_name(x) => <#field_ty as sp1_hypercube::air::MachineAir<F>>::generate_preprocessed_trace_into(x, program, buffer)
                 }
             });
 
             let generate_trace_arms = variants.iter().map(|(variant_name, field)| {
                 let field_ty = &field.ty;
                 quote! {
-                    #name::#variant_name(x) => <#field_ty as sp1_stark::air::MachineAir<F>>::generate_trace(x, input, output)
+                    #name::#variant_name(x) => <#field_ty as sp1_hypercube::air::MachineAir<F>>::generate_trace(x, input, output)
+                }
+            });
+
+            let generate_trace_into_arms = variants.iter().map(|(variant_name, field)| {
+                let field_ty = &field.ty;
+                quote! {
+                    #name::#variant_name(x) => <#field_ty as sp1_hypercube::air::MachineAir<F>>::generate_trace_into(x, input, output, buffer)
                 }
             });
 
             let generate_dependencies_arms = variants.iter().map(|(variant_name, field)| {
                 let field_ty = &field.ty;
                 quote! {
-                    #name::#variant_name(x) => <#field_ty as sp1_stark::air::MachineAir<F>>::generate_dependencies(x, input, output)
+                    #name::#variant_name(x) => <#field_ty as sp1_hypercube::air::MachineAir<F>>::generate_dependencies(x, input, output)
                 }
             });
 
             let included_arms = variants.iter().map(|(variant_name, field)| {
                 let field_ty = &field.ty;
                 quote! {
-                    #name::#variant_name(x) => <#field_ty as sp1_stark::air::MachineAir<F>>::included(x, shard)
+                    #name::#variant_name(x) => <#field_ty as sp1_hypercube::air::MachineAir<F>>::included(x, shard)
                 }
             });
 
-            let commit_scope_arms = variants.iter().map(|(variant_name, field)| {
+            let num_rows_arms = variants.iter().map(|(variant_name, field)| {
                 let field_ty = &field.ty;
                 quote! {
-                    #name::#variant_name(x) => <#field_ty as sp1_stark::air::MachineAir<F>>::commit_scope(x)
-                }
-            });
-
-            let local_only_arms = variants.iter().map(|(variant_name, field)| {
-                let field_ty = &field.ty;
-                quote! {
-                    #name::#variant_name(x) => <#field_ty as sp1_stark::air::MachineAir<F>>::local_only(x)
+                    #name::#variant_name(x) => <#field_ty as sp1_hypercube::air::MachineAir<F>>::num_rows(x, input)
                 }
             });
 
             let machine_air = quote! {
-                impl #impl_generics sp1_stark::air::MachineAir<F> for #name #ty_generics #where_clause {
+                impl #impl_generics sp1_hypercube::air::MachineAir<F> for #name #ty_generics #where_clause {
                     type Record = #execution_record_path;
 
                     type Program = #program_path;
 
-                    fn name(&self) -> String {
+                    fn name(&self) -> &'static str {
                         match self {
                             #(#name_arms,)*
                         }
@@ -216,12 +235,28 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
                         }
                     }
 
+                    fn preprocessed_num_rows(&self, program: &#program_path,) -> Option<usize> {
+                        match self {
+                            #(#preprocessed_num_rows_arms,)*
+                        }
+                    }
+
                     fn generate_preprocessed_trace(
                         &self,
                         program: &#program_path,
-                    ) -> Option<p3_matrix::dense::RowMajorMatrix<F>> {
+                    ) -> Option<slop_matrix::dense::RowMajorMatrix<F>> {
                         match self {
                             #(#generate_preprocessed_trace_arms,)*
+                        }
+                    }
+
+                    fn generate_preprocessed_trace_into(
+                        &self,
+                        program: &#program_path,
+                        buffer: &mut [MaybeUninit<F>],
+                    ) {
+                        match self {
+                            #(#generate_preprocessed_trace_into_arms,)*
                         }
                     }
 
@@ -229,9 +264,20 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
                         &self,
                         input: &#execution_record_path,
                         output: &mut #execution_record_path,
-                    ) -> p3_matrix::dense::RowMajorMatrix<F> {
+                    ) -> slop_matrix::dense::RowMajorMatrix<F> {
                         match self {
                             #(#generate_trace_arms,)*
+                        }
+                    }
+
+                    fn generate_trace_into(
+                        &self,
+                        input: &#execution_record_path,
+                        output: &mut #execution_record_path,
+                        buffer: &mut [MaybeUninit<F>],
+                    ){
+                        match self {
+                            #(#generate_trace_into_arms,)*
                         }
                     }
 
@@ -251,43 +297,39 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
                         }
                     }
 
-                    fn commit_scope(&self) -> InteractionScope {
+                    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
                         match self {
-                            #(#commit_scope_arms,)*
-                        }
+                            #(#num_rows_arms,)*
                     }
-
-                    fn local_only(&self) -> bool {
-                        match self {
-                            #(#local_only_arms,)*
-                        }
-                    }
+                }
                 }
             };
 
             let eval_arms = variants.iter().map(|(variant_name, field)| {
                 let field_ty = &field.ty;
                 quote! {
-                    #name::#variant_name(x) => <#field_ty as p3_air::Air<AB>>::eval(x, builder)
+                    #name::#variant_name(x) => <#field_ty as slop_air::Air<AB>>::eval(x, builder)
                 }
             });
 
             // Attach an extra generic AB : crate::air::SP1AirBuilder to the generics of the enum
             let generics = &ast.generics;
             let mut new_generics = generics.clone();
-            new_generics.params.push(syn::parse_quote! { AB: p3_air::PairBuilder + #builder_path });
+            new_generics
+                .params
+                .push(syn::parse_quote! { AB: slop_air::PairBuilder + #builder_path });
 
             let (air_impl_generics, _, _) = new_generics.split_for_impl();
 
             let mut new_generics = generics.clone();
             let where_clause = new_generics.make_where_clause();
-            if let Some(eval_trait_bound) = &eval_trait_bound {
-                let predicate: WherePredicate = syn::parse_str(eval_trait_bound).unwrap();
+            if let Some(eval_trait_bound) = eval_trait_bound {
+                let predicate: WherePredicate = syn::parse_str(&eval_trait_bound).unwrap();
                 where_clause.predicates.push(predicate);
             }
 
             let air = quote! {
-                impl #air_impl_generics p3_air::Air<AB> for #name #ty_generics #where_clause {
+                impl #air_impl_generics slop_air::Air<AB> for #name #ty_generics #where_clause {
                     fn eval(&self, builder: &mut AB) {
                         match self {
                             #(#eval_arms,)*
@@ -412,4 +454,24 @@ fn find_eval_trait_bound(attrs: &[syn::Attribute]) -> Option<String> {
     }
 
     None
+}
+
+#[proc_macro_derive(IntoShape)]
+pub fn into_shape_derive(input: TokenStream) -> TokenStream {
+    into_shape::into_shape_derive(input)
+}
+
+#[proc_macro_derive(InputExpr)]
+pub fn input_expr_derive(input: TokenStream) -> TokenStream {
+    input_expr::input_expr_derive(input)
+}
+
+#[proc_macro_derive(InputParams, attributes(picus))]
+pub fn input_params_derive(input: TokenStream) -> TokenStream {
+    input_params::input_params_derive(input)
+}
+
+#[proc_macro_derive(SP1OperationBuilder)]
+pub fn sp1_operation_builder_derive(input: TokenStream) -> TokenStream {
+    sp1_operation_builder::sp1_operation_builder_derive(input)
 }

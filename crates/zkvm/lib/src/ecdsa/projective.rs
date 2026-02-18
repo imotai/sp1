@@ -70,6 +70,10 @@ impl<C: ECDSACurve> ProjectivePoint<C> {
     fn from_zkvm_point(p: C::SP1AffinePoint) -> Self {
         Self { inner: AffinePoint { inner: p } }
     }
+
+    pub fn double(&self) -> Self {
+        <Self as Group>::double(self)
+    }
 }
 
 impl<C: ECDSACurve> From<AffinePoint<C>> for ProjectivePoint<C> {
@@ -398,11 +402,11 @@ where
 }
 
 #[inline]
-fn be_bytes_to_le_words<T: AsMut<[u8]>>(mut bytes: T) -> [u32; 8] {
+fn be_bytes_to_le_words<T: AsMut<[u8]>>(mut bytes: T) -> [u64; 4] {
     let bytes = bytes.as_mut();
     bytes.reverse();
 
-    let mut iter = bytes.chunks(4).map(|b| u32::from_le_bytes(b.try_into().unwrap()));
+    let mut iter = bytes.chunks(8).map(|b| u64::from_le_bytes(b.try_into().unwrap()));
     core::array::from_fn(|_| iter.next().unwrap())
 }
 

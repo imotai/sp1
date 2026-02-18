@@ -11,6 +11,30 @@ cd core
 cargo test
 ```
 
+### Code Formatting
+
+Before submitting any changes, ensure your code is properly formatted by running:
+
+```bash
+cargo +nightly fmt --all
+```
+
+This is enforced by CI and your PR will fail if the code is not properly formatted.
+
+### Building SP1 GPU server from source
+This is useful for testing and development of unreleased or experimental versions.
+
+sp1-gpu-server (for CUDA proving)
+```sh
+cargo install --locked --root "$HOME/.sp1" --path sp1-gpu/crates/server/
+```
+
+sp1 toolchain
+```sh
+cargo run -p sp1-cli -- prove install-toolchain
+```
+
+
 ### Tips
 
 We recommend you install the [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) extension.

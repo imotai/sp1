@@ -9,7 +9,7 @@ use slack_rust::{
 };
 use sp1_prover::{components::SP1ProverComponents, utils::get_cycles, SP1Prover};
 use sp1_sdk::{SP1Context, SP1Stdin};
-use sp1_stark::SP1ProverOpts;
+use sp1_hypercube::SP1ProverOpts;
 use std::time::{Duration, Instant};
 
 use program::load_program;

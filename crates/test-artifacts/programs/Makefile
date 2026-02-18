@@ -6,7 +6,7 @@ all:
 		    continue; \
 		fi; \
 		echo "Building in $${dir}..."; \
-		cd $${dir} && cargo prove build --output-directory $${dir}/elf || { echo "Failed at command: cd $${dir} && cargo prove build"; exit 1; }; \
+		cd $${dir} && cargo prove build --build-target riscv64im-succinct-zkvm-elf --output-directory $${dir}/elf || { echo "Failed at command: cd $${dir} && cargo prove build"; exit 1; }; \
 		cd ..; \
 	done
 

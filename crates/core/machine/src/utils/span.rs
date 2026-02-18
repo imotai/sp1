@@ -113,6 +113,7 @@ where
         self.cts.values().cloned().sum()
     }
 
+    #[allow(clippy::uninlined_format_args)]
     /// Format and yield lines describing this span. Appropriate for logging.
     pub fn lines(&self) -> Vec<String> {
         let Self { name, cts: instr_cts, children } = self;

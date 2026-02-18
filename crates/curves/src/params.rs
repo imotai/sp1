@@ -6,13 +6,13 @@ use std::{
 
 use serde::{de::DeserializeOwned, Serialize};
 
-use typenum::{Unsigned, U2, U4};
+use sp1_primitives::polynomial::Polynomial;
+use typenum::{Unsigned, U4, U8};
 
 use generic_array::{sequence::GenericSequence, ArrayLength, GenericArray};
 use num::BigUint;
-use sp1_stark::air::Polynomial;
 
-use p3_field::Field;
+use slop_algebra::Field;
 
 use crate::utils::biguint_from_limbs;
 
@@ -31,7 +31,9 @@ pub trait FieldParameters:
 {
     const NB_BITS_PER_LIMB: usize = NB_BITS_PER_LIMB;
     const NB_LIMBS: usize = Self::Limbs::USIZE;
+    const MODULUS_LIMBS: usize = Self::MODULUS.len();
     const NB_WITNESS_LIMBS: usize = Self::Witness::USIZE;
+    const NB_BYTES: usize = Self::NB_LIMBS * NB_BITS_PER_LIMB / 8;
     const WITNESS_OFFSET: usize;
 
     /// The bytes of the modulus in little-endian order.
@@ -97,15 +99,15 @@ pub trait NumWords: Clone + Debug {
 /// avoids needing the Div where clauses everywhere.
 impl<N: NumLimbs> NumWords for N
 where
+    N::Limbs: Div<U8>,
     N::Limbs: Div<U4>,
-    N::Limbs: Div<U2>,
+    <N::Limbs as Div<U8>>::Output: ArrayLength + Debug,
     <N::Limbs as Div<U4>>::Output: ArrayLength + Debug,
-    <N::Limbs as Div<U2>>::Output: ArrayLength + Debug,
 {
-    /// Each word has 4 limbs so we divide by 4.
-    type WordsFieldElement = <N::Limbs as Div<U4>>::Output;
-    /// Curve point has 2 field elements so we divide by 2.
-    type WordsCurvePoint = <N::Limbs as Div<U2>>::Output;
+    /// Each word has 8 bytes so we divide by 8.
+    type WordsFieldElement = <N::Limbs as Div<U8>>::Output;
+    /// Curve point has 2 field elements so we divide by 4.
+    type WordsCurvePoint = <N::Limbs as Div<U4>>::Output;
 }
 
 impl<T: Copy, N: ArrayLength> Copy for Limbs<T, N> where N::ArrayType<T>: Copy {}

@@ -6,7 +6,14 @@ use std::{
 use enum_map::{EnumArray, EnumMap};
 use hashbrown::HashMap;
 
-use crate::{events::generate_execution_report, syscalls::SyscallCode, Opcode};
+use crate::{
+    events::{generate_execution_report, MemInstrEvent, PrecompileEvent, SyscallEvent},
+    ITypeRecord, Opcode, SyscallCode,
+};
+
+/// This constant is chosen for backwards compatibility with the V4 gas model: with this factor,
+/// the gas costs of op-succinct blocks in V6 will approximately match those in V4.
+const GAS_NORMALIZATION_FACTOR: u64 = 191;
 
 /// An execution report.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
@@ -21,8 +28,10 @@ pub struct ExecutionReport {
     pub invocation_tracker: HashMap<String, u64>,
     /// The unique memory address counts.
     pub touched_memory_addresses: u64,
-    /// The gas, if it was calculated.
-    pub gas: Option<u64>,
+    /// The final exit code of the execution.
+    pub exit_code: u64,
+    /// The unnormalized gas, if it was calculated. Should not be accessed directly. Use `gas()` instead.
+    pub(crate) gas: Option<u64>,
 }
 
 impl ExecutionReport {
@@ -36,6 +45,33 @@ impl ExecutionReport {
     #[must_use]
     pub fn total_syscall_count(&self) -> u64 {
         self.syscall_counts.values().sum()
+    }
+
+    /// The total size expected size (in bytes) of the execution report.
+    #[must_use]
+    pub fn total_record_size(&self) -> u64 {
+        // todo!(n): make this precise.
+
+        // Fix some average bound for each opcode.
+        let avg_opcode_record_size = std::mem::size_of::<(MemInstrEvent, ITypeRecord)>();
+        let total_opcode_records_size_bytes =
+            self.opcode_counts.values().sum::<u64>() * avg_opcode_record_size as u64;
+
+        // Take the maximum size of each precompile + 512 bytes for the vecs
+        // todo: can we fix the array sizes in the precompile events?
+        let syscall_avg_record_size = std::mem::size_of::<(SyscallEvent, PrecompileEvent)>() + 512;
+        let total_syscall_records_size_bytes =
+            self.syscall_counts.values().sum::<u64>() * syscall_avg_record_size as u64;
+
+        total_opcode_records_size_bytes + total_syscall_records_size_bytes
+    }
+
+    /// Normalize the internal gas so that op-succinct blocks have approximately the same gas
+    /// on v4 and v6.
+    #[must_use]
+    pub fn gas(&self) -> Option<u64> {
+        // Using integer arithmetic to avoid f64 precision warnings.
+        self.gas.map(|g| g * 10 / GAS_NORMALIZATION_FACTOR)
     }
 }
 
@@ -55,6 +91,24 @@ impl AddAssign for ExecutionReport {
         counts_add_assign(&mut self.opcode_counts, *rhs.opcode_counts);
         counts_add_assign(&mut self.syscall_counts, *rhs.syscall_counts);
         self.touched_memory_addresses += rhs.touched_memory_addresses;
+
+        // Merge cycle_tracker and invocation_tracker
+        for (label, count) in rhs.cycle_tracker {
+            *self.cycle_tracker.entry(label).or_insert(0) += count;
+        }
+        for (label, count) in rhs.invocation_tracker {
+            *self.invocation_tracker.entry(label).or_insert(0) += count;
+        }
+
+        // Sum gas costs if both have gas
+        self.gas = match (self.gas, rhs.gas) {
+            (Some(c1), Some(c2)) => Some(c1 + c2),
+            (Some(g), None) | (None, Some(g)) => Some(g),
+            (None, None) => None,
+        };
+
+        // The exit code value must either be `0` or the final exit code, so taking an `OR` works.
+        self.exit_code |= rhs.exit_code;
     }
 }
 
@@ -69,8 +123,8 @@ impl Add for ExecutionReport {
 
 impl Display for ExecutionReport {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        if let Some(gas) = self.gas {
-            writeln!(f, "gas: {gas}")?;
+        if let Some(gas) = self.gas() {
+            writeln!(f, "gas: {gas:?}")?;
         }
         writeln!(f, "opcode counts ({} total instructions):", self.total_instruction_count())?;
         for line in generate_execution_report(self.opcode_counts.as_ref()) {

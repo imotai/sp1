@@ -22,51 +22,88 @@
 
 mod air;
 mod context;
-mod cost;
-mod dependencies;
+mod debug;
 mod disassembler;
-pub mod estimator;
+mod errors;
 pub mod events;
-mod executor;
 mod hook;
 mod instruction;
-mod io;
+mod tracing;
+pub use tracing::TracingVM;
+mod vm;
+pub use vm::{
+    gas::get_complexity_mapping,
+    memory::CompressedMemory,
+    results::CycleResult,
+    shapes::{MAXIMUM_CYCLE_AREA, MAXIMUM_PADDING_AREA},
+    CoreVM,
+};
+mod splicing;
+pub use splicing::{SplicedMinimalTrace, SplicingVM};
+mod estimating;
+pub use estimating::GasEstimatingVM;
+
+mod minimal;
+pub use minimal::*;
+
 mod memory;
 mod opcode;
+mod opts;
 #[cfg(feature = "profiling")]
 mod profiler;
 mod program;
 mod record;
 mod register;
 mod report;
+mod retain;
 mod state;
 pub mod subproof;
-pub mod syscalls;
+mod syscall_code;
+pub use syscall_code::*;
 mod utils;
 
 pub use air::*;
 pub use context::*;
-pub use cost::*;
-pub use executor::*;
+pub use errors::*;
 pub use hook::*;
 pub use instruction::*;
+// pub use minimal::*;
 pub use opcode::*;
+pub use opts::*;
 pub use program::*;
 pub use record::*;
 pub use register::*;
 pub use report::*;
+pub use retain::*;
 pub use state::*;
 pub use utils::*;
 
-pub use sp1_stark::SP1ReduceProof;
+pub use sp1_hypercube::SP1RecursionProof;
 
-/// Used for testing.
+/// The default increment for the program counter. Is used for all instructions except
+/// for branches and jumps.
+pub const PC_INC: u32 = 4;
+
+/// The default increment for the timestamp.
+pub const CLK_INC: u32 = 8;
+
+/// The executor uses this PC to determine if the program has halted.
+/// As a PC, it is invalid since it is not a multiple of [`PC_INC`].
+pub const HALT_PC: u64 = 1;
+
+/// The number of rows in the `ByteChip`.
+pub const BYTE_NUM_ROWS: u64 = 1 << 16;
+
+/// The number of rows in the `RangeChip`.
+pub const RANGE_NUM_ROWS: u64 = 1 << 17;
+
+/// A module for testing programs.
 #[cfg(test)]
 pub mod programs {
     #[allow(dead_code)]
     #[allow(missing_docs)]
     pub mod tests {
-        use crate::{Instruction, Opcode, Program};
+        use crate::{utils::add_halt, Instruction, Opcode, Program};
 
         pub use test_artifacts::{
             FIBONACCI_ELF, PANIC_ELF, SECP256R1_ADD_ELF, SECP256R1_DOUBLE_ELF, SSZ_WITHDRAWALS_ELF,
@@ -75,11 +112,12 @@ pub mod programs {
 
         #[must_use]
         pub fn simple_program() -> Program {
-            let instructions = vec![
+            let mut instructions = vec![
                 Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
                 Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
                 Instruction::new(Opcode::ADD, 31, 30, 29, false, false),
             ];
+            add_halt(&mut instructions);
             Program::new(instructions, 0, 0)
         }
 
@@ -90,7 +128,7 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn fibonacci_program() -> Program {
-            Program::from(FIBONACCI_ELF).unwrap()
+            Program::from(&FIBONACCI_ELF).unwrap()
         }
 
         /// Get the secp256r1 add program.
@@ -100,7 +138,7 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn secp256r1_add_program() -> Program {
-            Program::from(SECP256R1_ADD_ELF).unwrap()
+            Program::from(&SECP256R1_ADD_ELF).unwrap()
         }
 
         /// Get the secp256r1 double program.
@@ -110,7 +148,7 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn secp256r1_double_program() -> Program {
-            Program::from(SECP256R1_DOUBLE_ELF).unwrap()
+            Program::from(&SECP256R1_DOUBLE_ELF).unwrap()
         }
 
         /// Get the u256x2048 mul program.
@@ -120,7 +158,7 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn u256xu2048_mul_program() -> Program {
-            Program::from(U256XU2048_MUL_ELF).unwrap()
+            Program::from(&U256XU2048_MUL_ELF).unwrap()
         }
 
         /// Get the SSZ withdrawals program.
@@ -130,7 +168,7 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn ssz_withdrawals_program() -> Program {
-            Program::from(SSZ_WITHDRAWALS_ELF).unwrap()
+            Program::from(&SSZ_WITHDRAWALS_ELF).unwrap()
         }
 
         /// Get the panic program.
@@ -140,13 +178,13 @@ pub mod programs {
         /// This function will panic if the program fails to load.
         #[must_use]
         pub fn panic_program() -> Program {
-            Program::from(PANIC_ELF).unwrap()
+            Program::from(&PANIC_ELF).unwrap()
         }
 
         #[must_use]
         #[allow(clippy::unreadable_literal)]
         pub fn simple_memory_program() -> Program {
-            let instructions = vec![
+            let mut instructions = vec![
                 Instruction::new(Opcode::ADD, 29, 0, 0x12348765, false, true),
                 // SW and LW
                 Instruction::new(Opcode::SW, 29, 0, 0x27654320, false, true),
@@ -162,7 +200,7 @@ pub mod programs {
                 // LHU
                 Instruction::new(Opcode::LHU, 21, 0, 0x27654320, false, true),
                 Instruction::new(Opcode::LHU, 20, 0, 0x27654322, false, true),
-                // LU
+                // LH
                 Instruction::new(Opcode::LH, 19, 0, 0x27654320, false, true),
                 Instruction::new(Opcode::LH, 18, 0, 0x27654322, false, true),
                 // SB
@@ -184,7 +222,20 @@ pub mod programs {
                 Instruction::new(Opcode::LW, 12, 0, 0x43627530, false, true),
                 Instruction::new(Opcode::SH, 17, 0, 0x43627532, false, true),
                 Instruction::new(Opcode::LW, 11, 0, 0x43627530, false, true),
+                // 64-bit operations for RISCV64 testing
+                // Create a 64-bit value to test with
+                Instruction::new(Opcode::ADD, 10, 0, 0xFEDCBA9876543210, false, true),
+                // SD (Store Double/64-bit) and LD (Load Double/64-bit)
+                Instruction::new(Opcode::SD, 10, 0, 0x54321000, false, true),
+                Instruction::new(Opcode::LD, 9, 0, 0x54321000, false, true),
+                // LWU (Load Word Unsigned) - loads 32-bit value and zero-extends to 64-bit
+                Instruction::new(Opcode::LWU, 8, 0, 0x27654320, false, true),
+                // Test that LWU zero-extends (upper 32 bits should be 0)
+                Instruction::new(Opcode::LWU, 7, 0, 0x54321000, false, true), /* Load lower 32
+                                                                               * bits of our
+                                                                               * 64-bit value */
             ];
+            add_halt(&mut instructions);
             Program::new(instructions, 0, 0)
         }
     }

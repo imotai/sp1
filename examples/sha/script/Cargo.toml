@@ -1,0 +1,15 @@
+[package]
+name = "sha-script"
+version = { workspace = true }
+edition = { workspace = true }
+default-run = "sha-script"
+publish = false
+
+[dependencies]
+hex = "0.4.3"
+sp1-sdk = { workspace = true }
+tokio = { workspace = true }
+tracing = "0.1"
+
+[build-dependencies]
+sp1-build = { workspace = true }

@@ -1,107 +1,60 @@
-//! Copied from [`sp1_recursion_program`].
-
 use challenger::{
     CanCopyChallenger, CanObserveVariable, DuplexChallengerVariable, FieldChallengerVariable,
-    MultiField32ChallengerVariable, SpongeChallengerShape,
+    MultiField32ChallengerVariable,
 };
-use hash::{FieldHasherVariable, Posedion2BabyBearHasherVariable};
+use hash::{FieldHasherVariable, Poseidon2SP1FieldHasherVariable};
 use itertools::izip;
-use p3_bn254_fr::Bn254Fr;
-use p3_field::AbstractField;
-use p3_matrix::dense::RowMajorMatrix;
+use slop_algebra::{AbstractExtensionField, AbstractField, PrimeField32};
+use slop_bn254::Bn254Fr;
+use slop_challenger::IopCtx;
+use slop_koala_bear::{
+    KoalaBear_BEGIN_EXT_CONSTS, KoalaBear_END_EXT_CONSTS, KoalaBear_PARTIAL_CONSTS,
+};
+use sp1_hypercube::operations::poseidon2::{NUM_EXTERNAL_ROUNDS, NUM_INTERNAL_ROUNDS};
 use sp1_recursion_compiler::{
     circuit::CircuitV2Builder,
     config::{InnerConfig, OuterConfig},
-    ir::{Builder, Config, DslIr, Ext, Felt, SymbolicFelt, Var, Variable},
+    ir::{Builder, Config, DslIr, Ext, Felt, SymbolicExt, SymbolicFelt, Var, Variable},
 };
+use sp1_recursion_executor::{RecursionPublicValues, DIGEST_SIZE, NUM_BITS, PERMUTATION_WIDTH};
 use std::iter::{repeat, zip};
-
-mod types;
-
-pub mod challenger;
-pub mod constraints;
-pub mod domain;
-pub mod fri;
-pub mod hash;
-pub mod machine;
-pub mod merkle_tree;
-pub mod stark;
-pub(crate) mod utils;
-pub mod witness;
-
-use sp1_stark::{
-    baby_bear_poseidon2::{BabyBearPoseidon2, ValMmcs},
-    StarkGenericConfig,
-};
-pub use types::*;
-
-use p3_challenger::{CanObserve, CanSample, FieldChallenger, GrindingChallenger};
-use p3_commit::{ExtensionMmcs, Mmcs};
-use p3_dft::Radix2DitParallel;
-use p3_fri::{FriConfig, TwoAdicFriPcs};
-use sp1_recursion_core::{
-    air::RecursionPublicValues,
-    stark::{BabyBearPoseidon2Outer, OuterValMmcs},
-    D,
-};
-
-use p3_baby_bear::BabyBear;
 use utils::{felt_bytes_to_bn254_var, felts_to_bn254_var, words_to_bytes};
 
-type EF = <BabyBearPoseidon2 as StarkGenericConfig>::Challenge;
+use sp1_hypercube::SP1InnerPcs;
+pub mod basefold;
+pub mod challenger;
+pub mod dummy;
+pub mod hash;
+pub mod jagged;
+pub mod logup_gkr;
+pub mod machine;
+pub mod shard;
+pub mod sumcheck;
+mod symbolic;
+pub mod utils;
+pub mod witness;
+pub mod zerocheck;
+pub const D: usize = 4;
+use sp1_primitives::{SP1ExtensionField, SP1Field, SP1GlobalContext, SP1OuterGlobalContext};
 
-pub type PcsConfig<C> = FriConfig<
-    ExtensionMmcs<
-        <C as StarkGenericConfig>::Val,
-        <C as StarkGenericConfig>::Challenge,
-        <C as BabyBearFriConfig>::ValMmcs,
-    >,
->;
+use crate::utils::felt_proof_nonce_to_bn254_var;
 
 pub type Digest<C, SC> = <SC as FieldHasherVariable<C>>::DigestVariable;
 
-pub type FriMmcs<C> = ExtensionMmcs<BabyBear, EF, <C as BabyBearFriConfig>::ValMmcs>;
-
-pub trait BabyBearFriConfig:
-    StarkGenericConfig<
-    Val = BabyBear,
-    Challenge = EF,
-    Challenger = Self::FriChallenger,
-    Pcs = TwoAdicFriPcs<
-        BabyBear,
-        Radix2DitParallel,
-        Self::ValMmcs,
-        ExtensionMmcs<BabyBear, EF, Self::ValMmcs>,
-    >,
->
-{
-    type ValMmcs: Mmcs<BabyBear, ProverData<RowMajorMatrix<BabyBear>> = Self::RowMajorProverData>
-        + Send
-        + Sync;
-    type RowMajorProverData: Clone + Send + Sync;
-    type FriChallenger: CanObserve<<Self::ValMmcs as Mmcs<BabyBear>>::Commitment>
-        + CanSample<EF>
-        + GrindingChallenger<Witness = BabyBear>
-        + FieldChallenger<BabyBear>;
-
-    fn fri_config(&self) -> &FriConfig<FriMmcs<Self>>;
-
-    fn challenger_shape(challenger: &Self::FriChallenger) -> SpongeChallengerShape;
-}
-
-pub trait BabyBearFriConfigVariable<C: CircuitConfig<F = BabyBear>>:
-    BabyBearFriConfig + FieldHasherVariable<C> + Posedion2BabyBearHasherVariable<C>
+pub type InnerSC = SP1InnerPcs;
+pub trait SP1FieldConfigVariable<C: CircuitConfig>:
+    IopCtx + FieldHasherVariable<C> + Poseidon2SP1FieldHasherVariable<C> + Send + Sync
 {
     type FriChallengerVariable: FieldChallengerVariable<C, <C as CircuitConfig>::Bit>
         + CanObserveVariable<C, <Self as FieldHasherVariable<C>>::DigestVariable>
         + CanCopyChallenger<C>;
 
     /// Get a new challenger corresponding to the given config.
-    fn challenger_variable(&self, builder: &mut Builder<C>) -> Self::FriChallengerVariable;
+    fn challenger_variable(builder: &mut Builder<C>) -> Self::FriChallengerVariable;
 
     fn commit_recursion_public_values(
         builder: &mut Builder<C>,
-        public_values: RecursionPublicValues<Felt<C::F>>,
+        public_values: RecursionPublicValues<Felt<SP1Field>>,
     );
 }
 
@@ -110,9 +63,9 @@ pub trait CircuitConfig: Config {
 
     fn read_bit(builder: &mut Builder<Self>) -> Self::Bit;
 
-    fn read_felt(builder: &mut Builder<Self>) -> Felt<Self::F>;
+    fn read_felt(builder: &mut Builder<Self>) -> Felt<SP1Field>;
 
-    fn read_ext(builder: &mut Builder<Self>) -> Ext<Self::F, Self::EF>;
+    fn read_ext(builder: &mut Builder<Self>) -> Ext<SP1Field, SP1ExtensionField>;
 
     fn assert_bit_zero(builder: &mut Builder<Self>, bit: Self::Bit);
 
@@ -120,218 +73,130 @@ pub trait CircuitConfig: Config {
 
     fn ext2felt(
         builder: &mut Builder<Self>,
-        ext: Ext<<Self as Config>::F, <Self as Config>::EF>,
-    ) -> [Felt<<Self as Config>::F>; D];
+        ext: Ext<SP1Field, SP1ExtensionField>,
+    ) -> [Felt<SP1Field>; D];
+
+    fn felt2ext(
+        builder: &mut Builder<Self>,
+        felt: [Felt<SP1Field>; D],
+    ) -> Ext<SP1Field, SP1ExtensionField>;
 
     fn exp_reverse_bits(
         builder: &mut Builder<Self>,
-        input: Felt<<Self as Config>::F>,
+        input: Felt<SP1Field>,
         power_bits: Vec<Self::Bit>,
-    ) -> Felt<<Self as Config>::F>;
+    ) -> Felt<SP1Field>;
 
-    /// Exponentiates a felt x to a list of bits in little endian. Uses precomputed powers
-    /// of x.
-    fn exp_f_bits_precomputed(
+    #[allow(clippy::type_complexity)]
+    fn prefix_sum_checks(
         builder: &mut Builder<Self>,
-        power_bits: &[Self::Bit],
-        two_adic_powers_of_x: &[Felt<Self::F>],
-    ) -> Felt<Self::F>;
-
-    fn batch_fri(
-        builder: &mut Builder<Self>,
-        alpha_pows: Vec<Ext<Self::F, Self::EF>>,
-        p_at_zs: Vec<Ext<Self::F, Self::EF>>,
-        p_at_xs: Vec<Felt<Self::F>>,
-    ) -> Ext<Self::F, Self::EF>;
+        x1: Vec<Felt<SP1Field>>,
+        x2: Vec<Ext<SP1Field, SP1ExtensionField>>,
+    ) -> (Ext<SP1Field, SP1ExtensionField>, Felt<SP1Field>);
 
     fn num2bits(
         builder: &mut Builder<Self>,
-        num: Felt<<Self as Config>::F>,
+        num: Felt<SP1Field>,
         num_bits: usize,
     ) -> Vec<Self::Bit>;
 
     fn bits2num(
         builder: &mut Builder<Self>,
         bits: impl IntoIterator<Item = Self::Bit>,
-    ) -> Felt<<Self as Config>::F>;
+    ) -> Felt<SP1Field>;
 
     #[allow(clippy::type_complexity)]
     fn select_chain_f(
         builder: &mut Builder<Self>,
         should_swap: Self::Bit,
-        first: impl IntoIterator<Item = Felt<<Self as Config>::F>> + Clone,
-        second: impl IntoIterator<Item = Felt<<Self as Config>::F>> + Clone,
-    ) -> Vec<Felt<<Self as Config>::F>>;
+        first: impl IntoIterator<Item = Felt<SP1Field>> + Clone,
+        second: impl IntoIterator<Item = Felt<SP1Field>> + Clone,
+    ) -> Vec<Felt<SP1Field>>;
 
     #[allow(clippy::type_complexity)]
     fn select_chain_ef(
         builder: &mut Builder<Self>,
         should_swap: Self::Bit,
-        first: impl IntoIterator<Item = Ext<<Self as Config>::F, <Self as Config>::EF>> + Clone,
-        second: impl IntoIterator<Item = Ext<<Self as Config>::F, <Self as Config>::EF>> + Clone,
-    ) -> Vec<Ext<<Self as Config>::F, <Self as Config>::EF>>;
+        first: impl IntoIterator<Item = Ext<SP1Field, SP1ExtensionField>> + Clone,
+        second: impl IntoIterator<Item = Ext<SP1Field, SP1ExtensionField>> + Clone,
+    ) -> Vec<Ext<SP1Field, SP1ExtensionField>>;
 
-    fn range_check_felt(builder: &mut Builder<Self>, value: Felt<Self::F>, num_bits: usize) {
-        let bits = Self::num2bits(builder, value, 31);
+    fn range_check_felt(builder: &mut Builder<Self>, value: Felt<SP1Field>, num_bits: usize) {
+        let bits = Self::num2bits(builder, value, NUM_BITS);
         for bit in bits.into_iter().skip(num_bits) {
             Self::assert_bit_zero(builder, bit);
         }
     }
+
+    fn poseidon2_permute_v2(
+        builder: &mut Builder<Self>,
+        input: [Felt<SP1Field>; PERMUTATION_WIDTH],
+    ) -> [Felt<SP1Field>; PERMUTATION_WIDTH];
+
+    fn poseidon2_compress_v2(
+        builder: &mut Builder<Self>,
+        input: impl IntoIterator<Item = Felt<SP1Field>>,
+    ) -> [Felt<SP1Field>; DIGEST_SIZE] {
+        let mut pre_iter = input.into_iter().chain(repeat(builder.eval(SP1Field::zero())));
+        let pre = core::array::from_fn(move |_| pre_iter.next().unwrap());
+        let post = Self::poseidon2_permute_v2(builder, pre);
+        let post: [Felt<SP1Field>; DIGEST_SIZE] = post[..DIGEST_SIZE].try_into().unwrap();
+        post
+    }
 }
 
 impl CircuitConfig for InnerConfig {
-    type Bit = Felt<<Self as Config>::F>;
+    type Bit = Felt<SP1Field>;
 
     fn assert_bit_zero(builder: &mut Builder<Self>, bit: Self::Bit) {
-        builder.assert_felt_eq(bit, Self::F::zero());
+        builder.assert_felt_eq(bit, SP1Field::zero());
     }
 
     fn assert_bit_one(builder: &mut Builder<Self>, bit: Self::Bit) {
-        builder.assert_felt_eq(bit, Self::F::one());
+        builder.assert_felt_eq(bit, SP1Field::one());
     }
 
     fn read_bit(builder: &mut Builder<Self>) -> Self::Bit {
         builder.hint_felt_v2()
     }
 
-    fn read_felt(builder: &mut Builder<Self>) -> Felt<Self::F> {
+    fn read_felt(builder: &mut Builder<Self>) -> Felt<SP1Field> {
         builder.hint_felt_v2()
     }
 
-    fn read_ext(builder: &mut Builder<Self>) -> Ext<Self::F, Self::EF> {
+    fn read_ext(builder: &mut Builder<Self>) -> Ext<SP1Field, SP1ExtensionField> {
         builder.hint_ext_v2()
     }
 
     fn ext2felt(
         builder: &mut Builder<Self>,
-        ext: Ext<<Self as Config>::F, <Self as Config>::EF>,
-    ) -> [Felt<<Self as Config>::F>; D] {
+        ext: Ext<SP1Field, SP1ExtensionField>,
+    ) -> [Felt<SP1Field>; D] {
         builder.ext2felt_v2(ext)
+    }
+
+    fn felt2ext(
+        builder: &mut Builder<Self>,
+        felt: [Felt<SP1Field>; D],
+    ) -> Ext<SP1Field, SP1ExtensionField> {
+        let mut reconstructed_ext: Ext<SP1Field, SP1ExtensionField> =
+            builder.constant(SP1ExtensionField::zero());
+        for i in 0..D {
+            let mut monomial_slice = [SP1Field::zero(); D];
+            monomial_slice[i] = SP1Field::one();
+            let monomial: Ext<SP1Field, SP1ExtensionField> =
+                builder.constant(SP1ExtensionField::from_base_slice(&monomial_slice));
+            reconstructed_ext = builder.eval(reconstructed_ext + monomial * felt[i]);
+        }
+        reconstructed_ext
     }
 
     fn exp_reverse_bits(
         builder: &mut Builder<Self>,
-        input: Felt<<Self as Config>::F>,
-        power_bits: Vec<Felt<<Self as Config>::F>>,
-    ) -> Felt<<Self as Config>::F> {
-        builder.exp_reverse_bits_v2(input, power_bits)
-    }
-
-    fn batch_fri(
-        builder: &mut Builder<Self>,
-        alpha_pows: Vec<Ext<<Self as Config>::F, <Self as Config>::EF>>,
-        p_at_zs: Vec<Ext<<Self as Config>::F, <Self as Config>::EF>>,
-        p_at_xs: Vec<Felt<<Self as Config>::F>>,
-    ) -> Ext<<Self as Config>::F, <Self as Config>::EF> {
-        builder.batch_fri_v2(alpha_pows, p_at_zs, p_at_xs)
-    }
-
-    fn num2bits(
-        builder: &mut Builder<Self>,
-        num: Felt<<Self as Config>::F>,
-        num_bits: usize,
-    ) -> Vec<Felt<<Self as Config>::F>> {
-        builder.num2bits_v2_f(num, num_bits)
-    }
-
-    fn bits2num(
-        builder: &mut Builder<Self>,
-        bits: impl IntoIterator<Item = Felt<<Self as Config>::F>>,
-    ) -> Felt<<Self as Config>::F> {
-        builder.bits2num_v2_f(bits)
-    }
-
-    fn select_chain_f(
-        builder: &mut Builder<Self>,
-        should_swap: Self::Bit,
-        first: impl IntoIterator<Item = Felt<<Self as Config>::F>> + Clone,
-        second: impl IntoIterator<Item = Felt<<Self as Config>::F>> + Clone,
-    ) -> Vec<Felt<<Self as Config>::F>> {
-        let one: Felt<_> = builder.constant(Self::F::one());
-        let shouldnt_swap: Felt<_> = builder.eval(one - should_swap);
-
-        let id_branch = first.clone().into_iter().chain(second.clone());
-        let swap_branch = second.into_iter().chain(first);
-        zip(zip(id_branch, swap_branch), zip(repeat(shouldnt_swap), repeat(should_swap)))
-            .map(|((id_v, sw_v), (id_c, sw_c))| builder.eval(id_v * id_c + sw_v * sw_c))
-            .collect()
-    }
-
-    fn select_chain_ef(
-        builder: &mut Builder<Self>,
-        should_swap: Self::Bit,
-        first: impl IntoIterator<Item = Ext<<Self as Config>::F, <Self as Config>::EF>> + Clone,
-        second: impl IntoIterator<Item = Ext<<Self as Config>::F, <Self as Config>::EF>> + Clone,
-    ) -> Vec<Ext<<Self as Config>::F, <Self as Config>::EF>> {
-        let one: Felt<_> = builder.constant(Self::F::one());
-        let shouldnt_swap: Felt<_> = builder.eval(one - should_swap);
-
-        let id_branch = first.clone().into_iter().chain(second.clone());
-        let swap_branch = second.into_iter().chain(first);
-        zip(zip(id_branch, swap_branch), zip(repeat(shouldnt_swap), repeat(should_swap)))
-            .map(|((id_v, sw_v), (id_c, sw_c))| builder.eval(id_v * id_c + sw_v * sw_c))
-            .collect()
-    }
-
-    fn exp_f_bits_precomputed(
-        builder: &mut Builder<Self>,
-        power_bits: &[Self::Bit],
-        two_adic_powers_of_x: &[Felt<Self::F>],
-    ) -> Felt<Self::F> {
-        Self::exp_reverse_bits(
-            builder,
-            two_adic_powers_of_x[0],
-            power_bits.iter().rev().copied().collect(),
-        )
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct WrapConfig;
-
-impl Config for WrapConfig {
-    type F = <InnerConfig as Config>::F;
-    type EF = <InnerConfig as Config>::EF;
-    type N = <InnerConfig as Config>::N;
-}
-
-impl CircuitConfig for WrapConfig {
-    type Bit = <InnerConfig as CircuitConfig>::Bit;
-
-    fn assert_bit_zero(builder: &mut Builder<Self>, bit: Self::Bit) {
-        builder.assert_felt_eq(bit, Self::F::zero());
-    }
-
-    fn assert_bit_one(builder: &mut Builder<Self>, bit: Self::Bit) {
-        builder.assert_felt_eq(bit, Self::F::one());
-    }
-
-    fn read_bit(builder: &mut Builder<Self>) -> Self::Bit {
-        builder.hint_felt_v2()
-    }
-
-    fn read_felt(builder: &mut Builder<Self>) -> Felt<Self::F> {
-        builder.hint_felt_v2()
-    }
-
-    fn read_ext(builder: &mut Builder<Self>) -> Ext<Self::F, Self::EF> {
-        builder.hint_ext_v2()
-    }
-
-    fn ext2felt(
-        builder: &mut Builder<Self>,
-        ext: Ext<<Self as Config>::F, <Self as Config>::EF>,
-    ) -> [Felt<<Self as Config>::F>; D] {
-        builder.ext2felt_v2(ext)
-    }
-
-    fn exp_reverse_bits(
-        builder: &mut Builder<Self>,
-        input: Felt<<Self as Config>::F>,
-        power_bits: Vec<Felt<<Self as Config>::F>>,
-    ) -> Felt<<Self as Config>::F> {
-        // builder.exp_reverse_bits_v2(input, power_bits)
-        let mut result = builder.constant(Self::F::one());
+        input: Felt<SP1Field>,
+        power_bits: Vec<Felt<SP1Field>>,
+    ) -> Felt<SP1Field> {
+        let mut result = builder.constant(SP1Field::one());
         let mut power_f = input;
         let bit_len = power_bits.len();
 
@@ -345,53 +210,36 @@ impl CircuitConfig for WrapConfig {
         result
     }
 
-    fn batch_fri(
+    fn prefix_sum_checks(
         builder: &mut Builder<Self>,
-        alpha_pows: Vec<Ext<<Self as Config>::F, <Self as Config>::EF>>,
-        p_at_zs: Vec<Ext<<Self as Config>::F, <Self as Config>::EF>>,
-        p_at_xs: Vec<Felt<<Self as Config>::F>>,
-    ) -> Ext<<Self as Config>::F, <Self as Config>::EF> {
-        // builder.batch_fri_v2(alpha_pows, p_at_zs, p_at_xs)
-        // Initialize the `acc` to zero.
-        let mut acc: Ext<_, _> = builder.uninit();
-        builder.push_op(DslIr::ImmE(acc, <Self as Config>::EF::zero()));
-        for (alpha_pow, p_at_z, p_at_x) in izip!(alpha_pows, p_at_zs, p_at_xs) {
-            // Set `temp_1 = p_at_z - p_at_x`
-            let temp_1: Ext<_, _> = builder.uninit();
-            builder.push_op(DslIr::SubEF(temp_1, p_at_z, p_at_x));
-            // Set `temp_2 = alpha_pow * temp_1 = alpha_pow * (p_at_z - p_at_x)`
-            let temp_2: Ext<_, _> = builder.uninit();
-            builder.push_op(DslIr::MulE(temp_2, alpha_pow, temp_1));
-            // Set `acc += temp_2`, so that `acc` becomes the sum of `alpha_pow * (p_at_z - p_at_x)`
-            let temp_3: Ext<_, _> = builder.uninit();
-            builder.push_op(DslIr::AddE(temp_3, acc, temp_2));
-            acc = temp_3;
-        }
-        acc
+        x1: Vec<Felt<SP1Field>>,
+        x2: Vec<Ext<SP1Field, SP1ExtensionField>>,
+    ) -> (Ext<SP1Field, SP1ExtensionField>, Felt<SP1Field>) {
+        builder.prefix_sum_checks_v2(x1, x2)
     }
 
     fn num2bits(
         builder: &mut Builder<Self>,
-        num: Felt<<Self as Config>::F>,
+        num: Felt<SP1Field>,
         num_bits: usize,
-    ) -> Vec<Felt<<Self as Config>::F>> {
+    ) -> Vec<Felt<SP1Field>> {
         builder.num2bits_v2_f(num, num_bits)
     }
 
     fn bits2num(
         builder: &mut Builder<Self>,
-        bits: impl IntoIterator<Item = Felt<<Self as Config>::F>>,
-    ) -> Felt<<Self as Config>::F> {
+        bits: impl IntoIterator<Item = Felt<SP1Field>>,
+    ) -> Felt<SP1Field> {
         builder.bits2num_v2_f(bits)
     }
 
     fn select_chain_f(
         builder: &mut Builder<Self>,
         should_swap: Self::Bit,
-        first: impl IntoIterator<Item = Felt<<Self as Config>::F>> + Clone,
-        second: impl IntoIterator<Item = Felt<<Self as Config>::F>> + Clone,
-    ) -> Vec<Felt<<Self as Config>::F>> {
-        let one: Felt<_> = builder.constant(Self::F::one());
+        first: impl IntoIterator<Item = Felt<SP1Field>> + Clone,
+        second: impl IntoIterator<Item = Felt<SP1Field>> + Clone,
+    ) -> Vec<Felt<SP1Field>> {
+        let one: Felt<_> = builder.constant(SP1Field::one());
         let shouldnt_swap: Felt<_> = builder.eval(one - should_swap);
 
         let id_branch = first.clone().into_iter().chain(second.clone());
@@ -404,10 +252,10 @@ impl CircuitConfig for WrapConfig {
     fn select_chain_ef(
         builder: &mut Builder<Self>,
         should_swap: Self::Bit,
-        first: impl IntoIterator<Item = Ext<<Self as Config>::F, <Self as Config>::EF>> + Clone,
-        second: impl IntoIterator<Item = Ext<<Self as Config>::F, <Self as Config>::EF>> + Clone,
-    ) -> Vec<Ext<<Self as Config>::F, <Self as Config>::EF>> {
-        let one: Felt<_> = builder.constant(Self::F::one());
+        first: impl IntoIterator<Item = Ext<SP1Field, SP1ExtensionField>> + Clone,
+        second: impl IntoIterator<Item = Ext<SP1Field, SP1ExtensionField>> + Clone,
+    ) -> Vec<Ext<SP1Field, SP1ExtensionField>> {
+        let one: Felt<_> = builder.constant(SP1Field::one());
         let shouldnt_swap: Felt<_> = builder.eval(one - should_swap);
 
         let id_branch = first.clone().into_iter().chain(second.clone());
@@ -417,16 +265,313 @@ impl CircuitConfig for WrapConfig {
             .collect()
     }
 
-    fn exp_f_bits_precomputed(
+    fn poseidon2_permute_v2(
         builder: &mut Builder<Self>,
-        power_bits: &[Self::Bit],
-        two_adic_powers_of_x: &[Felt<Self::F>],
-    ) -> Felt<Self::F> {
-        Self::exp_reverse_bits(
-            builder,
-            two_adic_powers_of_x[0],
-            power_bits.iter().rev().copied().collect(),
-        )
+        input: [Felt<SP1Field>; PERMUTATION_WIDTH],
+    ) -> [Felt<SP1Field>; PERMUTATION_WIDTH] {
+        builder.poseidon2_permute_v2(input)
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct WrapConfig;
+
+impl Config for WrapConfig {
+    type N = <InnerConfig as Config>::N;
+    fn initialize(builder: &mut Builder<Self>) {
+        for round in 0..NUM_EXTERNAL_ROUNDS + NUM_INTERNAL_ROUNDS {
+            for i in 0..PERMUTATION_WIDTH / D {
+                let add_rc = if (NUM_EXTERNAL_ROUNDS / 2
+                    ..NUM_EXTERNAL_ROUNDS / 2 + NUM_INTERNAL_ROUNDS)
+                    .contains(&round)
+                {
+                    builder.constant(SP1ExtensionField::from_base({
+                        let result = KoalaBear_PARTIAL_CONSTS[round - NUM_EXTERNAL_ROUNDS / 2]
+                            .as_canonical_u32();
+
+                        SP1Field::from_wrapped_u32(result)
+                    }))
+                } else {
+                    builder.constant(SP1ExtensionField::from_base_fn(|idx| {
+                        let result = if round < NUM_EXTERNAL_ROUNDS / 2 {
+                            KoalaBear_BEGIN_EXT_CONSTS[round][i * D + idx].as_canonical_u32()
+                        } else {
+                            KoalaBear_END_EXT_CONSTS
+                                [round - NUM_INTERNAL_ROUNDS - NUM_EXTERNAL_ROUNDS / 2][i * D + idx]
+                                .as_canonical_u32()
+                        };
+                        SP1Field::from_wrapped_u32(result)
+                    }))
+                };
+
+                builder.poseidon2_constants.push(add_rc);
+            }
+        }
+    }
+}
+
+impl CircuitConfig for WrapConfig {
+    type Bit = <InnerConfig as CircuitConfig>::Bit;
+
+    fn assert_bit_zero(builder: &mut Builder<Self>, bit: Self::Bit) {
+        builder.assert_felt_eq(bit, SP1Field::zero());
+    }
+
+    fn assert_bit_one(builder: &mut Builder<Self>, bit: Self::Bit) {
+        builder.assert_felt_eq(bit, SP1Field::one());
+    }
+
+    fn read_bit(builder: &mut Builder<Self>) -> Self::Bit {
+        builder.hint_felt_v2()
+    }
+
+    fn read_felt(builder: &mut Builder<Self>) -> Felt<SP1Field> {
+        builder.hint_felt_v2()
+    }
+
+    fn read_ext(builder: &mut Builder<Self>) -> Ext<SP1Field, SP1ExtensionField> {
+        builder.hint_ext_v2()
+    }
+
+    fn ext2felt(
+        builder: &mut Builder<Self>,
+        ext: Ext<SP1Field, SP1ExtensionField>,
+    ) -> [Felt<SP1Field>; D] {
+        let felts = core::array::from_fn(|_| builder.uninit());
+        builder.push_op(DslIr::CircuitChipExt2Felt(felts, ext));
+        felts
+    }
+
+    fn felt2ext(
+        builder: &mut Builder<Self>,
+        felt: [Felt<SP1Field>; D],
+    ) -> Ext<SP1Field, SP1ExtensionField> {
+        let ext = builder.uninit();
+        builder.push_op(DslIr::CircuitChipFelt2Ext(ext, felt));
+        ext
+    }
+
+    fn exp_reverse_bits(
+        builder: &mut Builder<Self>,
+        input: Felt<SP1Field>,
+        power_bits: Vec<Felt<SP1Field>>,
+    ) -> Felt<SP1Field> {
+        let mut result = builder.constant(SP1Field::one());
+        let mut power_f = input;
+        let bit_len = power_bits.len();
+
+        for i in 1..=bit_len {
+            let index = bit_len - i;
+            let bit = power_bits[index];
+            let prod: Felt<_> = builder.eval(result * power_f);
+            result = builder.eval(bit * prod + (SymbolicFelt::one() - bit) * result);
+            power_f = builder.eval(power_f * power_f);
+        }
+        result
+    }
+
+    fn prefix_sum_checks(
+        builder: &mut Builder<Self>,
+        point_1: Vec<Felt<SP1Field>>,
+        point_2: Vec<Ext<SP1Field, SP1ExtensionField>>,
+    ) -> (Ext<SP1Field, SP1ExtensionField>, Felt<SP1Field>) {
+        let mut acc: Ext<_, _> = builder.uninit();
+        builder.push_op(DslIr::ImmE(acc, SP1ExtensionField::one()));
+        let mut acc_felt: Felt<_> = builder.uninit();
+        builder.push_op(DslIr::ImmF(acc_felt, SP1Field::zero()));
+        let one: Felt<_> = builder.constant(SP1Field::one());
+        for (i, (x1, x2)) in izip!(point_1.clone(), point_2).enumerate() {
+            let prod = builder.uninit();
+            builder.push_op(DslIr::MulEF(prod, x2, x1));
+            let lagrange_term: Ext<_, _> = builder.eval(SymbolicExt::one() - x1 - x2 + prod + prod);
+            // Check that x1 is boolean.
+            builder.assert_felt_eq(x1 * (x1 - one), SymbolicFelt::zero());
+            acc = builder.eval(acc * lagrange_term);
+            // Only need felt of first half of point_1 (current prefix sum).
+            if i < point_1.len() / 2 {
+                acc_felt = builder.eval(x1 + acc_felt * SymbolicFelt::from_canonical_u32(2));
+            }
+        }
+        (acc, acc_felt)
+    }
+
+    fn num2bits(
+        builder: &mut Builder<Self>,
+        num: Felt<SP1Field>,
+        num_bits: usize,
+    ) -> Vec<Felt<SP1Field>> {
+        builder.num2bits_v2_f(num, num_bits)
+    }
+
+    fn bits2num(
+        builder: &mut Builder<Self>,
+        bits: impl IntoIterator<Item = Felt<SP1Field>>,
+    ) -> Felt<SP1Field> {
+        builder.bits2num_v2_f(bits)
+    }
+
+    fn select_chain_f(
+        builder: &mut Builder<Self>,
+        should_swap: Self::Bit,
+        first: impl IntoIterator<Item = Felt<SP1Field>> + Clone,
+        second: impl IntoIterator<Item = Felt<SP1Field>> + Clone,
+    ) -> Vec<Felt<SP1Field>> {
+        let one: Felt<_> = builder.constant(SP1Field::one());
+        let shouldnt_swap: Felt<_> = builder.eval(one - should_swap);
+
+        let id_branch = first.clone().into_iter().chain(second.clone());
+        let swap_branch = second.into_iter().chain(first);
+        zip(zip(id_branch, swap_branch), zip(repeat(shouldnt_swap), repeat(should_swap)))
+            .map(|((id_v, sw_v), (id_c, sw_c))| builder.eval(id_v * id_c + sw_v * sw_c))
+            .collect()
+    }
+
+    fn select_chain_ef(
+        builder: &mut Builder<Self>,
+        should_swap: Self::Bit,
+        first: impl IntoIterator<Item = Ext<SP1Field, SP1ExtensionField>> + Clone,
+        second: impl IntoIterator<Item = Ext<SP1Field, SP1ExtensionField>> + Clone,
+    ) -> Vec<Ext<SP1Field, SP1ExtensionField>> {
+        let one: Felt<_> = builder.constant(SP1Field::one());
+        let shouldnt_swap: Felt<_> = builder.eval(one - should_swap);
+
+        let id_branch = first.clone().into_iter().chain(second.clone());
+        let swap_branch = second.into_iter().chain(first);
+        zip(zip(id_branch, swap_branch), zip(repeat(shouldnt_swap), repeat(should_swap)))
+            .map(|((id_v, sw_v), (id_c, sw_c))| builder.eval(id_v * id_c + sw_v * sw_c))
+            .collect()
+    }
+
+    fn poseidon2_permute_v2(
+        builder: &mut Builder<Self>,
+        input: [Felt<SP1Field>; PERMUTATION_WIDTH],
+    ) -> [Felt<SP1Field>; PERMUTATION_WIDTH] {
+        let mut state = Self::blockify(builder, input);
+        for i in 0..NUM_EXTERNAL_ROUNDS / 2 {
+            state = Self::external_round(builder, state, i);
+        }
+        for i in 0..NUM_INTERNAL_ROUNDS {
+            state[0] = Self::internal_constant_addition(builder, state[0], i);
+            state[0] = Self::pow7_internal(builder, state[0]);
+            state = Self::internal_linear_layer(builder, state);
+        }
+        for i in NUM_EXTERNAL_ROUNDS / 2..NUM_EXTERNAL_ROUNDS {
+            state = Self::external_round(builder, state, i);
+        }
+        Self::unblockify(builder, state)
+    }
+}
+
+impl WrapConfig {
+    fn blockify(
+        builder: &mut Builder<Self>,
+        input: [Felt<SP1Field>; PERMUTATION_WIDTH],
+    ) -> [Ext<SP1Field, SP1ExtensionField>; PERMUTATION_WIDTH / D] {
+        let mut ret: [Ext<SP1Field, SP1ExtensionField>; PERMUTATION_WIDTH / D] =
+            core::array::from_fn(|_| builder.uninit());
+        for i in 0..PERMUTATION_WIDTH / D {
+            ret[i] = Self::felt2ext(builder, input[i * D..i * D + D].try_into().unwrap());
+        }
+        ret
+    }
+
+    fn unblockify(
+        builder: &mut Builder<Self>,
+        input: [Ext<SP1Field, SP1ExtensionField>; PERMUTATION_WIDTH / D],
+    ) -> [Felt<SP1Field>; PERMUTATION_WIDTH] {
+        let mut ret = core::array::from_fn(|_| builder.uninit());
+        for i in 0..PERMUTATION_WIDTH / D {
+            let felts = Self::ext2felt(builder, input[i]);
+            for j in 0..D {
+                ret[i * D + j] = felts[j];
+            }
+        }
+        ret
+    }
+
+    fn external_round(
+        builder: &mut Builder<Self>,
+        input: [Ext<SP1Field, SP1ExtensionField>; PERMUTATION_WIDTH / D],
+        round_index: usize,
+    ) -> [Ext<SP1Field, SP1ExtensionField>; PERMUTATION_WIDTH / D] {
+        let mut state = input;
+        if round_index == 0 {
+            state = Self::external_linear_layer(builder, state);
+        }
+        state = Self::external_constant_addition(builder, state, round_index);
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..PERMUTATION_WIDTH / D {
+            state[i] = Self::pow7(builder, state[i]);
+        }
+        state = Self::external_linear_layer(builder, state);
+        state
+    }
+
+    fn external_linear_layer(
+        builder: &mut Builder<Self>,
+        input: [Ext<SP1Field, SP1ExtensionField>; PERMUTATION_WIDTH / D],
+    ) -> [Ext<SP1Field, SP1ExtensionField>; PERMUTATION_WIDTH / D] {
+        let output = core::array::from_fn(|_| builder.uninit());
+        builder.push_op(DslIr::Poseidon2ExternalLinearLayer(Box::new((output, input))));
+        output
+    }
+
+    fn internal_linear_layer(
+        builder: &mut Builder<Self>,
+        input: [Ext<SP1Field, SP1ExtensionField>; PERMUTATION_WIDTH / D],
+    ) -> [Ext<SP1Field, SP1ExtensionField>; PERMUTATION_WIDTH / D] {
+        let output = core::array::from_fn(|_| builder.uninit());
+        builder.push_op(DslIr::Poseidon2InternalLinearLayer(Box::new((output, input))));
+        output
+    }
+
+    fn pow7(
+        builder: &mut Builder<Self>,
+        input: Ext<SP1Field, SP1ExtensionField>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
+        let output = builder.uninit();
+        builder.push_op(DslIr::Poseidon2ExternalSBOX(output, input));
+        output
+    }
+
+    fn pow7_internal(
+        builder: &mut Builder<Self>,
+        input: Ext<SP1Field, SP1ExtensionField>,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
+        let output = builder.uninit();
+        builder.push_op(DslIr::Poseidon2InternalSBOX(output, input));
+        output
+    }
+
+    fn external_constant_addition(
+        builder: &mut Builder<Self>,
+        input: [Ext<SP1Field, SP1ExtensionField>; PERMUTATION_WIDTH / D],
+        round_index: usize,
+    ) -> [Ext<SP1Field, SP1ExtensionField>; PERMUTATION_WIDTH / D] {
+        let output = core::array::from_fn(|_| builder.uninit());
+        let round = if round_index < NUM_EXTERNAL_ROUNDS / 2 {
+            round_index
+        } else {
+            round_index + NUM_INTERNAL_ROUNDS
+        };
+        for i in 0..PERMUTATION_WIDTH / D {
+            let add_rc = builder.poseidon2_constants[(PERMUTATION_WIDTH / D) * round + i];
+            builder.push_op(DslIr::AddE(output[i], input[i], add_rc));
+        }
+
+        output
+    }
+
+    fn internal_constant_addition(
+        builder: &mut Builder<Self>,
+        input: Ext<SP1Field, SP1ExtensionField>,
+        round_index: usize,
+    ) -> Ext<SP1Field, SP1ExtensionField> {
+        let round = round_index + NUM_EXTERNAL_ROUNDS / 2;
+        let add_rc = builder.poseidon2_constants[(PERMUTATION_WIDTH / D) * round];
+        let output = builder.uninit();
+        builder.push_op(DslIr::AddE(output, input, add_rc));
+        output
     }
 }
 
@@ -445,29 +590,38 @@ impl CircuitConfig for OuterConfig {
         builder.witness_var()
     }
 
-    fn read_felt(builder: &mut Builder<Self>) -> Felt<Self::F> {
+    fn read_felt(builder: &mut Builder<Self>) -> Felt<SP1Field> {
         builder.witness_felt()
     }
 
-    fn read_ext(builder: &mut Builder<Self>) -> Ext<Self::F, Self::EF> {
+    fn read_ext(builder: &mut Builder<Self>) -> Ext<SP1Field, SP1ExtensionField> {
         builder.witness_ext()
     }
 
     fn ext2felt(
         builder: &mut Builder<Self>,
-        ext: Ext<<Self as Config>::F, <Self as Config>::EF>,
-    ) -> [Felt<<Self as Config>::F>; D] {
+        ext: Ext<SP1Field, SP1ExtensionField>,
+    ) -> [Felt<SP1Field>; D] {
         let felts = core::array::from_fn(|_| builder.uninit());
         builder.push_op(DslIr::CircuitExt2Felt(felts, ext));
         felts
     }
 
+    fn felt2ext(
+        builder: &mut Builder<Self>,
+        felt: [Felt<SP1Field>; D],
+    ) -> Ext<SP1Field, SP1ExtensionField> {
+        let ext = builder.uninit();
+        builder.push_op(DslIr::CircuitFelts2Ext(felt, ext));
+        ext
+    }
+
     fn exp_reverse_bits(
         builder: &mut Builder<Self>,
-        input: Felt<<Self as Config>::F>,
+        input: Felt<SP1Field>,
         power_bits: Vec<Var<<Self as Config>::N>>,
-    ) -> Felt<<Self as Config>::F> {
-        let mut result = builder.constant(Self::F::one());
+    ) -> Felt<SP1Field> {
+        let mut result = builder.constant(SP1Field::one());
         let power_f = input;
         let bit_len = power_bits.len();
 
@@ -481,33 +635,28 @@ impl CircuitConfig for OuterConfig {
         result
     }
 
-    fn batch_fri(
+    fn prefix_sum_checks(
         builder: &mut Builder<Self>,
-        alpha_pows: Vec<Ext<<Self as Config>::F, <Self as Config>::EF>>,
-        p_at_zs: Vec<Ext<<Self as Config>::F, <Self as Config>::EF>>,
-        p_at_xs: Vec<Felt<<Self as Config>::F>>,
-    ) -> Ext<<Self as Config>::F, <Self as Config>::EF> {
-        // Initialize the `acc` to zero.
-        let mut acc: Ext<_, _> = builder.uninit();
-        builder.push_op(DslIr::ImmE(acc, <Self as Config>::EF::zero()));
-        for (alpha_pow, p_at_z, p_at_x) in izip!(alpha_pows, p_at_zs, p_at_xs) {
-            // Set `temp_1 = p_at_z - p_at_x`
-            let temp_1: Ext<_, _> = builder.uninit();
-            builder.push_op(DslIr::SubEF(temp_1, p_at_z, p_at_x));
-            // Set `temp_2 = alpha_pow * temp_1 = alpha_pow * (p_at_z - p_at_x)`
-            let temp_2: Ext<_, _> = builder.uninit();
-            builder.push_op(DslIr::MulE(temp_2, alpha_pow, temp_1));
-            // Set `acc += temp_2`, so that `acc` becomes the sum of `alpha_pow * (p_at_z - p_at_x)`
-            let temp_3: Ext<_, _> = builder.uninit();
-            builder.push_op(DslIr::AddE(temp_3, acc, temp_2));
-            acc = temp_3;
+        point_1: Vec<Felt<SP1Field>>,
+        point_2: Vec<Ext<SP1Field, SP1ExtensionField>>,
+    ) -> (Ext<SP1Field, SP1ExtensionField>, Felt<SP1Field>) {
+        let acc: Ext<_, _> = builder.uninit();
+        builder.push_op(DslIr::ImmE(acc, SP1ExtensionField::one()));
+        let mut acc_felt: Felt<_> = builder.uninit();
+        builder.push_op(DslIr::ImmF(acc_felt, SP1Field::zero()));
+        for (i, (x1, x2)) in izip!(point_1.clone(), point_2).enumerate() {
+            builder.push_op(DslIr::EqEval(x1, x2, acc));
+            // Only need felt of first half of point_1 (current prefix sum).
+            if i < point_1.len() / 2 {
+                acc_felt = builder.eval(x1 + acc_felt * SymbolicFelt::from_canonical_u32(2));
+            }
         }
-        acc
+        (acc, acc_felt)
     }
 
     fn num2bits(
         builder: &mut Builder<Self>,
-        num: Felt<<Self as Config>::F>,
+        num: Felt<SP1Field>,
         num_bits: usize,
     ) -> Vec<Var<<Self as Config>::N>> {
         builder.num2bits_f_circuit(num)[..num_bits].to_vec()
@@ -516,12 +665,12 @@ impl CircuitConfig for OuterConfig {
     fn bits2num(
         builder: &mut Builder<Self>,
         bits: impl IntoIterator<Item = Var<<Self as Config>::N>>,
-    ) -> Felt<<Self as Config>::F> {
-        let result = builder.eval(Self::F::zero());
+    ) -> Felt<SP1Field> {
+        let result = builder.eval(SP1Field::zero());
         for (i, bit) in bits.into_iter().enumerate() {
             let to_add: Felt<_> = builder.uninit();
-            let pow2 = builder.constant(Self::F::from_canonical_u32(1 << i));
-            let zero = builder.constant(Self::F::zero());
+            let pow2 = builder.constant(SP1Field::from_canonical_u32(1 << i));
+            let zero = builder.constant(SP1Field::zero());
             builder.push_op(DslIr::CircuitSelectF(bit, pow2, zero, to_add));
             builder.assign(result, result + to_add);
         }
@@ -531,9 +680,9 @@ impl CircuitConfig for OuterConfig {
     fn select_chain_f(
         builder: &mut Builder<Self>,
         should_swap: Self::Bit,
-        first: impl IntoIterator<Item = Felt<<Self as Config>::F>> + Clone,
-        second: impl IntoIterator<Item = Felt<<Self as Config>::F>> + Clone,
-    ) -> Vec<Felt<<Self as Config>::F>> {
+        first: impl IntoIterator<Item = Felt<SP1Field>> + Clone,
+        second: impl IntoIterator<Item = Felt<SP1Field>> + Clone,
+    ) -> Vec<Felt<SP1Field>> {
         let id_branch = first.clone().into_iter().chain(second.clone());
         let swap_branch = second.into_iter().chain(first);
         zip(id_branch, swap_branch)
@@ -548,9 +697,9 @@ impl CircuitConfig for OuterConfig {
     fn select_chain_ef(
         builder: &mut Builder<Self>,
         should_swap: Self::Bit,
-        first: impl IntoIterator<Item = Ext<<Self as Config>::F, <Self as Config>::EF>> + Clone,
-        second: impl IntoIterator<Item = Ext<<Self as Config>::F, <Self as Config>::EF>> + Clone,
-    ) -> Vec<Ext<<Self as Config>::F, <Self as Config>::EF>> {
+        first: impl IntoIterator<Item = Ext<SP1Field, SP1ExtensionField>> + Clone,
+        second: impl IntoIterator<Item = Ext<SP1Field, SP1ExtensionField>> + Clone,
+    ) -> Vec<Ext<SP1Field, SP1ExtensionField>> {
         let id_branch = first.clone().into_iter().chain(second.clone());
         let swap_branch = second.into_iter().chain(first);
         zip(id_branch, swap_branch)
@@ -562,83 +711,41 @@ impl CircuitConfig for OuterConfig {
             .collect()
     }
 
-    fn exp_f_bits_precomputed(
-        builder: &mut Builder<Self>,
-        power_bits: &[Self::Bit],
-        two_adic_powers_of_x: &[Felt<Self::F>],
-    ) -> Felt<Self::F> {
-        let mut result: Felt<_> = builder.eval(Self::F::one());
-        let one = builder.constant(Self::F::one());
-        for (&bit, &power) in power_bits.iter().zip(two_adic_powers_of_x) {
-            let multiplier = builder.select_f(bit, power, one);
-            result = builder.eval(multiplier * result);
-        }
-        result
+    fn poseidon2_permute_v2(
+        _: &mut Builder<Self>,
+        _: [Felt<SP1Field>; PERMUTATION_WIDTH],
+    ) -> [Felt<SP1Field>; PERMUTATION_WIDTH] {
+        unimplemented!();
     }
 }
 
-impl BabyBearFriConfig for BabyBearPoseidon2 {
-    type ValMmcs = ValMmcs;
-    type FriChallenger = <Self as StarkGenericConfig>::Challenger;
-    type RowMajorProverData = <ValMmcs as Mmcs<BabyBear>>::ProverData<RowMajorMatrix<BabyBear>>;
-
-    fn fri_config(&self) -> &FriConfig<FriMmcs<Self>> {
-        self.pcs().fri_config()
-    }
-
-    fn challenger_shape(challenger: &Self::FriChallenger) -> SpongeChallengerShape {
-        SpongeChallengerShape {
-            input_buffer_len: challenger.input_buffer.len(),
-            output_buffer_len: challenger.output_buffer.len(),
-        }
-    }
-}
-
-impl BabyBearFriConfig for BabyBearPoseidon2Outer {
-    type ValMmcs = OuterValMmcs;
-    type FriChallenger = <Self as StarkGenericConfig>::Challenger;
-
-    type RowMajorProverData =
-        <OuterValMmcs as Mmcs<BabyBear>>::ProverData<RowMajorMatrix<BabyBear>>;
-
-    fn fri_config(&self) -> &FriConfig<FriMmcs<Self>> {
-        self.pcs().fri_config()
-    }
-
-    fn challenger_shape(_challenger: &Self::FriChallenger) -> SpongeChallengerShape {
-        unimplemented!("Shape not supported for outer fri challenger");
-    }
-}
-
-impl<C: CircuitConfig<F = BabyBear, Bit = Felt<BabyBear>>> BabyBearFriConfigVariable<C>
-    for BabyBearPoseidon2
-{
+impl<C: CircuitConfig<Bit = Felt<SP1Field>>> SP1FieldConfigVariable<C> for SP1GlobalContext {
     type FriChallengerVariable = DuplexChallengerVariable<C>;
 
-    fn challenger_variable(&self, builder: &mut Builder<C>) -> Self::FriChallengerVariable {
+    fn challenger_variable(builder: &mut Builder<C>) -> Self::FriChallengerVariable {
         DuplexChallengerVariable::new(builder)
     }
 
     fn commit_recursion_public_values(
         builder: &mut Builder<C>,
-        public_values: RecursionPublicValues<Felt<<C>::F>>,
+        public_values: RecursionPublicValues<Felt<SP1Field>>,
     ) {
         builder.commit_public_values_v2(public_values);
     }
 }
 
-impl<C: CircuitConfig<F = BabyBear, N = Bn254Fr, Bit = Var<Bn254Fr>>> BabyBearFriConfigVariable<C>
-    for BabyBearPoseidon2Outer
+impl<C: CircuitConfig<N = Bn254Fr, Bit = Var<Bn254Fr>>> SP1FieldConfigVariable<C>
+    for SP1OuterGlobalContext
 {
     type FriChallengerVariable = MultiField32ChallengerVariable<C>;
 
-    fn challenger_variable(&self, builder: &mut Builder<C>) -> Self::FriChallengerVariable {
+    fn challenger_variable(builder: &mut Builder<C>) -> Self::FriChallengerVariable {
         MultiField32ChallengerVariable::new(builder)
     }
 
     fn commit_recursion_public_values(
         builder: &mut Builder<C>,
-        public_values: RecursionPublicValues<Felt<<C>::F>>,
+        public_values: RecursionPublicValues<Felt<SP1Field>>,
     ) {
         let committed_values_digest_bytes_felts: [Felt<_>; 32] =
             words_to_bytes(&public_values.committed_value_digest).try_into().unwrap();
@@ -648,5 +755,16 @@ impl<C: CircuitConfig<F = BabyBear, N = Bn254Fr, Bit = Var<Bn254Fr>>> BabyBearFr
 
         let vkey_hash = felts_to_bn254_var(builder, &public_values.sp1_vk_digest);
         builder.commit_vkey_hash_circuit(vkey_hash);
+
+        let exit_code = public_values.exit_code;
+        let var_exit_code: Var<C::N> = builder.felt2var_circuit(exit_code);
+        builder.commit_exit_code_circuit(var_exit_code);
+
+        let vk_root: Var<_> = felts_to_bn254_var(builder, &public_values.vk_root);
+        builder.commit_vk_root_circuit(vk_root);
+
+        let proof_nonce: Var<_> =
+            felt_proof_nonce_to_bn254_var(builder, &public_values.proof_nonce);
+        builder.commit_proof_nonce_circuit(proof_nonce);
     }
 }

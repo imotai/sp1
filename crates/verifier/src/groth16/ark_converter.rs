@@ -5,6 +5,9 @@ use ark_groth16::{Proof, VerifyingKey};
 use ark_serialize::{CanonicalDeserialize, Compress, Validate};
 use thiserror::Error;
 
+use crate::alloc::borrow::ToOwned;
+use alloc::vec::Vec;
+
 const GNARK_MASK: u8 = 0b11 << 6;
 const GNARK_COMPRESSED_POSITIVE: u8 = 0b10 << 6;
 const GNARK_COMPRESSED_NEGATIVE: u8 = 0b11 << 6;
@@ -136,6 +139,9 @@ fn gnark_decompressed_g2_to_ark_decompressed_g2(
 
 /// Load a Groth16 proof from bytes in the arkworks format.
 pub fn load_ark_proof_from_bytes(buffer: &[u8]) -> Result<Proof<Bn254>, ArkGroth16Error> {
+    if buffer.len() != 256 {
+        return Err(ArkGroth16Error::InvalidInput);
+    }
     Ok(Proof::<Bn254> {
         a: gnark_decompressed_g1_to_ark_decompressed_g1(buffer[..64].try_into().unwrap())?,
         b: gnark_decompressed_g2_to_ark_decompressed_g2(buffer[64..192].try_into().unwrap())?,
@@ -147,6 +153,9 @@ pub fn load_ark_proof_from_bytes(buffer: &[u8]) -> Result<Proof<Bn254>, ArkGroth
 pub fn load_ark_groth16_verifying_key_from_bytes(
     buffer: &[u8],
 ) -> Result<VerifyingKey<Bn254>, ArkGroth16Error> {
+    if buffer.len() < 292 {
+        return Err(ArkGroth16Error::InvalidInput);
+    }
     // Note that g1_beta and g1_delta are not used in the verification process.
     let alpha_g1 = decompress_g1(buffer[..32].try_into().unwrap())?;
     let beta_g2 = decompress_g2(buffer[64..128].try_into().unwrap())?;
@@ -156,6 +165,9 @@ pub fn load_ark_groth16_verifying_key_from_bytes(
     let num_k = u32::from_be_bytes([buffer[288], buffer[289], buffer[290], buffer[291]]);
     let mut k = Vec::new();
     let mut offset = 292;
+    if (buffer.len() as u64) < (num_k as u64) * 32 + (offset as u64) + 4 {
+        return Err(ArkGroth16Error::InvalidInput);
+    }
     for _ in 0..num_k {
         let point = decompress_g1(&buffer[offset..offset + 32].try_into().unwrap())?;
         k.push(point);
@@ -169,7 +181,11 @@ pub fn load_ark_groth16_verifying_key_from_bytes(
         buffer[offset + 3],
     ]);
     offset += 4;
+
     for _ in 0..num_of_array_of_public_and_commitment_committed {
+        if (buffer.len() as u64) < (offset as u64) + 4 {
+            return Err(ArkGroth16Error::InvalidInput);
+        }
         let num = u32::from_be_bytes([
             buffer[offset],
             buffer[offset + 1],
@@ -191,6 +207,15 @@ pub fn load_ark_groth16_verifying_key_from_bytes(
 pub fn load_ark_public_inputs_from_bytes(
     vkey_hash: &[u8; 32],
     committed_values_digest: &[u8; 32],
-) -> [Fr; 2] {
-    [Fr::from_be_bytes_mod_order(vkey_hash), Fr::from_be_bytes_mod_order(committed_values_digest)]
+    exit_code: &[u8; 32],
+    vk_root: &[u8; 32],
+    proof_nonce: &[u8; 32],
+) -> [Fr; 5] {
+    [
+        Fr::from_be_bytes_mod_order(vkey_hash),
+        Fr::from_be_bytes_mod_order(committed_values_digest),
+        Fr::from_be_bytes_mod_order(exit_code),
+        Fr::from_be_bytes_mod_order(vk_root),
+        Fr::from_be_bytes_mod_order(proof_nonce),
+    ]
 }

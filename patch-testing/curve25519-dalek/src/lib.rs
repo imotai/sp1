@@ -2,8 +2,10 @@
 fn test_decompressed_expected_value(
     stdin: &mut sp1_sdk::SP1Stdin,
 ) -> impl FnOnce(sp1_sdk::SP1PublicValues) {
-    use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
-    use rand::distributions::{Distribution, WeightedIndex};
+    use curve25519_dalek::edwards::CompressedEdwardsY;
+    use curve25519_dalek::edwards::EdwardsPoint;
+    use rand::distributions::Distribution;
+    use rand::distributions::WeightedIndex;
     use sp1_test::DEFAULT_CORPUS_COUNT;
 
     let dist = rand::distributions::WeightedIndex::new([9_usize, 1]).unwrap();
@@ -61,7 +63,8 @@ fn test_decompressed_expected_value(
 fn test_decompressed_noncanonical(
     stdin: &mut sp1_sdk::SP1Stdin,
 ) -> impl FnOnce(sp1_sdk::SP1PublicValues) {
-    use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
+    use curve25519_dalek::edwards::CompressedEdwardsY;
+    use curve25519_dalek::edwards::EdwardsPoint;
 
     let how_many_points = 1_usize;
     stdin.write(&how_many_points);
@@ -119,7 +122,8 @@ fn test_ed25519_verify(stdin: &mut sp1_sdk::SP1Stdin) -> impl FnOnce(sp1_sdk::SP
 
 #[sp1_test::sp1_test("curve25519_add_then_multiply", syscalls = [ED_ADD, ED_DECOMPRESS], prove)]
 fn test_add_then_multiply(stdin: &mut sp1_sdk::SP1Stdin) -> impl FnOnce(sp1_sdk::SP1PublicValues) {
-    use curve25519_dalek::{edwards::CompressedEdwardsY, scalar::Scalar};
+    use curve25519_dalek::edwards::CompressedEdwardsY;
+    use curve25519_dalek::scalar::Scalar;
 
     let times = 100u16;
     stdin.write(&{ times });
@@ -139,8 +143,8 @@ fn test_add_then_multiply(stdin: &mut sp1_sdk::SP1Stdin) -> impl FnOnce(sp1_sdk:
         let compressed2 = CompressedEdwardsY(bytes2);
         let point2 = compressed2.decompress();
 
-        if let (Some(point1), Some(point2)) = (point1, point2) {
-            let point = point1 + point2;
+        if point1.is_some() && point2.is_some() {
+            let point = point1.unwrap() + point2.unwrap();
             let scalar = Scalar::from_bytes_mod_order(scalar);
             let result = point * scalar;
             result_vec.push(result.compress().to_bytes());
@@ -160,7 +164,8 @@ fn test_add_then_multiply(stdin: &mut sp1_sdk::SP1Stdin) -> impl FnOnce(sp1_sdk:
 
 #[sp1_test::sp1_test("curve25519_zero_msm", syscalls = [ED_ADD, ED_DECOMPRESS], prove)]
 fn test_zero_msm(_stdin: &mut sp1_sdk::SP1Stdin) -> impl FnOnce(sp1_sdk::SP1PublicValues) {
-    use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
+    use curve25519_dalek::edwards::CompressedEdwardsY;
+    use curve25519_dalek::edwards::EdwardsPoint;
 
     let bytes1: [u8; 32] = [3; 32];
 

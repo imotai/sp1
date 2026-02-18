@@ -1,10 +1,28 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use std::{path::PathBuf, process::Command};
-
-use crate::{
-    get_target, CommandExecutor, LATEST_SUPPORTED_TOOLCHAIN_VERSION_TAG, RUSTUP_TOOLCHAIN_NAME,
+use std::{
+    path::PathBuf,
+    process::{Command, Stdio},
 };
+
+use crate::{get_target, LATEST_SUPPORTED_TOOLCHAIN_VERSION_TAG, RUSTUP_TOOLCHAIN_NAME};
+
+// There is a lot of Commands in this module, having this trait back can
+// help us simplify the code a bit.
+trait CommandExecutor {
+    fn run(&mut self) -> Result<()>;
+}
+
+impl CommandExecutor for Command {
+    fn run(&mut self) -> Result<()> {
+        self.stderr(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stdin(Stdio::inherit())
+            .output()
+            .with_context(|| format!("while executing `{:?}`", &self))
+            .map(|_| ())
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "build-toolchain", about = "Build the cargo-prove toolchain.")]
@@ -78,6 +96,7 @@ impl BuildToolchainCmd {
         Command::new("python3")
             .env("RUST_TARGET_PATH", &temp_dir)
             .env("CARGO_TARGET_RISCV32IM_SUCCINCT_ZKVM_ELF_RUSTFLAGS", "-Cpasses=lower-atomic")
+            .env("CARGO_TARGET_RISCV64IM_SUCCINCT_ZKVM_ELF_RUSTFLAGS", "-Cpasses=lower-atomic")
             .args([
                 "x.py",
                 "build",
@@ -86,7 +105,10 @@ impl BuildToolchainCmd {
                 "compiler/rustc",
                 "library",
                 "--target",
-                &format!("riscv32im-succinct-zkvm-elf,{}", get_target()),
+                &format!(
+                    "riscv32im-succinct-zkvm-elf,riscv64im-succinct-zkvm-elf,{}",
+                    get_target()
+                ),
             ])
             .current_dir(&rust_dir)
             .run()?;

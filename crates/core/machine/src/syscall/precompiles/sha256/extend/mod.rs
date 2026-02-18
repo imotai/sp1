@@ -1,10 +1,8 @@
 mod air;
 mod columns;
-mod flags;
+mod controller;
 mod trace;
-
 pub use columns::*;
-
 /// Implements the SHA extension operation which loops over i = \[16, 63\] and modifies w\[i\] in
 /// each iteration. The only input to the syscall is the 4byte-aligned pointer to the w array.
 ///
@@ -12,6 +10,10 @@ pub use columns::*;
 /// iteration of the loop.
 #[derive(Default)]
 pub struct ShaExtendChip;
+
+/// Implements the controller for the ShaExtendChip.
+#[derive(Default)]
+pub struct ShaExtendControlChip;
 
 impl ShaExtendChip {
     pub const fn new() -> Self {
@@ -29,15 +31,9 @@ pub fn sha_extend(w: &mut [u32]) {
 
 #[cfg(test)]
 pub mod extend_tests {
-    #![allow(clippy::print_stdout)]
+    use std::sync::Arc;
 
-    use p3_baby_bear::BabyBear;
-
-    use p3_matrix::dense::RowMajorMatrix;
-    use sp1_core_executor::{
-        events::AluEvent, syscalls::SyscallCode, ExecutionRecord, Instruction, Opcode, Program,
-    };
-    use sp1_stark::{air::MachineAir, CpuProver};
+    use sp1_core_executor::Program;
     use test_artifacts::{SHA2_ELF, SHA_EXTEND_ELF};
 
     use crate::{
@@ -45,57 +41,19 @@ pub mod extend_tests {
         utils::{self, run_test},
     };
 
-    use super::ShaExtendChip;
-
-    pub fn sha_extend_program() -> Program {
-        let w_ptr = 100;
-        let mut instructions = vec![Instruction::new(Opcode::ADD, 29, 0, 5, false, true)];
-        for i in 0..64 {
-            instructions.extend(vec![
-                Instruction::new(Opcode::ADD, 30, 0, w_ptr + i * 4, false, true),
-                Instruction::new(Opcode::SW, 29, 30, 0, false, true),
-            ]);
-        }
-        instructions.extend(vec![
-            Instruction::new(Opcode::ADD, 5, 0, SyscallCode::SHA_EXTEND as u32, false, true),
-            Instruction::new(Opcode::ADD, 10, 0, w_ptr, false, true),
-            Instruction::new(Opcode::ADD, 11, 0, 0, false, true),
-            Instruction::new(Opcode::ECALL, 5, 10, 11, false, false),
-        ]);
-        Program::new(instructions, 0, 0)
-    }
-
-    #[test]
-    fn generate_trace() {
-        let mut shard = ExecutionRecord::default();
-        shard.add_events = vec![AluEvent::new(0, Opcode::ADD, 14, 8, 6, false)];
-        let chip = ShaExtendChip::new();
-        let trace: RowMajorMatrix<BabyBear> =
-            chip.generate_trace(&shard, &mut ExecutionRecord::default());
-        println!("{:?}", trace.values)
-    }
-
-    #[test]
-    fn test_sha_prove() {
+    #[tokio::test]
+    async fn test_sha256_program() {
         utils::setup_logger();
-        let program = sha_extend_program();
+        let program = Arc::new(Program::from(&SHA2_ELF).unwrap());
         let stdin = SP1Stdin::new();
-        run_test::<CpuProver<_, _>>(program, stdin).unwrap();
+        run_test(program, stdin).await.unwrap();
     }
 
-    #[test]
-    fn test_sha256_program() {
+    #[tokio::test]
+    async fn test_sha_extend_program() {
         utils::setup_logger();
-        let program = Program::from(SHA2_ELF).unwrap();
+        let program = Arc::new(Program::from(&SHA_EXTEND_ELF).unwrap());
         let stdin = SP1Stdin::new();
-        run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-    }
-
-    #[test]
-    fn test_sha_extend_program() {
-        utils::setup_logger();
-        let program = Program::from(SHA_EXTEND_ELF).unwrap();
-        let stdin = SP1Stdin::new();
-        run_test::<CpuProver<_, _>>(program, stdin).unwrap();
+        run_test(program, stdin).await.unwrap();
     }
 }

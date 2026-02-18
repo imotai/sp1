@@ -43,7 +43,7 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
           cargo install --force --locked --path .
           cargo clean
@@ -83,7 +83,7 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
           cargo install --force --locked --path .
           cargo clean
@@ -123,7 +123,7 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
           cargo install --force --locked --path .
           cargo clean
@@ -163,7 +163,7 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
           cargo install --force --locked --path .
           cargo clean
@@ -227,7 +227,7 @@ jobs:
           cd ../script
           cargo remove sp1-sdk
           cargo add sp1-sdk --path $GITHUB_WORKSPACE/crates/sdk
-          SP1_DEV=1 RUST_LOG=info cargo run --release
+          RUST_LOG=info cargo run --release
 
   cycle-tracking:
     name: Example (Cycle Tracking)
@@ -265,7 +265,7 @@ jobs:
         run: |
           cd examples/cycle-tracking/script
           cargo add sp1-sdk --path $GITHUB_WORKSPACE/crates/sdk
-          SP1_DEV=1 RUST_LOG=info cargo run --release
+          RUST_LOG=info cargo run --release
 
   tendermint:
     name: Example (Tendermint)
@@ -307,7 +307,7 @@ jobs:
           cd ../script
           cargo remove sp1-sdk
           cargo add sp1-sdk --path $GITHUB_WORKSPACE/crates/sdk
-          SP1_DEV=1 RUST_LOG=info cargo run --release
+          RUST_LOG=info cargo run --release
 
   patch-testing:
     name: "Run all tests for patches in the vm"
@@ -332,7 +332,7 @@ jobs:
 
       - name: Install SP1 toolchain from repo
         run: |
-          cargo run -p sp1-cli -- prove install-toolchain
+          cargo run -p sp1-cli --no-default-features -- prove install-toolchain
           cd crates/cli
           cargo install --force --locked --path .
           cargo clean
@@ -359,7 +359,7 @@ jobs:
 
   #     - name: Install SP1 toolchain from repo
   #       run: |
-  #         cargo run -p sp1-cli -- prove install-toolchain
+  #         cargo run -p sp1-cli --no-default-features -- prove install-toolchain
   #         cd crates/cli
   #         cargo install --force --locked --path .
   #         cargo clean
@@ -377,4 +377,4 @@ jobs:
   #         cd ../script
   #         cargo remove sp1-sdk
   #         cargo add sp1-sdk --path $GITHUB_WORKSPACE/crates/sdk
-  #         SP1_DEV=1 RUST_LOG=info cargo run --release -- --prove
+  #         RUST_LOG=info cargo run --release -- --prove

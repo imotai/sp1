@@ -22,6 +22,11 @@ use super::{
 pub(crate) fn load_plonk_verifying_key_from_bytes(
     buffer: &[u8],
 ) -> Result<PlonkVerifyingKey, PlonkError> {
+    // Verifying key for SP1 proofs have this size.
+    if buffer.len() != 34368 {
+        return Err(PlonkError::InvalidVerifyingKey);
+    }
+
     let size = u64::from_be_bytes([
         buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6], buffer[7],
     ]) as usize;
@@ -46,6 +51,12 @@ pub(crate) fn load_plonk_verifying_key_from_bytes(
     let qo = unchecked_compressed_x_to_g1_point(&buffer[304..336])?;
     let qk = unchecked_compressed_x_to_g1_point(&buffer[336..368])?;
     let num_qcp = u32::from_be_bytes([buffer[368], buffer[369], buffer[370], buffer[371]]);
+
+    // Verifying key for SP1 proofs have this size.
+    if num_qcp != 1 {
+        return Err(PlonkError::InvalidVerifyingKey);
+    }
+
     let mut qcp = Vec::new();
     let mut offset = 372;
 
@@ -71,6 +82,11 @@ pub(crate) fn load_plonk_verifying_key_from_bytes(
         buffer[offset + 6],
         buffer[offset + 7],
     ]) as usize;
+
+    // Verifying key for SP1 proofs have this size.
+    if num_commitment_constraint_indexes != 1 {
+        return Err(PlonkError::InvalidVerifyingKey);
+    }
 
     let mut commitment_constraint_indexes = Vec::new();
     offset += 8;
@@ -122,13 +138,18 @@ pub(crate) fn load_plonk_proof_from_bytes(
     buffer: &[u8],
     num_bsb22_commitments: usize,
 ) -> Result<PlonkProof, PlonkError> {
-    if buffer.len() <
-        PLONK_CLAIMED_VALUES_OFFSET +
-            PLONK_CLAIMED_VALUES_COUNT * 32 +
-            PLONK_Z_SHIFTED_OPENING_VALUE_OFFSET +
-            PLONK_Z_SHIFTED_OPENING_H_OFFSET +
-            num_bsb22_commitments * 32 +
-            num_bsb22_commitments * 64
+    // Verifying key for SP1 proofs have this size.
+    if num_bsb22_commitments != 1 {
+        return Err(PlonkError::InvalidVerifyingKey);
+    }
+
+    if buffer.len()
+        != PLONK_CLAIMED_VALUES_OFFSET
+            + PLONK_CLAIMED_VALUES_COUNT * 32
+            + PLONK_Z_SHIFTED_OPENING_VALUE_OFFSET
+            + PLONK_Z_SHIFTED_OPENING_H_OFFSET
+            + num_bsb22_commitments * 32
+            + num_bsb22_commitments * 64
     {
         return Err(PlonkError::GeneralError(Error::InvalidData));
     }

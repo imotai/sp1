@@ -42,7 +42,7 @@ fn prepare_inputs(vk: Groth16VerifyingKey, public_inputs: &[Fr]) -> Result<G1, G
     Ok(public_inputs
         .iter()
         .zip(vk.g1.k.iter().skip(1))
-        .fold(vk.g1.k[0], |acc, (i, b)| acc + (*b * *i))
+        .fold(vk.g1.k[0], |acc, (i, b)| if *i != Fr::zero() { acc + (*b * *i) } else { acc })
         .into())
 }
 
