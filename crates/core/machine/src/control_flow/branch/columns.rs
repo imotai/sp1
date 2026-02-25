@@ -1,8 +1,10 @@
 use sp1_derive::AlignedBorrow;
-use sp1_stark::Word;
 use std::mem::size_of;
 
-use crate::operations::BabyBearWordRangeChecker;
+use crate::{
+    adapter::{register::i_type::ITypeReader, state::CPUState},
+    operations::LtOperationSigned,
+};
 
 pub const NUM_BRANCH_COLS: usize = size_of::<BranchColumns<u8>>();
 
@@ -10,23 +12,14 @@ pub const NUM_BRANCH_COLS: usize = size_of::<BranchColumns<u8>>();
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct BranchColumns<T> {
-    /// The current program counter.
-    pub pc: Word<T>,
-    pub pc_range_checker: BabyBearWordRangeChecker<T>,
+    /// The current shard, timestamp, program counter of the CPU.
+    pub state: CPUState<T>,
+
+    /// The adapter to read program and register information.
+    pub adapter: ITypeReader<T>,
 
     /// The next program counter.
-    pub next_pc: Word<T>,
-    pub next_pc_range_checker: BabyBearWordRangeChecker<T>,
-
-    /// The value of the first operand.
-    pub op_a_value: Word<T>,
-    /// The value of the second operand.
-    pub op_b_value: Word<T>,
-    /// The value of the third operand.
-    pub op_c_value: Word<T>,
-
-    /// Whether the first operand is register 0.
-    pub op_a_0: T,
+    pub next_pc: [T; 3],
 
     /// Branch Instructions.
     pub is_beq: T,
@@ -44,24 +37,6 @@ pub struct BranchColumns<T> {
     /// > (is_bge | is_bgeu) & (a_eq_b | a_gt_b)
     pub is_branching: T,
 
-    /// The not branching column is equal to:
-    ///
-    /// > is_beq & !a_eq_b ||
-    /// > is_bne & !(a_lt_b | a_gt_b) ||
-    /// > (is_blt | is_bltu) & !a_lt_b ||
-    /// > (is_bge | is_bgeu) & !(a_eq_b | a_gt_b)
-    ///
-    /// Note that we probably can do away with this column and just use !is_branching.
-    /// However, the branching related constraints were auditted twice when they were part of the
-    /// CPU table, so I'm preserving those columns/constraints for now.
-    pub not_branching: T,
-
-    /// Whether a equals b.
-    pub a_eq_b: T,
-
-    /// Whether a is greater than b.
-    pub a_gt_b: T,
-
-    /// Whether a is less than b.
-    pub a_lt_b: T,
+    /// The comparison between `a` and `b`.
+    pub compare_operation: LtOperationSigned<T>,
 }

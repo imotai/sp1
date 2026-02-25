@@ -8,10 +8,10 @@ use core::arch::asm;
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn syscall_u256x2048_mul(
-    a: *const [u32; 8],
-    b: *const [u32; 64],
-    lo: *mut [u32; 64],
-    hi: *mut [u32; 8],
+    a: *const [u64; 4],
+    b: *const [u64; 32],
+    lo: *mut [u64; 32],
+    hi: *mut [u64; 4],
 ) {
     #[cfg(target_os = "zkvm")]
     unsafe {

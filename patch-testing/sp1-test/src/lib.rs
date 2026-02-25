@@ -8,15 +8,10 @@ pub const DEFAULT_CORPUS_COUNT: u8 = 100;
 /// The maximum length of an item in the corpus, if applicable.
 pub const DEFAULT_CORPUS_MAX_LEN: usize = 100;
 
-/// A lock to enforce serial execution of tests.
-pub static SERIAL_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
-
 /// A lock for the benchmark file.
 pub static BENCH_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 
-pub fn lock_serial() -> parking_lot::MutexGuard<'static, ()> {
-    SERIAL_LOCK.lock()
-}
+pub static SERIAL_SEMAPHORE: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
 
 #[derive(Serialize, Deserialize)]
 pub struct BenchEntry {
@@ -51,9 +46,23 @@ pub fn write_cycles(name: &str, cycles: u64) {
     std::fs::write(file, serde_json::to_string(&entries).unwrap()).unwrap();
 }
 
-lazy_static::lazy_static! {
-    /// Use a single CPU prover for all tests.
-    pub static ref SP1_CPU_PROVER: sp1_sdk::cpu::CpuProver = sp1_sdk::cpu::CpuProver::new();
+static CPU_PROVER: tokio::sync::OnceCell<sp1_sdk::cpu::CpuProver> =
+    tokio::sync::OnceCell::const_new();
+
+pub async fn sp1_cpu_prover() -> &'static sp1_sdk::cpu::CpuProver {
+    CPU_PROVER.get_or_init(sp1_sdk::cpu::CpuProver::new).await
+}
+
+static SETUP_ONCE: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
+
+pub async fn setup() {
+    #[allow(unexpected_cfgs)]
+    SETUP_ONCE
+        .get_or_init(|| async {
+            #[cfg(tokio_unstable)]
+            console_subscriber::init();
+        })
+        .await;
 }
 
 /// Append common edge cases to the corpus.

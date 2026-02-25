@@ -61,7 +61,6 @@ pub fn compute_merkle_root(mut leaves: Vec<[u8; 32]>) -> [u8; 32] {
         return [0u8; 32];
     }
 
-
     while leaves.len() > 1 {
         let mut next = Vec::new();
         for i in (0..leaves.len()).step_by(2) {

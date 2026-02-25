@@ -1,17 +1,16 @@
-use std::borrow::BorrowMut;
+use std::{borrow::BorrowMut, mem::MaybeUninit};
 
-use p3_field::PrimeField32;
-use p3_keccak_air::{generate_trace_rows, NUM_KECCAK_COLS, NUM_ROUNDS};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
+use slop_algebra::PrimeField32;
+use slop_keccak_air::{generate_trace_rows, NUM_KECCAK_COLS, NUM_ROUNDS};
+use slop_matrix::Matrix;
+use slop_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use sp1_core_executor::{
     events::{ByteLookupEvent, KeccakPermuteEvent, PrecompileEvent, SyscallEvent},
-    syscalls::SyscallCode,
-    ExecutionRecord, Program,
+    ExecutionRecord, Program, SyscallCode,
 };
-use sp1_stark::air::MachineAir;
+use sp1_hypercube::air::MachineAir;
 
-use crate::utils::zeroed_f_vec;
+use crate::utils::{next_multiple_of_32, zeroed_f_vec};
 
 use super::{
     columns::{KeccakMemCols, NUM_KECCAK_MEM_COLS},
@@ -23,8 +22,8 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteChip {
     type Record = ExecutionRecord;
     type Program = Program;
 
-    fn name(&self) -> String {
-        "KeccakPermute".to_string()
+    fn name(&self) -> &'static str {
+        "KeccakPermute"
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
@@ -52,17 +51,37 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteChip {
         }
     }
 
-    fn generate_trace(
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = input.get_precompile_events(SyscallCode::KECCAK_PERMUTE).len() * NUM_ROUNDS;
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
+    }
+
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
-        _: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        _output: &mut ExecutionRecord,
+        buffer: &mut [MaybeUninit<F>],
+    ) {
+        let padded_nb_rows = <KeccakPermuteChip as MachineAir<F>>::num_rows(self, input).unwrap();
         let events = input.get_precompile_events(SyscallCode::KECCAK_PERMUTE);
         let num_events = events.len();
-        let num_rows = (num_events * NUM_ROUNDS).next_power_of_two();
         let chunk_size = 8;
-        let values = vec![0u32; num_rows * NUM_KECCAK_MEM_COLS];
-        let mut values = unsafe { std::mem::transmute::<Vec<u32>, Vec<F>>(values) };
+        let num_event_rows = events.len() * NUM_ROUNDS;
+
+        unsafe {
+            let padding_start = num_event_rows * NUM_KECCAK_MEM_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_KECCAK_MEM_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, padded_nb_rows * NUM_KECCAK_MEM_COLS)
+        };
 
         let dummy_keccak_rows = generate_trace_rows::<F>(vec![[0; STATE_SIZE]]);
         let mut dummy_chunk = Vec::new();
@@ -94,9 +113,6 @@ impl<F: PrimeField32> MachineAir<F> for KeccakPermuteChip {
                     },
                 );
             });
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, NUM_KECCAK_MEM_COLS)
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -112,11 +128,8 @@ impl KeccakPermuteChip {
     pub fn populate_chunk<F: PrimeField32>(
         event: &KeccakPermuteEvent,
         chunk: &mut [F],
-        new_byte_lookup_events: &mut Vec<ByteLookupEvent>,
+        _: &mut Vec<ByteLookupEvent>,
     ) {
-        let start_clk = event.clk;
-        let shard = event.shard;
-
         let p3_keccak_trace = generate_trace_rows::<F>(vec![event.pre_state]);
 
         // Create all the rows for the permutation.
@@ -126,30 +139,15 @@ impl KeccakPermuteChip {
             // Copy p3_keccak_row into start of cols
             row[..NUM_KECCAK_COLS].copy_from_slice(p3_keccak_row.collect::<Vec<_>>().as_slice());
             let cols: &mut KeccakMemCols<F> = row.borrow_mut();
-
-            cols.shard = F::from_canonical_u32(shard);
-            cols.clk = F::from_canonical_u32(start_clk);
-            cols.state_addr = F::from_canonical_u32(event.state_addr);
+            cols.clk_high = F::from_canonical_u32((event.clk >> 24) as u32);
+            cols.clk_low = F::from_canonical_u32((event.clk & 0xFFFFFF) as u32);
+            cols.state_addr = [
+                F::from_canonical_u16((event.state_addr & 0xFFFF) as u16),
+                F::from_canonical_u16((event.state_addr >> 16) as u16),
+                F::from_canonical_u16((event.state_addr >> 32) as u16),
+            ];
+            cols.index = F::from_canonical_u32(i as u32);
             cols.is_real = F::one();
-
-            // If this is the first row, then populate read memory accesses
-            if i == 0 {
-                for (j, read_record) in event.state_read_records.iter().enumerate() {
-                    cols.state_mem[j].populate_read(*read_record, new_byte_lookup_events);
-                    new_byte_lookup_events.add_u8_range_checks(&read_record.value.to_le_bytes());
-                }
-                cols.do_memory_check = F::one();
-                cols.receive_ecall = F::one();
-            }
-
-            // If this is the last row, then populate write memory accesses
-            if i == NUM_ROUNDS - 1 {
-                for (j, write_record) in event.state_write_records.iter().enumerate() {
-                    cols.state_mem[j].populate_write(*write_record, new_byte_lookup_events);
-                    new_byte_lookup_events.add_u8_range_checks(&write_record.value.to_le_bytes());
-                }
-                cols.do_memory_check = F::one();
-            }
         }
     }
 }

@@ -6,6 +6,7 @@ use dirs::home_dir;
 
 use super::utils::{get_program_build_args, get_rust_compiler_flags};
 
+#[allow(clippy::uninlined_format_args)]
 /// Get the command to build the program locally.
 pub(crate) fn create_local_command(
     args: &BuildArgs,
@@ -27,9 +28,16 @@ pub(crate) fn create_local_command(
         }
     }
 
-    // the following flag is added to avoid build failure on ring:
-    // https://github.com/briansmith/ring/blob/bcf68dd27a071ff1947b6327d4c6bde526e24b60/include/ring-core/target.h#L47
-    command.env("CFLAGS_riscv32im_succinct_zkvm_elf", "-D__ILP32__");
+    // If CC_riscv64im_succinct_zkvm_elf is not set, set it to the default C++ toolchain
+    // downloaded by 'sp1up --c-toolchain'.
+    if env::var("CC_riscv64im_succinct_zkvm_elf").is_err() {
+        if let Some(home_dir) = home_dir() {
+            let cc_path = home_dir.join(".sp1").join("bin").join("riscv64-unknown-elf-gcc");
+            if cc_path.exists() {
+                command.env("CC_riscv64im_succinct_zkvm_elf", cc_path);
+            }
+        }
+    }
 
     let parsed_version = {
         let output = Command::new("rustc")

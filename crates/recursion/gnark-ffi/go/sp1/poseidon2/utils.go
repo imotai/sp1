@@ -1,8 +1,6 @@
 package poseidon2
 
-import (
-	"github.com/consensys/gnark/frontend"
-)
+import "github.com/consensys/gnark/frontend"
 
 func (p *Poseidon2Chip) diffusionPermuteMut(state *[width]frontend.Variable) {
 	sum := p.zero

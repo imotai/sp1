@@ -8,32 +8,41 @@ license = { workspace = true }
 repository = { workspace = true }
 keywords = { workspace = true }
 categories = { workspace = true }
+rust-version = { workspace = true }
 default-run = "sp1-perf"
 publish = false
 
 [dependencies]
-sp1-prover = { workspace = true }
 sp1-core-executor = { workspace = true }
-sp1-core-machine = { workspace = true, default-features = true }
-sp1-sdk = { workspace = true }
-p3-baby-bear = { workspace = true }
-sp1-stark = { workspace = true }
+sp1-sdk = { workspace = true, features = ["native-gnark", "network"] }
+sp1-prover = { workspace = true }
+sp1-prover-types = { workspace = true }
+sp1-core-machine = { workspace = true }
+sp1-hypercube = { workspace = true }
+sp1-primitives = { workspace = true }
 sp1-cuda = { workspace = true }
-test-artifacts = { workspace = true }
+slop-algebra = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+bincode = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+rand = { workspace = true }
+async-scoped = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
 tracing = { workspace = true }
-serde_json = { workspace = true }
-rand = "0.8.5"
-clap = { version = "4.5.9", features = ["derive"] }
-bincode = "1.3.3"
-time = "0.3.26"
+test-artifacts = { path = "../test-artifacts" }
 
 [[bin]]
 name = "sp1-perf"
-path = "src/main.rs"
+path = "src/perf.rs"
 
 [[bin]]
 name = "sp1-perf-executor"
 path = "src/executor.rs"
+
+[[bin]]
+name = "sp1-perf-setup"
+path = "src/setup.rs"
 
 [features]
 bigint-rug = ["sp1-core-executor/bigint-rug"]

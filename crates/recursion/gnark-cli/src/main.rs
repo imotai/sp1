@@ -47,13 +47,24 @@ struct ProveArgs {
 
 #[derive(Debug, Args)]
 struct VerifyArgs {
-    data_dir: String,
-    proof_path: String,
-    vkey_hash: String,
-    committed_values_digest: String,
-    output_path: String,
     #[arg(short, long)]
     system: String,
+    #[arg(long)]
+    data_dir: String,
+    #[arg(long)]
+    proof_path: String,
+    #[arg(long)]
+    vkey_hash: String,
+    #[arg(long)]
+    committed_values_digest: String,
+    #[arg(long)]
+    exit_code: String,
+    #[arg(long)]
+    proof_nonce: String,
+    #[arg(long)]
+    vk_root: String,
+    #[arg(long)]
+    output_path: String,
 }
 
 #[derive(Debug, Args)]
@@ -99,12 +110,18 @@ fn run_verify(args: VerifyArgs) {
             proof.trim(),
             &args.vkey_hash,
             &args.committed_values_digest,
+            &args.exit_code,
+            &args.vk_root,
+            &args.proof_nonce,
         ),
         "groth16" => verify_groth16_bn254(
             &args.data_dir,
             proof.trim(),
             &args.vkey_hash,
             &args.committed_values_digest,
+            &args.exit_code,
+            &args.vk_root,
+            &args.proof_nonce,
         ),
         _ => panic!("Unsupported system: {}", args.system),
     };

@@ -1,17 +1,22 @@
 # SP1 Verifier
 
-This crate provides verifiers for SP1 Groth16 and Plonk zero-knowledge proofs. These proofs are expected
-to be generated using the [SP1 SDK](../sdk).
+This crate contains primitives for verifying SP1 proofs generated using the [SP1 SDK](../sdk).
+
+It is split into the following modules:
+- `compressed`: Verifiers for SP1 "compressed" proofs.
+- `groth16`: Verifiers for Groth16 proofs.
+- `plonk`: Verifiers for Plonk proofs.
+
 
 ## Features
 
-Groth16 and Plonk proof verification are supported in `no-std` environments. Verification in the
+Groth16, Plonk and Compressed proof verification are supported in `no-std` environments. Verification in the
 SP1 zkVM context is patched, in order to make use of the
 [bn254 precompiles](https://blog.succinct.xyz/succinctshipsprecompiles/).
 
 ### Pre-generated verification keys
 
-Verification keys for Groth16 and Plonk are stored in the [`bn254-vk`](./bn254-vk/) directory. These
+Verification keys for Groth16 and Plonk are stored in the [`vk-artifacts`](./vk-artifacts/) directory. These
 vkeys are used to verify all SP1 proofs.
 
 These vkeys are the same as those found locally in

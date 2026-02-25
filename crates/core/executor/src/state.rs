@@ -6,29 +6,36 @@ use std::{
 
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
-use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, SP1ReduceProof, StarkVerifyingKey};
+use sp1_hypercube::{MachineVerifyingKey, SP1PcsProofInner};
 
 use crate::{
-    events::MemoryRecord,
+    events::{MemoryEntry, PageProtRecord},
     memory::Memory,
-    record::{ExecutionRecord, MemoryAccessRecord},
-    syscalls::SyscallCode,
-    ExecutorMode,
+    SP1RecursionProof, SyscallCode,
 };
+
+use sp1_primitives::SP1GlobalContext;
 
 /// Holds data describing the current state of a program's execution.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[repr(C)]
 pub struct ExecutionState {
     /// The program counter.
-    pub pc: u32,
+    pub pc: u64,
 
-    /// The shard clock keeps track of how many shards have been executed.
-    pub current_shard: u32,
+    /// Whether or not the shard is finished.
+    pub shard_finished: bool,
+
+    /// The starting timestamp of the current shard.
+    pub initial_timestamp: u64,
 
     /// The memory which instructions operate over. Values contain the memory value and last shard
     /// + timestamp that each memory address was accessed.
-    pub memory: Memory<MemoryRecord>,
+    pub memory: Memory<MemoryEntry>,
+
+    /// The page protection flags for each page in the memory.  The default values should be
+    /// `PROT_READ` | `PROT_WRITE`.
+    pub page_prots: HashMap<u64, PageProtRecord>,
 
     /// The global clock keeps track of how many instructions have been executed through all
     /// shards.
@@ -36,18 +43,20 @@ pub struct ExecutionState {
 
     /// The clock increments by 4 (possibly more in syscalls) for each instruction that has been
     /// executed in this shard.
-    pub clk: u32,
+    pub clk: u64,
 
     /// Uninitialized memory addresses that have a specific value they should be initialized with.
     /// `SyscallHintRead` uses this to write hint data into uninitialized memory.
-    pub uninitialized_memory: Memory<u32>,
+    pub uninitialized_memory: Memory<u64>,
 
     /// A stream of input values (global to the entire program).
     pub input_stream: VecDeque<Vec<u8>>,
 
     /// A stream of proofs (reduce vk, proof, verifying key) inputted to the program.
-    pub proof_stream:
-        Vec<(SP1ReduceProof<BabyBearPoseidon2>, StarkVerifyingKey<BabyBearPoseidon2>)>,
+    pub proof_stream: Vec<(
+        SP1RecursionProof<SP1GlobalContext, SP1PcsProofInner>,
+        MachineVerifyingKey<SP1GlobalContext>,
+    )>,
 
     /// A ptr to the current position in the proof stream, incremented after verifying a proof.
     pub proof_stream_ptr: usize,
@@ -66,14 +75,15 @@ pub struct ExecutionState {
 impl ExecutionState {
     #[must_use]
     /// Create a new [`ExecutionState`].
-    pub fn new(pc_start: u32) -> Self {
+    pub fn new(pc_start: u64) -> Self {
         Self {
             global_clk: 0,
-            // Start at shard 1 since shard 0 is reserved for memory initialization.
-            current_shard: 1,
+            shard_finished: false,
+            initial_timestamp: 1,
             clk: 0,
             pc: pc_start,
             memory: Memory::new_preallocated(),
+            page_prots: HashMap::new(),
             uninitialized_memory: Memory::new_preallocated(),
             input_stream: VecDeque::new(),
             public_values_stream: Vec::new(),
@@ -92,19 +102,13 @@ pub struct ForkState {
     /// The `global_clk` value at the fork point.
     pub global_clk: u64,
     /// The original `clk` value at the fork point.
-    pub clk: u32,
+    pub clk: u64,
     /// The original `pc` value at the fork point.
-    pub pc: u32,
+    pub pc: u64,
     /// All memory changes since the fork point.
-    pub memory_diff: HashMap<u32, Option<MemoryRecord>>,
-    /// The original memory access record at the fork point.
-    pub op_record: MemoryAccessRecord,
-    /// The original execution record at the fork point.
-    pub record: ExecutionRecord,
-    /// Whether `emit_events` was enabled at the fork point.
-    pub executor_mode: ExecutorMode,
-    /// The cumulative number of unconstrained cycles during the entire execution.
-    pub total_unconstrained_cycles: u64,
+    pub memory_diff: Memory<Option<MemoryEntry>>,
+    /// All page protection changes since the fork point.
+    pub page_prots_diff: HashMap<u64, PageProtRecord>,
 }
 
 impl ExecutionState {

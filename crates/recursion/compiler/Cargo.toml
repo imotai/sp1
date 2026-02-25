@@ -1,6 +1,6 @@
 [package]
 name = "sp1-recursion-compiler"
-description = "SP1 is a performant, 100% open-source, contributor-friendly zkVM."
+description = "Compiler for SP1 recursion circuits"
 readme = "../../../README.md"
 version = { workspace = true }
 edition = { workspace = true }
@@ -8,38 +8,32 @@ license = { workspace = true }
 repository = { workspace = true }
 keywords = { workspace = true }
 categories = { workspace = true }
+rust-version = { workspace = true }
 
 [dependencies]
-p3-bn254-fr = { workspace = true }
-p3-baby-bear = { workspace = true }
-p3-field = { workspace = true }
-p3-symmetric = { workspace = true }
+slop-bn254 = { workspace = true }
+slop-algebra = { workspace = true }
+slop-symmetric = { workspace = true }
 
-sp1-core-machine = { workspace = true, default-features = true }
+sp1-core-machine = { workspace = true }
 sp1-primitives = { workspace = true }
-sp1-recursion-core = { workspace = true, default-features = true }
-sp1-recursion-derive = { workspace = true }
-sp1-stark = { workspace = true }
+sp1-recursion-executor = { workspace = true }
+sp1-hypercube = { workspace = true }
 
 itertools = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-backtrace = { version = "0.3.71", optional = true }
+backtrace = { workspace = true }
 tracing = { workspace = true }
-vec_map = "0.8.2"
+vec_map = { workspace = true }
+cfg-if = { workspace = true }
 
 [dev-dependencies]
-sp1-recursion-core = { path = "../core", default-features = true, features = [
-    "program_validation",
-] }
-p3-challenger = { workspace = true }
-p3-dft = { workspace = true }
-p3-merkle-tree = { workspace = true }
-rand = "0.8.5"
-criterion = { version = "0.5.1", features = ["html_reports"] }
+sp1-recursion-executor = { workspace = true, features = ["program_validation"] }
+rand = { workspace = true }
 
 [features]
-default = ["debug"]
-debug = ["sp1-recursion-core/debug", "dep:backtrace"]
+# Enables cycle tracking and adds backtraces for circuit IR assertions.
+debug = ["sp1-recursion-executor/debug"]
 
 [lints]
 workspace = true

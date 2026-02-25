@@ -1,18 +1,17 @@
-use std::borrow::BorrowMut;
+use std::{borrow::BorrowMut, mem::MaybeUninit};
 
 use hashbrown::HashMap;
 use itertools::Itertools;
-use p3_field::PrimeField32;
-use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
+use slop_algebra::PrimeField32;
 use sp1_core_executor::{
-    events::{ByteLookupEvent, ByteRecord, MemoryRecordEnum, SyscallEvent},
-    syscalls::SyscallCode,
-    ExecutionRecord, Program,
+    events::{ByteLookupEvent, ByteRecord, SyscallEvent},
+    ExecutionRecord, Program, RTypeRecord, SyscallCode, HALT_PC,
 };
-use sp1_stark::air::MachineAir;
+use sp1_hypercube::{air::MachineAir, Word};
+use sp1_primitives::consts::u64_to_u16_limbs;
 
-use crate::utils::{next_power_of_two, zeroed_f_vec};
+use crate::{operations::SP1FieldWordRangeChecker, utils::next_multiple_of_32};
 
 use super::{
     columns::{SyscallInstrColumns, NUM_SYSCALL_INSTR_COLS},
@@ -24,20 +23,39 @@ impl<F: PrimeField32> MachineAir<F> for SyscallInstrsChip {
 
     type Program = Program;
 
-    fn name(&self) -> String {
-        "SyscallInstrs".to_string()
+    fn name(&self) -> &'static str {
+        "SyscallInstrs"
     }
 
-    fn generate_trace(
+    fn num_rows(&self, input: &Self::Record) -> Option<usize> {
+        let nb_rows = input.syscall_events.len();
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_multiple_of_32(nb_rows, size_log2);
+        Some(padded_nb_rows)
+    }
+
+    fn generate_trace_into(
         &self,
         input: &ExecutionRecord,
         output: &mut ExecutionRecord,
-    ) -> RowMajorMatrix<F> {
+        buffer: &mut [MaybeUninit<F>],
+    ) {
         let chunk_size = std::cmp::max((input.syscall_events.len()) / num_cpus::get(), 1);
-        let nb_rows = input.syscall_events.len();
-        let size_log2 = input.fixed_log2_rows::<F, _>(self);
-        let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
-        let mut values = zeroed_f_vec(padded_nb_rows * NUM_SYSCALL_INSTR_COLS);
+        let padded_nb_rows = <SyscallInstrsChip as MachineAir<F>>::num_rows(self, input).unwrap();
+        let num_event_rows = input.syscall_events.len();
+
+        unsafe {
+            let padding_start = num_event_rows * NUM_SYSCALL_INSTR_COLS;
+            let padding_size = (padded_nb_rows - num_event_rows) * NUM_SYSCALL_INSTR_COLS;
+            if padding_size > 0 {
+                core::ptr::write_bytes(buffer[padding_start..].as_mut_ptr(), 0, padding_size);
+            }
+        }
+
+        let buffer_ptr = buffer.as_mut_ptr() as *mut F;
+        let values = unsafe {
+            core::slice::from_raw_parts_mut(buffer_ptr, num_event_rows * NUM_SYSCALL_INSTR_COLS)
+        };
 
         let blu_events = values
             .chunks_mut(chunk_size * NUM_SYSCALL_INSTR_COLS)
@@ -51,7 +69,9 @@ impl<F: PrimeField32> MachineAir<F> for SyscallInstrsChip {
 
                     if idx < input.syscall_events.len() {
                         let event = &input.syscall_events[idx];
-                        self.event_to_row(event, cols, &mut blu);
+                        self.event_to_row(&event.0, &event.1, cols, &mut blu);
+                        cols.state.populate(&mut blu, event.0.clk, event.0.pc);
+                        cols.adapter.populate(&mut blu, event.1);
                     }
                 });
                 blu
@@ -59,9 +79,6 @@ impl<F: PrimeField32> MachineAir<F> for SyscallInstrsChip {
             .collect::<Vec<_>>();
 
         output.add_byte_lookup_events_from_maps(blu_events.iter().collect_vec());
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(values, NUM_SYSCALL_INSTR_COLS)
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -77,25 +94,31 @@ impl SyscallInstrsChip {
     fn event_to_row<F: PrimeField32>(
         &self,
         event: &SyscallEvent,
+        record: &RTypeRecord,
         cols: &mut SyscallInstrColumns<F>,
         blu: &mut impl ByteRecord,
     ) {
         cols.is_real = F::one();
-        cols.pc = F::from_canonical_u32(event.pc);
-        cols.next_pc = F::from_canonical_u32(event.next_pc);
-        cols.shard = F::from_canonical_u32(event.shard);
-        cols.clk = F::from_canonical_u32(event.clk);
 
-        cols.op_a_access.populate(MemoryRecordEnum::Write(event.a_record), blu);
-        cols.op_b_value = event.arg1.into();
-        cols.op_c_value = event.arg2.into();
+        cols.op_a_value = Word::from(record.a.value());
+        cols.a_low_bytes.populate_u16_to_u8_safe(blu, record.a.prev_value());
+        blu.add_u16_range_checks(&u64_to_u16_limbs(record.a.value()));
+        let a_prev_value = record.a.prev_value().to_le_bytes().map(F::from_canonical_u8);
 
-        let syscall_id = cols.op_a_access.prev_value[0];
-        let num_cycles = cols.op_a_access.prev_value[2];
+        let syscall_id = a_prev_value[0];
 
-        cols.num_extra_cycles = num_cycles;
         cols.is_halt =
             F::from_bool(syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id()));
+
+        if cols.is_halt == F::one() {
+            cols.next_pc = [F::from_canonical_u64(HALT_PC), F::zero(), F::zero()];
+        } else {
+            cols.next_pc = [
+                F::from_canonical_u32(((event.pc & 0xFFFF) as u32) + 4),
+                F::from_canonical_u32(((event.pc >> 16) & 0xFFFF) as u32),
+                F::from_canonical_u32(((event.pc >> 32) & 0xFFFF) as u32),
+            ];
+        }
 
         // Populate `is_enter_unconstrained`.
         cols.is_enter_unconstrained.populate_from_field_element(
@@ -122,27 +145,35 @@ impl SyscallInstrsChip {
             syscall_id - F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id()),
         );
 
-        // If the syscall is `COMMIT` or `COMMIT_DEFERRED_PROOFS`, set the index bitmap and
-        // digest word.
-        if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id()) ||
-            syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id())
+        cols.index_bitmap = [F::zero(); 8];
+        cols.expected_public_values_digest = [F::zero(); 4];
+
+        // For `COMMIT` or `COMMIT_DEFERRED_PROOFS`, set the index bitmap and digest word.
+        if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id())
+            || syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id())
         {
-            let digest_idx = cols.op_b_value.to_u32() as usize;
+            let digest_idx = record.b.value() as usize;
             cols.index_bitmap[digest_idx] = F::one();
         }
 
-        // For halt and commit deferred proofs syscalls, we need to baby bear range check one of
-        // it's operands.
+        // If the syscall is `COMMIT`, set the expected public values digest and range check.
+        if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id()) {
+            let digest_bytes = (record.c.value() as u32).to_le_bytes();
+            cols.expected_public_values_digest = digest_bytes.map(F::from_canonical_u8);
+            blu.add_u8_range_checks(&digest_bytes);
+        }
+
+        // Add the SP1Field range check of the operands.
         if cols.is_halt == F::one() {
-            cols.operand_to_check = event.arg1.into();
-            cols.operand_range_check_cols.populate(cols.operand_to_check, blu);
-            cols.ecall_range_check_operand = F::one();
+            cols.op_b_range_check.populate(Word::from(event.arg1), blu);
+        } else {
+            cols.op_b_range_check = SP1FieldWordRangeChecker::default();
         }
 
         if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id()) {
-            cols.operand_to_check = event.arg2.into();
-            cols.operand_range_check_cols.populate(cols.operand_to_check, blu);
-            cols.ecall_range_check_operand = F::one();
+            cols.op_c_range_check.populate(Word::from(event.arg2), blu);
+        } else {
+            cols.op_c_range_check = SP1FieldWordRangeChecker::default();
         }
     }
 }

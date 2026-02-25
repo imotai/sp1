@@ -1,14 +1,16 @@
-use sp1_sdk::{include_elf, utils, ProverClient, SP1ProofWithPublicValues, SP1Stdin};
+use sp1_sdk::prelude::*;
+use sp1_sdk::ProverClient;
 
 /// The ELF we want to execute inside the zkVM.
-const ELF: &[u8] = include_elf!("fibonacci-program");
+const ELF: Elf = include_elf!("fibonacci-program");
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Setup logging.
-    utils::setup_logger();
+    sp1_sdk::utils::setup_logger();
 
     // Create an input stream and write '500' to it.
-    let n = 1000u32;
+    let n = 700_000u32;
 
     // The input stream that the program will read from using `sp1_zkvm::io::read`. Note that the
     // types of the elements in the input stream must match the types being read in the program.
@@ -16,15 +18,17 @@ fn main() {
     stdin.write(&n);
 
     // Create a `ProverClient` method.
-    let client = ProverClient::from_env();
+    let client = ProverClient::from_env().await;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
-    let (_, report) = client.execute(ELF, &stdin).run().unwrap();
+    let (_, report) = client.execute(ELF, stdin.clone()).await.unwrap();
     println!("executed program with {} cycles", report.total_instruction_count());
 
+    println!("Report {:?}", report);
+
     // Generate the proof for the given program and input.
-    let (pk, vk) = client.setup(ELF);
-    let mut proof = client.prove(&pk, &stdin).plonk().run().unwrap();
+    let pk = client.setup(ELF).await.unwrap();
+    let mut proof = client.prove(&pk, stdin.clone()).core().await.unwrap();
 
     println!("generated proof");
 
@@ -40,15 +44,19 @@ fn main() {
     println!("b: {}", b);
 
     // Verify proof and public values
-    client.verify(&proof, &vk).expect("verification failed");
+    client.verify(&proof, pk.verifying_key(), None).expect("verification failed");
 
-    // Test a round trip of proof serialization and deserialization.
-    proof.save("proof-with-pis.bin").expect("saving proof failed");
-    let deserialized_proof =
-        SP1ProofWithPublicValues::load("proof-with-pis.bin").expect("loading proof failed");
+    // // Test a round trip of proof serialization and deserialization.
+    // proof.save("proof-with-pis.bin").expect("saving proof failed");
+    // let deserialized_proof =
+    //     SP1ProofWithPublicValues::load("proof-with-pis.bin").expect("loading proof failed");
 
-    // Verify the deserialized proof.
-    client.verify(&deserialized_proof, &vk).expect("verification failed");
-
+    // // Verify the deserialized proof.
+    // client.verify(&deserialized_proof, pk.verifying_key()).expect("verification failed");
+ 
     println!("successfully generated and verified proof for the program!")
 }
+
+// generated proof
+// a: 5965
+// b: 3651

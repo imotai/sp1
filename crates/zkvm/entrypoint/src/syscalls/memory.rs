@@ -12,21 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Memory addresses must be lower than BabyBear prime.
-pub const MAX_MEMORY: usize = 0x78000000;
-
-// Pointer to next heap address to use, or 0 if the heap has not yet been
-// initialized.
-#[cfg(not(feature = "embedded"))]
-static mut HEAP_POS: usize = 0;
+#[cfg(all(target_os = "zkvm", feature = "bump"))]
+use sp1_primitives::consts::MAXIMUM_MEMORY_SIZE;
 
 /// Allocate memory aligned to the given alignment.
 ///
-/// Only available when the `bump` feature is enabled.
+/// Only available when the `embedded` feature is not enabled.
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-#[cfg(all(target_os = "zkvm", not(feature = "embedded")))]
+#[cfg(all(target_os = "zkvm", feature = "bump"))]
 pub unsafe extern "C" fn sys_alloc_aligned(bytes: usize, align: usize) -> *mut u8 {
+    // Pointer to next heap address to use, or 0 if the heap has not yet been
+    // initialized.
+    static mut HEAP_POS: usize = 0;
+
     extern "C" {
         // https://lld.llvm.org/ELF/linker_script.html#sections-command
         static _end: u8;
@@ -47,11 +46,12 @@ pub unsafe extern "C" fn sys_alloc_aligned(bytes: usize, align: usize) -> *mut u
     let ptr = heap_pos as *mut u8;
     let (heap_pos, overflowed) = heap_pos.overflowing_add(bytes);
 
-    if overflowed || MAX_MEMORY < heap_pos {
-        panic!("Memory limit exceeded (0x78000000)");
+    if overflowed || MAXIMUM_MEMORY_SIZE < heap_pos as u64 {
+        panic!("Memory limit exceeded");
     }
 
     unsafe { HEAP_POS = heap_pos };
+
     ptr
 }
 
@@ -60,15 +60,9 @@ pub unsafe extern "C" fn sys_alloc_aligned(bytes: usize, align: usize) -> *mut u
 /// Only available when the `embedded` feature is enabled.
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-#[cfg(all(target_os = "zkvm", feature = "embedded"))]
+#[cfg(all(target_os = "zkvm", not(feature = "bump")))]
 pub unsafe extern "C" fn sys_alloc_aligned(bytes: usize, align: usize) -> *mut u8 {
-    use std::alloc::GlobalAlloc;
+    use core::alloc::GlobalAlloc;
     crate::allocators::embedded::INNER_HEAP
         .alloc(std::alloc::Layout::from_size_align(bytes, align).unwrap())
-}
-
-/// Used memory in bytes.
-#[cfg(not(feature = "embedded"))]
-pub fn used_memory() -> usize {
-    unsafe { HEAP_POS }
 }

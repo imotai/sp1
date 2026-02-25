@@ -1,15 +1,14 @@
-use sp1_sdk::{
-    include_elf, network::Error, utils, ProverClient, SP1ProofWithPublicValues, SP1Stdin,
-};
+use sp1_sdk::prelude::*;
+use sp1_sdk::ProverClient;
+
 
 /// The ELF we want to execute inside the zkVM.
-const ELF: &[u8] = include_elf!("fibonacci-program");
+const ELF: Elf = include_elf!("fibonacci-program");
 
-fn main() {
-    // Setup logging.
-    utils::setup_logger();
+#[tokio::main]
+async fn main() {
+    sp1_sdk::utils::setup_logger();
 
-    // Create an input stream and write '500' to it.
     let n = 1000u32;
 
     // The input stream that the program will read from using `sp1_zkvm::io::read`. Note that the
@@ -17,38 +16,12 @@ fn main() {
     let mut stdin = SP1Stdin::new();
     stdin.write(&n);
 
-    // Create a `ProverClient` method.
-    let client = ProverClient::from_env();
+    // TODO: Use network prover here
+    let client = ProverClient::from_env().await;
 
     // Generate the proof for the given program and input.
-    let (pk, vk) = client.setup(ELF);
-    let proof_result = client.prove(&pk, &stdin).compressed().run();
-
-    // Handle possible prover network errors.
-    let mut proof = match proof_result {
-        Ok(proof) => proof,
-        Err(e) => {
-            if let Some(network_error) = e.downcast_ref::<Error>() {
-                match network_error {
-                    Error::RequestUnexecutable { request_id: _ } => {
-                        eprintln!("Program is unexecutable: {}", e);
-                        std::process::exit(1);
-                    }
-                    Error::RequestUnfulfillable { request_id: _ } => {
-                        eprintln!("Proof request cannot be fulfilled: {}", e);
-                        std::process::exit(1);
-                    }
-                    _ => {
-                        eprintln!("Unexpected error: {}", e);
-                        std::process::exit(1);
-                    }
-                }
-            } else {
-                eprintln!("Unexpected error: {}", e);
-                std::process::exit(1);
-            }
-        }
-    };
+    let pk = client.setup(ELF).await.unwrap();
+    let mut proof = client.prove(&pk, stdin).compressed().await.unwrap();
 
     println!("generated proof");
 
@@ -64,7 +37,7 @@ fn main() {
     println!("b: {}", b);
 
     // Verify proof and public values
-    client.verify(&proof, &vk).expect("verification failed");
+    client.verify(&proof, pk.verifying_key(), None).expect("verification failed");
 
     // Test a round trip of proof serialization and deserialization.
     proof.save("proof-with-pis.bin").expect("saving proof failed");
@@ -72,7 +45,7 @@ fn main() {
         SP1ProofWithPublicValues::load("proof-with-pis.bin").expect("loading proof failed");
 
     // Verify the deserialized proof.
-    client.verify(&deserialized_proof, &vk).expect("verification failed");
+    client.verify(&deserialized_proof, pk.verifying_key(), None).expect("verification failed");
 
     println!("successfully generated and verified proof for the program!")
 }

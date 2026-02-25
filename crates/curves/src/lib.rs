@@ -46,7 +46,7 @@ pub use k256;
 pub use p256;
 
 use params::{FieldParameters, NumWords};
-use sp1_primitives::consts::WORD_SIZE;
+use sp1_primitives::consts::WORD_BYTE_SIZE;
 use std::{
     fmt::{Debug, Display, Formatter, Result},
     ops::{Add, Neg},
@@ -56,8 +56,8 @@ use typenum::Unsigned;
 pub use num::{BigUint, Integer, One, Zero};
 use serde::{de::DeserializeOwned, Serialize};
 
-pub const NUM_WORDS_FIELD_ELEMENT: usize = 8;
-pub const NUM_BYTES_FIELD_ELEMENT: usize = NUM_WORDS_FIELD_ELEMENT * WORD_SIZE;
+pub const NUM_WORDS_FIELD_ELEMENT: usize = 4;
+pub const NUM_BYTES_FIELD_ELEMENT: usize = NUM_WORDS_FIELD_ELEMENT * WORD_BYTE_SIZE;
 pub const COMPRESSED_POINT_BYTES: usize = 32;
 
 /// Number of words needed to represent a point on an elliptic curve. This is twice the number of
@@ -98,19 +98,41 @@ impl<E: EllipticCurveParameters> AffinePoint<E> {
         Self { x, y, _marker: std::marker::PhantomData }
     }
 
-    pub fn from_words_le(words: &[u32]) -> Self {
+    pub fn to_sec1_uncompressed(&self) -> Vec<u8> {
+        fn le_to_fixed_be<E: EllipticCurveParameters>(n: &BigUint) -> Vec<u8> {
+            let le = n.to_bytes_le();
+
+            // todo: make this const
+            let mut buf = vec![0_u8; E::BaseField::NB_BYTES];
+            buf[..le.len()].copy_from_slice(&le);
+            buf.reverse();
+            buf
+        }
+
+        let mut out = vec![0u8; E::BaseField::NB_BYTES * 2 + 1];
+        out[0] = 0x04;
+        out[1..E::BaseField::NB_BYTES + 1].copy_from_slice(&le_to_fixed_be::<E>(&self.x));
+        out[E::BaseField::NB_BYTES + 1..].copy_from_slice(&le_to_fixed_be::<E>(&self.y));
+        out
+    }
+
+    pub fn from_words_le<'a>(words: impl IntoIterator<Item = &'a u64>) -> Self {
+        let words = words.into_iter().collect::<Vec<_>>();
+
         let x_bytes =
             words[0..words.len() / 2].iter().flat_map(|n| n.to_le_bytes()).collect::<Vec<_>>();
+
         let y_bytes =
             &words[words.len() / 2..].iter().flat_map(|n| n.to_le_bytes()).collect::<Vec<_>>();
+
         let x = BigUint::from_bytes_le(x_bytes.as_slice());
         let y = BigUint::from_bytes_le(y_bytes.as_slice());
         Self { x, y, _marker: std::marker::PhantomData }
     }
 
-    pub fn to_words_le(&self) -> Vec<u32> {
+    pub fn to_words_le(&self) -> Vec<u64> {
         let num_words = <E::BaseField as NumWords>::WordsCurvePoint::USIZE;
-        let num_bytes = num_words * 4;
+        let num_bytes = num_words * 8;
         let half_words = num_words / 2;
 
         let mut x_bytes = self.x.to_bytes_le();
@@ -118,20 +140,28 @@ impl<E: EllipticCurveParameters> AffinePoint<E> {
         let mut y_bytes = self.y.to_bytes_le();
         y_bytes.resize(num_bytes / 2, 0u8);
 
-        let mut words = vec![0u32; num_words];
+        let mut words = vec![0u64; num_words];
 
         for i in 0..half_words {
-            let x = u32::from_le_bytes([
-                x_bytes[4 * i],
-                x_bytes[4 * i + 1],
-                x_bytes[4 * i + 2],
-                x_bytes[4 * i + 3],
+            let x = u64::from_le_bytes([
+                x_bytes[8 * i],
+                x_bytes[8 * i + 1],
+                x_bytes[8 * i + 2],
+                x_bytes[8 * i + 3],
+                x_bytes[8 * i + 4],
+                x_bytes[8 * i + 5],
+                x_bytes[8 * i + 6],
+                x_bytes[8 * i + 7],
             ]);
-            let y = u32::from_le_bytes([
-                y_bytes[4 * i],
-                y_bytes[4 * i + 1],
-                y_bytes[4 * i + 2],
-                y_bytes[4 * i + 3],
+            let y = u64::from_le_bytes([
+                y_bytes[8 * i],
+                y_bytes[8 * i + 1],
+                y_bytes[8 * i + 2],
+                y_bytes[8 * i + 3],
+                y_bytes[8 * i + 4],
+                y_bytes[8 * i + 5],
+                y_bytes[8 * i + 6],
+                y_bytes[8 * i + 7],
             ]);
 
             words[i] = x;

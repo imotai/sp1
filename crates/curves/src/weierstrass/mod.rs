@@ -1,5 +1,7 @@
+use elliptic_curve::sec1::FromEncodedPoint;
 use generic_array::GenericArray;
 use num::{BigUint, Zero};
+use secp256k1::Secp256k1Parameters;
 use serde::{Deserialize, Serialize};
 
 use super::CurveType;
@@ -16,6 +18,11 @@ pub mod bls12_381;
 pub mod bn254;
 pub mod secp256k1;
 pub mod secp256r1;
+
+use k256::{
+    elliptic_curve::sec1::ToEncodedPoint, AffinePoint as K256AffinePoint, EncodedPoint,
+    ProjectivePoint as K256ProjectivePoint,
+};
 
 /// Parameters that specify a short Weierstrass curve : y^2 = x^3 + ax + b.
 pub trait WeierstrassParameters: EllipticCurveParameters {
@@ -81,32 +88,40 @@ impl<E: WeierstrassParameters> EllipticCurveParameters for SwCurve<E> {
     const CURVE_TYPE: CurveType = E::CURVE_TYPE;
 }
 
-impl<E: WeierstrassParameters> EllipticCurve for SwCurve<E> {
-    const NB_LIMBS: usize = Self::BaseField::NB_LIMBS;
-    const NB_WITNESS_LIMBS: usize = Self::BaseField::NB_WITNESS_LIMBS;
+macro_rules! impl_generic_ec_ops {
+    ($curve:ty) => {
+        impl EllipticCurve for SwCurve<$curve> {
+            const NB_LIMBS: usize = Self::BaseField::NB_LIMBS;
+            const NB_WITNESS_LIMBS: usize = Self::BaseField::NB_WITNESS_LIMBS;
 
-    fn ec_add(p: &AffinePoint<Self>, q: &AffinePoint<Self>) -> AffinePoint<Self> {
-        p.sw_add(q)
-    }
+            fn ec_add(p: &AffinePoint<Self>, q: &AffinePoint<Self>) -> AffinePoint<Self> {
+                p.sw_add(q)
+            }
 
-    fn ec_double(p: &AffinePoint<Self>) -> AffinePoint<Self> {
-        p.sw_double()
-    }
+            fn ec_double(p: &AffinePoint<Self>) -> AffinePoint<Self> {
+                p.sw_double()
+            }
 
-    fn ec_generator() -> AffinePoint<Self> {
-        let (x, y) = E::generator();
-        AffinePoint::new(x, y)
-    }
+            fn ec_generator() -> AffinePoint<Self> {
+                let (x, y) = <$curve as WeierstrassParameters>::generator();
+                AffinePoint::new(x, y)
+            }
 
-    fn ec_neutral() -> Option<AffinePoint<Self>> {
-        None
-    }
+            fn ec_neutral() -> Option<AffinePoint<Self>> {
+                None
+            }
 
-    fn ec_neg(p: &AffinePoint<Self>) -> AffinePoint<Self> {
-        let modulus = E::BaseField::modulus();
-        AffinePoint::new(p.x.clone(), modulus - &p.y)
-    }
+            fn ec_neg(p: &AffinePoint<Self>) -> AffinePoint<Self> {
+                let modulus = <$curve as EllipticCurveParameters>::BaseField::modulus();
+                AffinePoint::new(p.x.clone(), modulus - &p.y)
+            }
+        }
+    };
 }
+
+impl_generic_ec_ops!(bn254::Bn254Parameters);
+impl_generic_ec_ops!(secp256r1::Secp256r1Parameters);
+impl_generic_ec_ops!(bls12_381::Bls12381Parameters);
 
 impl<E: WeierstrassParameters> SwCurve<E> {
     pub fn generator() -> AffinePoint<SwCurve<E>> {
@@ -169,6 +184,81 @@ pub fn dashu_modpow(
     }
 
     result
+}
+
+impl EllipticCurve for SwCurve<Secp256k1Parameters> {
+    fn ec_add(p: &AffinePoint<Self>, q: &AffinePoint<Self>) -> AffinePoint<Self> {
+        p.sw_add_k256(q)
+    }
+
+    fn ec_double(p: &AffinePoint<Self>) -> AffinePoint<Self> {
+        p.sw_double_k256()
+    }
+
+    fn ec_generator() -> AffinePoint<Self> {
+        let (x, y) = Secp256k1Parameters::generator();
+        AffinePoint::new(x, y)
+    }
+
+    fn ec_neutral() -> Option<AffinePoint<Self>> {
+        None
+    }
+
+    fn ec_neg(p: &AffinePoint<Self>) -> AffinePoint<Self> {
+        let modulus = <Secp256k1Parameters as EllipticCurveParameters>::BaseField::modulus();
+        AffinePoint::new(p.x.clone(), modulus - &p.y)
+    }
+}
+
+impl AffinePoint<SwCurve<Secp256k1Parameters>> {
+    pub fn sw_add_k256(&self, other: &Self) -> Self {
+        let this_bytes = self.to_sec1_uncompressed();
+        let other_bytes = other.to_sec1_uncompressed();
+
+        let this: K256AffinePoint =
+            K256AffinePoint::from_encoded_point(&EncodedPoint::from_bytes(this_bytes).unwrap())
+                .unwrap();
+        let this = K256ProjectivePoint::from(this);
+
+        let other =
+            K256AffinePoint::from_encoded_point(&EncodedPoint::from_bytes(other_bytes).unwrap())
+                .unwrap();
+        let other = K256ProjectivePoint::from(other);
+
+        let result = this + other;
+        let result = result.to_affine();
+        // Save it as a uncompressed point
+        let result_bytes = result.to_encoded_point(false);
+        let result_bytes = result_bytes.as_bytes();
+
+        // Skip the first byte which is the compression flag
+        AffinePoint::new(
+            BigUint::from_bytes_be(&result_bytes[1..33]),
+            BigUint::from_bytes_be(&result_bytes[33..65]),
+        )
+    }
+
+    pub fn sw_double_k256(&self) -> Self {
+        let this_bytes = self.to_sec1_uncompressed();
+        let this =
+            K256AffinePoint::from_encoded_point(&EncodedPoint::from_bytes(this_bytes).unwrap())
+                .unwrap();
+
+        let this = K256ProjectivePoint::from(this);
+
+        let result = this.double();
+        let result = result.to_affine();
+
+        // Save it as a uncompressed point
+        let result_bytes = result.to_encoded_point(false);
+        let result_bytes = result_bytes.as_bytes();
+
+        // Skip the first byte which is the compression flag
+        AffinePoint::new(
+            BigUint::from_bytes_be(&result_bytes[1..33]),
+            BigUint::from_bytes_be(&result_bytes[33..65]),
+        )
+    }
 }
 
 impl<E: WeierstrassParameters> AffinePoint<SwCurve<E>> {

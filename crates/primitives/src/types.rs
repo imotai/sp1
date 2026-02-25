@@ -63,3 +63,43 @@ impl Default for Buffer {
         Self::new()
     }
 }
+
+/// A type that represents an ELF binary, always cheap to clone.
+#[derive(Debug, Clone)]
+pub enum Elf {
+    /// The ELF binary for the program.
+    Static(&'static [u8]),
+    /// The ELF binary for the test program.
+    Dynamic(std::sync::Arc<[u8]>),
+}
+
+// todo!(n): implement serde for the ELF type.
+
+impl From<std::sync::Arc<[u8]>> for Elf {
+    fn from(elf: std::sync::Arc<[u8]>) -> Self {
+        Self::Dynamic(elf)
+    }
+}
+
+impl From<Vec<u8>> for Elf {
+    fn from(elf: Vec<u8>) -> Self {
+        Self::Dynamic(elf.into())
+    }
+}
+
+impl From<&[u8]> for Elf {
+    fn from(elf: &[u8]) -> Self {
+        Self::Dynamic(elf.into())
+    }
+}
+
+impl std::ops::Deref for Elf {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Static(elf) => elf,
+            Self::Dynamic(elf) => elf.as_ref(),
+        }
+    }
+}

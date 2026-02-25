@@ -14,8 +14,12 @@ pub use core::*;
 pub use deferred::*;
 pub use public_values::*;
 pub use root::*;
+use sp1_primitives::{SP1ExtensionField, SP1Field};
 pub use vkey_proof::*;
 pub use wrap::*;
 
 #[allow(unused_imports)]
 pub use witness::*;
+
+pub type InnerVal = SP1Field;
+pub type InnerChallenge = SP1ExtensionField;

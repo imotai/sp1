@@ -6,6 +6,12 @@ publish = false
 
 [dependencies]
 sp1-sdk = { workspace = true }
+tokio = "1.42.0"
+tracing = "0.1"
 
 [build-dependencies]
 sp1-build = { workspace = true }
+
+[[bin]]
+name = "core_u64"
+path = "bin/core_u64.rs"

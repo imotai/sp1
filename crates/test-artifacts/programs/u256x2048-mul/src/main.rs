@@ -26,18 +26,18 @@ pub fn main() {
     let b_max_big = BigUint::from_bytes_le(&b_max);
     b_max = u2048_to_bytes_le(&b_max_big);
 
-    let mut lo_max: [u32; 64] = [0; 64];
-    let mut hi_max: [u32; 8] = [0; 8];
+    let mut lo_max: [u64; 32] = [0; 32];
+    let mut hi_max: [u64; 4] = [0; 4];
 
     syscall_u256x2048_mul(
-        a_max.as_ptr() as *const [u32; 8],
-        b_max.as_ptr() as *const [u32; 64],
-        lo_max.as_mut_ptr() as *mut [u32; 64],
-        hi_max.as_mut_ptr() as *mut [u32; 8],
+        a_max.as_ptr() as *const [u64; 4],
+        b_max.as_ptr() as *const [u64; 32],
+        lo_max.as_mut_ptr() as *mut [u64; 32],
+        hi_max.as_mut_ptr() as *mut [u64; 4],
     );
 
-    let lo_max_bytes: [u8; 256] = bytemuck::cast::<[u32; 64], [u8; 256]>(lo_max);
-    let hi_max_bytes: [u8; 32] = bytemuck::cast::<[u32; 8], [u8; 32]>(hi_max);
+    let lo_max_bytes: [u8; 256] = bytemuck::cast::<[u64; 32], [u8; 256]>(lo_max);
+    let hi_max_bytes: [u8; 32] = bytemuck::cast::<[u64; 4], [u8; 32]>(hi_max);
 
     let lo_max_big = BigUint::from_bytes_le(&lo_max_bytes);
     let hi_max_big = BigUint::from_bytes_le(&hi_max_bytes);
@@ -59,18 +59,18 @@ pub fn main() {
         let a = u256_to_bytes_le(&a_big);
         let b = u2048_to_bytes_le(&b_big);
 
-        let mut lo: [u32; 64] = [0; 64];
-        let mut hi: [u32; 8] = [0; 8];
+        let mut lo: [u64; 32] = [0; 32];
+        let mut hi: [u64; 4] = [0; 4];
 
         syscall_u256x2048_mul(
-            a.as_ptr() as *const [u32; 8],
-            b.as_ptr() as *const [u32; 64],
-            lo.as_mut_ptr() as *mut [u32; 64],
-            hi.as_mut_ptr() as *mut [u32; 8],
+            a.as_ptr() as *const [u64; 4],
+            b.as_ptr() as *const [u64; 32],
+            lo.as_mut_ptr() as *mut [u64; 32],
+            hi.as_mut_ptr() as *mut [u64; 4],
         );
 
-        let lo_bytes: [u8; 256] = bytemuck::cast::<[u32; 64], [u8; 256]>(lo);
-        let hi_bytes: [u8; 32] = bytemuck::cast::<[u32; 8], [u8; 32]>(hi);
+        let lo_bytes: [u8; 256] = bytemuck::cast::<[u64; 32], [u8; 256]>(lo);
+        let hi_bytes: [u8; 32] = bytemuck::cast::<[u64; 4], [u8; 32]>(hi);
 
         let lo_big = BigUint::from_bytes_le(&lo_bytes);
         let hi_big = BigUint::from_bytes_le(&hi_bytes);

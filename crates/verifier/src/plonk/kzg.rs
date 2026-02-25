@@ -51,7 +51,7 @@ fn derive_gamma(
     claimed_values: Vec<Fr>,
     data_transcript: Option<Vec<u8>>,
 ) -> Result<Fr, PlonkError> {
-    let mut transcript = Transcript::new(Some([GAMMA.to_string()].to_vec()))?;
+    let mut transcript = Transcript::new(Some([GAMMA.to_string()].to_vec()));
     transcript.bind(GAMMA, &point.into_u256().to_bytes_be())?;
 
     for digest in digests.iter() {
@@ -74,7 +74,7 @@ fn derive_gamma(
     Ok(x)
 }
 
-fn fold(di: Vec<Digest>, fai: Vec<Fr>, ci: Vec<Fr>) -> Result<(AffineG1, Fr), PlonkError> {
+fn fold(di: Vec<Digest>, fai: Vec<Fr>, ci: Vec<Fr>) -> (AffineG1, Fr) {
     let nb_digests = di.len();
     let mut folded_evaluations = Fr::zero();
 
@@ -84,7 +84,7 @@ fn fold(di: Vec<Digest>, fai: Vec<Fr>, ci: Vec<Fr>) -> Result<(AffineG1, Fr), Pl
 
     let folded_digests = AffineG1::msm(&di, &ci);
 
-    Ok((folded_digests, folded_evaluations))
+    (folded_digests, folded_evaluations)
 }
 
 pub(crate) fn fold_proof(
@@ -122,7 +122,7 @@ pub(crate) fn fold_proof(
     }
 
     let (folded_digests, folded_evaluations) =
-        fold(digests, batch_opening_proof.claimed_values.clone(), gammai)?;
+        fold(digests, batch_opening_proof.claimed_values.clone(), gammai);
 
     let open_proof = OpeningProof { h: batch_opening_proof.h, claimed_value: folded_evaluations };
 
@@ -140,16 +140,8 @@ pub(crate) fn batch_verify_multi_points(
     let nb_proofs = proofs.len();
     let nb_points = points.len();
 
-    if nb_digests != nb_proofs {
+    if nb_digests != nb_proofs || nb_digests != nb_points || nb_digests == 1 {
         return Err(PlonkError::InvalidNumberOfDigests);
-    }
-
-    if nb_digests != nb_points {
-        return Err(PlonkError::InvalidNumberOfDigests);
-    }
-
-    if nb_digests == 1 {
-        unimplemented!();
     }
 
     let mut random_numbers = Vec::with_capacity(nb_digests);
@@ -159,18 +151,18 @@ pub(crate) fn batch_verify_multi_points(
     }
 
     let mut quotients = Vec::with_capacity(nb_proofs);
-    for item in proofs.iter().take(nb_digests) {
+    for item in proofs.iter() {
         quotients.push(item.h);
     }
 
     let mut folded_quotients = AffineG1::msm(&quotients, &random_numbers);
     let mut evals = Vec::with_capacity(nb_digests);
 
-    for item in proofs.iter().take(nb_digests) {
+    for item in proofs.iter() {
         evals.push(item.claimed_value);
     }
 
-    let (mut folded_digests, folded_evals) = fold(digests, evals, random_numbers.clone())?;
+    let (mut folded_digests, folded_evals) = fold(digests, evals, random_numbers.clone());
     let folded_evals_commit = vk.g1 * folded_evals;
     folded_digests = folded_digests - folded_evals_commit.into();
 

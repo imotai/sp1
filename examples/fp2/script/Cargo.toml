@@ -1,0 +1,15 @@
+[package]
+name = "fp2-script"
+version = { workspace = true }
+edition = { workspace = true }
+default-run = "fp2-script"
+publish = false
+
+[dependencies]
+hex = "0.4.3"
+sp1-sdk = { workspace = true }
+tokio = { workspace = true }
+tracing = "0.1"
+
+[build-dependencies]
+sp1-build = { workspace = true }

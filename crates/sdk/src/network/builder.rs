@@ -9,9 +9,6 @@ use crate::{
     NetworkProver,
 };
 
-#[cfg(feature = "tee-2fa")]
-use crate::network::retry::{self, DEFAULT_RETRY_TIMEOUT};
-
 /// A builder for the [`NetworkProver`].
 ///
 /// The builder is used to configure the [`NetworkProver`] before it is built.
@@ -25,6 +22,18 @@ pub struct NetworkProverBuilder {
 }
 
 impl NetworkProverBuilder {
+    /// Creates a new [`NetworkProverBuilder`].
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            private_key: None,
+            rpc_url: None,
+            tee_signers: None,
+            signer: None,
+            network_mode: None,
+        }
+    }
+
     /// Sets the Secp256k1 private key (same format as the one used by Ethereum).
     ///
     /// # Details
@@ -97,7 +106,7 @@ impl NetworkProverBuilder {
     ///
     /// Using a local private key:
     /// ```rust,no_run
-    /// use sp1_sdk::{NetworkSigner, ProverClient};
+    /// use sp1_sdk::{network::signer::NetworkSigner, ProverClient};
     ///
     /// let private_key = "...";
     /// let signer = NetworkSigner::local(private_key).unwrap();
@@ -106,7 +115,7 @@ impl NetworkProverBuilder {
     ///
     /// Using AWS KMS:
     /// ```rust,no_run
-    /// use sp1_sdk::{NetworkSigner, ProverClient};
+    /// use sp1_sdk::{network::signer::NetworkSigner, ProverClient};
     ///
     /// # async fn example() {
     /// let kms_key_arn = "arn:aws:kms:us-east-1:123456789:key/key-id";
@@ -139,7 +148,7 @@ impl NetworkProverBuilder {
     ///
     /// Using a local signer:
     /// ```rust,no_run
-    /// use sp1_sdk::{NetworkSigner, ProverClient};
+    /// use sp1_sdk::{network::signer::NetworkSigner, ProverClient};
     ///
     /// let private_key = "...";
     /// let signer = NetworkSigner::local(private_key).unwrap();
@@ -148,7 +157,7 @@ impl NetworkProverBuilder {
     ///
     /// Using AWS KMS:
     /// ```rust,no_run
-    /// use sp1_sdk::{NetworkSigner, ProverClient};
+    /// use sp1_sdk::{network::signer::NetworkSigner, ProverClient};
     ///
     /// # async fn example() {
     /// let kms_key_arn = "arn:aws:kms:us-east-1:123456789:key/key-id";
@@ -157,7 +166,8 @@ impl NetworkProverBuilder {
     /// # }
     /// ```
     #[must_use]
-    pub fn build(self) -> NetworkProver {
+    pub async fn build(self) -> NetworkProver {
+        tracing::info!("initializing network prover");
         let signer = if let Some(provided_signer) = self.signer {
             provided_signer
         } else {
@@ -179,26 +189,22 @@ impl NetworkProverBuilder {
                 .unwrap_or_else(|_| super::utils::get_default_rpc_url_for_mode(network_mode)),
         };
 
-        let tee_signers = self.tee_signers.unwrap_or_else(|| {
-            cfg_if::cfg_if! {
-                if #[cfg(feature = "tee-2fa")] {
-                    crate::utils::block_on(
-                        async {
-                            retry::retry_operation(
-                                || async {
-                                    crate::network::tee::get_tee_signers().await.map_err(Into::into)
-                                },
-                                Some(DEFAULT_RETRY_TIMEOUT),
-                                "get tee signers"
-                            ).await.expect("Failed to get TEE signers")
-                        }
-                    )
-                } else {
-                    vec![]
-                }
-            }
-        });
+        let tee_signers = match self.tee_signers {
+            Some(tee_signers) => tee_signers,
 
-        NetworkProver::new(signer, &rpc_url, network_mode).with_tee_signers(tee_signers)
+            #[cfg(feature = "tee-2fa")]
+            None => crate::network::retry::retry_operation(
+                || async { crate::network::tee::get_tee_signers().await.map_err(Into::into) },
+                Some(crate::network::retry::DEFAULT_RETRY_TIMEOUT),
+                "get tee signers",
+            )
+            .await
+            .expect("Failed to get TEE signers"),
+
+            #[cfg(not(feature = "tee-2fa"))]
+            None => vec![],
+        };
+
+        NetworkProver::new(signer, &rpc_url, network_mode).await.with_tee_signers(tee_signers)
     }
 }

@@ -45,8 +45,15 @@ impl ProofSystem {
 
     fn verify_fn(
         &self,
-    ) -> unsafe extern "C" fn(*mut c_char, *mut c_char, *mut c_char, *mut c_char) -> *mut c_char
-    {
+    ) -> unsafe extern "C" fn(
+        *mut c_char,
+        *mut c_char,
+        *mut c_char,
+        *mut c_char,
+        *mut c_char,
+        *mut c_char,
+        *mut c_char,
+    ) -> *mut c_char {
         match self {
             ProofSystem::Plonk => bind::VerifyPlonkBn254,
             ProofSystem::Groth16 => bind::VerifyGroth16Bn254,
@@ -93,18 +100,25 @@ fn prove(system: ProofSystem, data_dir: &str, witness_path: &str) -> ProofResult
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn verify(
     system: ProofSystem,
     data_dir: &str,
     proof: &str,
     vkey_hash: &str,
     committed_values_digest: &str,
+    exit_code: &str,
+    vk_root: &str,
+    proof_nonce: &str,
 ) -> Result<(), String> {
     let data_dir = CString::new(data_dir).expect("CString::new failed");
     let proof = CString::new(proof).expect("CString::new failed");
     let vkey_hash = CString::new(vkey_hash).expect("CString::new failed");
     let committed_values_digest =
         CString::new(committed_values_digest).expect("CString::new failed");
+    let exit_code = CString::new(exit_code).expect("CString::new failed");
+    let proof_nonce = CString::new(proof_nonce).expect("CString::new failed");
+    let vk_root = CString::new(vk_root).expect("CString::new failed");
 
     let err_ptr = unsafe {
         (system.verify_fn())(
@@ -112,6 +126,9 @@ fn verify(
             proof.as_ptr() as *mut c_char,
             vkey_hash.as_ptr() as *mut c_char,
             committed_values_digest.as_ptr() as *mut c_char,
+            exit_code.as_ptr() as *mut c_char,
+            vk_root.as_ptr() as *mut c_char,
+            proof_nonce.as_ptr() as *mut c_char,
         )
     };
     if err_ptr.is_null() {
@@ -147,7 +164,7 @@ pub fn build_plonk_bn254(data_dir: &str) {
 
 pub fn prove_plonk_bn254(data_dir: &str, witness_path: &str) -> PlonkBn254Proof {
     match prove(ProofSystem::Plonk, data_dir, witness_path) {
-        ProofResult::Plonk(proof) => unsafe { PlonkBn254Proof::from_raw(proof) },
+        ProofResult::Plonk(proof) => unsafe { plonk_bn254_proof_from_raw(proof) },
         _ => unreachable!(),
     }
 }
@@ -157,8 +174,20 @@ pub fn verify_plonk_bn254(
     proof: &str,
     vkey_hash: &str,
     committed_values_digest: &str,
+    exit_code: &str,
+    vk_root: &str,
+    proof_nonce: &str,
 ) -> Result<(), String> {
-    verify(ProofSystem::Plonk, data_dir, proof, vkey_hash, committed_values_digest)
+    verify(
+        ProofSystem::Plonk,
+        data_dir,
+        proof,
+        vkey_hash,
+        committed_values_digest,
+        exit_code,
+        vk_root,
+        proof_nonce,
+    )
 }
 
 pub fn test_plonk_bn254(witness_json: &str, constraints_json: &str) {
@@ -171,7 +200,7 @@ pub fn build_groth16_bn254(data_dir: &str) {
 
 pub fn prove_groth16_bn254(data_dir: &str, witness_path: &str) -> Groth16Bn254Proof {
     match prove(ProofSystem::Groth16, data_dir, witness_path) {
-        ProofResult::Groth16(proof) => unsafe { Groth16Bn254Proof::from_raw(proof) },
+        ProofResult::Groth16(proof) => unsafe { groth16_bn254_proof_from_raw(proof) },
         _ => unreachable!(),
     }
 }
@@ -181,20 +210,32 @@ pub fn verify_groth16_bn254(
     proof: &str,
     vkey_hash: &str,
     committed_values_digest: &str,
+    exit_code: &str,
+    vk_root: &str,
+    proof_nonce: &str,
 ) -> Result<(), String> {
-    verify(ProofSystem::Groth16, data_dir, proof, vkey_hash, committed_values_digest)
+    verify(
+        ProofSystem::Groth16,
+        data_dir,
+        proof,
+        vkey_hash,
+        committed_values_digest,
+        exit_code,
+        vk_root,
+        proof_nonce,
+    )
 }
 
 pub fn test_groth16_bn254(witness_json: &str, constraints_json: &str) {
     test(ProofSystem::Groth16, witness_json, constraints_json)
 }
 
-pub fn test_babybear_poseidon2() {
+pub fn test_koalabear_poseidon2() {
     unsafe {
-        let err_ptr = bind::TestPoseidonBabyBear2();
+        let err_ptr = bind::TestPoseidonKoalaBear2();
         if !err_ptr.is_null() {
             // Safety: The error message is returned from the go code and is guaranteed to be valid.
-            panic!("TestPoseidonBabyBear2 failed: {}", ptr_to_string_freed(err_ptr));
+            panic!("TestPoseidonKoalaBear2 failed: {}", ptr_to_string_freed(err_ptr));
         }
     }
 }
@@ -219,60 +260,56 @@ unsafe fn ptr_to_string_freed(input: *mut c_char) -> String {
     string
 }
 
-trait FromRaw {
-    type Raw;
-    unsafe fn from_raw(c_proof: *mut Self::Raw) -> Self;
+unsafe fn plonk_bn254_proof_from_raw(c_proof: *mut C_PlonkBn254Proof) -> PlonkBn254Proof {
+    let proof = PlonkBn254Proof {
+        public_inputs: [
+            ptr_to_string_cloned((*c_proof).PublicInputs[0]),
+            ptr_to_string_cloned((*c_proof).PublicInputs[1]),
+            ptr_to_string_cloned((*c_proof).PublicInputs[2]),
+            ptr_to_string_cloned((*c_proof).PublicInputs[3]),
+            ptr_to_string_cloned((*c_proof).PublicInputs[4]),
+        ],
+        encoded_proof: ptr_to_string_cloned((*c_proof).EncodedProof),
+        raw_proof: ptr_to_string_cloned((*c_proof).RawProof),
+        plonk_vkey_hash: [0; 32],
+    };
+    bind::FreePlonkBn254Proof(c_proof);
+    proof
 }
 
-impl FromRaw for PlonkBn254Proof {
-    type Raw = C_PlonkBn254Proof;
-    unsafe fn from_raw(c_proof: *mut C_PlonkBn254Proof) -> Self {
-        let proof = PlonkBn254Proof {
-            public_inputs: [
-                ptr_to_string_cloned((*c_proof).PublicInputs[0]),
-                ptr_to_string_cloned((*c_proof).PublicInputs[1]),
-            ],
-            encoded_proof: ptr_to_string_cloned((*c_proof).EncodedProof),
-            raw_proof: ptr_to_string_cloned((*c_proof).RawProof),
-            plonk_vkey_hash: [0; 32],
-        };
-        bind::FreePlonkBn254Proof(c_proof);
-        proof
-    }
-}
-
-impl FromRaw for Groth16Bn254Proof {
-    type Raw = C_Groth16Bn254Proof;
-    unsafe fn from_raw(c_proof: *mut C_Groth16Bn254Proof) -> Self {
-        let proof = Groth16Bn254Proof {
-            public_inputs: [
-                ptr_to_string_cloned((*c_proof).PublicInputs[0]),
-                ptr_to_string_cloned((*c_proof).PublicInputs[1]),
-            ],
-            encoded_proof: ptr_to_string_cloned((*c_proof).EncodedProof),
-            raw_proof: ptr_to_string_cloned((*c_proof).RawProof),
-            groth16_vkey_hash: [0; 32],
-        };
-        bind::FreeGroth16Bn254Proof(c_proof);
-        proof
-    }
+unsafe fn groth16_bn254_proof_from_raw(c_proof: *mut C_Groth16Bn254Proof) -> Groth16Bn254Proof {
+    let proof = Groth16Bn254Proof {
+        public_inputs: [
+            ptr_to_string_cloned((*c_proof).PublicInputs[0]),
+            ptr_to_string_cloned((*c_proof).PublicInputs[1]),
+            ptr_to_string_cloned((*c_proof).PublicInputs[2]),
+            ptr_to_string_cloned((*c_proof).PublicInputs[3]),
+            ptr_to_string_cloned((*c_proof).PublicInputs[4]),
+        ],
+        encoded_proof: ptr_to_string_cloned((*c_proof).EncodedProof),
+        raw_proof: ptr_to_string_cloned((*c_proof).RawProof),
+        groth16_vkey_hash: [0; 32],
+    };
+    bind::FreeGroth16Bn254Proof(c_proof);
+    proof
 }
 
 #[cfg(test)]
 mod tests {
     #![allow(clippy::print_stdout)]
 
-    use p3_baby_bear::BabyBear;
-    use p3_field::AbstractField;
-    use p3_symmetric::Permutation;
-    use sp1_stark::inner_perm;
+    use slop_algebra::AbstractField;
+    use slop_symmetric::Permutation;
+    use sp1_hypercube::inner_perm;
+    use sp1_primitives::SP1Field;
 
     #[test]
-    pub fn test_babybear_poseidon2() {
+    #[allow(clippy::uninlined_format_args)]
+    pub fn test_koalabear_poseidon2() {
         let perm = inner_perm();
-        let zeros = [BabyBear::zero(); 16];
+        let zeros = [SP1Field::zero(); 16];
         let result = perm.permute(zeros);
         println!("{result:?}");
-        super::test_babybear_poseidon2();
+        super::test_koalabear_poseidon2();
     }
 }
