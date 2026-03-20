@@ -191,6 +191,7 @@ where
 
     // For internal rounds
     pub commitments: Vec<RecursiveParsedCommitment<C, SC>>,
+    pub initial_merkle_proof: MerkleProofRounds<C, SC>,
     pub merkle_proofs: Vec<MerkleProofRounds<C, SC>>,
     pub query_proof_of_works: Vec<Felt<SP1Field>>,
     pub sumcheck_polynomials: Vec<Vec<RecursiveProverMessage>>,
@@ -338,7 +339,11 @@ impl<C: CircuitConfig, SC: SP1FieldConfigVariable<C>> RecursiveWhirVerifier<C, S
             let claim_batching_randomness: Ext<SP1Field, SP1ExtensionField> =
                 challenger.sample_ext(builder);
 
-            let merkle_proofs = &proof.merkle_proofs[round_index];
+            let merkle_proofs = if round_index != 0 {
+                &proof.merkle_proofs[round_index - 1]
+            } else {
+                &proof.initial_merkle_proof
+            };
 
             for (merkle_proof, commitment) in
                 merkle_proofs.iter().zip(prev_commitment.commitment.iter())
@@ -699,7 +704,9 @@ where
             .map(|(poly, pow)| (poly.read(builder), pow.read(builder)))
             .collect();
         let final_pow = self.final_pow.read(builder);
+        let initial_merkle_proof = self.initial_merkle_proof.read(builder);
         RecursiveWhirProof {
+            initial_merkle_proof,
             initial_sumcheck_polynomials,
             commitments,
             merkle_proofs,
@@ -740,6 +747,7 @@ where
             pow.write(witness);
         }
         self.final_pow.write(witness);
+        self.initial_merkle_proof.write(witness);
     }
 }
 
@@ -833,7 +841,8 @@ mod tests {
             .unwrap();
 
         // Verify natively.
-        let round_areas = proof.merkle_proofs[0]
+        let round_areas = proof
+            .initial_merkle_proof
             .iter()
             .map(|p| p.proof.width << config.starting_interleaved_log_height)
             .collect::<Vec<_>>();
