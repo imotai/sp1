@@ -46,6 +46,7 @@ fn create_dummy_recursion_proof(
         fri_commitments: vec![],
         final_poly: SP1ExtensionField::zero(),
         pow_witness: SP1Field::zero(),
+        batch_grinding_witness: SP1Field::zero(),
         component_polynomials_query_openings_and_proofs: vec![],
         query_phase_openings_and_proofs: dummy_query_proof,
     };
