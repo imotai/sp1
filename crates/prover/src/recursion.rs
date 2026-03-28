@@ -152,6 +152,7 @@ impl RecursionVks {
         // Verify the proof.
         verify_merkle_proof(&proof, value, self.root)
             .map_err(|e| TaskError::Fatal(anyhow::anyhow!("invalid merkle proof: {:?}", e)))?;
+
         Ok((value, proof))
     }
 
@@ -160,9 +161,15 @@ impl RecursionVks {
         proof: &MerkleProof<SP1GlobalContext>,
         vk: &MachineVerifyingKey<SP1GlobalContext>,
     ) -> Result<(), TaskError> {
-        let digest = vk.hash_koalabear();
-        verify_merkle_proof(proof, digest, self.root)
-            .map_err(|e| TaskError::Fatal(anyhow::anyhow!("invalid merkle proof: {:?}", e)))
+        let mut digest = vk.hash_koalabear();
+        if !self.vk_verification {
+            let num_vks = self.num_keys();
+            let vk_index = digest[0].as_canonical_u32() % num_vks as u32;
+            digest = [SP1Field::from_canonical_u32(vk_index); DIGEST_SIZE];
+        }
+        let result = verify_merkle_proof(proof, digest, self.root)
+            .map_err(|e| TaskError::Fatal(anyhow::anyhow!("invalid merkle proof: {:?}", e)));
+        result
     }
 
     pub fn height(&self) -> usize {

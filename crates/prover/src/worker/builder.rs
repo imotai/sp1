@@ -318,12 +318,22 @@ pub fn cpu_worker_builder() -> SP1WorkerBuilder<CpuSP1ProverComponents> {
 
     let wrap_prover = CpuWrapProverBuilder;
 
-    SP1WorkerBuilder::new()
+    let base_builder = SP1WorkerBuilder::new()
         .with_artifact_client(artifact_client)
         .with_worker_client(worker_client)
         .with_core_opts(opts)
         .with_core_air_prover(core_air_prover, prover_permits.clone())
         .with_compress_air_prover(recursion_air_prover, prover_permits.clone())
         .with_shrink_air_prover(shrink_prover, prover_permits.clone())
-        .with_wrap_air_prover(wrap_prover, prover_permits)
+        .with_wrap_air_prover(wrap_prover, prover_permits);
+
+    #[cfg(feature = "experimental")]
+    {
+        if let Ok(without_vk_verification) = std::env::var("WITHOUT_VK_VERIFICATION") {
+            if without_vk_verification == "1" || without_vk_verification == "true" {
+                return base_builder.without_vk_verification();
+            }
+        }
+    }
+    base_builder
 }
