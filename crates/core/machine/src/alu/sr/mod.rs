@@ -570,6 +570,8 @@ where
             },
         );
 
+        // This chip is for the case `rd != x0`.
+        builder.assert_zero(local.adapter.op_a_0);
         // Constrain the program and register reads.
         let alu_reader_input = ALUTypeReaderInput::<AB, AB::Expr>::new(
             local.state.clk_high::<AB>(),

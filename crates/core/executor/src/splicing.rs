@@ -128,6 +128,7 @@ impl SplicingVM<'_> {
         self.shape_checker.handle_instruction(
             &instruction,
             self.core.needs_bump_clk_high(),
+            instruction.is_alu_instruction() && instruction.op_a == 0,
             instruction.is_memory_load_instruction() && instruction.op_a == 0,
             self.core.needs_state_bump(&instruction),
         );

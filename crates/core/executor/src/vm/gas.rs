@@ -343,24 +343,25 @@ pub fn get_complexity_mapping() -> EnumMap<RiscvAirId, u64> {
     mapping[RiscvAirId::Poseidon2] = 497;
 
     // RISC-V instruction costs
-    mapping[RiscvAirId::DivRem] = 347;
-    mapping[RiscvAirId::Add] = 15;
-    mapping[RiscvAirId::Addi] = 14;
-    mapping[RiscvAirId::Addw] = 20;
-    mapping[RiscvAirId::Sub] = 15;
-    mapping[RiscvAirId::Subw] = 15;
-    mapping[RiscvAirId::Bitwise] = 19;
-    mapping[RiscvAirId::Mul] = 60;
-    mapping[RiscvAirId::ShiftRight] = 77;
-    mapping[RiscvAirId::ShiftLeft] = 68;
-    mapping[RiscvAirId::Lt] = 41;
+    mapping[RiscvAirId::DivRem] = 348;
+    mapping[RiscvAirId::Add] = 16;
+    mapping[RiscvAirId::Addi] = 15;
+    mapping[RiscvAirId::Addw] = 21;
+    mapping[RiscvAirId::Sub] = 16;
+    mapping[RiscvAirId::Subw] = 16;
+    mapping[RiscvAirId::Bitwise] = 20;
+    mapping[RiscvAirId::Mul] = 61;
+    mapping[RiscvAirId::ShiftRight] = 78;
+    mapping[RiscvAirId::ShiftLeft] = 69;
+    mapping[RiscvAirId::Lt] = 42;
+    mapping[RiscvAirId::AluX0] = 17;
 
     // Memory operations
     mapping[RiscvAirId::LoadByte] = 32;
     mapping[RiscvAirId::LoadHalf] = 33;
     mapping[RiscvAirId::LoadWord] = 33;
     mapping[RiscvAirId::LoadDouble] = 24;
-    mapping[RiscvAirId::LoadX0] = 34;
+    mapping[RiscvAirId::LoadX0] = 35;
     mapping[RiscvAirId::StoreByte] = 32;
     mapping[RiscvAirId::StoreHalf] = 27;
     mapping[RiscvAirId::StoreWord] = 27;

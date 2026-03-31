@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "aggregation/program",
+  "alu-x0/program",
   "aggregation/script",
   "bls12381/program",
   "bls12381/script",

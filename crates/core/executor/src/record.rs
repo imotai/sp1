@@ -41,6 +41,8 @@ pub struct ExecutionRecord {
     pub program: Arc<Program>,
     /// The number of CPU related events.
     pub cpu_event_count: u32,
+    /// A trace of ALU events with `rd = x0`.
+    pub alu_x0_events: Vec<(AluEvent, ALUTypeRecord)>,
     /// A trace of the ADD, and ADDI events.
     pub add_events: Vec<(AluEvent, RTypeRecord)>,
     /// A trace of the ADDW events.
@@ -167,6 +169,7 @@ impl ExecutionRecord {
     ) -> Self {
         let mut result = Self { program, ..Default::default() };
 
+        result.alu_x0_events.reserve(reservation_size);
         result.add_events.reserve(reservation_size);
         result.addi_events.reserve(reservation_size);
         result.addw_events.reserve(reservation_size);
@@ -505,6 +508,7 @@ impl ExecutionRecord {
     /// Reset the record, without deallocating the event vecs.
     #[inline]
     pub fn reset(&mut self) {
+        self.alu_x0_events.truncate(0);
         self.add_events.truncate(0);
         self.addw_events.truncate(0);
         self.addi_events.truncate(0);
@@ -718,6 +722,7 @@ impl MachineRecord for ExecutionRecord {
     fn stats(&self) -> HashMap<String, usize> {
         let mut stats = HashMap::new();
         stats.insert("cpu_events".to_string(), self.cpu_event_count as usize);
+        stats.insert("alu_x0_events".to_string(), self.alu_x0_events.len());
         stats.insert("add_events".to_string(), self.add_events.len());
         stats.insert("mul_events".to_string(), self.mul_events.len());
         stats.insert("sub_events".to_string(), self.sub_events.len());
@@ -782,6 +787,7 @@ impl MachineRecord for ExecutionRecord {
         other.public_values.global_page_prot_finalize_count = 0;
         self.estimated_trace_area += other.estimated_trace_area;
         other.estimated_trace_area = 0;
+        self.alu_x0_events.append(&mut other.alu_x0_events);
         self.add_events.append(&mut other.add_events);
         self.sub_events.append(&mut other.sub_events);
         self.mul_events.append(&mut other.mul_events);

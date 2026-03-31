@@ -43,8 +43,8 @@ use strum::{EnumDiscriminants, EnumIter};
 pub(crate) mod riscv_chips {
     pub use crate::{
         alu::{
-            add::AddChip, addi::AddiChip, addw::AddwChip, sub::SubChip, subw::SubwChip,
-            BitwiseChip, DivRemChip, LtChip, MulChip, ShiftLeft, ShiftRightChip,
+            add::AddChip, addi::AddiChip, addw::AddwChip, alu_x0::AluX0Chip, sub::SubChip,
+            subw::SubwChip, BitwiseChip, DivRemChip, LtChip, MulChip, ShiftLeft, ShiftRightChip,
         },
         bytes::ByteChip,
         memory::MemoryGlobalChip,
@@ -112,6 +112,8 @@ pub enum RiscvAir<F: PrimeField32> {
     DivRem(DivRemChip),
     /// An AIR for RISC-V Lt instruction.
     Lt(LtChip),
+    /// An AIR for all RISC-V ALU instructions with rd = x0.
+    AluX0(AluX0Chip),
     /// An AIR for RISC-V SLL instruction.
     ShiftLeft(ShiftLeft),
     /// An AIR for RISC-V SRL and SRA instruction.
@@ -292,6 +294,7 @@ impl<F: PrimeField32> RiscvAir<F> {
             RiscvAir::ShiftRight(ShiftRightChip::default()),
             RiscvAir::ShiftLeft(ShiftLeftChip::default()),
             RiscvAir::Lt(LtChip::default()),
+            RiscvAir::AluX0(AluX0Chip::default()),
             RiscvAir::LoadByte(LoadByteChip::default()),
             RiscvAir::LoadHalf(LoadHalfChip::default()),
             RiscvAir::LoadWord(LoadWordChip::default()),
@@ -389,6 +392,7 @@ impl<F: PrimeField32> RiscvAir<F> {
                 ShiftRight,
                 ShiftLeft,
                 Lt,
+                AluX0,
                 LoadByte,
                 LoadHalf,
                 LoadWord,
@@ -693,6 +697,10 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(lt.name().to_string(), lt.cost());
         chips.push(lt);
 
+        let alu_x0 = Chip::new(RiscvAir::AluX0(AluX0Chip::default()));
+        costs.insert(alu_x0.name().to_string(), alu_x0.cost());
+        chips.push(alu_x0);
+
         let load_byte = Chip::new(RiscvAir::LoadByte(LoadByteChip::default()));
         costs.insert(load_byte.name().to_string(), load_byte.cost());
         chips.push(load_byte);
@@ -807,6 +815,7 @@ impl<F: PrimeField32> RiscvAir<F> {
             (RiscvAirId::ShiftRight, record.shift_right_events.len()),
             (RiscvAirId::ShiftLeft, record.shift_left_events.len()),
             (RiscvAirId::Lt, record.lt_events.len()),
+            (RiscvAirId::AluX0, record.alu_x0_events.len()),
             (
                 RiscvAirId::MemoryLocal,
                 record
@@ -949,6 +958,7 @@ impl From<RiscvAirDiscriminants> for RiscvAirId {
             RiscvAirDiscriminants::KeccakPControl => RiscvAirId::KeccakPermuteControl,
             RiscvAirDiscriminants::Mprotect => RiscvAirId::Mprotect,
             RiscvAirDiscriminants::Poseidon2 => RiscvAirId::Poseidon2,
+            RiscvAirDiscriminants::AluX0 => RiscvAirId::AluX0,
         }
     }
 }
@@ -1356,6 +1366,113 @@ pub mod tests {
         }
         add_halt(&mut instructions);
         let program = Program::new(instructions.to_vec(), 0, 0);
+        let stdin = SP1Stdin::new();
+        run_test(Arc::new(program.clone()), stdin.clone()).await.unwrap();
+        run_test_small_trace(Arc::new(program), stdin).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_alu_x0_prove() {
+        setup_logger();
+
+        let reg_reg_ops = [
+            // AddChip (RTypeReader)
+            Opcode::ADD,
+            // SubChip (RTypeReader)
+            Opcode::SUB,
+            // SubwChip (RTypeReader)
+            Opcode::SUBW,
+            // AddwChip (ALUTypeReader)
+            Opcode::ADDW,
+            // MulChip (RTypeReader)
+            Opcode::MUL,
+            Opcode::MULH,
+            Opcode::MULHU,
+            Opcode::MULHSU,
+            Opcode::MULW,
+            // DivRemChip (RTypeReader)
+            Opcode::DIV,
+            Opcode::DIVU,
+            Opcode::REM,
+            Opcode::REMU,
+            Opcode::DIVW,
+            Opcode::DIVUW,
+            Opcode::REMW,
+            Opcode::REMUW,
+            // BitwiseChip (ALUTypeReader)
+            Opcode::XOR,
+            Opcode::OR,
+            Opcode::AND,
+            // ShiftLeftChip (ALUTypeReader)
+            Opcode::SLL,
+            Opcode::SLLW,
+            // ShiftRightChip (ALUTypeReader)
+            Opcode::SRL,
+            Opcode::SRA,
+            Opcode::SRLW,
+            Opcode::SRAW,
+            // LtChip (ALUTypeReader)
+            Opcode::SLT,
+            Opcode::SLTU,
+        ];
+
+        let reg_imm_ops = [
+            // AddiChip (ITypeReader)
+            Opcode::ADDI,
+        ];
+
+        let mut instructions = vec![];
+        instructions.push(Instruction::new(Opcode::ADDI, 29, 0, 65, false, true));
+        instructions.push(Instruction::new(Opcode::ADDI, 30, 0, 7, false, true));
+
+        for op in reg_reg_ops {
+            instructions.push(Instruction::new(op, 0, 29, 30, false, false));
+        }
+
+        for op in reg_imm_ops {
+            instructions.push(Instruction::new(op, 0, 29, 7, false, true));
+        }
+
+        add_halt(&mut instructions);
+        let program = Program::new(instructions, 0, 0);
+        let stdin = SP1Stdin::new();
+        run_test(Arc::new(program.clone()), stdin.clone()).await.unwrap();
+        run_test_small_trace(Arc::new(program), stdin).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_non_alu_x0_prove() {
+        setup_logger();
+
+        let mut instructions = vec![];
+
+        instructions.push(Instruction::new(Opcode::ADDI, 29, 0, 0x42, false, true));
+        instructions.push(Instruction::new(Opcode::ADDI, 30, 0, 0x10, false, true));
+
+        instructions.push(Instruction::new(Opcode::SW, 29, 0, 0x27654320, false, true));
+        let load_ops =
+            [Opcode::LB, Opcode::LH, Opcode::LW, Opcode::LBU, Opcode::LHU, Opcode::LWU, Opcode::LD];
+        for op in load_ops {
+            instructions.push(Instruction::new(op, 0, 0, 0x27654320, false, true));
+        }
+
+        instructions.push(Instruction::new(Opcode::BEQ, 0, 0, 8, false, true));
+        instructions.push(Instruction::new(Opcode::ADDI, 28, 0, 0xFF, false, true));
+        instructions.push(Instruction::new(Opcode::BNE, 0, 29, 8, false, true));
+        instructions.push(Instruction::new(Opcode::ADDI, 28, 0, 0xFF, false, true));
+
+        instructions.push(Instruction::new(Opcode::JAL, 0, 8, 0, true, true));
+        instructions.push(Instruction::new(Opcode::ADDI, 28, 0, 0xFF, false, true));
+
+        instructions.push(Instruction::new(Opcode::JAL, 27, 4, 0, true, true));
+        instructions.push(Instruction::new(Opcode::JALR, 0, 27, 8, false, true));
+        instructions.push(Instruction::new(Opcode::ADDI, 28, 0, 0xFF, false, true));
+
+        instructions.push(Instruction::new(Opcode::LUI, 0, 0x12345000, 0x12345000, true, true));
+        instructions.push(Instruction::new(Opcode::AUIPC, 0, 0x1000, 0x1000, true, true));
+
+        add_halt(&mut instructions);
+        let program = Program::new(instructions, 0, 0);
         let stdin = SP1Stdin::new();
         run_test(Arc::new(program.clone()), stdin.clone()).await.unwrap();
         run_test_small_trace(Arc::new(program), stdin).await.unwrap();

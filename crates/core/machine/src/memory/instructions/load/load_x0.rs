@@ -282,6 +282,7 @@ where
 
         // This chip is specifically for load operations with `op_a = x0`.
         builder.when(is_real.clone()).assert_one(local.adapter.op_a_0);
+        builder.when_not(is_real.clone()).assert_zero(local.adapter.op_a_0);
 
         // Constrain the state of the CPU.
         <CPUState<AB::F> as SP1Operation<AB>>::eval(

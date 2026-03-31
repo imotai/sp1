@@ -217,6 +217,9 @@ pub enum RiscvAirId {
     PageProtGlobalFinalize = 71,
     /// The poseidon2 chip.
     Poseidon2 = 72,
+    /// The ALU x0 chip (all ALU ops with rd = x0).
+    #[subenum(CoreAirId)]
+    AluX0 = 73,
 }
 
 impl RiscvAirId {
@@ -259,6 +262,7 @@ impl RiscvAirId {
             RiscvAirId::Mprotect,
             RiscvAirId::InstructionDecode,
             RiscvAirId::InstructionFetch,
+            RiscvAirId::AluX0,
         ]
     }
 

@@ -290,6 +290,8 @@ where
             ),
         );
 
+        // This chip is for the case `rd != x0`.
+        builder.assert_zero(local.adapter.op_a_0);
         // Constrain the program and register reads.
         let a_expr = local.a.map(|x| x.into());
         let alu_reader_input = RTypeReaderInput::<AB, AB::Expr>::new(

@@ -136,6 +136,7 @@ impl ShapeChecker {
     /// * `instruction`: The instruction that is being handled.
     /// * `syscall_sent`: Whether a syscall was sent during this cycle.
     /// * `bump_clk_high`: Whether the clk's top 24 bits incremented during this cycle.
+    /// * `is_alu_x0`: Whether the instruction is an ALU instruction with `rd = x0`.
     /// * `is_load_x0`: Whether the instruction is a load of x0, if so the riscv air id is `LoadX0`.
     ///
     /// # Returns
@@ -146,6 +147,7 @@ impl ShapeChecker {
         &mut self,
         instruction: &Instruction,
         bump_clk_high: bool,
+        is_alu_x0: bool,
         is_load_x0: bool,
         needs_state_bump: bool,
     ) {
@@ -154,6 +156,8 @@ impl ShapeChecker {
 
         let riscv_air_id = if is_load_x0 {
             RiscvAirId::LoadX0
+        } else if is_alu_x0 {
+            RiscvAirId::AluX0
         } else {
             riscv_air_id_from_opcode(instruction.opcode)
         };
