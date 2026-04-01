@@ -1198,6 +1198,7 @@ where
             let divw_instr_type = Opcode::DIVW.instruction_type().0 as u32;
             let remw_instr_type = Opcode::REMW.instruction_type().0 as u32;
             let divuw_instr_type = Opcode::DIVUW.instruction_type().0 as u32;
+            let remuw_instr_type = Opcode::REMUW.instruction_type().0 as u32;
 
             let calculated_instr_type = local.is_divu
                 * AB::Expr::from_canonical_u32(divu_instr_type)
@@ -1206,7 +1207,8 @@ where
                 + local.is_rem * AB::Expr::from_canonical_u32(rem_instr_type)
                 + local.is_divw * AB::Expr::from_canonical_u32(divw_instr_type)
                 + local.is_remw * AB::Expr::from_canonical_u32(remw_instr_type)
-                + local.is_divuw * AB::Expr::from_canonical_u32(divuw_instr_type);
+                + local.is_divuw * AB::Expr::from_canonical_u32(divuw_instr_type)
+                + local.is_remuw * AB::Expr::from_canonical_u32(remuw_instr_type);
 
             // Constrain the state of the CPU.
             // The program counter and timestamp increment by `4` and `8`.
