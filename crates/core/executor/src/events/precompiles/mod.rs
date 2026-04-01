@@ -247,7 +247,7 @@ impl Default for PrecompileEvents {
     fn default() -> Self {
         let mut events = HashMap::new();
         for syscall_code in SyscallCode::iter() {
-            if syscall_code.should_send() == 1 {
+            if syscall_code.should_send() == 1 && syscall_code.as_air_id().is_some() {
                 events.insert(syscall_code, Vec::new());
             }
         }

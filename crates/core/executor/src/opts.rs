@@ -143,7 +143,7 @@ impl SplitOpts {
         let max_height = opts.sharding_threshold.height_threshold;
 
         let syscall_threshold = EnumMap::from_fn(|syscall_code: SyscallCode| {
-            if syscall_code.should_send() == 0 {
+            if syscall_code.should_send() == 0 || syscall_code.as_air_id().is_none() {
                 return 0;
             }
 

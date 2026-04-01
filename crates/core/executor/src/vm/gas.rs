@@ -303,12 +303,10 @@ pub fn get_complexity_mapping() -> EnumMap<RiscvAirId, u64> {
     mapping[RiscvAirId::EdDecompress] = 755;
 
     // Secp256k1 operations
-    mapping[RiscvAirId::Secp256k1Decompress] = 691;
     mapping[RiscvAirId::Secp256k1AddAssign] = 918;
     mapping[RiscvAirId::Secp256k1DoubleAssign] = 904;
 
     // Secp256r1 operations
-    mapping[RiscvAirId::Secp256r1Decompress] = 691;
     mapping[RiscvAirId::Secp256r1AddAssign] = 918;
     mapping[RiscvAirId::Secp256r1DoubleAssign] = 904;
 
@@ -323,12 +321,10 @@ pub fn get_complexity_mapping() -> EnumMap<RiscvAirId, u64> {
     // BLS12-381 operations
     mapping[RiscvAirId::Bls12381AddAssign] = 1374;
     mapping[RiscvAirId::Bls12381DoubleAssign] = 1356;
-    mapping[RiscvAirId::Bls12381Decompress] = 1237;
 
     // Uint256 operations
     mapping[RiscvAirId::Uint256MulMod] = 253;
     mapping[RiscvAirId::Uint256Ops] = 297;
-    mapping[RiscvAirId::U256XU2048Mul] = 1197;
 
     // Field operations
     mapping[RiscvAirId::Bls12381FpOpAssign] = 317;
@@ -339,7 +335,6 @@ pub fn get_complexity_mapping() -> EnumMap<RiscvAirId, u64> {
     mapping[RiscvAirId::Bn254Fp2MulAssign] = 666;
 
     // System operations
-    mapping[RiscvAirId::Mprotect] = 11;
     mapping[RiscvAirId::Poseidon2] = 497;
 
     // RISC-V instruction costs
@@ -374,17 +369,11 @@ pub fn get_complexity_mapping() -> EnumMap<RiscvAirId, u64> {
     mapping[RiscvAirId::Jalr] = 26;
 
     // System components
-    mapping[RiscvAirId::InstructionDecode] = 160;
-    mapping[RiscvAirId::InstructionFetch] = 11;
     mapping[RiscvAirId::SyscallInstrs] = 93;
     mapping[RiscvAirId::MemoryBump] = 5;
-    mapping[RiscvAirId::PageProt] = 32;
-    mapping[RiscvAirId::PageProtLocal] = 1;
     mapping[RiscvAirId::StateBump] = 8;
     mapping[RiscvAirId::MemoryGlobalInit] = 31;
     mapping[RiscvAirId::MemoryGlobalFinalize] = 31;
-    mapping[RiscvAirId::PageProtGlobalInit] = 26;
-    mapping[RiscvAirId::PageProtGlobalFinalize] = 25;
     mapping[RiscvAirId::MemoryLocal] = 4;
     mapping[RiscvAirId::Global] = 216;
 

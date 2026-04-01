@@ -18,7 +18,6 @@ use crate::{
             store_word::StoreWordChip,
         },
         MemoryBumpChip, MemoryChipType, MemoryLocalChip, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW,
-        NUM_LOCAL_PAGE_PROT_ENTRIES_PER_ROW, NUM_PAGE_PROT_ENTRIES_PER_ROW,
     },
     range::RangeChip,
     syscall::{
@@ -178,10 +177,6 @@ pub enum RiscvAir<F: PrimeField32> {
     Ed25519Add(EdAddAssignChip<EdwardsCurve<Ed25519Parameters>>),
     /// A precompile for decompressing a point on the Edwards curve ed25519.
     Ed25519Decompress(EdDecompressChip<Ed25519Parameters>),
-    /// A precompile for decompressing a point on the K256 curve.
-    K256Decompress(WeierstrassDecompressChip<SwCurve<Secp256k1Parameters>>),
-    /// A precompile for decompressing a point on the P256 curve.
-    P256Decompress(WeierstrassDecompressChip<SwCurve<Secp256r1Parameters>>),
     /// A precompile for addition on the Elliptic curve secp256k1.
     Secp256k1Add(WeierstrassAddAssignChip<SwCurve<Secp256k1Parameters>>),
     /// A precompile for doubling a point on the Elliptic curve secp256k1.
@@ -206,10 +201,6 @@ pub enum RiscvAir<F: PrimeField32> {
     Uint256Mul(Uint256MulChip),
     /// A precompile for uint256 operations (add/mul with carry).
     Uint256Ops(Uint256OpsChip),
-    /// A precompile for u256x2048 mul.
-    U256x2048Mul(U256x2048MulChip),
-    /// A precompile for decompressing a point on the BLS12-381 curve.
-    Bls12381Decompress(WeierstrassDecompressChip<SwCurve<Bls12381Parameters>>),
     /// A precompile for BLS12-381 fp operation.
     Bls12381Fp(FpOpChip<Bls12381BaseField>),
     /// A precompile for BLS12-381 fp2 multiplication.
@@ -222,8 +213,6 @@ pub enum RiscvAir<F: PrimeField32> {
     Bn254Fp2Mul(Fp2MulAssignChip<Bn254BaseField>),
     /// A precompile for BN-254 fp2 addition/subtraction.
     Bn254Fp2AddSub(Fp2AddSubAssignChip<Bn254BaseField>),
-    /// A precompile for mprotect syscalls.
-    Mprotect(MProtectChip),
     /// A precompile for Poseidon2 permutation.
     Poseidon2(Poseidon2Chip),
 }
@@ -245,15 +234,9 @@ impl<F: PrimeField32> RiscvAir<F> {
             RiscvAir::Sha256CompressControl(ShaCompressControlChip::default()),
             RiscvAir::Ed25519Add(EdAddAssignChip::<EdwardsCurve<Ed25519Parameters>>::new()),
             RiscvAir::Ed25519Decompress(EdDecompressChip::<Ed25519Parameters>::default()),
-            RiscvAir::K256Decompress(
-                WeierstrassDecompressChip::<SwCurve<Secp256k1Parameters>>::with_lsb_rule(),
-            ),
             RiscvAir::Secp256k1Add(WeierstrassAddAssignChip::<SwCurve<Secp256k1Parameters>>::new()),
             RiscvAir::Secp256k1Double(
                 WeierstrassDoubleAssignChip::<SwCurve<Secp256k1Parameters>>::new(),
-            ),
-            RiscvAir::P256Decompress(
-                WeierstrassDecompressChip::<SwCurve<Secp256r1Parameters>>::with_lsb_rule(),
             ),
             RiscvAir::Secp256r1Add(WeierstrassAddAssignChip::<SwCurve<Secp256r1Parameters>>::new()),
             RiscvAir::Secp256r1Double(
@@ -269,17 +252,12 @@ impl<F: PrimeField32> RiscvAir<F> {
             ),
             RiscvAir::Uint256Mul(Uint256MulChip::default()),
             RiscvAir::Uint256Ops(Uint256OpsChip::default()),
-            RiscvAir::U256x2048Mul(U256x2048MulChip::default()),
             RiscvAir::Bls12381Fp(FpOpChip::<Bls12381BaseField>::new()),
             RiscvAir::Bls12381Fp2AddSub(Fp2AddSubAssignChip::<Bls12381BaseField>::new()),
             RiscvAir::Bls12381Fp2Mul(Fp2MulAssignChip::<Bls12381BaseField>::new()),
             RiscvAir::Bn254Fp(FpOpChip::<Bn254BaseField>::new()),
             RiscvAir::Bn254Fp2AddSub(Fp2AddSubAssignChip::<Bn254BaseField>::new()),
             RiscvAir::Bn254Fp2Mul(Fp2MulAssignChip::<Bn254BaseField>::new()),
-            RiscvAir::Bls12381Decompress(
-                WeierstrassDecompressChip::<SwCurve<Bls12381Parameters>>::with_lexicographic_rule(),
-            ),
-            RiscvAir::Mprotect(MProtectChip::default()),
             RiscvAir::Poseidon2(Poseidon2Chip::new()),
             RiscvAir::SyscallCore(SyscallChip::core()),
             RiscvAir::SyscallPrecompile(SyscallChip::precompile()),
@@ -351,10 +329,8 @@ impl<F: PrimeField32> RiscvAir<F> {
             [Sha256Compress, Sha256CompressControl].as_slice(),
             [Ed25519Add].as_slice(),
             [Ed25519Decompress].as_slice(),
-            [K256Decompress].as_slice(),
             [Secp256k1Add].as_slice(),
             [Secp256k1Double].as_slice(),
-            [P256Decompress].as_slice(),
             [Secp256r1Add].as_slice(),
             [Secp256r1Double].as_slice(),
             [KeccakP, KeccakPControl].as_slice(),
@@ -364,14 +340,12 @@ impl<F: PrimeField32> RiscvAir<F> {
             [Bls12381Double].as_slice(),
             [Uint256Mul].as_slice(),
             [Uint256Ops].as_slice(),
-            [U256x2048Mul].as_slice(),
             [Bls12381Fp].as_slice(),
             [Bls12381Fp2AddSub].as_slice(),
             [Bls12381Fp2Mul].as_slice(),
             [Bn254Fp].as_slice(),
             [Bn254Fp2AddSub].as_slice(),
             [Bn254Fp2Mul].as_slice(),
-            [Bls12381Decompress].as_slice(),
             [Poseidon2].as_slice(),
         ]
         .into_iter()
@@ -424,7 +398,6 @@ impl<F: PrimeField32> RiscvAir<F> {
             [Bn254Fp].as_slice(),
             [Sha256Extend, Sha256ExtendControl, Sha256Compress, Sha256CompressControl].as_slice(),
             [Uint256Ops].as_slice(),
-            [Mprotect].as_slice(),
             [Poseidon2].as_slice(),
         ];
 
@@ -524,12 +497,6 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(ed_decompress.name().to_string(), ed_decompress.cost());
         chips.push(ed_decompress);
 
-        let k256_decompress = Chip::new(RiscvAir::K256Decompress(WeierstrassDecompressChip::<
-            SwCurve<Secp256k1Parameters>,
-        >::with_lsb_rule()));
-        costs.insert(k256_decompress.name().to_string(), k256_decompress.cost());
-        chips.push(k256_decompress);
-
         let secp256k1_add_assign = Chip::new(RiscvAir::Secp256k1Add(WeierstrassAddAssignChip::<
             SwCurve<Secp256k1Parameters>,
         >::new()));
@@ -542,12 +509,6 @@ impl<F: PrimeField32> RiscvAir<F> {
             >::new()));
         costs.insert(secp256k1_double_assign.name().to_string(), secp256k1_double_assign.cost());
         chips.push(secp256k1_double_assign);
-
-        let p256_decompress = Chip::new(RiscvAir::P256Decompress(WeierstrassDecompressChip::<
-            SwCurve<Secp256r1Parameters>,
-        >::with_lsb_rule()));
-        costs.insert(p256_decompress.name().to_string(), p256_decompress.cost());
-        chips.push(p256_decompress);
 
         let secp256r1_add_assign = Chip::new(RiscvAir::Secp256r1Add(WeierstrassAddAssignChip::<
             SwCurve<Secp256r1Parameters>,
@@ -598,10 +559,6 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(uint256_mul.name().to_string(), uint256_mul.cost());
         chips.push(uint256_mul);
 
-        let u256x2048_mul = Chip::new(RiscvAir::U256x2048Mul(U256x2048MulChip::default()));
-        costs.insert(u256x2048_mul.name().to_string(), u256x2048_mul.cost());
-        chips.push(u256x2048_mul);
-
         let uint256_ops = Chip::new(RiscvAir::Uint256Ops(Uint256OpsChip::default()));
         costs.insert(uint256_ops.name().to_string(), uint256_ops.cost());
         chips.push(uint256_ops);
@@ -633,17 +590,6 @@ impl<F: PrimeField32> RiscvAir<F> {
             Chip::new(RiscvAir::Bn254Fp2Mul(Fp2MulAssignChip::<Bn254BaseField>::new()));
         costs.insert(bn254_fp2_mul.name().to_string(), bn254_fp2_mul.cost());
         chips.push(bn254_fp2_mul);
-
-        let bls12381_decompress =
-            Chip::new(RiscvAir::Bls12381Decompress(WeierstrassDecompressChip::<
-                SwCurve<Bls12381Parameters>,
-            >::with_lexicographic_rule()));
-        costs.insert(bls12381_decompress.name().to_string(), bls12381_decompress.cost());
-        chips.push(bls12381_decompress);
-
-        let mprotect = Chip::new(RiscvAir::Mprotect(MProtectChip::default()));
-        costs.insert(mprotect.name().to_string(), mprotect.cost());
-        chips.push(mprotect);
 
         let syscall_core = Chip::new(RiscvAir::SyscallCore(SyscallChip::core()));
         costs.insert(syscall_core.name().to_string(), syscall_core.cost());
@@ -825,27 +771,6 @@ impl<F: PrimeField32> RiscvAir<F> {
                     .count(),
             ),
             (RiscvAirId::MemoryBump, record.bump_memory_events.len()),
-            (
-                RiscvAirId::PageProt,
-                (record.memory_load_byte_events.len()
-                    + record.memory_store_byte_events.len()
-                    + record.memory_load_word_events.len()
-                    + record.memory_store_word_events.len()
-                    + record.memory_load_double_events.len()
-                    + record.memory_store_double_events.len()
-                    + record.memory_load_half_events.len()
-                    + record.memory_store_half_events.len()
-                    + record.memory_load_x0_events.len())
-                .div_ceil(NUM_PAGE_PROT_ENTRIES_PER_ROW),
-            ),
-            (
-                RiscvAirId::PageProtLocal,
-                record
-                    .get_local_page_prot_events()
-                    .chunks(NUM_LOCAL_PAGE_PROT_ENTRIES_PER_ROW)
-                    .into_iter()
-                    .count(),
-            ),
             (RiscvAirId::StateBump, record.bump_state_events.len()),
             (RiscvAirId::LoadByte, record.memory_load_byte_events.len()),
             (RiscvAirId::LoadHalf, record.memory_load_half_events.len()),
@@ -863,8 +788,6 @@ impl<F: PrimeField32> RiscvAir<F> {
             (RiscvAirId::Global, record.global_interaction_events.len()),
             (RiscvAirId::SyscallCore, record.syscall_events.len()),
             (RiscvAirId::SyscallInstrs, record.syscall_events.len()),
-            (RiscvAirId::InstructionDecode, record.instruction_fetch_events.len()),
-            (RiscvAirId::InstructionFetch, record.instruction_fetch_events.len()),
         ]
     }
 }
@@ -932,8 +855,6 @@ impl From<RiscvAirDiscriminants> for RiscvAirId {
             RiscvAirDiscriminants::Sha256Compress => RiscvAirId::ShaCompress,
             RiscvAirDiscriminants::Ed25519Add => RiscvAirId::EdAddAssign,
             RiscvAirDiscriminants::Ed25519Decompress => RiscvAirId::EdDecompress,
-            RiscvAirDiscriminants::K256Decompress => RiscvAirId::Secp256k1Decompress,
-            RiscvAirDiscriminants::P256Decompress => RiscvAirId::Secp256r1Decompress,
             RiscvAirDiscriminants::Secp256k1Add => RiscvAirId::Secp256k1AddAssign,
             RiscvAirDiscriminants::Secp256k1Double => RiscvAirId::Secp256k1DoubleAssign,
             RiscvAirDiscriminants::Secp256r1Add => RiscvAirId::Secp256r1AddAssign,
@@ -945,8 +866,6 @@ impl From<RiscvAirDiscriminants> for RiscvAirId {
             RiscvAirDiscriminants::Bls12381Double => RiscvAirId::Bls12381DoubleAssign,
             RiscvAirDiscriminants::Uint256Mul => RiscvAirId::Uint256MulMod,
             RiscvAirDiscriminants::Uint256Ops => RiscvAirId::Uint256Ops,
-            RiscvAirDiscriminants::U256x2048Mul => RiscvAirId::U256XU2048Mul,
-            RiscvAirDiscriminants::Bls12381Decompress => RiscvAirId::Bls12381Decompress,
             RiscvAirDiscriminants::Bls12381Fp => RiscvAirId::Bls12381FpOpAssign,
             RiscvAirDiscriminants::Bls12381Fp2Mul => RiscvAirId::Bls12381Fp2MulAssign,
             RiscvAirDiscriminants::Bls12381Fp2AddSub => RiscvAirId::Bls12381Fp2AddSubAssign,
@@ -956,7 +875,6 @@ impl From<RiscvAirDiscriminants> for RiscvAirId {
             RiscvAirDiscriminants::Sha256ExtendControl => RiscvAirId::ShaExtendControl,
             RiscvAirDiscriminants::Sha256CompressControl => RiscvAirId::ShaCompressControl,
             RiscvAirDiscriminants::KeccakPControl => RiscvAirId::KeccakPermuteControl,
-            RiscvAirDiscriminants::Mprotect => RiscvAirId::Mprotect,
             RiscvAirDiscriminants::Poseidon2 => RiscvAirId::Poseidon2,
             RiscvAirDiscriminants::AluX0 => RiscvAirId::AluX0,
         }
@@ -1104,7 +1022,7 @@ pub mod tests {
         // Assumes that the maximum possible single shard trace area comes from precompiles.
         let costs = rv64im_costs();
         for syscall_code in SyscallCode::iter() {
-            if syscall_code.should_send() == 0 {
+            if syscall_code.should_send() == 0 || syscall_code.as_air_id().is_none() {
                 continue;
             }
             // We turn off the page protection for now.
