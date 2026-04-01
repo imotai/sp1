@@ -48,10 +48,15 @@ where
         let next_pc = local.add_operation.value;
         builder.assert_zero(next_pc[3]);
 
-        // Check that the `next_pc` value is a multiple of 4.
+        // Check that the `lsb` value is boolean.
+        builder.assert_bool(local.lsb);
+
+        // Check that the `next_pc` value is a multiple of 4 after clearing the LSB.
+        // `0 <= (next_pc[0] - lsb) / 4 < 2^14` shows `next_pc[0] - lsb` is a multiple of 4 that's
+        // u16. This shows `lsb` is the LSB of `next_pc[0]`, and that `next_pc == 0, 1 (mod 4)`.
         builder.send_byte(
             AB::Expr::from_canonical_u32(ByteOpcode::Range as u32),
-            next_pc[0].into() * AB::F::from_canonical_u32(4).inverse(),
+            (next_pc[0].into() - local.lsb.into()) * AB::F::from_canonical_u32(4).inverse(),
             AB::Expr::from_canonical_u32(14),
             AB::Expr::zero(),
             local.is_real,
@@ -64,7 +69,7 @@ where
             builder,
             CPUStateInput::new(
                 local.state,
-                [next_pc[0].into(), next_pc[1].into(), next_pc[2].into()],
+                [next_pc[0].into() - local.lsb.into(), next_pc[1].into(), next_pc[2].into()],
                 AB::Expr::from_canonical_u32(CLK_INC),
                 local.is_real.into(),
             ),
@@ -91,7 +96,6 @@ where
         // When op_a is set to register X0, the RISC-V spec states that the jump instruction will
         // not have a return destination address (it is effectively a GOTO command).  In this case,
         // we shouldn't verify the return address.
-        // If `op_a_0` is set, the `op_a_value` will be constrained to be zero.
         let op_input = AddOperationInput::<AB>::new(
             Word([
                 local.state.pc[0].into(),

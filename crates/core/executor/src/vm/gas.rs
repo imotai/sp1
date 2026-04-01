@@ -371,7 +371,7 @@ pub fn get_complexity_mapping() -> EnumMap<RiscvAirId, u64> {
     mapping[RiscvAirId::UType] = 19;
     mapping[RiscvAirId::Branch] = 49;
     mapping[RiscvAirId::Jal] = 24;
-    mapping[RiscvAirId::Jalr] = 25;
+    mapping[RiscvAirId::Jalr] = 26;
 
     // System components
     mapping[RiscvAirId::InstructionDecode] = 160;

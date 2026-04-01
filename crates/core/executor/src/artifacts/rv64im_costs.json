@@ -57,7 +57,7 @@
   "Uint256MulMod": 371,
   "Bls12381DoubleAssign": 2391,
   "StoreHalf": 45,
-  "Jalr": 38,
+  "Jalr": 35,
   "Poseidon2": 348,
   "Lt": 44,
   "ShaExtendControl": 18,

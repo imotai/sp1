@@ -1372,6 +1372,24 @@ pub mod tests {
     }
 
     #[tokio::test]
+    async fn test_jalr_lsb_prove() {
+        setup_logger();
+        let mut instructions = vec![
+            Instruction::new(Opcode::ADDI, 29, 0, 9, false, true),
+            Instruction::new(Opcode::ADDI, 28, 0, 0, false, true),
+            Instruction::new(Opcode::JALR, 27, 29, 8, false, true),
+            Instruction::new(Opcode::ADDI, 28, 0, 0xFF, false, true),
+            Instruction::new(Opcode::ADDI, 28, 0, 0x42, false, true),
+        ];
+
+        add_halt(&mut instructions);
+        let program = Program::new(instructions, 0, 0);
+        let stdin = SP1Stdin::new();
+        run_test(Arc::new(program.clone()), stdin.clone()).await.unwrap();
+        run_test_small_trace(Arc::new(program), stdin).await.unwrap();
+    }
+
+    #[tokio::test]
     async fn test_alu_x0_prove() {
         setup_logger();
 

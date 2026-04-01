@@ -1,6 +1,5 @@
 use crate::adapter::{register::i_type::ITypeReader, state::CPUState};
 use sp1_derive::AlignedBorrow;
-use sp1_hypercube::Word;
 use std::mem::size_of;
 
 use crate::operations::AddOperation;
@@ -16,9 +15,6 @@ pub struct JalrColumns<T> {
     /// The adapter to read program and register information.
     pub adapter: ITypeReader<T>,
 
-    /// The value of the first operand.
-    pub op_a_value: Word<T>,
-
     /// Whether or not the current row is a real row.
     pub is_real: T,
 
@@ -27,4 +23,7 @@ pub struct JalrColumns<T> {
 
     /// Computation of `pc + 4` if `op_a != X0`.
     pub op_a_operation: AddOperation<T>,
+
+    /// The least significant bit of `op_b + op_c`.
+    pub lsb: T,
 }

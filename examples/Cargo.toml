@@ -25,6 +25,7 @@ members = [
   "groth16/script",
   "io/program",
   "io/script",
+  "jalr-lsb/program",
   "is-prime/program",
   "is-prime/script",
   "json/lib",
