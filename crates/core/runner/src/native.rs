@@ -133,9 +133,7 @@ impl MinimalExecutorRunner {
                 Command::new(crate::binary::get_binary_path()),
                 self.input.memory_limit,
             )
-            .map_err(|e| {
-                ExecutionError::Other(format!("failed to spawn child process: {e}"))
-            })?;
+            .map_err(|e| ExecutionError::Other(format!("failed to spawn child process: {e}")))?;
 
             {
                 let stdin = child.stdin.take().expect("open stdin");
