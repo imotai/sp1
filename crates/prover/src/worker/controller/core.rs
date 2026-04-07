@@ -350,9 +350,7 @@ where
                 if chunk_count == 0 {
                     return Err(TaskError::Fatal(anyhow::anyhow!(
                         "executor produced zero trace chunks in {elapsed:.3}s \
-                         (global_clk={}, is_done={}). \
-                         The program may have failed before producing trace data, \
-                         or tracing may be disabled.",
+                         (global_clk={}, is_done={})",
                         minimal_executor.global_clk(),
                         minimal_executor.is_done(),
                     )));
