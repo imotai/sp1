@@ -133,7 +133,9 @@ impl MinimalExecutorRunner {
                 Command::new(crate::binary::get_binary_path()),
                 self.input.memory_limit,
             )
-            .expect("start child proces");
+            .map_err(|e| {
+                ExecutionError::Other(format!("failed to spawn child process: {e}"))
+            })?;
 
             {
                 let stdin = child.stdin.take().expect("open stdin");
@@ -396,29 +398,14 @@ fn spawn_restricted(mut cmd: Command, limit_bytes: u64) -> std::io::Result<Child
     // Force pipes for all three standard streams
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
 
-    // Disable core dump for the child process for fast exiting, in debugging sessions
-    // you can comment this section out.
+    // Disable core dumps process-wide. Children inherit this via posix_spawn without
+    // needing pre_exec (which would force Rust to use fork instead of posix_spawn,
+    // causing ENOMEM when the parent has large sparse mmap regions).
     unsafe {
-        use std::os::unix::process::CommandExt;
-        cmd.pre_exec(|| {
-            // Create a limit structure with soft and hard limits set to 0
-            let limit = libc::rlimit {
-                rlim_cur: 0, // Soft limit
-                rlim_max: 0, // Hard limit
-            };
-
-            // Call setrlimit to disable core dumps
-            let ret = libc::setrlimit(libc::RLIMIT_CORE, &limit);
-
-            if ret != 0 {
-                // Convert libc error to Rust io::Error
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
+        let limit = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        libc::setrlimit(libc::RLIMIT_CORE, &limit);
     }
 
-    // Spawn the child normally using Rust std
     let child = cmd.spawn()?;
     let child_pid = child.id();
 
