@@ -400,7 +400,12 @@ async fn host_preprocessed_tracegen<A: CudaTracegenAir<Felt>>(
                         let start_pointer = unsafe { base_ptr.add(offset) as usize };
                         // Since it's unbounded, it will only error if the receiver is disconnected.
                         // If the receiver dropped (task cancelled), exit gracefully instead of panicking.
-                        let _ = tx.unbounded_send((air.name().to_string(), start_pointer, height, width));
+                        let _ = tx.unbounded_send((
+                            air.name().to_string(),
+                            start_pointer,
+                            height,
+                            width,
+                        ));
                     }
                 },
             );
