@@ -26,9 +26,6 @@ pub(crate) unsafe fn sha256_compress(
 ) -> Option<u64> {
     let w_ptr = arg1;
     let h_ptr = arg2;
-    assert_ne!(w_ptr, h_ptr);
-
-    // let start_clk = ctx.clk;
 
     // Execute the "initialize" phase where we read in the h values.
     let mut hx = [0u32; 8];
