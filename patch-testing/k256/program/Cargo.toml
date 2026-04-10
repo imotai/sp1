@@ -16,8 +16,12 @@ path = "bin/recover.rs"
 name = "k256_schnorr_verify"
 path = "bin/schnorr_verify.rs"
 
+[[bin]]
+name = "k256_point_ops"
+path = "bin/point_ops.rs"
+
 [dependencies]
-sp1-zkvm = {  path = "../../../crates/zkvm/entrypoint" }
+sp1-zkvm = { path = "../../../crates/zkvm/entrypoint" }
 k256 = { version = "0.13.4", default-features = false, features = [
     "ecdsa",
     "serde",
