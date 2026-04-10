@@ -207,14 +207,13 @@ impl<F: PrimeField32> MachineAir<F> for UTypeChip {
                         let (event, record) = &input.utype_events[idx];
                         cols.is_auipc = F::from_bool(event.opcode == Opcode::AUIPC);
                         cols.is_real = F::one();
+                        let a = if event.opcode == Opcode::AUIPC { event.pc } else { 0 };
+                        cols.addend[0] = F::from_canonical_u16((a & 0xFFFF) as u16);
+                        cols.addend[1] = F::from_canonical_u16((a >> 16) as u16);
+                        cols.addend[2] = F::from_canonical_u16((a >> 32) as u16);
                         if record.op_a != 0 {
-                            let a = if event.opcode == Opcode::AUIPC { event.pc } else { 0 };
-                            cols.addend[0] = F::from_canonical_u16((a & 0xFFFF) as u16);
-                            cols.addend[1] = F::from_canonical_u16((a >> 16) as u16);
-                            cols.addend[2] = F::from_canonical_u16((a >> 32) as u16);
                             cols.add_operation.populate(&mut blu, a, event.b);
                         } else {
-                            cols.addend = [F::zero(), F::zero(), F::zero()];
                             cols.add_operation.value = Word::from(0u64);
                         }
                         cols.state.populate(&mut blu, event.clk, event.pc);

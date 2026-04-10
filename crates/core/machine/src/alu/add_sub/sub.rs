@@ -175,6 +175,9 @@ where
         let base_opcode = AB::Expr::from_canonical_u32(Opcode::SUB.base_opcode().0);
         let instr_type = AB::Expr::from_canonical_u32(Opcode::SUB.instruction_type().0 as u32);
 
+        // This chip is for the case `rd != x0`.
+        builder.assert_zero(local.adapter.op_a_0);
+
         // Constrain the sub operation over `op_b` and `op_c`.
         let op_input = SubOperationInput::<AB>::new(
             *local.adapter.b(),

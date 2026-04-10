@@ -1,8 +1,5 @@
 use crate::{
-    build::{
-        get_or_create_groth16_artifacts_dev_build_dir, get_or_create_plonk_artifacts_dev_build_dir,
-        try_install_circuit_artifacts, use_development_mode,
-    },
+    build::{try_build_groth16_artifacts_dir, try_build_plonk_artifacts_dir},
     recursion::{
         compose_program_from_input, deferred_program_from_input, dummy_deferred_input,
         recursive_verifier, shrink_program_from_input, wrap_program_from_input, RecursionVks,
@@ -713,12 +710,9 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
             .instrument(tracing::debug_span!("download wrap proof"))
             .await?;
 
-        let build_dir = if use_development_mode() {
-            get_or_create_groth16_artifacts_dev_build_dir(&wrap_proof.vk, &wrap_proof.proof)
-                .map_err(TaskError::Fatal)?
-        } else {
-            try_install_circuit_artifacts("groth16").await.map_err(TaskError::Fatal)?
-        };
+        let build_dir = try_build_groth16_artifacts_dir(&wrap_proof.vk, &wrap_proof.proof)
+            .await
+            .map_err(TaskError::Fatal)?;
 
         let groth16_proof = tokio::task::spawn_blocking(move || -> Result<_, anyhow::Error> {
             let SP1WrapProof { vk, proof } = wrap_proof;
@@ -785,12 +779,7 @@ impl<A: ArtifactClient, C: SP1ProverComponents> SP1RecursionProver<A, C> {
             .instrument(tracing::debug_span!("download wrap proof"))
             .await?;
 
-        let build_dir = if use_development_mode() {
-            get_or_create_plonk_artifacts_dev_build_dir(&wrap_proof.vk, &wrap_proof.proof)
-                .map_err(TaskError::Fatal)?
-        } else {
-            try_install_circuit_artifacts("plonk").await.map_err(TaskError::Fatal)?
-        };
+        let build_dir = try_build_plonk_artifacts_dir(&wrap_proof.vk, &wrap_proof.proof).await?;
 
         let plonk_proof = tokio::task::spawn_blocking(move || -> Result<_, anyhow::Error> {
             let SP1WrapProof { vk: wrap_vk, proof: wrap_proof } = wrap_proof;

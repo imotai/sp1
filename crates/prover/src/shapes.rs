@@ -754,12 +754,18 @@ mod tests {
     use anyhow::Context;
 
     use crate::{
-        recursion::normalize_program_from_input, worker::SP1LightNode, CpuSP1ProverComponents,
+        recursion::{
+            compose_program_from_input, deferred_program_from_input, dummy_compose_input,
+            dummy_deferred_input, normalize_program_from_input, recursive_verifier,
+        },
+        worker::SP1LightNode,
+        CpuSP1ProverComponents,
     };
     #[cfg(feature = "experimental")]
     use sp1_core_executor::SP1Context;
 
     use sp1_core_machine::utils::setup_logger;
+    use sp1_recursion_compiler::config::InnerConfig;
     use sp1_recursion_executor::RecursionAirEventCount;
 
     use super::*;
@@ -840,6 +846,24 @@ mod tests {
             .await;
         if arity != DEFAULT_ARITY {
             return Err(ShapeError::WrongArity(arity)).context(context);
+        }
+
+        // Check that the deferred program fits within the reduce shape.
+        {
+            let compress_verifier = CpuSP1ProverComponents::compress_verifier();
+            let recursive_compress_verifier = recursive_verifier::<SP1GlobalContext, _, InnerConfig>(
+                compress_verifier.shard_verifier(),
+            );
+            let deferred_input =
+                dummy_deferred_input(&compress_verifier, &reduce_shape, allowed_vk_height);
+            let deferred_program = deferred_program_from_input(
+                &recursive_compress_verifier,
+                vk_verification,
+                &deferred_input,
+            );
+            let deferred_count = deferred_program.event_counts;
+            tracing::info!("deferred_count: {:?}", deferred_count);
+            max_cluster_count = max_count(max_cluster_count, deferred_count);
         }
 
         let arity_4_count = build_recursion_count_from_shape(&reduce_shape.shape);

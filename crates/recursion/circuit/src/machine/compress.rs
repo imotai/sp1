@@ -189,7 +189,7 @@ where
                 current_public_values,
             );
             // Assert that the vk root is the same as the witnessed one.
-            for (expected, actual) in vk_root.iter().zip(current_public_values.vk_root.iter()) {
+            for (expected, actual) in vk_root.iter().zip_eq(current_public_values.vk_root.iter()) {
                 builder.assert_felt_eq(*expected, *actual);
             }
 
@@ -319,14 +319,14 @@ where
             deferred_proof_index = current_public_values.deferred_proof;
 
             // Assert that the start pc is equal to the current pc, then update.
-            for (limb, current_limb) in pc.iter().zip(current_public_values.pc_start.iter()) {
+            for (limb, current_limb) in pc.iter().zip_eq(current_public_values.pc_start.iter()) {
                 builder.assert_felt_eq(*limb, *current_limb);
             }
             pc = current_public_values.next_pc;
 
             // Verify that the timestamp is equal to the current one, then update.
             for (limb, current_limb) in
-                current_timestamp.iter().zip(current_public_values.initial_timestamp.iter())
+                current_timestamp.iter().zip_eq(current_public_values.initial_timestamp.iter())
             {
                 builder.assert_felt_eq(*limb, *current_limb);
             }
@@ -334,7 +334,7 @@ where
 
             // Verify that the init address is equal to the current one, then update.
             for (limb, current_limb) in
-                init_addr.iter().zip(current_public_values.previous_init_addr.iter())
+                init_addr.iter().zip_eq(current_public_values.previous_init_addr.iter())
             {
                 builder.assert_felt_eq(*limb, *current_limb);
             }
@@ -342,7 +342,7 @@ where
 
             // Verify that the finalize address is equal to the current one, then update.
             for (limb, current_limb) in
-                finalize_addr.iter().zip(current_public_values.previous_finalize_addr.iter())
+                finalize_addr.iter().zip_eq(current_public_values.previous_finalize_addr.iter())
             {
                 builder.assert_felt_eq(*limb, *current_limb);
             }
@@ -350,7 +350,7 @@ where
 
             // Verify that the init page index is equal to the current one, then update.
             for (limb, current_limb) in
-                init_page_idx.iter().zip(current_public_values.previous_init_page_idx.iter())
+                init_page_idx.iter().zip_eq(current_public_values.previous_init_page_idx.iter())
             {
                 builder.assert_felt_eq(*limb, *current_limb);
             }
@@ -359,7 +359,7 @@ where
             // Verify that the finalize page index is equal to the current one, then update.
             for (limb, current_limb) in finalize_page_idx
                 .iter()
-                .zip(current_public_values.previous_finalize_page_idx.iter())
+                .zip_eq(current_public_values.previous_finalize_page_idx.iter())
             {
                 builder.assert_felt_eq(*limb, *current_limb);
             }
@@ -390,13 +390,15 @@ where
             commit_deferred_syscall = current_public_values.commit_deferred_syscall;
 
             // Assert that the sp1_vk digest is always the same.
-            for (digest, current) in sp1_vk_digest.iter().zip(current_public_values.sp1_vk_digest) {
+            for (digest, current) in
+                sp1_vk_digest.iter().zip_eq(current_public_values.sp1_vk_digest)
+            {
                 builder.assert_felt_eq(*digest, current);
             }
 
             // Assert that the `proof_nonce` is equal to the current one, then update.
             for (limb, current_limb) in
-                proof_nonce.iter().zip(current_public_values.proof_nonce.iter())
+                proof_nonce.iter().zip_eq(current_public_values.proof_nonce.iter())
             {
                 builder.assert_felt_eq(*limb, *current_limb);
             }

@@ -802,7 +802,8 @@ impl ControlFlowInstructions for TranspilerBackend {
         // ------------------------------------
         // 1. If rs1 is immediate, we can do fast jumping
         // ------------------------------------
-        let jump_target = self.reg_values.get(&rs1).map(|rs1_imm| rs1_imm.wrapping_add(imm));
+        let jump_target =
+            self.reg_values.get(&rs1).map(|rs1_imm| rs1_imm.wrapping_add(imm) & !1_u64);
 
         // ------------------------------------
         // 2. Update PC value
@@ -813,6 +814,7 @@ impl ControlFlowInstructions for TranspilerBackend {
             .arch x64;
 
             add Rq(TEMP_A), imm as i32;
+            and Rq(TEMP_A), -2;
             mov QWORD [Rq(CONTEXT) + PC_OFFSET], Rq(TEMP_A)
         }
 

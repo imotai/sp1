@@ -87,10 +87,20 @@ pub async fn cuda_worker_builder(scope: TaskScope) -> SP1WorkerBuilder<SP1CudaPr
             .await,
     );
 
-    SP1WorkerBuilder::new()
+    let base_builder = SP1WorkerBuilder::new()
         .with_core_opts(opts)
         .with_core_air_prover(core_prover, prover_permits.clone())
         .with_compress_air_prover(recursion_prover, prover_permits.clone())
         .with_shrink_air_prover(shrink_prover, prover_permits.clone())
-        .with_wrap_air_prover(ReadyWrapProverBuilder::new(wrap_prover), prover_permits)
+        .with_wrap_air_prover(ReadyWrapProverBuilder::new(wrap_prover), prover_permits);
+
+    #[cfg(feature = "experimental")]
+    {
+        if let Ok(setting) = std::env::var("WITHOUT_VK_VERIFICATION") {
+            if setting == "1" || setting == "true" {
+                return base_builder.without_vk_verification();
+            }
+        }
+    }
+    base_builder
 }

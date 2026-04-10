@@ -3,7 +3,7 @@ use std::{marker::PhantomData, sync::Arc};
 
 use slop_algebra::{AbstractExtensionField, AbstractField, ExtensionField, TwoAdicField};
 use slop_alloc::{Buffer, HasBackend};
-use slop_basefold::{BasefoldProof, FriConfig};
+use slop_basefold::{BasefoldProof, FriConfig, BATCH_GRINDING_BITS};
 use slop_basefold_prover::{host_fold_even_odd, BasefoldProverError};
 use slop_challenger::{CanObserve, CanSampleBits, FieldChallenger, IopCtx};
 use slop_commit::{Message, Rounds};
@@ -367,6 +367,11 @@ where
         let encoded_messages: Message<_> = codewords.iter().cloned().collect();
 
         let evaluation_claims = evaluation_claims.into_iter().flatten().collect::<Vec<_>>();
+
+        // Grind for batch randomness.
+        let batch_grinding_witness =
+            GrindingPowCudaProver::grind(challenger, BATCH_GRINDING_BITS, &scope);
+
         let batching_point = challenger.sample_point::<GC::EF>(num_batching_variables);
         let batching_coefficients = partial_lagrange_blocking(&batching_point);
 
@@ -471,6 +476,7 @@ where
             query_phase_openings_and_proofs,
             final_poly,
             pow_witness,
+            batch_grinding_witness,
         })
     }
 }
@@ -753,32 +759,20 @@ mod tests {
             scope.synchronize_blocking().unwrap();
             tracing::info!("New proof time: {:?}", now.elapsed());
 
-            for (i, (a, b)) in basefold_proof
-                .univariate_messages
-                .iter()
-                .zip_eq(new_basefold_proof.univariate_messages.iter())
-                .enumerate()
-            {
-                assert_eq!(a, b, "Failure on message from round {}", i);
-            }
+            // Because the batch grinding is non-deterministic between CPU and GPU, the
+            // grinding witnesses may differ, causing all subsequent proof values (batching
+            // point, univariate messages, etc.) to diverge. Instead of comparing proof
+            // components directly, we verify both proofs independently.
 
-            for (i, (a, b)) in basefold_proof
-                .fri_commitments
-                .iter()
-                .zip_eq(new_basefold_proof.fri_commitments.iter())
-                .enumerate()
-            {
-                assert_eq!(a, b, "Failure on FRI commitment from round {}", i);
-            }
-
-            assert_eq!(
-                basefold_proof.final_poly, new_basefold_proof.final_poly,
-                "Failure on final poly"
-            );
-
-            // Because the grinding is technically non-deterministic, the proof-of-work witnesses
-            // do not need to be the same. Therefore, all the query indices are not necessarily the
-            // same between the new and old proofs. However, the new proof should still verify.
+            verifier
+                .verify_mle_evaluations(
+                    &[old_preprocessed_commitment, old_main_commitment],
+                    eval_point_host.clone(),
+                    &flattened_evaluation_claims,
+                    &basefold_proof,
+                    &mut SP1GlobalContext::default_challenger(),
+                )
+                .unwrap();
 
             verifier
                 .verify_mle_evaluations(

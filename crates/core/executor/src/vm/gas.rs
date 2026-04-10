@@ -303,12 +303,10 @@ pub fn get_complexity_mapping() -> EnumMap<RiscvAirId, u64> {
     mapping[RiscvAirId::EdDecompress] = 755;
 
     // Secp256k1 operations
-    mapping[RiscvAirId::Secp256k1Decompress] = 691;
     mapping[RiscvAirId::Secp256k1AddAssign] = 918;
     mapping[RiscvAirId::Secp256k1DoubleAssign] = 904;
 
     // Secp256r1 operations
-    mapping[RiscvAirId::Secp256r1Decompress] = 691;
     mapping[RiscvAirId::Secp256r1AddAssign] = 918;
     mapping[RiscvAirId::Secp256r1DoubleAssign] = 904;
 
@@ -323,12 +321,10 @@ pub fn get_complexity_mapping() -> EnumMap<RiscvAirId, u64> {
     // BLS12-381 operations
     mapping[RiscvAirId::Bls12381AddAssign] = 1374;
     mapping[RiscvAirId::Bls12381DoubleAssign] = 1356;
-    mapping[RiscvAirId::Bls12381Decompress] = 1237;
 
     // Uint256 operations
     mapping[RiscvAirId::Uint256MulMod] = 253;
     mapping[RiscvAirId::Uint256Ops] = 297;
-    mapping[RiscvAirId::U256XU2048Mul] = 1197;
 
     // Field operations
     mapping[RiscvAirId::Bls12381FpOpAssign] = 317;
@@ -339,28 +335,28 @@ pub fn get_complexity_mapping() -> EnumMap<RiscvAirId, u64> {
     mapping[RiscvAirId::Bn254Fp2MulAssign] = 666;
 
     // System operations
-    mapping[RiscvAirId::Mprotect] = 11;
     mapping[RiscvAirId::Poseidon2] = 497;
 
     // RISC-V instruction costs
-    mapping[RiscvAirId::DivRem] = 347;
-    mapping[RiscvAirId::Add] = 15;
-    mapping[RiscvAirId::Addi] = 14;
-    mapping[RiscvAirId::Addw] = 20;
-    mapping[RiscvAirId::Sub] = 15;
-    mapping[RiscvAirId::Subw] = 15;
-    mapping[RiscvAirId::Bitwise] = 19;
-    mapping[RiscvAirId::Mul] = 60;
-    mapping[RiscvAirId::ShiftRight] = 77;
-    mapping[RiscvAirId::ShiftLeft] = 68;
-    mapping[RiscvAirId::Lt] = 41;
+    mapping[RiscvAirId::DivRem] = 348;
+    mapping[RiscvAirId::Add] = 16;
+    mapping[RiscvAirId::Addi] = 15;
+    mapping[RiscvAirId::Addw] = 21;
+    mapping[RiscvAirId::Sub] = 16;
+    mapping[RiscvAirId::Subw] = 16;
+    mapping[RiscvAirId::Bitwise] = 20;
+    mapping[RiscvAirId::Mul] = 61;
+    mapping[RiscvAirId::ShiftRight] = 78;
+    mapping[RiscvAirId::ShiftLeft] = 69;
+    mapping[RiscvAirId::Lt] = 42;
+    mapping[RiscvAirId::AluX0] = 17;
 
     // Memory operations
     mapping[RiscvAirId::LoadByte] = 32;
     mapping[RiscvAirId::LoadHalf] = 33;
     mapping[RiscvAirId::LoadWord] = 33;
     mapping[RiscvAirId::LoadDouble] = 24;
-    mapping[RiscvAirId::LoadX0] = 34;
+    mapping[RiscvAirId::LoadX0] = 35;
     mapping[RiscvAirId::StoreByte] = 32;
     mapping[RiscvAirId::StoreHalf] = 27;
     mapping[RiscvAirId::StoreWord] = 27;
@@ -370,20 +366,14 @@ pub fn get_complexity_mapping() -> EnumMap<RiscvAirId, u64> {
     mapping[RiscvAirId::UType] = 19;
     mapping[RiscvAirId::Branch] = 49;
     mapping[RiscvAirId::Jal] = 24;
-    mapping[RiscvAirId::Jalr] = 25;
+    mapping[RiscvAirId::Jalr] = 26;
 
     // System components
-    mapping[RiscvAirId::InstructionDecode] = 160;
-    mapping[RiscvAirId::InstructionFetch] = 11;
     mapping[RiscvAirId::SyscallInstrs] = 93;
     mapping[RiscvAirId::MemoryBump] = 5;
-    mapping[RiscvAirId::PageProt] = 32;
-    mapping[RiscvAirId::PageProtLocal] = 1;
     mapping[RiscvAirId::StateBump] = 8;
     mapping[RiscvAirId::MemoryGlobalInit] = 31;
     mapping[RiscvAirId::MemoryGlobalFinalize] = 31;
-    mapping[RiscvAirId::PageProtGlobalInit] = 26;
-    mapping[RiscvAirId::PageProtGlobalFinalize] = 25;
     mapping[RiscvAirId::MemoryLocal] = 4;
     mapping[RiscvAirId::Global] = 216;
 

@@ -240,6 +240,9 @@ where
             + local.is_and * AB::Expr::from_canonical_u32(and_instr_type)
             - AB::Expr::from_canonical_u32(instr_type_difference) * local.adapter.imm_c;
 
+        // This chip is for the case `rd != x0`.
+        builder.assert_zero(local.adapter.op_a_0);
+
         // Constrain the bitwise operation over `op_b` and `op_c`.
         let bitwise_u16_input = BitwiseU16OperationInput::<AB>::new(
             local.adapter.b().map(Into::into),

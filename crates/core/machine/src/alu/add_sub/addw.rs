@@ -203,6 +203,9 @@ where
         let funct3 = AB::Expr::from_canonical_u8(Opcode::ADDW.funct3().unwrap());
         let funct7 = AB::Expr::from_canonical_u8(Opcode::ADDW.funct7().unwrap());
 
+        // This chip is for the case `rd != x0`.
+        builder.assert_zero(local.adapter.op_a_0);
+
         // Constrain the add operation over `op_b` and `op_c`.
         <AddwOperation<AB::F> as SP1Operation<AB>>::eval(
             builder,

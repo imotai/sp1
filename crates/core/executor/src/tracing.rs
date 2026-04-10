@@ -570,6 +570,13 @@ impl TracingVM<'_> {
     ) {
         let opcode = instruction.opcode;
         let event = AluEvent { clk: self.core.clk(), pc: self.core.pc(), opcode, a, b, c, op_a_0 };
+
+        if op_a_0 {
+            let record = ALUTypeRecord::new(record, instruction);
+            self.record.alu_x0_events.push((event, record));
+            return;
+        }
+
         match opcode {
             Opcode::ADD => {
                 let record = RTypeRecord::new(record, instruction);

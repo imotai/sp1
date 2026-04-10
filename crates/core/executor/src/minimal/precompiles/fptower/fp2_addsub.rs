@@ -13,12 +13,12 @@ pub(crate) unsafe fn fp2_addsub_syscall<P: FpOpField>(
     fp_op: FieldOperation,
 ) -> Option<u64> {
     let x_ptr = arg1;
-    if !x_ptr.is_multiple_of(4) {
-        panic!("x_ptr must be 4-byte aligned");
+    if !x_ptr.is_multiple_of(8) {
+        panic!("x_ptr must be 8-byte aligned");
     }
     let y_ptr = arg2;
-    if !y_ptr.is_multiple_of(4) {
-        panic!("y_ptr must be 4-byte aligned");
+    if !y_ptr.is_multiple_of(8) {
+        panic!("y_ptr must be 8-byte aligned");
     }
 
     let num_words = <P as NumWords>::WordsCurvePoint::USIZE;

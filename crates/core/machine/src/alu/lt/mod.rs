@@ -191,6 +191,9 @@ where
         builder.assert_bool(local.is_sltu);
         builder.assert_bool(is_real.clone());
 
+        // This chip is for the case `rd != x0`.
+        builder.assert_zero(local.adapter.op_a_0);
+
         // Evaluate the LT operation.
         <LtOperationSigned<AB::F> as SP1Operation<AB>>::eval(
             builder,

@@ -9,11 +9,11 @@ use typenum::Unsigned;
 /// each.
 pub(crate) unsafe fn ec_add<E: EllipticCurve>(ctx: &mut impl SyscallContext, arg1: u64, arg2: u64) {
     let p_ptr = arg1;
-    if !p_ptr.is_multiple_of(4) {
+    if !p_ptr.is_multiple_of(8) {
         panic!();
     }
     let q_ptr = arg2;
-    if !q_ptr.is_multiple_of(4) {
+    if !q_ptr.is_multiple_of(8) {
         panic!();
     }
     let num_words = <E::BaseField as NumWords>::WordsCurvePoint::USIZE;
@@ -35,7 +35,7 @@ pub(crate) unsafe fn ec_add<E: EllipticCurve>(ctx: &mut impl SyscallContext, arg
 /// result back to the memory location.
 pub(crate) unsafe fn ec_double<E: EllipticCurve>(ctx: &mut impl SyscallContext, arg1: u64, _: u64) {
     let p_ptr = arg1;
-    if !p_ptr.is_multiple_of(4) {
+    if !p_ptr.is_multiple_of(8) {
         panic!();
     }
 

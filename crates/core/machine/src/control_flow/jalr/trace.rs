@@ -94,9 +94,9 @@ impl JalrChip {
         blu: &mut HashMap<ByteLookupEvent, usize>,
     ) {
         cols.is_real = F::one();
-        cols.op_a_value = event.a.into();
         let low_limb = (event.b.wrapping_add(imm) & 0xFFFF) as u16;
         blu.add_bit_range_check(low_limb / 4, 14);
+        cols.lsb = F::from_canonical_u16(low_limb & 1);
         cols.add_operation.populate(blu, event.b, imm);
         if !event.op_a_0 {
             cols.op_a_operation.populate(blu, event.pc, 4);

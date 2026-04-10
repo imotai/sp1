@@ -13,11 +13,11 @@ pub(crate) unsafe fn fp_op_syscall<P: FpOpField>(
     op: FieldOperation,
 ) -> Option<u64> {
     let x_ptr = arg1;
-    if !x_ptr.is_multiple_of(4) {
+    if !x_ptr.is_multiple_of(8) {
         panic!();
     }
     let y_ptr = arg2;
-    if !y_ptr.is_multiple_of(4) {
+    if !y_ptr.is_multiple_of(8) {
         panic!();
     }
 

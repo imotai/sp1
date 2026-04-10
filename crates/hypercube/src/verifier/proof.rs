@@ -181,21 +181,28 @@ pub struct SP1WrapProof<GC: IopCtx, Proof> {
     pub proof: ShardProof<GC, Proof>,
 }
 
-/// Creates a dummy recursion proof with minimal values, suitable for mock proof construction.
+/// Creates a dummy recursion proof with minimal values for mock proof creation.
 ///
-/// Used by the SDK to create mock compressed proofs. The proof contains valid structures but with
-/// zero/empty values since the mock verifier doesn't actually verify the proof contents.
+/// This is used internally for creating mock compressed proofs. The proof contains
+/// valid structures but with zero/empty values since the mock verifier doesn't
+/// actually verify the proof contents.
 #[must_use]
 pub fn create_dummy_recursion_proof(
     vk: &SP1VerifyingKey,
 ) -> SP1RecursionProof<SP1GlobalContext, SP1PcsProofInner> {
+    // Create minimal dummy values for the proof.
+    // These are the minimum required to satisfy the type system.
+
+    // Create dummy basefold proof.
+    let dummy_query_proof = Vec::new();
     let basefold_proof = BasefoldProof::<SP1GlobalContext> {
         univariate_messages: vec![],
         fri_commitments: vec![],
         final_poly: SP1ExtensionField::zero(),
         pow_witness: SP1Field::zero(),
+        batch_grinding_witness: SP1Field::zero(),
         component_polynomials_query_openings_and_proofs: vec![],
-        query_phase_openings_and_proofs: Vec::new(),
+        query_phase_openings_and_proofs: dummy_query_proof,
     };
 
     let batch_evaluations: Rounds<MleEval<SP1ExtensionField, CpuBackend>> = Rounds::default();
@@ -216,6 +223,8 @@ pub fn create_dummy_recursion_proof(
         log_m: 1,
     };
 
+    // Create dummy LogupGkrProof.
+    // Create empty Mle with minimal size using Tensor::zeros_in.
     let empty_tensor: Tensor<SP1ExtensionField, CpuBackend> =
         Tensor::zeros_in([1], GLOBAL_CPU_BACKEND);
     let logup_gkr_proof = LogupGkrProof {
@@ -231,6 +240,7 @@ pub fn create_dummy_recursion_proof(
         witness: SP1Field::zero(),
     };
 
+    // Create dummy ShardProof.
     let dummy_shard_proof = ShardProof {
         public_values: Vec::new(),
         main_commitment: [SP1Field::zero(); DIGEST_SIZE],

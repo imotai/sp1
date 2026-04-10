@@ -12,7 +12,6 @@ pub(crate) fn sha256_compress<'a, RT: SyscallRuntime<'a>>(
 ) -> Option<u64> {
     let w_ptr = arg1;
     let h_ptr = arg2;
-    assert_ne!(w_ptr, h_ptr);
 
     let clk = rt.core().clk();
 

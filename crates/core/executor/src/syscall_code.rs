@@ -296,12 +296,9 @@ impl SyscallCode {
             SyscallCode::KECCAK_PERMUTE => RiscvAirId::KeccakPermute,
             SyscallCode::SECP256K1_ADD => RiscvAirId::Secp256k1AddAssign,
             SyscallCode::SECP256K1_DOUBLE => RiscvAirId::Secp256k1DoubleAssign,
-            SyscallCode::SECP256K1_DECOMPRESS => RiscvAirId::Secp256k1Decompress,
             SyscallCode::BN254_ADD => RiscvAirId::Bn254AddAssign,
             SyscallCode::BN254_DOUBLE => RiscvAirId::Bn254DoubleAssign,
-            SyscallCode::BLS12381_DECOMPRESS => RiscvAirId::Bls12381Decompress,
             SyscallCode::UINT256_MUL => RiscvAirId::Uint256MulMod,
-            SyscallCode::U256XU2048_MUL => RiscvAirId::U256XU2048Mul,
             SyscallCode::BLS12381_ADD => RiscvAirId::Bls12381AddAssign,
             SyscallCode::BLS12381_DOUBLE => RiscvAirId::Bls12381DoubleAssign,
             SyscallCode::BLS12381_FP_ADD
@@ -320,13 +317,16 @@ impl SyscallCode {
             SyscallCode::BN254_FP2_MUL => RiscvAirId::Bn254Fp2MulAssign,
             SyscallCode::SECP256R1_ADD => RiscvAirId::Secp256r1AddAssign,
             SyscallCode::SECP256R1_DOUBLE => RiscvAirId::Secp256r1DoubleAssign,
-            SyscallCode::SECP256R1_DECOMPRESS => RiscvAirId::Secp256r1Decompress,
             SyscallCode::UINT256_ADD_CARRY | SyscallCode::UINT256_MUL_CARRY => {
                 RiscvAirId::Uint256Ops
             }
-            SyscallCode::MPROTECT => RiscvAirId::Mprotect,
             SyscallCode::POSEIDON2 => RiscvAirId::Poseidon2,
-            SyscallCode::HALT
+            SyscallCode::MPROTECT
+            | SyscallCode::U256XU2048_MUL
+            | SyscallCode::SECP256K1_DECOMPRESS
+            | SyscallCode::BLS12381_DECOMPRESS
+            | SyscallCode::SECP256R1_DECOMPRESS
+            | SyscallCode::HALT
             | SyscallCode::WRITE
             | SyscallCode::ENTER_UNCONSTRAINED
             | SyscallCode::EXIT_UNCONSTRAINED

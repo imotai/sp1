@@ -14,11 +14,11 @@ pub(crate) fn edwards_add<'a, RT: SyscallRuntime<'a>, E: EllipticCurve + Edwards
     arg2: u64,
 ) -> Option<u64> {
     let p_ptr = arg1;
-    if !p_ptr.is_multiple_of(4) {
+    if !p_ptr.is_multiple_of(8) {
         panic!();
     }
     let q_ptr = arg2;
-    if !q_ptr.is_multiple_of(4) {
+    if !q_ptr.is_multiple_of(8) {
         panic!();
     }
 

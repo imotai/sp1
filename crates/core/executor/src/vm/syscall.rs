@@ -22,7 +22,6 @@ mod halt;
 mod hint;
 mod poseidon2;
 mod precompiles;
-mod u256x2048_mul;
 mod uint256;
 mod uint256_ops;
 
@@ -199,7 +198,6 @@ pub(crate) fn sp1_ecall_handler<'a, RT: SyscallRuntime<'a>>(
         SyscallCode::UINT256_MUL_CARRY | SyscallCode::UINT256_ADD_CARRY => {
             uint256_ops::uint256_ops(rt, code, args1, args2)
         }
-        SyscallCode::U256XU2048_MUL => u256x2048_mul::u256xu2048_mul(rt, code, args1, args2),
         SyscallCode::SHA_COMPRESS => precompiles::sha256::sha256_compress(rt, code, args1, args2),
         SyscallCode::SHA_EXTEND => precompiles::sha256::sha256_extend(rt, code, args1, args2),
         SyscallCode::KECCAK_PERMUTE => {
@@ -226,17 +224,16 @@ pub(crate) fn sp1_ecall_handler<'a, RT: SyscallRuntime<'a>>(
             precompiles::fptower::fp_op::<_, Bn254BaseField>(rt, code, args1, args2)
         }
         SyscallCode::POSEIDON2 => poseidon2::poseidon2(rt, code, args1, args2),
-        SyscallCode::VERIFY_SP1_PROOF
+        SyscallCode::SECP256K1_DECOMPRESS
+        | SyscallCode::BLS12381_DECOMPRESS
+        | SyscallCode::SECP256R1_DECOMPRESS
         | SyscallCode::MPROTECT
+        | SyscallCode::U256XU2048_MUL
+        | SyscallCode::VERIFY_SP1_PROOF
         | SyscallCode::ENTER_UNCONSTRAINED
         | SyscallCode::EXIT_UNCONSTRAINED
         | SyscallCode::HINT_READ
         | SyscallCode::WRITE => None,
-        code @ (SyscallCode::SECP256K1_DECOMPRESS
-        | SyscallCode::BLS12381_DECOMPRESS
-        | SyscallCode::SECP256R1_DECOMPRESS) => {
-            unreachable!("{code} is not yet supported by the native executor.")
-        }
     };
 
     rt.core_mut().set_clk(clk);
