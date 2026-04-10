@@ -12,7 +12,7 @@ pub unsafe fn edwards_decompress_syscall(
     sign: u64,
 ) -> Option<u64> {
     let slice_ptr = arg1;
-    assert!(slice_ptr.is_multiple_of(4), "Pointer must be 4-byte aligned.");
+    assert!(slice_ptr.is_multiple_of(8), "Pointer must be 8-byte aligned.");
     assert!(sign <= 1, "Sign bit must be 0 or 1.");
 
     let y = ctx.mr_slice(slice_ptr + (COMPRESSED_POINT_BYTES as u64), WORDS_FIELD_ELEMENT);
