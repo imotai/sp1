@@ -30,6 +30,12 @@ pub struct ProveShardGate<A: ArtifactClient, W: WorkerClient> {
     inner: Arc<GateInner<A, W>>,
 }
 
+impl<A: ArtifactClient, W: WorkerClient> std::fmt::Debug for ProveShardGate<A, W> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProveShardGate").finish_non_exhaustive()
+    }
+}
+
 struct GateInner<A: ArtifactClient, W: WorkerClient> {
     artifact_client: A,
     subscriber: TaskSubscriber<W>,

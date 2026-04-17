@@ -36,7 +36,7 @@ pub struct SplicingTask<W: WorkerClient> {
     pub deferred_marker_tx: mpsc::UnboundedSender<DeferredMessage>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SplicingWorker<A: ArtifactClient, W: WorkerClient> {
     artifact_client: A,
     worker_client: W,
