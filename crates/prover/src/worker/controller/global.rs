@@ -71,7 +71,6 @@ pub fn global_memory(capacity: usize) -> (TouchedAddresses, GlobalMemoryHandler)
 
 impl GlobalMemoryHandler {
     #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
     pub(super) async fn emit_global_memory_shards<A: ArtifactClient, W: WorkerClient>(
         mut self,
         program: Arc<Program>,

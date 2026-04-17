@@ -11,33 +11,24 @@ use tracing::Instrument;
 
 use crate::utils::{await_blocking, await_scoped_vec};
 
-/// Opaque permit returned by [`ArtifactClient::acquire_shard_permit`].
+/// Reservation of space in the artifact store for one in-flight shard.
 ///
-/// Represents a reservation of space in the underlying artifact store for
-/// one in-flight shard. The caller must hold the permit from the moment
-/// `upload()` is called until the downstream consumer (GPU worker processing
-/// `ProveShard`) finishes — at which point the store drops the input artifact
-/// and the permit can be released.
-///
-/// Dropping the permit releases its reservation. For stores that don't have a
-/// memory ceiling (S3, in-memory), [`ShardPermit::noop`] is used as a zero-cost
-/// no-op that makes the producer-side API uniform across backends.
+/// Held from `upload()` until the downstream consumer deletes the artifact;
+/// dropping releases the reservation. Stores without a memory ceiling (S3,
+/// in-memory) return [`ShardPermit::noop`] so producers can call
+/// `acquire_shard_permit` uniformly.
 pub struct ShardPermit {
-    // `None` means "no gating in this store"; dropping it is a no-op.
-    // The guard is load-bearing even though it's never read directly —
-    // dropping the `ShardPermit` releases the underlying semaphore slot.
+    #[allow(dead_code)] // Dropping releases the underlying semaphore slot.
     guard: Option<OwnedSemaphorePermit>,
 }
 
 impl ShardPermit {
-    /// Construct a no-op permit. Used by stores without memory constraints
-    /// (S3, in-memory) so producers can call `acquire_shard_permit` uniformly
-    /// without runtime cost.
+    /// Zero-cost permit for stores without a memory ceiling.
     pub const fn noop() -> Self {
         Self { guard: None }
     }
 
-    /// Wrap a real semaphore permit from a memory-bounded store (Redis).
+    /// Wrap a real semaphore permit from a memory-bounded store.
     pub const fn new(guard: OwnedSemaphorePermit) -> Self {
         Self { guard: Some(guard) }
     }
@@ -193,17 +184,10 @@ pub trait ArtifactClient: Send + Sync + Clone + 'static {
         artifact_type: ArtifactType,
     ) -> impl Future<Output = Result<()>> + Send;
 
-    /// Acquire a permit to reserve space for an in-flight shard artifact.
-    ///
-    /// Stores with a memory ceiling (Redis) return a permit tied to a real
-    /// semaphore sized from their `maxmemory`; the permit must be held until
-    /// the downstream consumer deletes the artifact, at which point dropping
-    /// it releases the reservation.
-    ///
-    /// The default implementation is a no-op [`ShardPermit::noop`], suitable
-    /// for stores with no single-host memory ceiling (S3, in-memory). This
-    /// lets the producer call `acquire_shard_permit` uniformly without paying
-    /// any cost on S3-backed clusters.
+    /// Reserve space for an in-flight shard artifact. Default: no-op.
+    /// Memory-bounded stores (Redis) override to return a real permit sized
+    /// from their memory ceiling; hold it until the consumer deletes the
+    /// artifact, then drop to release.
     fn acquire_shard_permit(
         &self,
         _artifact: &impl ArtifactId,

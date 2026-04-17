@@ -149,10 +149,7 @@ where
         let deferred_proofs = stdin.proofs.iter().map(|(proof, _)| proof.clone());
         let deferred_inputs = DeferredInputs::new(deferred_proofs);
 
-        // Per-proof backpressure gate. Permit pool is owned by the artifact
-        // store (sized from Redis `maxmemory`); the gate here bundles that
-        // with a task-completion subscriber so the permit can be held for
-        // the full artifact lifetime.
+        // Per-proof backpressure gate; permit pool lives in the artifact store.
         let gate = ProveShardGate::new(
             self.artifact_client.clone(),
             self.worker_client.clone(),

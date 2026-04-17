@@ -547,10 +547,7 @@ pub(super) async fn create_core_proving_task<A: ArtifactClient, W: WorkerClient>
     let record_artifact =
         artifact_client.create_artifact().map_err(|e| ExecutionError::Other(e.to_string()))?;
 
-    // Reserve bytes in the artifact store before committing memory. Blocks
-    // here when the shard node this artifact will hash to is already holding
-    // its permit-count's worth of in-flight uploads. Permit is held across
-    // upload + submit + task completion; released when the consumer cleans up.
+    // Reserve before upload; held across upload + submit + task completion.
     let shard_permit = gate.acquire(&record_artifact).await;
 
     // Make a deferred marker task. This is used for the worker to send
@@ -615,8 +612,6 @@ pub(super) async fn create_core_proving_task<A: ArtifactClient, W: WorkerClient>
         .await
         .map_err(|e| ExecutionError::Other(e.to_string()))?;
 
-    // Hand the permit to a background task that releases it when the
-    // coordinator reports the ProveShard task reached a terminal state.
     gate.schedule_release(task_id.clone(), shard_permit);
 
     let proof_data = ProofData { task_id, range, proof: proof_artifact };
