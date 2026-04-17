@@ -54,13 +54,10 @@ async fn execute_node(args: Args, elf: Vec<u8>, stdin: SP1Stdin) {
     let worker_client = TrivialWorkerClient::new(args.task_capacity, artifact_client.clone());
 
     let proof_id = ProofId::new("bench_pure_execution");
-    let gate = ProveShardGate::new(
-        artifact_client.clone(),
-        worker_client.clone(),
-        proof_id.clone(),
-    )
-    .await
-    .expect("failed to create gate");
+    let gate =
+        ProveShardGate::new(artifact_client.clone(), worker_client.clone(), proof_id.clone())
+            .await
+            .expect("failed to create gate");
 
     let splicing_workers = (0..args.splice_workers)
         .map(|_| {
