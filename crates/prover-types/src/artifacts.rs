@@ -18,28 +18,19 @@ use crate::utils::{await_blocking, await_scoped_vec};
 /// in-memory) return [`ShardPermit::noop`] so producers can call
 /// `acquire_shard_permit` uniformly.
 pub struct ShardPermit {
-    #[allow(dead_code)] // Dropping releases the underlying semaphore slot.
-    guard: Option<OwnedSemaphorePermit>,
+    // Dropping releases the underlying semaphore slot.
+    _guard: Option<OwnedSemaphorePermit>,
 }
 
 impl ShardPermit {
     /// Zero-cost permit for stores without a memory ceiling.
     pub const fn noop() -> Self {
-        Self { guard: None }
+        Self { _guard: None }
     }
 
     /// Wrap a real semaphore permit from a memory-bounded store.
     pub const fn new(guard: OwnedSemaphorePermit) -> Self {
-        Self { guard: Some(guard) }
-    }
-}
-
-impl fmt::Debug for ShardPermit {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.guard {
-            Some(_) => write!(f, "ShardPermit(held)"),
-            None => write!(f, "ShardPermit(noop)"),
-        }
+        Self { _guard: Some(guard) }
     }
 }
 
