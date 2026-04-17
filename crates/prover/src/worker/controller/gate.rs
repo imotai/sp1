@@ -13,9 +13,12 @@
 //! gate.schedule_release(task_id, permit);
 //! ```
 
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
-use sp1_prover_types::{ArtifactClient, ArtifactId, ShardPermit};
+use sp1_prover_types::{ArtifactClient, ArtifactId, ShardPermit, TaskStatus};
 use tokio::task::AbortHandle;
 
 use crate::worker::{ProofId, TaskId, TaskSubscriber, WorkerClient};
@@ -86,17 +89,29 @@ impl<A: ArtifactClient, W: WorkerClient> ProveShardGate<A, W> {
         self.inner.artifact_client.acquire_shard_permit(artifact).await
     }
 
-    /// Release `permit` when the task reaches any terminal state (Succeeded /
-    /// FailedFatal / FailedRetryable / Err). We deliberately don't retry on
-    /// retryable failures — the record artifact lives until its 4-hour Redis
-    /// TTL, so brief overcommit during retry storms is preferable to the
-    /// tight-loop risk of re-awaiting a stuck watch channel.
+    /// Release `permit` only when the coordinator reports a truly terminal
+    /// status — [`TaskStatus::Succeeded`] or [`TaskStatus::FailedFatal`]. On
+    /// [`TaskStatus::FailedRetryable`] the coordinator re-queues the same
+    /// `task_id`, so we keep holding the permit (the record artifact is still
+    /// referenced) and wait for the next status change.
     pub fn schedule_release(&self, task_id: TaskId, permit: ShardPermit) {
         let subscriber = self.inner.subscriber.clone();
         let handle = tokio::spawn(async move {
             let _permit = permit;
-            if let Err(e) = subscriber.wait_task(task_id.clone()).await {
-                tracing::warn!(%task_id, error = %e, "wait_task failed, releasing permit");
+            loop {
+                match subscriber.wait_task(task_id.clone()).await {
+                    Ok(TaskStatus::Succeeded | TaskStatus::FailedFatal) => break,
+                    Ok(_) => {
+                        // Non-terminal status (e.g. FailedRetryable). Yield
+                        // briefly so we don't spin on the cached watch value
+                        // before the coordinator posts the next transition.
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    }
+                    Err(e) => {
+                        tracing::warn!(%task_id, error = %e, "wait_task failed, releasing permit");
+                        break;
+                    }
+                }
             }
         });
         if let Ok(mut handles) = self.inner.release_handles.lock() {
