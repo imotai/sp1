@@ -16,10 +16,15 @@
       "Bash(xargs sed:*)",
       "Bash(for i:*)",
       "Bash(do cargo:*)",
-      "Bash(ls -d /Users/rdalalsuccinct/Documents/sp1-wip/.claude/worktrees/*/)"
+      "Bash(ls -d /Users/rdalalsuccinct/Documents/sp1-wip/.claude/worktrees/*/)",
+      "Bash(git -C /Users/rdalalsuccinct/Documents/sp1-wip/crates/core/machine/src/sp1-worktree status)",
+      "Bash(git -C /Users/rdalalsuccinct/Documents/sp1-wip/crates/core/machine/src/sp1-worktree log --oneline @{u}..HEAD)",
+      "Bash(git -C /Users/rdalalsuccinct/Documents/sp1-wip/crates/core/machine/src/sp1-worktree diff .claude/settings.json)",
+      "Bash(git worktree *)"
     ],
     "additionalDirectories": [
-      "/Users/rdalalsuccinct/Documents/sp1-wip-veil-independent/slop/crates/veil/examples"
+      "/Users/rdalalsuccinct/Documents/sp1-wip-veil-independent/slop/crates/veil/examples",
+      "/Users/rdalalsuccinct/Documents/sp1-wip/slop/crates/veil/examples"
     ]
   }
 }
