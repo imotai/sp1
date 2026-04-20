@@ -1098,7 +1098,7 @@ mod tests {
         let polynomial_concat: Mle<F> =
             Mle::new(interleave(polynomial_1.guts().clone(), polynomial_2.guts().clone()));
 
-        let num_non_zero_entries = polynomial_concat.guts().total_len() as usize;
+        let num_non_zero_entries = polynomial_concat.guts().total_len();
         let inner_evals = polynomial_concat
             .guts()
             .clone()
